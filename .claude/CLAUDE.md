@@ -41,6 +41,6 @@ Khai báo trong `.claude/skills/`:
 
 ## 6. Tham chiếu external
 
-- Memory cá nhân (cross-session): `C:\Users\Admin\.claude\projects\<hash>\memory\`
+- Memory cá nhân (cross-session): `C:\Users\Admin\.claude\projects\d--Ai-Automantion-workflow\memory\`
 - Memory dự án (commit được): `./MEMORY.md` ở root project
 - Settings runtime: `.claude/settings.json` (public) + `settings.local.json` (private)

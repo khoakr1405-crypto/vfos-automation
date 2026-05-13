@@ -36,7 +36,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo File modified at $(date)"
+            "command": "powershell -NoProfile -Command \"Write-Host ('File modified at ' + (Get-Date -Format o))\""
           }
         ]
       }
