@@ -36,6 +36,7 @@ export function makeAiSyscalls(router: AIRouter): readonly SyscallSpec[] {
     name: 'ai.complete',
     description: 'Run an LLM completion via the AIRouter (intent-routed).',
     requiredScope: 'ai.complete',
+    auditable: true,
     handler: async (ctx, raw) => {
       const args = CompleteInput.parse(raw);
       const res = await router.run({
@@ -57,6 +58,7 @@ export function makeAiSyscalls(router: AIRouter): readonly SyscallSpec[] {
     name: 'ai.json',
     description: 'Run an LLM completion that must return JSON matching a schema.',
     requiredScope: 'ai.complete',
+    auditable: true,
     handler: async (ctx, raw) => {
       const args = JsonInput.parse(raw);
       const res = await router.run({
