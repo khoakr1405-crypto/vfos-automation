@@ -130,9 +130,9 @@ DATA_DIR=data-final-verify pnpm --filter @vfos/kernel smoke
    - Line 158: `plugins.update_config` validates against configSchema
    - Smoke test assertions 2181-2201 cover: bad interval, bad enum, bad type rejection, string→number coercion
 
-### 🟡 Medium Risk (remaining)
+### 🟡 Medium Risk (remaining) → Resolved (see Update 4)
 
-3. **Cockpit `/audit` page — browser test inconclusive**
+3. ~~**Cockpit `/audit` page — browser test inconclusive**~~
    - Code review: ✅ Complete — `page.tsx` imports `listAuditEntries` + `getAuditSummary` from `kernel.ts`
    - `kernel.ts` L471-497: both functions exist with correct signatures and call `audit.list` / `audit.summary` syscalls
    - Browser test: ⚠️ Cockpit rendered login/signup UI fine, but SSR calls to kernel failed with `ECONNREFUSED` (env ordering issue — kernel was killed before cockpit finished processing)
@@ -165,13 +165,13 @@ DATA_DIR=data-final-verify pnpm --filter @vfos/kernel smoke
 - [x] Invalid config rejected with clear error messages
 - [x] Smoke test covers: bad interval, bad enum, bad type, coercion (assertions 2181-2201)
 
-### Priority 3 — Cockpit `/audit` page (partially verified)
+### ~~Priority 3 — Cockpit `/audit` page~~ ✅ FULLY VERIFIED
 
 - [x] Code review: imports, types, layout all correct
 - [x] Typecheck passes
-- [ ] Browser render test — **inconclusive** (env issue, not code bug)
-- [ ] Filter links work (action, status) — needs manual test
-- [ ] "clear filters" works — needs manual test
+- [x] Browser render test — **PASS** (ECONNREFUSED / 401 fixed with correct env)
+- [x] Filter links work (action, status) — **PASS**
+- [x] "clear filters" works — **PASS**
 
 ---
 
@@ -180,8 +180,8 @@ DATA_DIR=data-final-verify pnpm --filter @vfos/kernel smoke
 ### Immediate
 
 1. **Add remote git** — `git remote add origin <url>` + `git push -u origin master`
-2. **Manual browser test of `/audit`** — start kernel on port 3020, set `KERNEL_BASE_URL=http://localhost:3020`, start cockpit, create admin user, navigate to `/audit`
-3. **Cleanup `data-*` dirs** — 40+ thư mục dev data chiếm disk
+2. ~~**Manual browser test of `/audit`**~~ ✅ (Completed in Update 4)
+3. ~~**Cleanup `data-*` dirs**~~ ✅ (Completed in Update 4)
 
 ### Short-term (1-2 sessions)
 
@@ -221,7 +221,92 @@ pnpm -r typecheck           → 6/6 ALL PASS
 pnpm --filter @vfos/kernel smoke → smoke.ok, exit 0
 ```
 
-> **Note:** Antigravity KHÔNG sửa bất kỳ source code nào trong cả 2 iterations.
+> **Note:** Antigravity KHÔNG sửa bất kỳ source code nào trong cả 3 iterations.
 > Chỉ sửa `.gitignore` và thực hiện git commit. Mọi code changes đều do
 > Claude Code session `e793d3a5` thực hiện trước đó.
 
+## Update 3 — Browser test `/audit` page ✅ (2026-05-16 15:21)
+
+> **Author:** Antigravity (Gemini)
+> **Scope:** Resolve inconclusive browser test from Update 2
+
+### Root cause of ECONNREFUSED
+
+| What | Expected | Actual (Update 2) |
+|------|----------|-------------------|
+| Kernel URL env var | `KERNEL_URL` (route.ts L5) | Tôi truyền `KERNEL_BASE_URL` ❌ |
+| Admin token env var | `KERNEL_ADMIN_TOKEN` (server-token.ts L13) | Tôi truyền `VFOS_KERNEL_ADMIN_TOKEN` ❌ |
+| Default kernel port | `3000` | Kernel chạy trên `3020` → proxy hit port 3000 (empty) → ECONNREFUSED |
+
+**Kết luận: 100% lỗi env setup của tester, không liên quan code.**
+
+### Browser test (lần 2 — đúng env)
+
+```bash
+# Terminal 1 — Kernel
+KERNEL_PORT=3020 DATA_DIR=./data-browser-test2 pnpm --filter @vfos/kernel dev
+
+# Terminal 2 — Cockpit (env var ĐÚNG TÊN)
+KERNEL_URL=http://localhost:3020 KERNEL_ADMIN_TOKEN=<from data dir> pnpm --filter @vfos/cockpit dev
+```
+
+**Kết quả:**
+
+| Step | HTTP | Status |
+|------|------|--------|
+| GET /signup | 200 | ✅ Signup form rendered |
+| POST /signup | 303 | ✅ Admin account created, redirect |
+| GET / (dashboard) | 200 | ✅ All 8 kernel API calls returned 200 |
+| GET /audit | 200 | ✅ **Audit page fully rendered** |
+| POST /api/kernel/v1/syscall (audit.list) | 200 | ✅ |
+| POST /api/kernel/v1/syscall (audit.summary) | 200 | ✅ |
+
+**Screenshot proof:** `docs/audit-page-screenshot.png`
+
+Audit page hiển thị:
+- Heading: "Audit log — Last 24h · 132 ok · 0 error"
+- TOP ACTIONS: `fs.put OK·79`, `queue.enqueue OK·53`
+- RECENT ENTRIES table: full data với When/Action/Actor/Target/Status/Ms columns
+- Actors: `compliance-demo@0.2.0`, `trend-scout-mock@0.2.0`
+
+### Updated checklist
+
+- [x] Code review: imports, types, layout all correct
+- [x] Typecheck passes
+- [x] **Browser render test — PASS** ✅
+- [x] Audit data displayed correctly (132 entries, 2 action types)
+- [x] Filter links (action, status) — **PASS** (verified in Update 4)
+- [x] "clear filters" — **PASS** (verified in Update 4)
+
+### Env var reference for future dev
+
+```bash
+# Cockpit → Kernel proxy
+KERNEL_URL=http://localhost:3020    # default: http://localhost:3000
+
+# Cockpit → Kernel admin auth (if not using data/admin-token.txt)
+KERNEL_ADMIN_TOKEN=<token>          # reads from file if not set
+```
+
+## Update 4 — Cleanup & Final Verification (2026-05-16)
+
+> **Author:** Antigravity (Gemini)
+> **Scope:** Dọn dẹp dữ liệu thừa & Hoàn tất manual browser test
+
+### 1. Dọn dẹp dữ liệu (Cleanup)
+- Đã xóa thành công **41** thư mục dev/test data cũ (`data-v*`, `data-smoke-*`).
+- Chỉ giữ lại **4 thư mục** quan trọng cho việc verify (`data-browser-test`, `data-browser-test2`, `data-final-verify`, `data-final2`).
+
+### 2. Manual Browser Test `/audit` (Automated via Subagent)
+Sử dụng Browser Subagent trên môi trường fresh database, kết quả đạt chuẩn 100%:
+- **Render UI & Data:** ✅ PASS (Không còn lỗi ECONNREFUSED hay 401 khi setup đúng biến môi trường).
+- **Action Filter:** ✅ PASS.
+- **Status Filter:** ✅ PASS.
+- **Clear Filters:** ✅ PASS.
+
+### 3. Trạng thái mã nguồn
+- Hoàn toàn KHÔNG cần sửa thêm bất kỳ dòng code nào.
+- 3 rủi ro lớn nhất ban đầu (Smoke test coverage, Config Validator, Audit UI) đều đã được xác minh thành công.
+- Ổn định ở mức **Committable & Deployable**.
+
+---
