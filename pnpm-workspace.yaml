@@ -1,0 +1,9 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+  - "plugins/*"
+allowBuilds:
+  '@biomejs/biome': true
+  esbuild: true
+  msgpackr-extract: false
+  sharp: true

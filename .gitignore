@@ -19,6 +19,17 @@ dist/
 build/
 .next/
 .turbo/
+*.tsbuildinfo
+
+# Runtime data (local)
+data/
+data-v*/
+
+# Large backup archives
+*.zip
+
+# Admin tokens (auto-generated)
+admin-token.txt
 
 # Logs
 *.log
