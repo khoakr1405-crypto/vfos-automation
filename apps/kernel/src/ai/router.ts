@@ -50,6 +50,12 @@ const DEFAULT_ROUTE_TABLE: Readonly<Record<LLMIntent, Route>> = {
     max_tokens: 800,
     cache_system: true,
   },
+  voe_evaluate: {
+    driver: 'anthropic',
+    model: 'claude-sonnet-4-6',
+    max_tokens: 1500,
+    cache_system: true,
+  },
 };
 
 export interface RunRequest {

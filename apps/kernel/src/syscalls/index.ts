@@ -28,6 +28,7 @@ import { makeQueueSyscalls } from './queue.js';
 import { makeTenantSyscalls } from './tenant.js';
 import { makeTokensSyscalls } from './tokens.js';
 import { trendScore } from './trend.js';
+import { makeVoeSyscalls } from './voe.js';
 
 export interface CoreSyscallCtx {
   router: AIRouter;
@@ -51,6 +52,9 @@ export function registerCoreSyscalls(registry: SyscallRegistry, ctx: CoreSyscall
   registry.register(trendScore);
   registry.register(affiliateMatchSku);
   for (const spec of makeAiSyscalls(ctx.router)) {
+    registry.register(spec);
+  }
+  for (const spec of makeVoeSyscalls(ctx.router)) {
     registry.register(spec);
   }
   for (const spec of makeComplianceSyscalls(ctx.router)) {

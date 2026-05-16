@@ -3,7 +3,8 @@ export type LLMIntent =
   | 'caption_hook'
   | 'classify_niche'
   | 'policy_check'
-  | 'tool_loop';
+  | 'tool_loop'
+  | 'voe_evaluate';
 
 export type LLMCapability =
   | 'reasoning'
