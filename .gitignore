@@ -23,7 +23,7 @@ build/
 
 # Runtime data (local)
 data/
-data-v*/
+data-*/
 
 # Large backup archives
 *.zip
