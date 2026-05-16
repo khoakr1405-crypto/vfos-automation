@@ -17,6 +17,10 @@ Skill này dùng để suy nghĩ chiến lược, đọc trạng thái dự án 
 
 ## Strategic decision standard
 
+**MANDATORY**: BẮT BUỘC đọc `docs/VFOS_NORTH_STAR.md` trước khi đánh giá ưu tiên, đề xuất hướng đi hay quyết định task có đáng làm không. Mọi khuyến nghị chiến lược phải được soi qua pipeline:
+`tìm video nguồn → chọn video đáng reup → edit/biến đổi/bản địa hóa → đăng Facebook/TikTok Việt Nam để làm affiliate → đo hiệu quả`.
+Nếu một đề xuất không giúp VFOS tiến gần pipeline này hoặc không tăng khả năng hút view/doanh thu thật, không được ưu tiên.
+
 Mỗi đề xuất phải được đánh giá dựa trên các tiêu chí sau:
 
 1. **Product value** — bước này có làm VFOS tiến gần hơn tới một hệ thống có thể dùng thật hay không?
