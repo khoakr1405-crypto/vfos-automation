@@ -46,6 +46,26 @@ const PROMPTS: Record<LLMIntent, { system: string; user: string; schema?: Record
     system: 'Decompose the user task into ordered tool-call steps.',
     user: 'find a trending audio, write a caption, schedule for 9pm',
   },
+  voe_evaluate: {
+    system:
+      'You are a Vietnam affiliate content strategist. Evaluate the video metadata provided as JSON. ' +
+      'Assess viral potential and affiliate conversion likelihood for Facebook Reels and TikTok Vietnam. ' +
+      'Return STRICT JSON with vi_evaluation (score, confidence, verdict, rationale, risks, ' +
+      'target_audience, affiliate_category) and content_factory_handoff fields.',
+    user: JSON.stringify({
+      source_url: 'https://tiktok.com/@cleantok/video/sample',
+      platform: 'tiktok',
+      niche: 'vệ sinh nhà cửa',
+      title: 'Magic Kitchen Cleaner Spray #cleantok',
+      description: 'Xóa bay vết dầu mỡ 10 năm tuổi trên chảo chỉ với 1 lần xịt.',
+      transcript: 'Cái chảo này tôi định vứt đi rồi. Xịt lên, đợi 30 giây, lau nhẹ. Tuyệt vời!',
+      tags: ['cleantok', 'satisfying', 'kitchenhack'],
+      views: 5000000,
+      likes: 850000,
+      shares: 60000,
+    }),
+    schema: { type: 'object', required: ['vi_evaluation', 'content_factory_handoff'] },
+  },
 };
 
 async function main(): Promise<void> {

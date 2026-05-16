@@ -1,5 +1,47 @@
 # VOE v1 Manual Evaluation Dataset
 
+## Cách chạy
+
+**Bước 1:** Điền `ANTHROPIC_API_KEY` vào file `.env` ở root workspace:
+
+```
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+Script tự động đọc `.env` — không cần set env var thủ công.
+
+**Bước 2:** Chạy từ root repo hoặc từ `apps/kernel`:
+
+```powershell
+# PowerShell (Windows) — từ root:
+pnpm --filter @vfos/kernel voe:eval
+
+# Hoặc:
+cd apps/kernel
+pnpm voe:eval
+```
+
+```bash
+# bash/Linux/Mac — từ root:
+pnpm --filter @vfos/kernel voe:eval
+```
+
+Nếu muốn override key cho 1 lần chạy mà không sửa `.env`:
+
+```powershell
+# PowerShell:
+$env:ANTHROPIC_API_KEY = "sk-ant-..."; pnpm --filter @vfos/kernel voe:eval
+```
+
+```bash
+# bash:
+ANTHROPIC_API_KEY=sk-ant-... pnpm --filter @vfos/kernel voe:eval
+```
+
+Yêu cầu `ANTHROPIC_API_KEY` — script dừng ngay với lỗi rõ nếu thiếu, không fallback sang mock.
+
+---
+
 > **Lưu ý**: Đây là bộ dữ liệu đánh giá thủ công (manual evaluation dataset) dành cho Video Opportunity Evaluator (VOE) v1. Nó dùng để kiểm chứng định tính khả năng suy luận (rationale) và chấm điểm (score) của AI có sát với tư duy làm affiliate tại Việt Nam hay không. Đây **không phải** là unit test deterministic (vì AI có thể trả về câu chữ khác nhau trong mỗi lần chạy, nhưng verdict và xu hướng điểm số phải nhất quán).
 
 ---

@@ -10,6 +10,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "smoke": "tsx src/smoke.ts",
     "ai:test": "tsx src/ai-test-cli.ts",
+    "voe:eval": "tsx src/voe-eval-cli.ts",
     "test": "vitest run"
   },
   "dependencies": {

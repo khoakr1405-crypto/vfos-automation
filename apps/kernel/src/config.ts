@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { z } from 'zod';
 
@@ -29,6 +29,21 @@ export type KernelConfig = Omit<z.infer<typeof ConfigSchema>, 'PLUGINS_DIR' | 'D
   DATA_DIR: string;
 };
 
+function loadEnvFile(root: string): void {
+  const envPath = join(root, '.env');
+  if (!existsSync(envPath)) return;
+  const lines = readFileSync(envPath, 'utf8').split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const eqIdx = trimmed.indexOf('=');
+    if (eqIdx === -1) continue;
+    const key = trimmed.slice(0, eqIdx).trim();
+    const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, '');
+    if (!(key in process.env)) process.env[key] = val;
+  }
+}
+
 function findWorkspaceRoot(start: string): string {
   let dir = start;
   for (let i = 0; i < 8; i += 1) {
@@ -41,8 +56,9 @@ function findWorkspaceRoot(start: string): string {
 }
 
 export function loadConfig(): KernelConfig {
-  const parsed = ConfigSchema.parse(process.env);
   const root = findWorkspaceRoot(process.cwd());
+  loadEnvFile(root);
+  const parsed = ConfigSchema.parse(process.env);
   const pluginsDir = parsed.PLUGINS_DIR
     ? resolve(parsed.PLUGINS_DIR)
     : join(root, 'plugins');
