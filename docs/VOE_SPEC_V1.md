@@ -3,7 +3,7 @@
 ## 1. Overview & Business Objective
 *   **Tên Agent**: Video Opportunity Evaluator (VOE)
 *   **Vai trò**: Bộ não đánh giá và chọn lọc đầu phễu (Selection Stage).
-*   **Mục tiêu kinh doanh**: Giảm thiểu chi phí cơ hội và thời gian bằng cách loại bỏ các video ngoại không có tiềm năng chuyển đổi affiliate tại Việt Nam. Tập trung nguồn lực vào các video có tỷ lệ "thắng" cao.
+*   **Mục tiêu kinh doanh**: Giảm thiểu chi phí cơ hội bằng cách loại bỏ các video không có tiềm năng. Đánh giá dựa trên 2 trục: **View Potential** (Sức kéo traffic) và **Monetization Fit** (Khả năng ghép link affiliate hợp lý). Không chỉ xét các video có sản phẩm trực tiếp.
 *   **Quan hệ với hệ thống**: VOE là bước đánh giá tiền đề. VOE **KHÔNG** trực tiếp chỉnh sửa video. Nếu kết quả là `PROCEED`, đầu ra của VOE sẽ đóng vai trò là "kim chỉ nam" chiến lược (Handoff) cho bước tiếp theo (ContentFactory Agent) để thực hiện biên tập.
 
 ## 2. Input Schema (VFOSEvaluateInput)
@@ -72,3 +72,12 @@
 *   **Chưa dựng 3 agent lớn**: Chỉ tập trung hoàn thiện duy nhất VOE.
 *   **Chưa làm storage/domain phức tạp**: Không thiết kế database schema riêng cho kết quả VOE; tạm thời tận dụng bảng `audit_log` và in kết quả trực tiếp ra UI/Console.
 *   **Chưa xử lý render/cắt dựng**: VOE chỉ phân tích text và trả về chiến lược (Handoff), không sinh ra file video mới.
+
+## 7. Planned v2 evolution for content-led affiliate
+> **Lưu ý**: Đây là hướng nâng cấp cho phiên bản v2 tương lai, chưa phải thay đổi hợp đồng (contract) của v1 hiện tại.
+
+Trong tương lai, để phục vụ chiến lược **Content-Led Affiliate** (kéo view trước, ghép sản phẩm sau), bộ não VOE sẽ được cấu trúc lại để đánh giá rõ ràng 2 trục độc lập. Output Schema v2 dự kiến sẽ thay thế/bổ sung các trường sau:
+*   `view_potential_score`: Đánh giá sức kéo traffic/viral độc lập với yếu tố bán hàng.
+*   `monetization_fit_score`: Đánh giá độ dễ gắn link affiliate vào bối cảnh/ngách của video.
+*   `direct_affiliate_matches`: Sản phẩm xuất hiện trực tiếp trong video (nếu có).
+*   `indirect_affiliate_matches`: Danh sách các sản phẩm có thể bán chéo (cross-sell) dựa trên bối cảnh hoặc đam mê của tệp người xem (Ví dụ: xem câu cá -> bán ghế dã ngoại).

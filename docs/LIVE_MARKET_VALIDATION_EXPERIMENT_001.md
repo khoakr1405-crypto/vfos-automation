@@ -1,5 +1,7 @@
 # Live Market Validation Experiment 001
 
+> **Lưu ý chiến lược mới (Content-Led Affiliate)**: Experiment 001 hiện tại được thiết kế theo tư duy product-first (tập trung vào ngách gia dụng) và đã có lịch sử thực tế riêng nên vẫn được giữ nguyên để hoàn tất. Chiến lược content-led mới sẽ được áp dụng mạnh hơn ở experiment tiếp theo (dự kiến `LIVE_MARKET_VALIDATION_EXPERIMENT_002.md`), với batch gợi ý 4 Satisfying Demo / 4 Niche Passion / 2 Scenic Escapism.
+
 ## 1. Mục tiêu thí nghiệm
 Chứng minh khả năng của Video Opportunity Evaluator (VOE) trong điều kiện thực tế. Xác nhận rằng những video nước ngoài được VOE đánh giá `PROCEED` (điểm cao) khi được Việt hóa thủ công sẽ thực sự thu hút lượt xem và tạo ra click affiliate tại thị trường Việt Nam.
 

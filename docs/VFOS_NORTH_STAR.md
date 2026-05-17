@@ -1,7 +1,8 @@
 # VFOS North Star
 
 ## 1. Core mission
-VFOS được xây thành một hệ thống giúp tạo video và reup video Trung Quốc/nước ngoài, sau đó edit/biến đổi video và bản địa hóa để đăng tại Việt Nam trên **Facebook và TikTok** phục vụ affiliate; mục tiêu là tăng khả năng thu hút nhiều lượt xem, gắn link tiếp thị liên kết và tăng xác suất tạo doanh thu thực tế.
+VFOS được xây thành một hệ thống giúp tạo video và reup video Trung Quốc/nước ngoài, sau đó edit/biến đổi video và bản địa hóa để đăng tại Việt Nam trên **Facebook và TikTok** phục vụ affiliate. 
+**Chiến lược mặc định (Default Strategy)**: Content-led affiliate. Nội dung kéo view trước, sau đó ghép sản phẩm affiliate liên quan hợp lý đến nội dung, bối cảnh và tệp người xem. KHÔNG mặc định chạy theo product-first affiliate.
 
 ## 2. Business ambition
 Đây là mục tiêu kinh doanh trực tiếp của người xây dự án. VFOS được định hướng để tiến tới khả năng hỗ trợ đạt mức 100–200 triệu VNĐ/tháng từ affiliate video Facebook/TikTok tại Việt Nam.
@@ -9,7 +10,7 @@ VFOS được xây thành một hệ thống giúp tạo video và reup video Tr
 
 ## 3. What success looks like
 Hệ thống giúp:
-* Tìm/đánh giá nguồn video Trung Quốc và nước ngoài có tiềm năng, tìm sản phẩm/ngách phù hợp.
+* Tìm/đánh giá nguồn video Trung Quốc và nước ngoài có khả năng kéo view cực mạnh, sau đó tìm sản phẩm/ngách affiliate liên quan để ghép vào (match).
 * Chọn video đáng reup.
 * Đề xuất hoặc tự tạo phương án edit/biến đổi/bản địa hóa video.
 * Tối ưu caption, hook, voice/text overlay, CTA, affiliate angle cho thị trường Việt Nam.
@@ -19,8 +20,8 @@ Hệ thống giúp:
 
 ## 4. Decision filter
 Mọi đề xuất tính năng, kiến trúc và ưu tiên triển khai phải trả lời được:
-“Việc này có giúp VFOS tạo hoặc biến đổi video reup thành nội dung affiliate phù hợp thị trường Việt Nam trên Facebook và TikTok, có khả năng hút view và tạo doanh thu thật hơn không?”
-Nếu không rõ, không ưu tiên.
+“Việc này có giúp VFOS tạo nội dung kéo view mạnh và ghép nối affiliate phù hợp tại Việt Nam trên Facebook và TikTok không?”
+**Cảnh báo "Product-First Tunnel Vision"**: Chặn mọi luồng tư duy chỉ chăm chăm tìm video có sản phẩm để bán mà bỏ qua tiềm năng traffic của video. Nếu không tạo ra view, không ưu tiên.
 
 ## 5. Anti-goals
 * Không biến VFOS thành nền tảng AI automation chung chung, lệch khỏi bài toán video affiliate kiếm tiền.
