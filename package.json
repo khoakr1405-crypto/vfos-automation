@@ -13,7 +13,8 @@
     "typecheck": "pnpm -r typecheck",
     "lint": "biome check .",
     "fmt": "biome format --write .",
-    "smoke": "pnpm --filter @vfos/kernel smoke"
+    "smoke": "pnpm --filter @vfos/kernel smoke",
+    "voice:generate": "tsx packages/voice/scripts/generate.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
