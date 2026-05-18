@@ -30,12 +30,13 @@ loadDotEnv();
 
 const { values } = parseArgs({
   options: {
-    'script-json': { type: 'string' },
-    'output-dir':  { type: 'string' },
-    'voice-id':    { type: 'string' },
-    'model-id':    { type: 'string' },
-    speed:         { type: 'string', default: '1.3' },
-    'skip-tts':    { type: 'boolean', default: false },
+    'script-json':  { type: 'string' },
+    'output-dir':   { type: 'string' },
+    'voice-id':     { type: 'string' },
+    'model-id':     { type: 'string' },
+    speed:          { type: 'string', default: '1.3' },
+    'skip-tts':     { type: 'boolean', default: false },
+    'only-blocks':  { type: 'string' },  // comma-separated block IDs to (re)generate; others use cached file
   },
   allowPositionals: false,
   strict: true,
@@ -44,11 +45,12 @@ const { values } = parseArgs({
 if (!values['script-json']) { console.error('Error: --script-json required'); process.exit(1); }
 if (!values['output-dir'])  { console.error('Error: --output-dir required');  process.exit(1); }
 
-const apiKey  = process.env['ELEVENLABS_API_KEY'];
-const voiceId = values['voice-id'] ?? process.env['ELEVENLABS_VOICE_ID'];
-const modelId = values['model-id'] ?? process.env['ELEVENLABS_MODEL_ID'] ?? 'eleven_v3';
-const speed   = parseFloat(values.speed!);
-const skipTts = values['skip-tts']!;
+const apiKey     = process.env['ELEVENLABS_API_KEY'];
+const voiceId    = values['voice-id'] ?? process.env['ELEVENLABS_VOICE_ID'];
+const modelId    = values['model-id'] ?? process.env['ELEVENLABS_MODEL_ID'] ?? 'eleven_v3';
+const speed      = parseFloat(values.speed!);
+const skipTts    = values['skip-tts']!;
+const onlyBlocks = values['only-blocks'] ? new Set(values['only-blocks'].split(',')) : null;
 
 if (!skipTts && !apiKey)  { console.error('Error: ELEVENLABS_API_KEY not set'); process.exit(1); }
 if (!skipTts && !voiceId) { console.error('Error: voice ID required (--voice-id or ELEVENLABS_VOICE_ID env)'); process.exit(1); }
@@ -110,12 +112,16 @@ for (const block of blocks) {
   process.stdout.write(`  ${block.block_id.padEnd(4)} [${block.window_start_s}s→${block.window_end_s}s] `);
   process.stdout.write(`"${block.line.slice(0, 45)}${block.line.length > 45 ? '…' : ''}" `);
 
-  if (!skipTts) {
+  const shouldGenerateTts = !skipTts && (onlyBlocks === null || onlyBlocks.has(block.block_id));
+
+  if (shouldGenerateTts) {
     process.stdout.write('→ TTS… ');
     await client!.generate(block.line, settings, audioFile);
   } else if (!existsSync(audioFile)) {
-    console.log('MISSING (skip-tts but file not found)');
+    console.log(onlyBlocks ? 'MISSING (not in --only-blocks, file not found)' : 'MISSING (skip-tts but file not found)');
     continue;
+  } else if (!shouldGenerateTts && !skipTts) {
+    process.stdout.write('(cached) ');
   }
 
   const probe          = await probeAudioDuration(audioFile);

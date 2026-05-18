@@ -160,11 +160,11 @@
         "window_start_s": 51,
         "window_end_s": 53.4,
         "intent": "CTA",
-        "line": "5 món mình test xong rồi. Ai cần ghé bio nhé.",
-        "notes": ""
+        "line": "5 món xong rồi, ghé bio nhé!",
+        "notes": "shortened for TTS timing: orig 3.04s overflowed 2.4s window"
       }
     ],
-    "cta": "5 món mình test xong rồi. Ai cần ghé bio nhé.",
+    "cta": "5 món xong rồi, ghé bio nhé!",
     "full_script": "2 cốc cutter rau xanh kiểu nấm, nhìn là mê ngay!\n\nMuôi thiên nga này không chỉ đẹp mà còn tiện lợi, múc canh dễ dàng.\n\nĐợi chút, món tiếp theo mới hay ho hơn. Cái này mình ưng nhất luôn.\n\nKhoan đã, đoạn sau mới thú vị. Cái tới ngon hơn cái này.\n\nBộ rây này vớt sủi cảo và lọc nước cực chuẩn, không lo sót.\n\nKhay dao xanh-vàng này tích hợp vắt chanh, gọn gàng cho góc bếp. Một góc bếp gọn được vài món.\n\nĐến món số 3 nè, cái này đáng tiền nhất.\n\nCây gọt vỏ này lướt nhẹ, dưa chuột sáng bóng trong vài giây. Tay không quen cũng làm được.\n\nDụng cụ slicer cắt bí xanh đều tăm tắp, tiết kiệm thời gian.\n\n5 món mình test xong rồi. Ai cần ghé bio nhé.",
     "writer_notes": [
       "expanded b3 FILLER 9→15 từ: thêm câu tease cho block sau.",
