@@ -8,7 +8,8 @@
  * Options:
  *   --input         Path to plain-text script file (required)
  *   --output        Output MP3 path (required)
- *   --voice-id      ElevenLabs voice ID (overrides ELEVENLABS_VOICE_ID env)
+ *   --voice-preset  Named preset: default, voice_01…voice_05 (see voice-presets.ts)
+ *   --voice-id      Raw ElevenLabs voice ID — direct override, use --voice-preset instead
  *   --model-id      ElevenLabs model ID (overrides ELEVENLABS_MODEL_ID env, default: eleven_v3)
  *                   Vietnamese-compatible: eleven_v3, eleven_flash_v2_5
  *                   DO NOT use eleven_multilingual_v2 — no Vietnamese support
@@ -25,6 +26,7 @@ import { dirname, resolve } from 'node:path';
 import { loadDotEnv } from '../src/load-env.js';
 import { ElevenLabsClient } from '../src/elevenlabs-client.js';
 import { probeAudioDuration } from '../src/duration-probe.js';
+import { resolveVoice } from '../src/voice-presets.js';
 import type { VoiceSettings } from '../src/types.js';
 
 loadDotEnv();
@@ -33,14 +35,15 @@ loadDotEnv();
 
 const { values } = parseArgs({
   options: {
-    input:        { type: 'string' },
-    output:       { type: 'string' },
-    'voice-id':   { type: 'string' },
-    'model-id':   { type: 'string' },
-    stability:    { type: 'string', default: '0.50' },
-    similarity:   { type: 'string', default: '0.75' },
-    style:        { type: 'string', default: '0.40' },
-    speed:        { type: 'string', default: '1.0' },
+    input:           { type: 'string' },
+    output:          { type: 'string' },
+    'voice-preset':  { type: 'string' },
+    'voice-id':      { type: 'string' },
+    'model-id':      { type: 'string' },
+    stability:       { type: 'string', default: '0.50' },
+    similarity:      { type: 'string', default: '0.75' },
+    style:           { type: 'string', default: '0.40' },
+    speed:           { type: 'string', default: '1.0' },
   },
   allowPositionals: false,
   strict: true,
@@ -64,13 +67,10 @@ if (!apiKey) {
   process.exit(1);
 }
 
-const voiceId = values['voice-id'] ?? process.env['ELEVENLABS_VOICE_ID'];
-if (!voiceId) {
-  console.error('Error: voice ID is required (--voice-id or ELEVENLABS_VOICE_ID env)');
-  console.error('  Find voice IDs at: https://elevenlabs.io → Voices');
-  console.error('  Or via API: GET https://api.elevenlabs.io/v1/voices');
-  process.exit(1);
-}
+const { voiceId, preset: voicePreset } = resolveVoice({
+  voiceId: values['voice-id'],
+  voicePreset: values['voice-preset'],
+});
 
 const modelId = values['model-id'] ?? process.env['ELEVENLABS_MODEL_ID'] ?? 'eleven_v3';
 
@@ -106,6 +106,7 @@ await mkdir(dirname(outputPath), { recursive: true });
 
 console.log('');
 console.log('── ElevenLabs TTS ──────────────────────────────────────────');
+if (voicePreset) console.log(`  Preset     : ${voicePreset}`);
 console.log(`  Voice ID   : ${voiceId}`);
 console.log(`  Model      : ${modelId}`);
 console.log(`  Stability  : ${settings.stability}`);

@@ -136,6 +136,81 @@ Nếu thiếu ffprobe, audio vẫn được lưu — chỉ bỏ qua bước đo 
 
 ---
 
+## Voice Preset Library v0
+
+Operator có thể chọn giọng theo tên preset thay vì truyền voice ID thủ công.
+
+### Preset names
+
+| Preset     | Env var                  |
+|------------|--------------------------|
+| `default`  | `ELEVENLABS_VOICE_ID`    |
+| `voice_01` | `ELEVENLABS_VOICE_ID_01` |
+| `voice_02` | `ELEVENLABS_VOICE_ID_02` |
+| `voice_03` | `ELEVENLABS_VOICE_ID_03` |
+| `voice_04` | `ELEVENLABS_VOICE_ID_04` |
+| `voice_05` | `ELEVENLABS_VOICE_ID_05` |
+
+### Cách khai báo trong `.env`
+
+```dotenv
+ELEVENLABS_VOICE_ID=<default_voice_id>
+ELEVENLABS_VOICE_ID_01=<voice_id_1>
+ELEVENLABS_VOICE_ID_02=<voice_id_2>
+# ...
+```
+
+### Dùng với `voice:generate`
+
+```powershell
+# Không truyền flag → dùng preset "default" (ELEVENLABS_VOICE_ID)
+pnpm voice:generate --input script.txt --output out.mp3
+
+# Chọn preset cụ thể
+pnpm voice:generate --input script.txt --output out_v2.mp3 --voice-preset voice_02
+
+# Raw override (backward-compat, không ghi vào manifest)
+pnpm voice:generate --input script.txt --output out.mp3 --voice-id <raw_id>
+```
+
+### Dùng với `voice:sync`
+
+```powershell
+# Dùng preset voice_01 cho toàn bộ sync
+pnpm voice:sync `
+  --script-json production/batch_001/yt_005/script_ai_v4_gpt4o_extended_polish.json `
+  --output-dir production/batch_001/yt_005/voice_sync_v0_preset1 `
+  --voice-preset voice_01
+
+# Regenerate 1 block với preset khác
+pnpm voice:sync `
+  --script-json production/batch_001/yt_005/script_ai_v4_gpt4o_extended_polish.json `
+  --output-dir production/batch_001/yt_005/voice_sync_v0_preset2 `
+  --voice-preset voice_02 `
+  --only-blocks b1
+```
+
+### Manifest traceability
+
+`voice_sync_manifest.json` sẽ ghi:
+```json
+{
+  "voice_preset": "voice_02",
+  "voice_id": "<resolved_id>",
+  ...
+}
+```
+
+Khi đọc manifest biết ngay block sync này dùng preset giọng nào.
+
+### Nguyên tắc
+
+- **Operator chọn preset có chủ đích** — chưa random voice tự động ở v0.
+- Không hardcode voice ID trong source code.
+- Preset mới: khai báo env var + thêm vào `PRESET_ENV_MAP` trong `src/voice-presets.ts`.
+
+---
+
 ## Roadmap
 
 | Phase | Tính năng |

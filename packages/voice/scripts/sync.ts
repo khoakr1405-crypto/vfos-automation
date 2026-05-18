@@ -8,7 +8,8 @@
  * Options:
  *   --script-json   Path to script_ai_vX.json (required)
  *   --output-dir    Directory for block audio files + manifest (required)
- *   --voice-id      ElevenLabs voice ID (overrides ELEVENLABS_VOICE_ID env)
+ *   --voice-preset  Named preset: default, voice_01…voice_05 (see voice-presets.ts)
+ *   --voice-id      Raw ElevenLabs voice ID — direct override, use --voice-preset instead
  *   --model-id      ElevenLabs model ID (default: eleven_v3)
  *   --speed         TTS speed 0.7–1.3 (default: 1.3)
  *   --skip-tts      Skip TTS generation, only stitch existing block files
@@ -22,6 +23,7 @@ import { spawnSync } from 'node:child_process';
 import { loadDotEnv } from '../src/load-env.js';
 import { ElevenLabsClient } from '../src/elevenlabs-client.js';
 import { probeAudioDuration } from '../src/duration-probe.js';
+import { resolveVoice } from '../src/voice-presets.js';
 import type { VoiceSettings } from '../src/types.js';
 
 loadDotEnv();
@@ -30,13 +32,14 @@ loadDotEnv();
 
 const { values } = parseArgs({
   options: {
-    'script-json':  { type: 'string' },
-    'output-dir':   { type: 'string' },
-    'voice-id':     { type: 'string' },
-    'model-id':     { type: 'string' },
-    speed:          { type: 'string', default: '1.3' },
-    'skip-tts':     { type: 'boolean', default: false },
-    'only-blocks':  { type: 'string' },  // comma-separated block IDs to (re)generate; others use cached file
+    'script-json':   { type: 'string' },
+    'output-dir':    { type: 'string' },
+    'voice-preset':  { type: 'string' },
+    'voice-id':      { type: 'string' },
+    'model-id':      { type: 'string' },
+    speed:           { type: 'string', default: '1.3' },
+    'skip-tts':      { type: 'boolean', default: false },
+    'only-blocks':   { type: 'string' },  // comma-separated block IDs to (re)generate; others use cached file
   },
   allowPositionals: false,
   strict: true,
@@ -46,14 +49,17 @@ if (!values['script-json']) { console.error('Error: --script-json required'); pr
 if (!values['output-dir'])  { console.error('Error: --output-dir required');  process.exit(1); }
 
 const apiKey     = process.env['ELEVENLABS_API_KEY'];
-const voiceId    = values['voice-id'] ?? process.env['ELEVENLABS_VOICE_ID'];
 const modelId    = values['model-id'] ?? process.env['ELEVENLABS_MODEL_ID'] ?? 'eleven_v3';
 const speed      = parseFloat(values.speed!);
 const skipTts    = values['skip-tts']!;
 const onlyBlocks = values['only-blocks'] ? new Set(values['only-blocks'].split(',')) : null;
 
-if (!skipTts && !apiKey)  { console.error('Error: ELEVENLABS_API_KEY not set'); process.exit(1); }
-if (!skipTts && !voiceId) { console.error('Error: voice ID required (--voice-id or ELEVENLABS_VOICE_ID env)'); process.exit(1); }
+if (!skipTts && !apiKey) { console.error('Error: ELEVENLABS_API_KEY not set'); process.exit(1); }
+
+// Resolve voice ID via preset library (no-op in skip-tts mode)
+const { voiceId, preset: voicePreset } = skipTts
+  ? { voiceId: undefined as string | undefined, preset: null }
+  : resolveVoice({ voiceId: values['voice-id'], voicePreset: values['voice-preset'] });
 
 // ── Load script ───────────────────────────────────────────────────────────────
 
@@ -79,6 +85,7 @@ console.log('── Voice Sync v0 ───────────────�
 console.log(`  Video      : ${videoId}`);
 console.log(`  Blocks     : ${blocks.length}`);
 console.log(`  Duration   : ${videoTotalDurS}s`);
+if (voicePreset) console.log(`  Preset     : ${voicePreset}`);
 console.log(`  Voice ID   : ${voiceId ?? '(skip-tts mode)'}`);
 console.log(`  Model      : ${modelId}`);
 console.log(`  Speed      : ${speed}`);
@@ -159,6 +166,7 @@ for (const block of blocks) {
 const manifest = {
   video_id:             videoId,
   source_script:        scriptPath,
+  voice_preset:         voicePreset,
   voice_id:             voiceId ?? null,
   model_id:             modelId,
   speed,
