@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-05-18
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `d709d84`
+> **Cập nhật lần cuối**: 2026-05-19
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `6382b75`
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -73,25 +73,48 @@ VFOS là hệ thống hỗ trợ chiến lược **content-led affiliate**:
 
 ---
 
+### ✅ Phần 2 — Block-based Voice Sync: ĐÃ CHỐT (v0 + preview MP4)
+
+**Trạng thái**: v0 — production-ready cho yt_005 (tính đến 2026-05-19)
+
+**Tổng kết kỹ thuật**:
+- Script: `packages/voice/scripts/sync.ts`
+- Input: `script_ai_vX.json` (blocks với window_start_s / window_end_s)
+- Luồng: TTS per-block (ElevenLabs eleven_v3) → probe duration → fit/overflow QC → ffmpeg adelay+amix stitch → manifest JSON
+- Output: 10 block mp3 + `yt_005_voice_timeline.mp3` (53s) + `voice_sync_manifest.json`
+- Preview MP4: `yt_005_voice_blocks_v1b_preview_vi.mp4` (1080x1920, AV1, no original audio)
+- Flag thêm: `--only-blocks b10` để regenerate 1 block cụ thể mà không regenerate toàn bộ
+
+**Kết quả thực nghiệm trên `yt_005`**:
+- 10/10 blocks FIT (sau khi fix b10 overflow)
+- b10 CTA: text rút ngắn "5 món xong rồi, ghé bio nhé!" → 2.0s, +0.4s buffer trong window 2.4s
+- Preview MP4 QC: không leak original audio (handler "SoundHandler" ≠ "ISO Media"), 2 streams (video copy + audio block-sync)
+- Source video: `yt_005_source.mp4` (1080x1920, AV1, 53.43s) — đã tải, không commit binary
+
+**Giới hạn còn lại (chấp nhận được)**:
+- Chưa test sync thực tế bằng mắt người xem (cần xem preview thủ công)
+- Không có BGM — chỉ voice block-sync
+- Operator vẫn cần review preview trước khi publish
+
+**Commit history Phần 2**:
+
+| Commit | Nội dung |
+|---|---|
+| `c9e1bf3` | feat: add block-based voice sync v0 for yt_005 |
+| **`6382b75`** | **fix: shorten b10 CTA + add --only-blocks flag (commit hoàn thiện Phần 2 v0, đã push)** |
+
+---
+
 ## 4. Phần đang chuẩn bị làm tiếp theo
 
-### ⏳ Phần 2 — Block-based Voice Sync: CHƯA BẮT ĐẦU
+### ⏳ Phần 3 — Video preview validation + publish workflow: CHƯA BẮT ĐẦU
 
 **Mục tiêu**:
-- Chia voice TTS theo block/timeline từ script JSON output
-- Ghép voice vào đúng timestamp tương ứng trong video gốc
-- Giảm lỗi voice chạy trước/sau visual sai cảnh (drift giữa script block và video scene)
+- Operator xem preview MP4 thực tế và xác nhận sync quality
+- Nếu đạt → chuẩn bị publish lên Facebook Reels / TikTok VN với affiliate tag
+- Tối ưu hoá workflow từ script → voice → publish (giảm thời gian tay)
 
-**Input cần có**:
-- Script JSON output từ Phần 1 (`script_ai_vX.json`)
-- Voice `.mp3` sinh từ ElevenLabs (có thể dùng `packages/voice/`)
-- Video gốc `.mp4`
-
-**Output mục tiêu**:
-- Video `.mp4` đã ghép voice Việt khớp timeline
-- (Tùy chọn) track kiểm chứng bằng ffprobe
-
-> **Ghi chú**: Phần này CHƯA bắt đầu. Hệ thống ghi nhớ dự án (Project Memory) và giao thức duy trì phiên (Session Continuity Protocol) đã được hoàn thiện và commit/push thành công.
+> **Ghi chú**: Phần 2 Voice Sync v0 đã hoàn thành. Preview MP4 đã render, manifest đã QC. Bước tiếp theo là review thủ công và quyết định publish.
 
 ---
 
@@ -127,12 +150,16 @@ VFOS là hệ thống hỗ trợ chiến lược **content-led affiliate**:
 
 ## 7. Bước tiếp theo duy nhất
 
-> Viết prompt và bắt đầu **Phần 2 — Block-based Voice Sync** cho `yt_005`.
+> **Xem preview MP4 thực tế và xác nhận sync quality.**
 >
-> Input cần chuẩn bị:
-> 1. `production/batch_001/yt_005/script_ai_v4_gpt4o_extended_polish.json` (đã có)
-> 2. Video gốc `yt_005_raw.mp4` (kiểm tra xem đã download chưa)
-> 3. Voice `.mp3` từ ElevenLabs (cần chạy `packages/voice/` với script txt đã có)
+> File: `production/batch_001/yt_005/yt_005_voice_blocks_v1b_preview_vi.mp4`
+>
+> Câu hỏi cần trả lời khi xem:
+> 1. Voice có bám đúng cảnh không? (đặc biệt cảnh giữa/cuối)
+> 2. CTA cuối "5 món xong rồi, ghé bio nhé!" có nghe rõ không?
+> 3. Có thể publish được không hay cần chỉnh thêm?
+>
+> Nếu đạt → bắt đầu Phần 3: publish workflow.
 
 ---
 
@@ -184,13 +211,14 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mốc tại thời điểm cập nhật trạng thái | `d709d84` — `docs: ignore production media artifacts and save yt_004 scene log` |
+| Commit mốc tại thời điểm cập nhật trạng thái | `6382b75` — `fix: shorten b10 CTA + add --only-blocks flag to voice sync` |
 | Remote | `origin` (GitHub) |
 | Sync status | Đã push (tính đến 2026-05-18) |
 
-**Untracked/modified ngoài scope** (tính đến 2026-05-18):
+**Untracked/modified ngoài scope** (tính đến 2026-05-19):
 - `docs/VFOS_VIDEO_EVIDENCE_STANDARD.md` — tạo trong vòng audit, chưa commit
 - `.claude/skills/vfos_video_analysis_evidence_gate.md` — tạo trong vòng audit, chưa commit
 - `apps/kernel/src/syscalls/voe.ts` — sửa VOE prompt trong vòng audit, chưa commit
+- Binary media (không commit): `yt_005_source.mp4`, `yt_005_voice_blocks_v1_preview_vi.mp4`, `yt_005_voice_blocks_v1b_preview_vi.mp4`, block mp3 files trong `voice_sync_v0/`
 
-> Các file trên thuộc vòng "chống overclaim", không thuộc vòng này. Để bạn quyết định có commit riêng hay không.
+> File media là local artifact, đã có `.gitignore`, không commit binary.
