@@ -18,6 +18,7 @@ import { dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { loadDotEnv } from '../src/load-env.js';
 import { ScriptWriterClient } from '../src/openai-client.js';
+import { buildQualityReport } from '../src/quality-guard.js';
 import type { GenerateResult } from '../src/types.js';
 import { ScriptWriterInputSchema } from '../src/types.js';
 
@@ -111,11 +112,13 @@ const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
 console.log(`done (${elapsed}s)`);
 
 const { output, meta } = result;
+const quality = buildQualityReport(output, input.duration_target_s);
 
 const fullJson = {
   input,
   output,
   meta,
+  quality_report: quality,
   generated_at: new Date().toISOString(),
 };
 await writeFile(outputPath, JSON.stringify(fullJson, null, 2), 'utf8');
@@ -124,19 +127,30 @@ if (textOutputPath) {
   await writeFile(textOutputPath, `${output.full_script.trim()}\n`, 'utf8');
 }
 
-const wordCount = output.full_script.trim().split(/\s+/).filter(Boolean).length;
-const estDurationS = wordCount / 2.8;
+const estDurationS = quality.word_count / 2.8;
 
 console.log('');
 console.log('── Result ──────────────────────────────────────────────────');
 console.log(`  Hook        : ${output.hook}`);
 console.log(`  CTA         : ${output.cta}`);
 console.log(`  Blocks      : ${output.blocks.length}`);
-console.log(`  Words       : ${wordCount}`);
+console.log(`  Words       : ${quality.word_count} (target ${quality.word_count_target})`);
 console.log(`  Est. TTS    : ${estDurationS.toFixed(1)}s @ 170 WPM`);
 console.log(`  Input tok   : ${meta.input_tokens ?? 'n/a'}`);
 console.log(`  Output tok  : ${meta.output_tokens ?? 'n/a'}`);
 console.log(`  Response ID : ${meta.response_id}`);
+console.log('');
+console.log('── Quality ─────────────────────────────────────────────────');
+console.log(`  Passed         : ${quality.passed ? 'YES' : 'NO'}`);
+console.log(`  Hook consistent: ${quality.hook_consistent ? 'yes' : 'NO'}`);
+console.log(`  CTA consistent : ${quality.cta_consistent ? 'yes' : 'NO'}`);
+console.log(`  Word in target : ${quality.word_count_within_target ? 'yes' : 'NO'}`);
+if (quality.warnings.length > 0) {
+  console.log('  Warnings:');
+  for (const w of quality.warnings) console.log(`    - ${w}`);
+} else {
+  console.log('  Warnings       : (none)');
+}
 console.log('');
 if (output.writer_notes.length > 0) {
   console.log('Writer notes:');

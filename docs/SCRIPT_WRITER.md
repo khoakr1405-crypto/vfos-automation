@@ -1,8 +1,9 @@
 # VFOS Script Writer — Workflow Doc
 
-> **Bước trong pipeline VFOS**: AI Script Writer (vòng 2026-05-18).
+> **Bước trong pipeline VFOS**: AI Script Writer.
 > **Mục đích**: thay thế khâu viết voiceover thủ công bằng OpenAI structured output.
-> **Trạng thái**: v0 — single-shot generation, đã chạy thật trên `yt_005`.
+> **Trạng thái**: **v1 — few-shot prompt + quality guard, chạy thật trên `yt_005`** (vòng 2026-05-18).
+> **v0**: single-shot, không few-shot, không quality guard — failed quality bar.
 
 ---
 
@@ -156,6 +157,89 @@ AI v1 vi phạm 4 anti-pattern đã ghi rõ trong system prompt:
 1. Model `gpt-4o-mini` không đủ mạnh cho Vietnamese prose — bias về cliché quảng cáo TV/Shopee. Nâng lên `gpt-4o`/`gpt-4.1` hoặc `gpt-5` sẽ cải thiện chất.
 2. System prompt thiếu **few-shot examples** — chỉ liệt kê rule văn bản. Đưa 3-5 cặp "câu xấu / câu tốt" sẽ ép model bắt chước đúng phong cách hơn.
 3. Single-shot không có self-critique loop — model không kiểm tra lại output có vi phạm rule chính nó được dặn không.
+
+---
+
+## 8. Vòng v1: few-shot + quality guard (2026-05-18)
+
+Áp dụng 2 trong 3 đề xuất ở section 7 (bỏ self-critique để tránh phình scope):
+
+### Thay đổi prompt
+- Thêm **7 cặp DỞ → TỐT** vào [packages/script-writer/src/system-prompt.ts](../packages/script-writer/src/system-prompt.ts): Hook, quảng cáo TV, mô tả sản phẩm sến, bịa tính năng, transition graphic, off-topic, CTA.
+- Mở rộng rule cấm cụm (rule 10): thêm "đẳng cấp", "vô cùng", "siêu phẩm", "must-have", "chắc chắn cần", "cho mọi nhà".
+- Thêm 2 rule cứng:
+  - `hook` field phải EXACT bằng line block đầu HOOK (rule consistency).
+  - `cta` field phải EXACT bằng line block cuối CTA.
+- Cấm emoji trong `full_script` (TTS đọc tên emoji).
+
+### Quality guard (mới)
+File mới: [packages/script-writer/src/quality-guard.ts](../packages/script-writer/src/quality-guard.ts). Chạy sau gen, không gọi API lần 2. Check:
+
+1. **Hard-banned phrases** (case-insensitive substring on `full_script`):
+   `tuyệt vời`, `đáng kinh ngạc`, `không thể bỏ qua`, `kinh điển`, `chắc chắn cần`, `cho mọi nhà`, `mua ngay`, `đẳng cấp`, `vô cùng`, `siêu phẩm`, `must-have`, `must have`.
+2. **Soft-banned phrases** (flag khi xuất hiện ≥2 lần): `thực sự`, `thật sự`, `đỉnh cao`, `đỉnh thật sự`.
+3. **Hook/CTA consistency**: `output.hook === first HOOK block.line`, `output.cta === last CTA block.line` (sau khi normalize whitespace).
+4. **Word count window**: count words trong `full_script.trim().split(/\s+/)` so với `duration_target_s × 2.8`, fail nếu ratio ngoài 0.80–1.20.
+
+Output: `QualityReport` ghi vào JSON file dưới key `quality_report`. CLI in `Passed: YES/NO` + danh sách warnings.
+
+`passed = false` không exit error — chỉ là tín hiệu cho operator review. Không gen lại tự động (đẩy sang vòng sau).
+
+---
+
+## 9. Thực nghiệm so sánh trên yt_005
+
+Cùng `scene_input.json`, 3 cấu hình:
+
+| # | Cấu hình | Words | Quality guard | Time | Cost (USD) |
+|---|---|---|---|---|---|
+| v1 | gpt-4o-mini, no few-shot, no guard | 112 | (guard chưa có; nếu chạy guard mới: FAIL — `tuyệt vời` + hook mismatch) | 13.8s | ~$0.0008 |
+| v2 (mini) | gpt-4o-mini, **+ few-shot + guard** | 123 | **PASS** | 28.6s | ~$0.0011 |
+| v2 (4o) | **gpt-4o** + few-shot + guard | 88 | **NO** — word count 0.63 ratio (88 vs 140); hard ban + consistency all PASS | 9.7s | ~$0.012 |
+
+### Mẫu output cùng scene B1 (Hook) và B10 (CTA)
+
+| | Hook (B1) | CTA (B10) |
+|---|---|---|
+| **v1 mini** | "Nè, nhìn cái cốc nấm này kìa! Thích quá đi! 😍➡️" | "Muôi hồng quẫy trong nồi... ai thích thì ghé link mình để bio nha!" |
+| **v2 mini** | "Cốc cutter rau xanh dễ thương, nhìn mà chỉ muốn nấu ăn ngay! 🥳➡️" | "Ai cần thì ghé link mình để bio nha!" (đúng câu prompt nhãn DỞ ở ví dụ 7) |
+| **v2 4o** | "Hai cốc rau xanh kiểu nấm này nhìn là ghiền, xem tiếp đi!" | "Món nào thấy hợp thì lưu lại, link mình để bio nha." (đúng câu prompt nhãn TỐT) |
+| **script_v2 manual** | "5 đồ bếp Trung Quốc nhìn cứ tưởng đồ chơi. Mà thử rồi là không bỏ xuống nổi đâu!" | "Link Shopee mình để bio. Rẻ lắm, mua thử cả 5 món luôn nha!" |
+
+### Đánh giá định tính (operator review)
+
+| Tiêu chí | v1 mini | v2 mini | v2 4o | script_v2 manual |
+|---|---|---|---|---|
+| Hook hấp dẫn | Yếu, hời hợt | Có emoji, hơi nhạt | **Mạnh, chốt tò mò** | Mạnh, set listicle frame |
+| Câu tự nhiên VN | Cliché TV | Vẫn nhiều cliché ("rất OK", "vui lên ngay") | **Tự nhiên, concise** | Tự nhiên, có nhịp |
+| Cụm cấm | "tuyệt vời" + "chắc chắn cần cho mọi nhà" | (none hard) | (none hard) | (none) |
+| Lặp "sản phẩm" | Không | "Sản phẩm thứ 3" (vi phạm rule 8) | Không | Không |
+| Off-topic cartoon | Tự SILENT | FILLER "Khoan nha, lướt qua đoạn này" | FILLER "Khoan đã, đoạn sau mới thú vị" | FILLER "Khoan đã, xem món tiếp đã nha" |
+| Off-topic monkey | Tự SILENT | Có line "Ai cười với mình đấy?" → wait, output thực không có. SILENT. | SILENT | "Cả con khỉ cũng cười với mình kìa" (user nói gượng) |
+| CTA mềm | Acceptable | Cứng (DỞ example) | **Mềm tự nhiên** (TỐT example) | Direct + casual |
+| Bịa tính năng | Không | "không sợ dính nước" (claim mới) | Không | "không đổ giọt nào" (mild claim) |
+| Word coverage video | ~40s (mất 12s) | ~44s (mất 9s) | ~31s (mất 22s) | ~53s (gần full) |
+| Emoji trong full_script | Có | Có (vi phạm rule mới) | Không | Không |
+
+### Trả lời 6 câu hỏi yêu cầu
+
+1. **Hook bản nào tốt hơn?** v2 4o và script_v2 ngang ngửa, đều mạnh. v2 mini và v1 yếu hơn.
+2. **Câu tự nhiên hơn chưa?** v2 4o **CÓ** — đã tiệm cận hoặc vượt script_v2 ở nhiều block. v2 mini cải thiện vừa phải so v1 nhưng vẫn còn cliché.
+3. **Còn câu sến/quảng cáo TV không?** v2 4o **gần như không**. v2 mini **vẫn còn** ("vui lên ngay", "rất OK"). v1 nhiều.
+4. **CTA mềm hơn chưa?** v2 4o **rõ ràng mềm hơn** (copy đúng câu TỐT từ few-shot). v2 mini không (vẫn dùng câu DỞ trong few-shot).
+5. **Xử lý off-topic tốt hơn chưa?** v2 4o + v2 mini **đều dùng FILLER cầu nối** đúng theo few-shot — tốt hơn cả v1 (SILENT) và script_v2 (gượng).
+6. **Bản mới đủ tốt cho TTS vòng sau chưa?** **v2 4o ĐỦ về chất lượng prose** nhưng **THIẾU word coverage** (88 từ ≈ 31s trên video 53s → 22s im lặng). Cần một trong:
+   - re-gen với hint "viết dài hơn", hoặc
+   - chuyển sang v2 mini (123 từ, coverage tốt nhưng chất lượng prose kém hơn), hoặc
+   - operator add 30-40 từ thủ công vào block kitchen.
+
+### Bài học v0 → v1 (chính)
+
+- **Few-shot examples đẩy chất lượng prose mạnh hơn rule văn bản**. Model thật sự copy câu TỐT từ ví dụ (CTA v2 4o trùng nguyên văn ví dụ 7).
+- **Quality guard bắt được 100% lỗi cụm cấm v1** mà CLI v0 báo "đạt".
+- **Model matter**: gpt-4o-mini + few-shot vẫn dưới gpt-4o; chỉ nâng prompt không đủ.
+- **Few-shot KHÔNG fix mọi vấn đề**: v2 mini vẫn vi phạm rule 8 (lặp "sản phẩm"), thả emoji, dùng cliché không nằm trong hard-ban list. Quality guard chỉ chặn được cụm đã liệt.
+- **Word count trade-off**: model mạnh hơn (gpt-4o) viết concise hơn → coverage thấp. Cần ép word count bằng cách khác (re-prompt với "viết dài hơn block X" hoặc tăng `duration_target_s` giả).
 
 ---
 
