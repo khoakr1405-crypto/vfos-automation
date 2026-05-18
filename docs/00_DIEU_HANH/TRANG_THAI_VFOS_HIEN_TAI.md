@@ -2,7 +2,7 @@
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
 > **Cập nhật lần cuối**: 2026-05-18
-> **Branch**: `master` | **Commit mới nhất**: `c44887a`
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `d709d84`
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -69,7 +69,7 @@ VFOS là hệ thống hỗ trợ chiến lược **content-led affiliate**:
 | `c9b058b` | v1 — few-shot + quality guard |
 | `bb479c0` | v2 — duration coverage (temp 0.5, per-scene budget) |
 | `d31f10f` | v3 — Extender Pass (2-pass architecture) |
-| **`13ff133`** | **v3.1 — Ad-copy polish (commit mới nhất, đã push)** |
+| **`13ff133`** | **v3.1 — Ad-copy polish (commit hoàn thiện Phần 1, đã push)** |
 
 ---
 
@@ -174,7 +174,7 @@ docs/
 
 - Cập nhật mục 3 (Phần đã hoàn thành)
 - Cập nhật mục 4 (Phần tiếp theo)
-- Cập nhật commit hash mới nhất
+- Cập nhật commit hash mốc tại thời điểm cập nhật
 - Cập nhật "Cập nhật lần cuối" ở đầu file
 
 ---
@@ -184,7 +184,7 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mới nhất | `c44887a` — `docs: add VFOS project memory and session continuity protocol` |
+| Commit mốc tại thời điểm cập nhật trạng thái | `d709d84` — `docs: ignore production media artifacts and save yt_004 scene log` |
 | Remote | `origin` (GitHub) |
 | Sync status | Đã push (tính đến 2026-05-18) |
 
