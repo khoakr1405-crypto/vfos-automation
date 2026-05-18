@@ -2,7 +2,7 @@
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
 > **Cập nhật lần cuối**: 2026-05-19
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `(cập nhật sau commit BGM Mix v0)`
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `7f55c59`
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -253,7 +253,7 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mốc tại thời điểm cập nhật trạng thái | `(cập nhật sau commit BGM Mix v0)` |
+| Commit mốc tại thời điểm cập nhật trạng thái | `7f55c59` |
 | Remote | `origin` (GitHub) |
 | Sync status | Đã push sau commit BGM Mix v0 |
 
