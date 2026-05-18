@@ -14,7 +14,8 @@
     "lint": "biome check .",
     "fmt": "biome format --write .",
     "smoke": "pnpm --filter @vfos/kernel smoke",
-    "voice:generate": "tsx packages/voice/scripts/generate.ts"
+    "voice:generate": "tsx packages/voice/scripts/generate.ts",
+    "script:generate": "tsx packages/script-writer/scripts/generate.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

@@ -1,0 +1,81 @@
+{
+  "video_id": "yt_005",
+  "content_goal": "content-led affiliate Shopee VN — đồ bếp thông minh giá rẻ",
+  "target_platform": "tiktok",
+  "duration_target_s": 50,
+  "tone": "nam, năng lượng cao kiểu reviewer Shopee livestream, tự nhiên, gần gũi, không sến không quảng cáo cứng",
+  "affiliate_angle": "5 món đồ bếp Trung Quốc giá rẻ trên Shopee, người xem nhanh ra quyết định mua bốc đồng",
+  "cta_style": "soft — kiểu 'link mình để bio nha', không 'mua ngay', không nói giá cụ thể nếu chưa verify",
+  "scene_timeline": [
+    {
+      "window_start_s": 0.0,
+      "window_end_s": 5.0,
+      "scene_type": "HOOK",
+      "visual_summary": "2 cốc cutter rau xanh hình cây kiểu nấm với tăm xòe ra như tóc, kèm emoji cảm xúc + mũi tên đỏ chỉ sang phải. Thumbnail thu hút.",
+      "notes": "Frame mở đầu, cần hook mạnh để giữ viewer."
+    },
+    {
+      "window_start_s": 5.0,
+      "window_end_s": 10.0,
+      "scene_type": "KITCHEN",
+      "visual_summary": "Hai muôi múc canh hình thiên nga (1 trắng, 1 hồng) đứng trên kệ bếp, có nồi đen với chất lỏng vàng được múc bằng muôi hồng.",
+      "notes": "Sản phẩm 1: muôi thiên nga decor."
+    },
+    {
+      "window_start_s": 10.0,
+      "window_end_s": 15.0,
+      "scene_type": "OFF_TOPIC",
+      "visual_summary": "Tranh cartoon vẽ cặp đôi mặc trang phục truyền thống Ấn Độ, không liên quan đồ bếp. Có thể là filler/clickbait từ kênh nguồn.",
+      "notes": "KHÔNG mô tả thẳng visual này. Dùng để tease block tiếp theo hoặc đặt SILENT."
+    },
+    {
+      "window_start_s": 15.0,
+      "window_end_s": 20.0,
+      "scene_type": "OFF_TOPIC",
+      "visual_summary": "Cận mặt một con khỉ đang cười khoe răng trong rừng cây.",
+      "notes": "KHÔNG cố nói về con khỉ. Có thể dùng 1 câu hài hoặc SILENT."
+    },
+    {
+      "window_start_s": 20.0,
+      "window_end_s": 26.0,
+      "scene_type": "KITCHEN",
+      "visual_summary": "Rổ rây/muôi lọc hồng được dùng để vớt sủi cảo/dimsum từ nồi nước sôi, có cảnh rót chất lỏng vàng vào bát.",
+      "notes": "Sản phẩm 2: bộ rây + muôi lọc."
+    },
+    {
+      "window_start_s": 26.0,
+      "window_end_s": 35.0,
+      "scene_type": "KITCHEN",
+      "visual_summary": "Khay đựng dao màu xanh-vàng có nhiều dao gỗ cắm vào, kèm dụng cụ vắt chanh hình mặt cười màu xanh.",
+      "notes": "Sản phẩm 3: khay đa năng dao + vắt chanh."
+    },
+    {
+      "window_start_s": 35.0,
+      "window_end_s": 40.0,
+      "scene_type": "TRANSITION",
+      "visual_summary": "Số 3 vàng kim cỡ lớn trên nền đen có tia lửa bắn lên — graphic chuyển sang 'fact #3' / 'sản phẩm thứ 3'.",
+      "notes": "Đoạn intro animation. Dùng để bridge sang sản phẩm tiếp."
+    },
+    {
+      "window_start_s": 40.0,
+      "window_end_s": 47.0,
+      "scene_type": "KITCHEN",
+      "visual_summary": "Bàn tay cầm dụng cụ gọt vỏ lướt nhẹ trên quả dưa chuột nguyên trái màu xanh đậm, vỏ bóc ra để lộ ruột trắng — gọt trong vài giây.",
+      "notes": "Sản phẩm 4: cây gọt vỏ. Đáng tiền nhất."
+    },
+    {
+      "window_start_s": 47.0,
+      "window_end_s": 51.0,
+      "scene_type": "KITCHEN",
+      "visual_summary": "Thân bí xanh đã gọt vỏ đang được cắt thành lát đều bằng một dụng cụ slicer màu xanh.",
+      "notes": "Vẫn cùng tone gadget cắt rau."
+    },
+    {
+      "window_start_s": 51.0,
+      "window_end_s": 53.4,
+      "scene_type": "CTA",
+      "visual_summary": "Muôi hồng quẫy trong nồi nước sôi có trứng, cảnh bếp gas. Frame cuối video.",
+      "notes": "Đoạn cuối — chốt CTA mềm."
+    }
+  ]
+}
