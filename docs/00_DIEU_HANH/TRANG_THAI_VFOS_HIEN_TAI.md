@@ -2,7 +2,7 @@
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
 > **Cập nhật lần cuối**: 2026-05-18
-> **Branch**: `master` | **Commit mới nhất**: `13ff133`
+> **Branch**: `master` | **Commit mới nhất**: `c44887a`
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -91,7 +91,7 @@ VFOS là hệ thống hỗ trợ chiến lược **content-led affiliate**:
 - Video `.mp4` đã ghép voice Việt khớp timeline
 - (Tùy chọn) track kiểm chứng bằng ffprobe
 
-> **Ghi chú**: Phần này CHƯA bắt đầu. Ưu tiên hiện tại (vòng này) là hoàn thiện hệ thống ghi nhớ dự án trước.
+> **Ghi chú**: Phần này CHƯA bắt đầu. Hệ thống ghi nhớ dự án (Project Memory) và giao thức duy trì phiên (Session Continuity Protocol) đã được hoàn thiện và commit/push thành công.
 
 ---
 
@@ -184,7 +184,7 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mới nhất | `13ff133` — `feat: polish extender pass to eliminate generic ad-copy` |
+| Commit mới nhất | `c44887a` — `docs: add VFOS project memory and session continuity protocol` |
 | Remote | `origin` (GitHub) |
 | Sync status | Đã push (tính đến 2026-05-18) |
 
