@@ -71,7 +71,10 @@ export function buildQualityReport(output: ScriptOutput, duration_target_s: numb
   const wordCount = fullScript.trim().split(/\s+/).filter(Boolean).length;
   const wordTarget = Math.round(duration_target_s * 2.8);
   const ratio = wordCount / wordTarget;
-  const word_count_within_target = ratio >= 0.8 && ratio <= 1.2;
+  // Tightened to ±5% (was ±20%): matches the [min_words, max_words] window
+  // we send to the model in buildUserPayload. Catches underwriting where
+  // a generic ±20% bound was too loose to be useful.
+  const word_count_within_target = ratio >= 0.95 && ratio <= 1.05;
 
   const warnings: string[] = [];
   for (const h of hits) {
@@ -94,8 +97,11 @@ export function buildQualityReport(output: ScriptOutput, duration_target_s: numb
     );
   }
   if (!word_count_within_target) {
+    const deltaPct = ((ratio - 1) * 100).toFixed(1);
+    const sign = ratio >= 1 ? '+' : '';
     warnings.push(
-      `[WORD_COUNT] ${wordCount} words vs target ${wordTarget} (ratio ${ratio.toFixed(2)}, outside 0.80–1.20)`,
+      `[WORD_COUNT] ${wordCount} words vs target ${wordTarget} ` +
+        `(${sign}${deltaPct}%, outside ±5% window)`,
     );
   }
 

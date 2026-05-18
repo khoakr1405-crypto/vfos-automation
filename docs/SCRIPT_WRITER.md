@@ -2,7 +2,8 @@
 
 > **Bước trong pipeline VFOS**: AI Script Writer.
 > **Mục đích**: thay thế khâu viết voiceover thủ công bằng OpenAI structured output.
-> **Trạng thái**: **v1 — few-shot prompt + quality guard, chạy thật trên `yt_005`** (vòng 2026-05-18).
+> **Trạng thái**: **v2 — duration coverage cho gpt-4o, chạy thật trên `yt_005`** (vòng 2026-05-18).
+> **v1**: few-shot + quality guard. Đẩy prose tốt nhưng gpt-4o underwrite (88 từ ÷ target 140).
 > **v0**: single-shot, không few-shot, không quality guard — failed quality bar.
 
 ---
@@ -243,7 +244,63 @@ Cùng `scene_input.json`, 3 cấu hình:
 
 ---
 
-## 8. Cảnh báo / Anti-patterns
+## 10. Vòng v2: duration coverage cho gpt-4o (2026-05-18)
+
+**Vấn đề từ vòng v1**: gpt-4o + few-shot pass quality bar về prose nhưng underwrite mạnh (88 từ vs target 140 — coverage chỉ 63%). Re-gen 2-3 lần nhận được word count 88 / 111 / 128 / 134 — variance cao.
+
+### Thay đổi vòng này
+
+| Layer | Thay đổi | Vì sao |
+|---|---|---|
+| `scene_input.json` (yt_005) | `duration_target_s` 50 → 53 | duration audio thực = 53.43s |
+| System prompt | Thêm "⚠️ DURATION TARGET" section cảnh báo gpt-4o underwrite phổ biến + cách mở rộng (KITCHEN dày, FILLER thay SILENT, CTA 2 câu) | gpt-4o thiên về concise; cần ép coverage tự nhiên |
+| System prompt rule 4 | OFF_TOPIC ưu tiên FILLER (a) trước SILENT (b) | SILENT 2 lần liên tiếp mất coverage nặng |
+| System prompt | Bảng word budget per `scene_type` (HOOK 12-18, KITCHEN window×2.8, TRANSITION 5+, FILLER 5+, CTA 8+, SILENT chỉ window<2s) | dạy model rõ từng kiểu scene cần bao nhiêu từ |
+| `buildUserPayload` | Inject `target_words` + `min_words` + `max_words` (±5%) thay vì chỉ `duration_target_s` | model chỉ tin được số cụ thể, không tự suy ra |
+| `buildUserPayload` | Inject per-scene budget kèm visual_summary mỗi line | model biết mỗi scene viết bao nhiêu từ |
+| `buildUserPayload` | "MANDATORY 5-point final check" cuối payload | ép self-verify: word count, hook=B1, cta=B_N, no emoji, ≤1 "sản phẩm" |
+| `openai-client.ts` | `temperature: 0.5` (vs default SDK ~1.0) | giảm variance giữa các lần gen (quan sát 88/111/128/134 ở temp mặc định) |
+| `quality-guard.ts` | Word count window 0.80–1.20 → **0.95–1.05** | khớp `[min_words, max_words]` payload |
+| `quality-guard.ts` | Warning hiển thị %delta thay vì ratio bounds | dễ đọc hơn cho operator |
+
+### Kết quả chạy thật trên yt_005 (53s)
+
+Cùng `scene_input.json` mới, gpt-4o, temperature 0.5:
+
+| # | Cấu hình | Words | Banned | Hook=B1 | CTA=B_N | Notes |
+|---|---|---|---|---|---|---|
+| script_v2 manual | con người viết | ~133 | none | ✓ | ✓ | baseline có giá "50k" + 1 câu khỉ gượng |
+| v2 (vòng trước, gpt-4o) | gpt-4o + few-shot only | 79 | none | ✓ | ✓ | 9 blocks (1 SILENT), quá ngắn |
+| **v3 (vòng này)** | gpt-4o + duration ép + temp 0.5 | **119** | **none** | ✓ | ✓ | 10 blocks (2 FILLER thay SILENT), full coverage |
+
+Files: [script_ai_v3_gpt4o.json](../production/batch_001/yt_005/script_ai_v3_gpt4o.json), [script_ai_v3_gpt4o.txt](../production/batch_001/yt_005/script_ai_v3_gpt4o.txt).
+
+### Trả lời thẳng
+
+| Câu hỏi | Trả lời |
+|---|---|
+| GPT-4o tạo script dài hợp lý cho 53s chưa? | **CHƯA HOÀN TOÀN**. 119 từ — short 19.6% so target 148. Cải thiện rõ vs vòng trước (79 → 119, +51%) nhưng chưa đạt window 141-156. |
+| Đầy đủ KITCHEN coverage không? | **CÓ**. 5/5 KITCHEN scene đều có line tự nhiên (B2 muôi thiên nga, B5 rây hồng, B6 khay dao, B8 gọt vỏ, B9 slicer). Không SILENT. |
+| Có sến không? | **KHÔNG**. Quality guard 0 banned. Prose concise, không cliché TV. |
+| Có sai sự thật / bịa spec không? | **KHÔNG**. Không gán giá, không gán thông số chưa có trong input. |
+| ≤1 lần "sản phẩm"? | **CÓ**. `full_script` không chứa "sản phẩm". |
+| Sẵn sàng cho TTS vòng sau? | **CÓ ĐIỀU KIỆN**. Prose OK, hook/CTA OK, coverage thiếu ~8s. Hai lựa chọn: (a) chấp nhận TTS kết thúc sớm ~45s vs video 53s (8s im cuối), (b) operator add 1 câu vào B6 (window 9s, hiện 14 từ vs budget 25) trước khi feed TTS. |
+
+### Bài học vòng v2
+
+- **Constraint engineering có trần với gpt-4o**: dù cảnh báo system prompt, inject min/max words, per-scene budget, và 5-point self-check, model vẫn underwrite 15-25%. Đây là bias của model trên tiếng Việt, không phải prompt sai.
+- **Temperature 0.5 giảm variance nhưng không đẩy mean**: vẫn miss target, nhưng output reproduce ổn định hơn (variance giảm rõ vs 88/111/128/134 ở temp mặc định).
+- **FILLER thay SILENT tăng coverage thật**: trước 1 SILENT (5s im), nay 2 FILLER ≈ 15 từ ≈ 5s nói → +5s coverage. Quan trọng cho retention TikTok.
+- **Không hy sinh chất lượng prose**: 119 từ chất hơn 148 từ filler-stuffed. Theo nguyên tắc "không nhồi chữ vô nghĩa chỉ để đủ word count".
+- **Operator vẫn cần touch-up nhỏ** trước TTS — KHÔNG zero-touch.
+- **Đường tiếp theo nếu cần đạt 95% coverage tự động** (out of scope vòng này, ghi vào roadmap):
+  - (a) model mạnh hơn (`gpt-4.1`/`gpt-5` khi sẵn sàng),
+  - (b) self-critique loop riêng kiểm word count + auto-extend block thiếu,
+  - (c) hybrid: AI draft → rule-based extender chèn câu KITCHEN từ template bám visual.
+
+---
+
+## 11. Cảnh báo / Anti-patterns
 
 - ❌ Không feed video URL trực tiếp vào OpenAI — model không xem được video. Bắt buộc convert thành `scene_timeline` JSON trước.
 - ❌ Không paste script AI vào TTS mà chưa review — AI có thể đưa giá/tính năng không đúng, dù prompt cấm. Luôn operator-review.
@@ -252,9 +309,10 @@ Cùng `scene_input.json`, 3 cấu hình:
 
 ---
 
-## 9. Roadmap
+## 12. Roadmap
 
-- v1: variant generation (cuốn hơn / tự nhiên hơn / bán mềm hơn) trong 1 lần call
-- v1: auto-tune duration — nếu word count lệch >10% thì re-prompt với hint
-- v2: chained `script:generate → voice:generate` qua 1 syscall
-- v2: prompt caching (OpenAI hỗ trợ) để giảm cost system prompt lặp
+- **v3 (coverage closure)**: self-critique loop riêng — sau gen, nếu word_count < min_words, re-prompt 1 lần với hint "block X (window Ys, hiện Z từ) cần mở rộng tới N từ bám visual_summary". Tránh full rewrite.
+- **v3 (model)**: thử `gpt-4.1` / `gpt-5` khi sẵn sàng — nhiều khả năng giải duration coverage problem mà không cần loop.
+- **v3 (variant)**: variant generation (cuốn hơn / tự nhiên hơn / bán mềm hơn) trong 1 lần call để A/B tự động.
+- **v3 (chain)**: chained `script:generate → voice:generate` qua 1 syscall.
+- **v3 (cost)**: prompt caching (OpenAI hỗ trợ) để giảm cost system prompt lặp.
