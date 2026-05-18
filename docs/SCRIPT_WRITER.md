@@ -2,7 +2,8 @@
 
 > **Bước trong pipeline VFOS**: AI Script Writer.
 > **Mục đích**: thay thế khâu viết voiceover thủ công bằng OpenAI structured output.
-> **Trạng thái**: **v2 — duration coverage cho gpt-4o, chạy thật trên `yt_005`** (vòng 2026-05-18).
+> **Trạng thái**: **v3 — Extender Pass đóng word-count gap, chạy thật trên `yt_005`** (vòng 2026-05-18).
+> **v2**: ép duration trong 1 pass + temp 0.5 → 119 từ (target 148, vẫn dưới). Pass cấu trúc nhưng FAIL word count.
 > **v1**: few-shot + quality guard. Đẩy prose tốt nhưng gpt-4o underwrite (88 từ ÷ target 140).
 > **v0**: single-shot, không few-shot, không quality guard — failed quality bar.
 
@@ -300,7 +301,113 @@ Files: [script_ai_v3_gpt4o.json](../production/batch_001/yt_005/script_ai_v3_gpt
 
 ---
 
-## 11. Cảnh báo / Anti-patterns
+## 11. Vòng v3: Extender Pass cho coverage closure (2026-05-18)
+
+**Vấn đề từ vòng v2**: dù prompt + temp 0.5 đầy đủ, gpt-4o vẫn underwrite 15-25% trên VN voiceover. Constraint engineering trong 1 pass đã chạm trần — ép thêm sẽ phá prose.
+
+**Hướng giải**: tách bài toán thành 2 pass riêng biệt.
+- **Pass 1 (Writer)**: viết prose chất lượng, không bị áp lực coverage tuyệt đối.
+- **Pass 2 (Extender)**: mở rộng có kiểm soát bản pass 1, chỉ làm 1 việc — đóng word-count gap, không động hook/CTA.
+
+### Kiến trúc
+
+| File | Vai trò |
+|---|---|
+| [packages/script-writer/src/extender-prompt.ts](../packages/script-writer/src/extender-prompt.ts) | System prompt riêng cho Extender — 7 quy tắc cứng (HOOK bất khả xâm phạm, CTA gần như bất khả xâm phạm, schema timeline khóa cứng, bám visual, cấm cụm sến, tránh "sản phẩm", không nhồi chữ). |
+| [packages/script-writer/src/openai-client.ts](../packages/script-writer/src/openai-client.ts) | Thêm `ScriptWriterClient.expand(ExpandInput)`. Reuse `ScriptOutputSchema` → output drop thẳng qua quality guard lần 2. Temperature 0.3 (constraint chặt hơn pass 1). |
+| [packages/script-writer/scripts/generate.ts](../packages/script-writer/scripts/generate.ts) | Orchestration: pass 1 → guard → auto-extend nếu đủ điều kiện → guard lần 2. Hỗ trợ 2 CLI flag mới: `--extender-output`, `--extender-text-output`. |
+
+### Điều kiện auto-trigger Extender
+
+Extender CHỈ chạy khi pass 1 đạt **tất cả** điều kiện sau:
+
+| Điều kiện | Lý do |
+|---|---|
+| `--extender-output` được khai báo | Opt-in cho operator |
+| `hook_consistent === true` | Extender không fix hook structure |
+| `cta_consistent === true` | Extender không fix CTA structure |
+| Không có hard-banned phrase | Phải fix prose root cause trước, không phải mở rộng thêm |
+| `word_count < min_words` | Chỉ mở rộng khi UNDER, không cắt khi OVER |
+
+Bất kỳ điều kiện nào fail → skip extender, exit code = pass 1 status. Lý do: Extender thiết kế để "kéo dài bản tốt", KHÔNG phải "fix bản sai".
+
+### Schema và artifact
+
+- Pass 1 và Pass 2 đều dùng cùng `ScriptOutputSchema` → guard chạy lại không cần code mới.
+- File JSON pass 2 thêm `extender_meta` block: `pass1_word_count`, `pass1_response_id`, `pass2_response_id` cho audit trail.
+- `writer_notes` của pass 2 ghi rõ block nào expand từ X→Y từ và lý do thêm câu gì.
+
+### Kết quả chạy thật trên yt_005
+
+| Pass | Words | Target | Guard | Hook | CTA | Banned | Time |
+|---|---|---|---|---|---|---|---|
+| Pass 1 (Writer) | 114 | 148 (±5% = 141-156) | **FAIL** (word_count -23%) | ✓ | ✓ | none | 11.7s |
+| **Pass 2 (Extended)** | **151** | 148 | **PASS** | ✓ | ✓ | none | 11.2s |
+
+Tổng latency: 22.9s, ~3600+2700 input tokens, ~800+1100 output tokens. Files: [script_ai_v4_gpt4o_base.json](../production/batch_001/yt_005/script_ai_v4_gpt4o_base.json), [script_ai_v4_gpt4o_extended.json](../production/batch_001/yt_005/script_ai_v4_gpt4o_extended.json).
+
+### Extender đã expand block nào
+
+Theo `writer_notes` của output:
+- `b3 FILLER` 9→14 từ — thêm "Đảm bảo bạn sẽ bất ngờ." (tease)
+- `b4 FILLER` 7→12 từ — thêm "Đừng bỏ lỡ nhé!" (tease)
+- `b5 KITCHEN` 13→20 từ — thêm "Một món không thể thiếu khi làm món nước." (gợi ý dùng)
+- `b6 KITCHEN` 11→21 từ — thêm "Một góc bếp gọn gàng với vài món tích hợp." (gợi ý dùng)
+- `b8 KITCHEN` 13→18 từ — thêm "Dùng cho nhiều loại rau củ khác nhau." (gợi ý dùng)
+
+Không động: b1 HOOK, b2 KITCHEN, b7 TRANSITION, b9 KITCHEN, b10 CTA.
+
+### So sánh 3 phiên bản
+
+| Tiêu chí | v3 (vòng trước, 119 từ) | **v4 extended (vòng này, 151 từ)** | script_v2 manual (~133 từ) |
+|---|---|---|---|
+| Word count | 119 (FAIL) | **151 (PASS)** | ~133 |
+| Hook | "Hai cốc nấm xanh này vừa dễ thương, vừa tiện lắm…" | "2 cốc cutter rau xanh nhìn như cây nấm, nhìn là muốn thử ngay!" | "5 đồ bếp Trung Quốc nhìn cứ tưởng đồ chơi. Mà thử rồi là không bỏ xuống nổi đâu!" |
+| CTA | "Món nào thấy hợp thì lưu lại, link mình để bio nha." | (same) | "Link Shopee mình để bio. Rẻ lắm, mua thử cả 5 món luôn nha!" |
+| Bịa spec | No | No | "có 50 nghìn" (mild claim) |
+| "sản phẩm" trong text | 0 | 0 | 0 |
+| Coverage blocks | 10/10 | 10/10 | 10/10 (1 câu khỉ gượng) |
+| TTS est @170 WPM | ~42s vs video 53s (-11s) | **~54s vs 53s** (khớp) | ~47s |
+| Cần touch-up trước TTS | có (B6 thiếu) | **không** | (đã edit người) |
+| Quality guard | FAIL | **PASS** | n/a |
+
+### Trả lời thẳng
+
+| Câu hỏi | Trả lời |
+|---|---|
+| Extender Pass giải quyết bài toán thiếu độ dài chưa? | **CÓ**. 114 → 151 từ trong 1 lần extend, trong window 141-156. |
+| Script final đủ tốt để sang TTS/sync vòng sau chưa? | **CÓ**. Hook/CTA mềm, không banned, không bịa, coverage 10/10, TTS ước tính 54s ≈ video 53s. |
+| Có nên xem Phần 1 AI Script Writer hoàn thiện tại mốc này? | **CÓ**, với điều kiện công nhận giới hạn (xem dưới). |
+| Hook giữ nguyên sức hút chưa? | **CÓ** — Extender không động line block đầu HOOK. |
+| CTA mềm chưa? | **CÓ** — Extender không động line block cuối CTA. |
+| Có bịa claim không? | **KHÔNG**. Không gán giá/spec. Câu mở rộng đều bám visual ("vắt chanh", "rau củ", "món nước"). |
+| Có block bị nhồi từ thiếu tự nhiên không? | **CÓ 3 câu mở rộng hơi generic** (xem dưới) — chấp nhận được nhưng đáng note. |
+
+### Giới hạn còn lại của Extender Pass
+
+Quan sát 3 câu mở rộng nghiêng nhẹ về ad copy, không banned nhưng generic:
+- b3: "Đảm bảo bạn sẽ bất ngờ." — kiểu clickbait nhẹ
+- b4: "Đừng bỏ lỡ nhé!" — gần "không thể bỏ qua" (banned) nhưng không khớp đúng cụm
+- b5: "Một món không thể thiếu khi làm món nước." — borderline cliché, không trong banned list
+
+Đây không phải failure — quality guard PASS, prose vẫn natural hơn ad copy TV. Nhưng có dư địa siết thêm bằng cách:
+- (a) thêm các cụm "đảm bảo", "không thể thiếu", "đừng bỏ lỡ" vào SOFT_BANNED của quality guard (flag, không block),
+- (b) hoặc mở rộng few-shot trong `extender-prompt.ts` thêm cặp DỞ→TỐT cho expansion sentences,
+- (c) hoặc re-run extender với temp=0.2 để giảm clickbait variance.
+
+Đề xuất: dừng tay vòng này, ghi vào roadmap. Risk siết quá sâu sẽ phá pass rate hiện tại.
+
+### Bài học vòng v3
+
+- **Tách concern win**: pass 1 chỉ lo prose, pass 2 chỉ lo coverage — model gpt-4o làm rất tốt mỗi việc một mình. 1 lần extend đủ để vào window 141-156 (không cần loop).
+- **Constraint cứng + visual context giúp expander bám đề**: 5 block được mở rộng đều có câu bổ sung bám visual_summary, không bịa.
+- **HOOK bất khả xâm phạm rule mạnh**: model tuân thủ 100% — line block đầu pass 1 và pass 2 byte-identical.
+- **Temperature 0.3 cho extender** (vs 0.5 pass 1): cân bằng — đủ tự nhiên, không quá variance.
+- **Cost ~2x pass 1** (≈ $0.02 cho video 53s, gpt-4o): vẫn rẻ so với rewrite hoặc human edit.
+
+---
+
+## 12. Cảnh báo / Anti-patterns
 
 - ❌ Không feed video URL trực tiếp vào OpenAI — model không xem được video. Bắt buộc convert thành `scene_timeline` JSON trước.
 - ❌ Không paste script AI vào TTS mà chưa review — AI có thể đưa giá/tính năng không đúng, dù prompt cấm. Luôn operator-review.
@@ -309,10 +416,11 @@ Files: [script_ai_v3_gpt4o.json](../production/batch_001/yt_005/script_ai_v3_gpt
 
 ---
 
-## 12. Roadmap
+## 13. Roadmap
 
-- **v3 (coverage closure)**: self-critique loop riêng — sau gen, nếu word_count < min_words, re-prompt 1 lần với hint "block X (window Ys, hiện Z từ) cần mở rộng tới N từ bám visual_summary". Tránh full rewrite.
-- **v3 (model)**: thử `gpt-4.1` / `gpt-5` khi sẵn sàng — nhiều khả năng giải duration coverage problem mà không cần loop.
-- **v3 (variant)**: variant generation (cuốn hơn / tự nhiên hơn / bán mềm hơn) trong 1 lần call để A/B tự động.
-- **v3 (chain)**: chained `script:generate → voice:generate` qua 1 syscall.
-- **v3 (cost)**: prompt caching (OpenAI hỗ trợ) để giảm cost system prompt lặp.
+- ✅ **DONE v3 (coverage closure)**: Extender Pass riêng — controlled expansion 1 lần là đủ vào window. Triển khai ở section 11.
+- **v4 (extender polish)**: thêm cụm soft-banned cho expansion ("đảm bảo", "đừng bỏ lỡ", "không thể thiếu") để siết generic ad-copy còn sót.
+- **v4 (model)**: thử `gpt-4.1` / `gpt-5` cho pass 1 khi sẵn sàng — nhiều khả năng giảm gap pass 1 → pass 2 (đỡ phải gọi extender).
+- **v4 (variant)**: variant generation (cuốn hơn / tự nhiên hơn / bán mềm hơn) trong 1 lần call để A/B tự động.
+- **v5 (chain)**: chained `script:generate → voice:generate` qua 1 syscall.
+- **v5 (cost)**: prompt caching (OpenAI hỗ trợ) để giảm cost system prompt lặp giữa pass 1 và pass 2.
