@@ -199,7 +199,7 @@ console.log(`  Mixed audio: ${mixedAudioPath}`);
 
 // ── Render preview MP4 ────────────────────────────────────────────────────────
 
-const previewPath = join(outputDir, `${videoId}_voice_blocks_bgm_v1_preview_vi.mp4`);
+const previewPath = join(outputDir, `${videoId}_voice_blocks_bgm_preview_vi.mp4`);
 
 process.stdout.write('  Rendering preview MP4… ');
 

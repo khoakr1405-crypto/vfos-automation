@@ -1,6 +1,6 @@
 {
   "video_id": "yt_005",
-  "generated_at": "2026-05-18T19:16:22.304Z",
+  "generated_at": "2026-05-18T19:19:27.166Z",
   "source_video": "C:\\Users\\Admin\\Desktop\\vfos-automation\\production\\batch_001\\yt_005\\yt_005_source.mp4",
   "voice_timeline": "C:\\Users\\Admin\\Desktop\\vfos-automation\\production\\batch_001\\yt_005\\voice_sync_v0\\yt_005_voice_timeline.mp3",
   "bgm_source": "C:\\Users\\Admin\\Desktop\\vfos-automation\\production\\batch_001\\yt_005\\bgm\\yt_005_bgm_v2_candidate_b.mp3",
@@ -16,7 +16,7 @@
   "final_gain_db": 2.3,
   "video_duration_s": 53.498776,
   "mixed_audio": "C:\\Users\\Admin\\Desktop\\vfos-automation\\production\\batch_001\\yt_005\\bgm_mix_v2\\yt_005_voice_bgm_mixed.mp3",
-  "preview_mp4": "C:\\Users\\Admin\\Desktop\\vfos-automation\\production\\batch_001\\yt_005\\bgm_mix_v2\\yt_005_voice_blocks_bgm_v1_preview_vi.mp4",
+  "preview_mp4": "C:\\Users\\Admin\\Desktop\\vfos-automation\\production\\batch_001\\yt_005\\bgm_mix_v2\\yt_005_voice_blocks_bgm_preview_vi.mp4",
   "streams": {
     "video": "av1",
     "audio": "aac",

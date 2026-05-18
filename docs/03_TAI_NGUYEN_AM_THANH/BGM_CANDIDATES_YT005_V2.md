@@ -81,7 +81,7 @@ production/batch_001/yt_005/bgm/
 
 production/batch_001/yt_005/bgm_mix_v2/
   yt_005_voice_bgm_mixed.mp3                 ← mixed audio (voice + BGM v2)
-  yt_005_voice_blocks_bgm_v1_preview_vi.mp4  ← preview MP4 v2 (tên file có "bgm_v1" là từ script, dir là bgm_mix_v2)
+  yt_005_voice_blocks_bgm_preview_vi.mp4     ← preview MP4 v2
   yt_005_bgm_mix_manifest.json               ← manifest với đủ params
 ```
 
