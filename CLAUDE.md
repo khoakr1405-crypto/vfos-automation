@@ -35,3 +35,31 @@ If the relationship is unclear, do not prioritize it.
   source video discovery → selection → reup/edit/localization → Facebook/TikTok affiliate publishing → performance learning.
 * Do not mistake a technically impressive system for a system that improves real business outcomes.
 * When making product or technical recommendations, explicitly connect them back to the VFOS North Star.
+
+## Project Memory Protocol
+
+1. **Khi bắt đầu session**
+   - Luôn đọc:
+     - `CLAUDE.md`
+     - `docs/00_DIEU_HANH/TRANG_THAI_VFOS_HIEN_TAI.md`
+   - Sau đó tóm tắt lại trạng thái dự án trước khi thực thi task mới.
+
+2. **Sau mỗi vòng làm việc lớn**
+   - Nếu đã hoàn thành/chốt/commit một phần:
+     - cập nhật file trạng thái VFOS
+     - ghi commit hash mới
+     - cập nhật "phần đã hoàn thành"
+     - cập nhật "bước tiếp theo duy nhất"
+
+3. **Trước khi compact context / khi context quá dài**
+   - Ưu tiên giữ lại:
+     - mục tiêu vòng hiện tại
+     - quyết định đã chốt
+     - file đã thay đổi
+     - commit hash mới nhất
+     - bước tiếp theo duy nhất
+     - những việc bị cấm mở scope
+   - Nếu cần, chủ động đề xuất cập nhật file trạng thái trước khi compact.
+
+4. **Không coi chat history là nguồn nhớ duy nhất**
+   - Các quyết định quan trọng phải được đưa vào file trạng thái hoặc docs trong repo.
