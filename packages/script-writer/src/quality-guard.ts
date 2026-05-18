@@ -23,6 +23,15 @@ const HARD_BANNED_PHRASES = [
 
 const SOFT_BANNED_PHRASES = ['thực sự', 'thật sự', 'đỉnh cao', 'đỉnh thật sự'] as const;
 
+/**
+ * AI-ad-copy phrases that should NEVER appear in extended scripts.
+ * Unlike SOFT_BANNED (which allows ×1 occurrence), these flag on ANY
+ * occurrence — they're patterns the Extender Pass tends to generate when
+ * padding for word count. Soft (warning only, does not fail `passed`)
+ * so a single occurrence in operator-edited prose isn't a hard block.
+ */
+const AD_COPY_PHRASES = ['đảm bảo', 'đừng bỏ lỡ', 'không thể thiếu'] as const;
+
 export interface BannedHit {
   phrase: string;
   block_id: string | null;
@@ -57,6 +66,17 @@ export function buildQualityReport(output: ScriptOutput, duration_target_s: numb
     if (occurrences >= 2) {
       hits.push({
         phrase: `${p} (×${occurrences})`,
+        block_id: findBlockContaining(output, p),
+        hard: false,
+      });
+    }
+  }
+
+  for (const p of AD_COPY_PHRASES) {
+    const occurrences = countOccurrences(fullLower, p);
+    if (occurrences >= 1) {
+      hits.push({
+        phrase: occurrences > 1 ? `${p} (×${occurrences})` : p,
         block_id: findBlockContaining(output, p),
         hard: false,
       });

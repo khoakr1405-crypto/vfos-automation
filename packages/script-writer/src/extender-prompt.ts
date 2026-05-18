@@ -38,6 +38,36 @@ Mở rộng có kiểm soát để đạt số từ trong \`[min_words, max_word
 - **CTA**: thêm 1 câu khẳng định mềm trước câu link.
   - TỐT: "5 món mình test xong rồi. Cái nào hợp thì lưu lại, link mình để bio nha."
 
+# Few-shot bổ sung — 3 KIỂU CÂU MỞ RỘNG AI THƯỜNG VIẾT, PHẢI TRÁNH
+
+Đây là 3 kiểu câu generic mà model thường tự sinh khi mở rộng — TUYỆT ĐỐI tránh, kể cả khi không nằm trong hard-banned list ở rule 5.
+
+**Anti-pattern 1 — clickbait "Đảm bảo bạn sẽ..."**
+- DỞ: "Chờ chút, món tiếp theo mới thú vị nè. **Đảm bảo bạn sẽ bất ngờ.**"
+- DỞ: "Đảm bảo bạn sẽ thích cái này."
+- Vấn đề: câu "đảm bảo X" / "đảm bảo bạn sẽ Y" là clickbait kiểu AI, không bám visual cụ thể, người Việt review đồ thật sự ít khi nói thế.
+- TỐT thay thế (FILLER tease): "Chờ chút, món tiếp theo mới thú vị nè. **Cái này mình ưng nhất luôn.**"
+- TỐT thay thế: "Khoan, đoạn này lướt qua nha. **Cái sau mới đáng coi.**"
+
+**Anti-pattern 2 — "Đừng bỏ lỡ" / "không thể bỏ qua" họ hàng**
+- DỞ: "Đợi xíu, món hay ho sắp tới. **Đừng bỏ lỡ nhé!**"
+- DỞ: "Một cái không thể bỏ qua."
+- Vấn đề: "đừng bỏ lỡ" cùng họ cliché với "không thể bỏ qua" (đã hard-banned ở rule 5). Giọng quảng cáo TV.
+- TỐT thay thế: "Đợi xíu, món hay ho sắp tới. **Mình test cái này rồi, hay lắm.**"
+- TỐT thay thế: "Khoan, đợi xíu nha. **Cái tới ngon hơn cái này.**"
+
+**Anti-pattern 3 — phát biểu absolute "Một món không thể thiếu..."**
+- DỞ: "Rây này vớt sủi cảo cực nhanh. **Một món không thể thiếu khi làm món nước.**"
+- DỞ: "Khay này không thể thiếu trong bếp."
+- Vấn đề: "không thể thiếu" là phát biểu absolute không có căn cứ — người ta vẫn có thể nấu mà không có cái rây hồng cụ thể này. Giọng AI sales.
+- TỐT thay thế: "Rây này vớt sủi cảo cực nhanh. **Lọc trà lọc nước dùng cũng OK.**"  (gợi ý đa dụng, cụ thể)
+- TỐT thay thế: "Rây này vớt sủi cảo cực nhanh. **Có cái này nấu canh đỡ phải vớt bằng đũa.**"  (cảm nhận thực dụng)
+
+# Nguyên tắc chung khi mở rộng
+- Ưu tiên **cảm nhận cá nhân cụ thể** ("mình ưng cái này nhất", "mình test rồi") hơn **statement absolute** ("không thể thiếu", "đảm bảo").
+- Ưu tiên **gợi ý đa dụng có ví dụ** ("lọc trà lọc nước dùng cũng OK") hơn **superlative chung chung** ("một món không thể thiếu").
+- Nếu không có ý hay để thêm — **đừng cố thêm vào block đó**, chuyển sang block khác có dư địa.
+
 # Đếm từ (BẮT BUỘC trước khi submit)
 1. Tách \`full_script\` theo whitespace (\`split(/\\s+/).filter(Boolean)\`).
 2. Phải nằm trong \`[min_words, max_words]\`.

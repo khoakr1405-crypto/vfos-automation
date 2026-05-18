@@ -2,7 +2,8 @@
 
 > **Bước trong pipeline VFOS**: AI Script Writer.
 > **Mục đích**: thay thế khâu viết voiceover thủ công bằng OpenAI structured output.
-> **Trạng thái**: **v3 — Extender Pass đóng word-count gap, chạy thật trên `yt_005`** (vòng 2026-05-18).
+> **Trạng thái**: **v3.1 — Extender Pass + ad-copy polish, READY cho TTS/sync** (vòng 2026-05-18).
+> **v3**: Extender Pass → 151 từ PASS guard nhưng 3 câu mở rộng nghiêng ad-copy.
 > **v2**: ép duration trong 1 pass + temp 0.5 → 119 từ (target 148, vẫn dưới). Pass cấu trúc nhưng FAIL word count.
 > **v1**: few-shot + quality guard. Đẩy prose tốt nhưng gpt-4o underwrite (88 từ ÷ target 140).
 > **v0**: single-shot, không few-shot, không quality guard — failed quality bar.
@@ -404,6 +405,59 @@ Quan sát 3 câu mở rộng nghiêng nhẹ về ad copy, không banned nhưng g
 - **HOOK bất khả xâm phạm rule mạnh**: model tuân thủ 100% — line block đầu pass 1 và pass 2 byte-identical.
 - **Temperature 0.3 cho extender** (vs 0.5 pass 1): cân bằng — đủ tự nhiên, không quá variance.
 - **Cost ~2x pass 1** (≈ $0.02 cho video 53s, gpt-4o): vẫn rẻ so với rewrite hoặc human edit.
+
+### Vòng v3.1 — Ad-copy polish (2026-05-18)
+
+Vòng v3 PASS guard nhưng quan sát 3 câu mở rộng nghiêng ad-copy: "Đảm bảo bạn sẽ bất ngờ", "Đừng bỏ lỡ nhé", "Một món không thể thiếu". Không banned nhưng generic AI sales. Vòng polish hẹp để siết.
+
+**Thay đổi**:
+- [extender-prompt.ts](../packages/script-writer/src/extender-prompt.ts): thêm 3 anti-pattern few-shot DỞ→TỐT, kèm nguyên tắc "cảm nhận cá nhân cụ thể > statement absolute".
+- [quality-guard.ts](../packages/script-writer/src/quality-guard.ts): thêm `AD_COPY_PHRASES` list (`đảm bảo`, `đừng bỏ lỡ`, `không thể thiếu`) — warn ≥1 occurrence, soft (không fail `passed`).
+
+**Kết quả chạy thật trên yt_005**:
+
+| Pass | Words | Target | Guard | Warnings | Ad-copy hits |
+|---|---|---|---|---|---|
+| Pass 1 (Writer)    | 116 | 148 | FAIL | 1 (word_count -21.6%) | 0 |
+| **Pass 2 (Extended polish)** | **141** | 148, window 141-156 | **PASS** | **0** | **0** |
+
+Files: [script_ai_v4_gpt4o_base_polish.{json,txt}](../production/batch_001/yt_005/), [script_ai_v4_gpt4o_extended_polish.{json,txt}](../production/batch_001/yt_005/).
+
+**Câu mở rộng được thay**:
+- b3 FILLER: "Đảm bảo bạn sẽ bất ngờ" → "Cái này mình ưng nhất luôn" (cảm nhận cá nhân)
+- b4 FILLER: "Đừng bỏ lỡ nhé" → "Cái tới ngon hơn cái này" (so sánh thực tế)
+- b5 KITCHEN: "Một món không thể thiếu khi làm món nước" → gộp "lọc nước" vào câu chính thay vì thêm sentence riêng
+- b8 KITCHEN: "Dùng cho nhiều loại rau củ khác nhau" → "Tay không quen cũng làm được" (cảm nhận thực dụng)
+- b9 KITCHEN bonus: "làm bếp không còn phiền" → "cắt bí xanh đều tăm tắp, tiết kiệm thời gian" (bám visual + idiom VN)
+
+**Đánh giá tổng**:
+- 141 chạm `min_words` (lower bound) nhưng IN window. Trade-off có chủ ý: model học né câu lấp chỗ → expansion sentences ngắn nhưng chất hơn.
+- 0 ad-copy hits + 0 hard banned + 0 soft hits. Guard hoàn toàn sạch.
+- Hook + CTA byte-identical pass 1 → pass 2.
+- Multiple blocks bám visual cụ thể hơn vòng trước (đề cập "múc canh", "bí xanh", "lọc nước").
+- Idiom thuần VN ("đều tăm tắp") xuất hiện tự nhiên.
+
+**Trade-off đáng note**: model copy nguyên văn TỐT examples từ few-shot (3-4 câu lặp lại đúng cụm trong prompt). Sạch nhưng deterministic — nếu chạy trên 100 video, một số câu sẽ trùng. Roadmap §13 ghi: đa dạng hóa TỐT examples bank cho diversity.
+
+### Kết luận chốt Phần 1
+
+Trạng thái **v3.1 = production-ready cho TTS/sync vòng sau**.
+
+| Tiêu chí hoàn thiện | Đạt? |
+|---|---|
+| Pipeline: scene_input → pass 1 → guard → auto-extend → guard → artifact | ✓ |
+| Word count nằm trong [141, 156] | ✓ (141) |
+| Quality guard PASS | ✓ |
+| Hook strength giữ nguyên qua extender | ✓ |
+| CTA mềm | ✓ |
+| Không bịa spec / giá | ✓ |
+| Không ad-copy phrase | ✓ |
+| Bám visual_summary | ✓ |
+| TTS-ready full_script | ✓ |
+| Typecheck + biome sạch | ✓ |
+| Doc + artifact đủ audit trail (response IDs) | ✓ |
+
+→ **Phần 1 AI Script Writer được coi là hoàn thiện tại mốc này.** Vòng tiếp theo: TTS/voice sync.
 
 ---
 
