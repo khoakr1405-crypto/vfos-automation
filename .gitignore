@@ -44,3 +44,13 @@ Thumbs.db
 .vscode/*
 !.vscode/extensions.json
 .idea/
+
+# Large binary media artifacts in production pipeline
+production/**/*.mp4
+production/**/*.mp3
+production/**/*.m4a
+production/**/*.wav
+production/**/*.webm
+production/**/*.jpg
+production/**/*.jpeg
+production/**/*.png

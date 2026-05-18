@@ -1,0 +1,39 @@
+﻿# Scene Change Log — yt_004 (threshold=0.30)
+# Video: yt_004_raw.mp4 | Duration: 26.93s | 30fps
+# Generated: 2026-05-17
+
+n	Time	Mean_Y	Note
+0	0.03s	128	Mở đầu — intro
+1	0.77s	162	Cut nhanh
+2	2.50s	158	Scene mới — có thể bắt đầu đoạn giới thiệu SP
+3	3.27s	209	Sáng — product close-up?
+4	3.37s	190	Cut trong cùng cảnh
+5	4.73s	136	Scene change
+6	5.23s	170	Scene change
+7	5.63s	175	Cut nhanh
+8	6.27s	128	Scene change
+9	7.87s	101	Tối hơn — transition?
+10	9.37s	173	Scene mới
+11	10.23s	123	Cụm chuyển cảnh nhanh (10.2-10.5s)
+12	10.33s	108	Cụm chuyển cảnh nhanh
+13	10.43s	105	Cụm chuyển cảnh nhanh
+14	10.47s	111	Cụm chuyển cảnh nhanh
+15	10.50s	137	Kết thúc cụm
+16	11.93s	160	Scene change
+17	12.77s	153	Scene change
+18	13.33s	180	Scene sáng — product demo?
+19	14.10s	184	Scene sáng
+20	14.33s	171	Scene change
+21	15.60s	35	*** FRAME TỐI (Y=35) — Title card / Transition sản phẩm ***
+22	16.07s	176	Scene mới sau title — SP tiếp theo bắt đầu?
+23	17.00s	164	Scene change
+24	17.90s	164	Scene change
+25	18.10s	152	Cut nhanh
+26	19.13s	169	Scene change
+27	19.30s	153	Cut nhanh
+28	19.97s	165	Scene change
+29	20.87s	164	Scene change
+30	21.53s	40	*** FRAME TỐI (Y=40) — Title card / Transition sản phẩm ***
+31	22.10s	137	Scene mới sau title — SP cuối / CTA?
+32	25.70s	161	Scene change
+33	26.77s	162	Gần kết — có thể outro/CTA
