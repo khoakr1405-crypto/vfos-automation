@@ -18,6 +18,7 @@
  *   --skip-generate    Skip BGM generation even if no --bgm-file (fail instead)
  *   --bgm-prompt       Custom text prompt for ElevenLabs sound-generation (overrides default)
  *   --final-gain       Multiplier applied to the final mixed output (default 1.0). Use 1.3 for +30% loudness.
+ *   --voice-gain       Multiplier applied to voice track before mixing (default 1.0). Use 1.2 for +20% voice.
  */
 
 import { parseArgs } from 'node:util';
@@ -45,6 +46,7 @@ const { values } = parseArgs({
     'skip-generate':  { type: 'boolean', default: false },
     'bgm-prompt':     { type: 'string' },
     'final-gain':     { type: 'string', default: '1.0' },
+    'voice-gain':     { type: 'string', default: '1.0' },
   },
   allowPositionals: false,
   strict: true,
@@ -63,6 +65,7 @@ const bgmVolume         = parseFloat(values['bgm-volume']!);
 const bgmFadeIn         = parseFloat(values['bgm-fadein']!);
 const bgmFadeOut        = parseFloat(values['bgm-fadeout']!);
 const finalGain         = parseFloat(values['final-gain']!);
+const voiceGain         = parseFloat(values['voice-gain']!);
 
 if (!existsSync(sourceVideoPath))   { console.error(`Error: source video not found: ${sourceVideoPath}`);   process.exit(1); }
 if (!existsSync(voiceTimelinePath)) { console.error(`Error: voice timeline not found: ${voiceTimelinePath}`); process.exit(1); }
@@ -86,6 +89,7 @@ console.log('── BGM Mix v0 ────────────────�
 console.log(`  Video ID   : ${videoId}`);
 console.log(`  Duration   : ${videoDurationS}s`);
 console.log(`  BGM vol    : ${bgmVolume} (~${(20 * Math.log10(bgmVolume)).toFixed(1)} dBFS)`);
+console.log(`  Voice gain : ${voiceGain}x (~${(20 * Math.log10(voiceGain)).toFixed(1)} dB)`);
 console.log(`  Final gain : ${finalGain}x (~${(20 * Math.log10(finalGain)).toFixed(1)} dB)`);
 console.log(`  Fade in/out: ${bgmFadeIn}s / ${bgmFadeOut}s`);
 console.log(`  Output dir : ${outputDir}`);
@@ -163,13 +167,13 @@ console.log('');
 process.stdout.write('  Mixing voice + BGM… ');
 
 // filter_complex:
-//   [1:a] = BGM (streamed with stream_loop -1):
-//     atrim to video duration → fade in → fade out → volume reduction
-//   [0:a][bgm] = amix: voice (input 0) + bgm (input 1)
-//     normalize=0: no loudness normalization — voice stays at original level
+//   [0:a] → voice gain → [voice]
+//   [1:a] → atrim/fade/volume → [bgm]
+//   [voice][bgm] → amix normalize=0 → final gain → [out]
 const filterComplex = [
+  `[0:a]volume=${voiceGain}[voice]`,
   `[1:a]atrim=duration=${videoDurationS},afade=t=in:st=0:d=${bgmFadeIn},afade=t=out:st=${fadeOutStart}:d=${bgmFadeOut},volume=${bgmVolume}[bgm]`,
-  `[0:a][bgm]amix=inputs=2:duration=first:normalize=0,volume=${finalGain}[out]`,
+  `[voice][bgm]amix=inputs=2:duration=first:normalize=0,volume=${finalGain}[out]`,
 ].join(';');
 
 const mixArgs = [
@@ -265,6 +269,8 @@ const manifest = {
   bgm_volume_db:       parseFloat((20 * Math.log10(bgmVolume)).toFixed(1)),
   bgm_fadein_s:        bgmFadeIn,
   bgm_fadeout_s:       bgmFadeOut,
+  voice_gain:          voiceGain,
+  voice_gain_db:       parseFloat((20 * Math.log10(voiceGain)).toFixed(1)),
   final_gain:          finalGain,
   final_gain_db:       parseFloat((20 * Math.log10(finalGain)).toFixed(1)),
   video_duration_s:    videoDurationS,
