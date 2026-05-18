@@ -16,6 +16,7 @@
     "smoke": "pnpm --filter @vfos/kernel smoke",
     "voice:generate": "tsx packages/voice/scripts/generate.ts",
     "voice:sync": "tsx packages/voice/scripts/sync.ts",
+    "bgm:mix": "tsx packages/voice/scripts/bgm-mix.ts",
     "script:generate": "tsx packages/script-writer/scripts/generate.ts"
   },
   "devDependencies": {

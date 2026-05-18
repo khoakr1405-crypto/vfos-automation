@@ -2,7 +2,7 @@
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
 > **Cập nhật lần cuối**: 2026-05-19
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `6382b75`
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `(cập nhật sau commit BGM Mix v0)`
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -73,6 +73,22 @@ VFOS là hệ thống hỗ trợ chiến lược **content-led affiliate**:
 
 ---
 
+### ✅ Voice Preset Library v0: ĐÃ CHỐT
+
+**Trạng thái**: v0 — production-ready (tính đến 2026-05-19)
+
+**Tổng kết kỹ thuật**:
+- Module: `packages/voice/src/voice-presets.ts`
+- Preset map: `default` → `ELEVENLABS_VOICE_ID`, `voice_01`–`voice_05` → `ELEVENLABS_VOICE_ID_01..05`
+- `resolveVoice()`: priority chain — `--voice-id` (raw) > `--voice-preset` (lookup) > env default
+- Flag `--voice-preset` thêm vào cả `voice:generate` và `voice:sync`
+- Manifest `voice_sync_manifest.json` ghi cả `voice_preset` và `voice_id` để traceability
+- Backward-compat: không truyền flag → tiếp tục dùng `ELEVENLABS_VOICE_ID` như cũ
+
+**Commit**: `53341ea` — feat: add Voice Preset Library v0 (–voice-preset flag, resolveVoice, manifest traceability)
+
+---
+
 ### ✅ Phần 2 — Block-based Voice Sync: ĐÃ CHỐT (v0 + preview MP4)
 
 **Trạng thái**: v0 — production-ready cho yt_005 (tính đến 2026-05-19)
@@ -105,16 +121,42 @@ VFOS là hệ thống hỗ trợ chiến lược **content-led affiliate**:
 
 ---
 
+### ✅ Phần 3 — BGM Mix v0: ĐÃ CHỐT
+
+**Trạng thái**: v0 — production-ready cho yt_005 (tính đến 2026-05-19)
+
+**Tổng kết kỹ thuật**:
+- Script: `packages/voice/scripts/bgm-mix.ts` (`pnpm bgm:mix`)
+- BGM source: ElevenLabs Sound Generation API (`/v1/sound-generation`, 22s, 128kb/s)
+- BGM xử lý: `stream_loop -1` → `atrim` → `afade in/out` → `volume=0.15` (-16.5 dBFS)
+- Mix: `amix=normalize=0` (voice giữ nguyên mức, BGM giảm)
+- Output: `voice_bgm_mixed.mp3` + preview `*_bgm_v1_preview_vi.mp4` + manifest JSON
+- CLI flags: `--bgm-file`, `--bgm-volume`, `--bgm-fadein`, `--bgm-fadeout`, `--bgm-prompt`
+
+**Kết quả thực nghiệm trên `yt_005`**:
+- BGM generated: `yt_005_bgm_v1_generated.mp3` (22s, 128kb/s)
+- Preview render: `bgm_mix_v1/yt_005_voice_blocks_bgm_v1_preview_vi.mp4` (12.2MB)
+- Volume QC: voice max -11.6 dB, BGM max (after reduction) ≈ -16.8 dB, voice rõ hơn BGM ~5 dB
+- Mixed max: -12.0 dB (no clipping), no source audio leak, 2 streams (AV1 video + AAC audio)
+- Fade-in 1.5s / Fade-out 3.0s
+
+**Giới hạn còn lại (chấp nhận được)**:
+- No dynamic ducking — BGM không tự giảm khi voice đang nói (v0, cố định)
+- BGM là 22s looped x3 — có thể nghe thấy loop point nếu nghe kỹ
+- Operator cần nghe preview để xác nhận vibe phù hợp video
+
+---
+
 ## 4. Phần đang chuẩn bị làm tiếp theo
 
-### ⏳ Phần 3 — Video preview validation + publish workflow: CHƯA BẮT ĐẦU
+### ⏳ Phần 4 — Video preview validation + publish workflow: CHƯA BẮT ĐẦU
 
 **Mục tiêu**:
-- Operator xem preview MP4 thực tế và xác nhận sync quality
+- Operator xem/nghe preview BGM `yt_005_voice_blocks_bgm_v1_preview_vi.mp4` và xác nhận chất lượng
 - Nếu đạt → chuẩn bị publish lên Facebook Reels / TikTok VN với affiliate tag
-- Tối ưu hoá workflow từ script → voice → publish (giảm thời gian tay)
+- Tối ưu hoá workflow từ script → voice → BGM → publish (giảm thời gian tay)
 
-> **Ghi chú**: Phần 2 Voice Sync v0 đã hoàn thành. Preview MP4 đã render, manifest đã QC. Bước tiếp theo là review thủ công và quyết định publish.
+> **Ghi chú**: BGM Mix v0 đã hoàn thành. Preview MP4 với BGM đã render, QC đã pass. Bước tiếp theo là operator nghe/xem preview và quyết định publish.
 
 ---
 
@@ -122,8 +164,7 @@ VFOS là hệ thống hỗ trợ chiến lược **content-led affiliate**:
 
 | Việc | Trạng thái |
 |---|---|
-| Voice Sync block-based | Chưa bắt đầu (Phần 2) |
-| BGM (background music) | Chưa làm |
+| BGM dynamic ducking (sidechain) | Chưa làm (v0 dùng fixed volume) |
 | Watermark detection tự động | Chưa làm (spec có, code không) |
 | Text overlay tự động | Chưa làm (thủ công CapCut) |
 | Publish workflow tự động | Chưa làm (thủ công) |
@@ -150,16 +191,17 @@ VFOS là hệ thống hỗ trợ chiến lược **content-led affiliate**:
 
 ## 7. Bước tiếp theo duy nhất
 
-> **Xem preview MP4 thực tế và xác nhận sync quality.**
+> **Nghe/xem preview BGM và xác nhận chất lượng âm thanh.**
 >
-> File: `production/batch_001/yt_005/yt_005_voice_blocks_v1b_preview_vi.mp4`
+> File: `production/batch_001/yt_005/bgm_mix_v1/yt_005_voice_blocks_bgm_v1_preview_vi.mp4`
 >
 > Câu hỏi cần trả lời khi xem:
-> 1. Voice có bám đúng cảnh không? (đặc biệt cảnh giữa/cuối)
-> 2. CTA cuối "5 món xong rồi, ghé bio nhé!" có nghe rõ không?
-> 3. Có thể publish được không hay cần chỉnh thêm?
+> 1. BGM có nghe vừa phải, không lấn voice không?
+> 2. Voice vẫn rõ so với video không BGM không?
+> 3. Vibe nhạc có phù hợp với video review đồ bếp không?
+> 4. Có cần giảm BGM thêm (--bgm-volume 0.10) hay tăng thêm (0.18)?
 >
-> Nếu đạt → bắt đầu Phần 3: publish workflow.
+> Nếu đạt → bắt đầu Phần 4: publish workflow.
 
 ---
 
@@ -211,14 +253,14 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mốc tại thời điểm cập nhật trạng thái | `6382b75` — `fix: shorten b10 CTA + add --only-blocks flag to voice sync` |
+| Commit mốc tại thời điểm cập nhật trạng thái | `(cập nhật sau commit BGM Mix v0)` |
 | Remote | `origin` (GitHub) |
-| Sync status | Đã push (tính đến 2026-05-18) |
+| Sync status | Đã push sau commit BGM Mix v0 |
 
 **Untracked/modified ngoài scope** (tính đến 2026-05-19):
 - `docs/VFOS_VIDEO_EVIDENCE_STANDARD.md` — tạo trong vòng audit, chưa commit
 - `.claude/skills/vfos_video_analysis_evidence_gate.md` — tạo trong vòng audit, chưa commit
 - `apps/kernel/src/syscalls/voe.ts` — sửa VOE prompt trong vòng audit, chưa commit
-- Binary media (không commit): `yt_005_source.mp4`, `yt_005_voice_blocks_v1_preview_vi.mp4`, `yt_005_voice_blocks_v1b_preview_vi.mp4`, block mp3 files trong `voice_sync_v0/`
+- Binary media (không commit): tất cả `.mp4`, `.mp3` trong `production/` — đã có `.gitignore`
 
 > File media là local artifact, đã có `.gitignore`, không commit binary.

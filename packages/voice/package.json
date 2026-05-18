@@ -15,7 +15,8 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "generate": "tsx scripts/generate.ts",
-    "sync": "tsx scripts/sync.ts"
+    "sync": "tsx scripts/sync.ts",
+    "bgm:mix": "tsx scripts/bgm-mix.ts"
   },
   "dependencies": {},
   "devDependencies": {
