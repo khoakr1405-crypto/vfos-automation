@@ -2,7 +2,7 @@
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
 > **Cập nhật lần cuối**: 2026-05-19
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `7f55c59`
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `16ced1f`
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -121,7 +121,7 @@ VFOS là hệ thống hỗ trợ chiến lược **content-led affiliate**:
 
 ---
 
-### ✅ Phần 3 — BGM Mix v0: ĐÃ CHỐT
+### ✅ Phần 3a — BGM Mix v0: ĐÃ CHỐT (ElevenLabs Sound Gen API — đã thay)
 
 **Trạng thái**: v0 — production-ready cho yt_005 (tính đến 2026-05-19)
 
@@ -143,20 +143,59 @@ VFOS là hệ thống hỗ trợ chiến lược **content-led affiliate**:
 **Giới hạn còn lại (chấp nhận được)**:
 - No dynamic ducking — BGM không tự giảm khi voice đang nói (v0, cố định)
 - BGM là 22s looped x3 — có thể nghe thấy loop point nếu nghe kỹ
-- Operator cần nghe preview để xác nhận vibe phù hợp video
+- User đánh giá BGM v0 "dở" → đã thay bằng BGM Mix v1 (xem 3b)
+
+---
+
+### ✅ Phần 3b — BGM Mix v1: ĐÃ CHỐT + USER REVIEW ĐẠT
+
+**Trạng thái**: v1 — production-ready, đã được user nghe và xác nhận "quá ổn" (2026-05-19)
+
+**Tổng kết kỹ thuật**:
+- Script: `packages/voice/scripts/bgm-mix.ts` (cùng script v0, thêm `--voice-gain` + `--final-gain`)
+- BGM source: ElevenLabs Music API (`/v1/music`, `force_instrumental: true`, 60s, 128kb/s) — chất lượng tốt hơn hẳn Sound Gen API
+- BGM candidate: B — "Light cheerful advertising, bright piano + subtle beat, warm and friendly"
+- Output dir: `production/batch_001/yt_005/bgm_mix_v2/`
+- Preview: `yt_005_voice_blocks_bgm_preview_vi.mp4`
+
+**Params mix đã chốt sau 4 vòng tune**:
+
+| Param | Giá trị | dB |
+|---|---|---|
+| `--bgm-volume` | 0.0972 | −20.2 dBFS |
+| `--voice-gain` | 1.716 | +4.7 dB |
+| `--final-gain` | 1.3 | +2.3 dB |
+
+**QC kết quả**:
+- max_volume: −5.3 dB (headroom 5.3 dB, no clipping)
+- mean_volume: −26.0 dB
+- 2 streams: AV1 video + AAC audio, 53s
+- Không leak source audio
+
+**User review**: Nghe trực tiếp → "quá ổn" ✅
+
+**Commit history**:
+
+| Commit | Nội dung |
+|---|---|
+| `6382b75` | fix: shorten b10 CTA + add --only-blocks flag |
+| `7f55c59` | BGM Mix v0 chốt |
+| `6c6544c` | bgm_mix_v2 voice +30% (voice=1.716, max=−5.3dB) |
+| **`16ced1f`** | **fix: remove hardcoded _v1 from preview filename** |
 
 ---
 
 ## 4. Phần đang chuẩn bị làm tiếp theo
 
-### ⏳ Phần 4 — Video preview validation + publish workflow: CHƯA BẮT ĐẦU
+### ⏳ Phần 4 — Publish workflow: CHƯA BẮT ĐẦU
 
 **Mục tiêu**:
-- Operator xem/nghe preview BGM `yt_005_voice_blocks_bgm_v1_preview_vi.mp4` và xác nhận chất lượng
-- Nếu đạt → chuẩn bị publish lên Facebook Reels / TikTok VN với affiliate tag
-- Tối ưu hoá workflow từ script → voice → BGM → publish (giảm thời gian tay)
+- Publish `yt_005_voice_blocks_bgm_preview_vi.mp4` lên Facebook Reels / TikTok VN
+- Gắn affiliate tag (Shopee / TikTok Shop)
+- Theo dõi performance (views, click, doanh thu)
+- Rút ra learning → áp dụng cho video tiếp theo
 
-> **Ghi chú**: BGM Mix v0 đã hoàn thành. Preview MP4 với BGM đã render, QC đã pass. Bước tiếp theo là operator nghe/xem preview và quyết định publish.
+> **Ghi chú**: BGM Mix v1 đã user-review đạt (2026-05-19). Preview MP4 sẵn sàng publish. Bước tiếp theo là chuẩn bị nội dung caption, affiliate link, và đăng thực tế.
 
 ---
 
@@ -191,17 +230,15 @@ VFOS là hệ thống hỗ trợ chiến lược **content-led affiliate**:
 
 ## 7. Bước tiếp theo duy nhất
 
-> **Nghe/xem preview BGM và xác nhận chất lượng âm thanh.**
+> **Publish `yt_005` lên Facebook Reels / TikTok VN.**
 >
-> File: `production/batch_001/yt_005/bgm_mix_v1/yt_005_voice_blocks_bgm_v1_preview_vi.mp4`
+> File sẵn sàng: `production/batch_001/yt_005/bgm_mix_v2/yt_005_voice_blocks_bgm_preview_vi.mp4`
 >
-> Câu hỏi cần trả lời khi xem:
-> 1. BGM có nghe vừa phải, không lấn voice không?
-> 2. Voice vẫn rõ so với video không BGM không?
-> 3. Vibe nhạc có phù hợp với video review đồ bếp không?
-> 4. Có cần giảm BGM thêm (--bgm-volume 0.10) hay tăng thêm (0.18)?
->
-> Nếu đạt → bắt đầu Phần 4: publish workflow.
+> Việc cần làm:
+> 1. Viết caption tiếng Việt + CTA affiliate
+> 2. Chuẩn bị link Shopee / TikTok Shop cho sản phẩm trong video
+> 3. Đăng lên Facebook Reels và/hoặc TikTok VN
+> 4. Theo dõi performance sau 24–48h đầu
 
 ---
 
@@ -253,7 +290,7 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mốc tại thời điểm cập nhật trạng thái | `7f55c59` |
+| Commit mốc tại thời điểm cập nhật trạng thái | `16ced1f` |
 | Remote | `origin` (GitHub) |
 | Sync status | Đã push sau commit BGM Mix v0 |
 
