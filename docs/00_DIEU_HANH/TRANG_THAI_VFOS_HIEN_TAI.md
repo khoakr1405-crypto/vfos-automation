@@ -2,7 +2,7 @@
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
 > **Cập nhật lần cuối**: 2026-05-19
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `fee664e`
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `f004bb4`
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -109,8 +109,8 @@ VFOS là hệ thống hỗ trợ chiến lược **content-led affiliate**:
 
 **Giới hạn còn lại (chấp nhận được)**:
 - Chưa test sync thực tế bằng mắt người xem (cần xem preview thủ công)
-- Không có BGM — chỉ voice block-sync
-- Operator vẫn cần review preview trước khi publish
+- Không có BGM — chỉ voice block-sync (BGM được thêm ở Phần 3b)
+- yt_005 phục vụ mục đích validate pipeline, chưa được dùng làm publish pilot chính thức
 
 **Commit history Phần 2**:
 
@@ -174,6 +174,8 @@ VFOS là hệ thống hỗ trợ chiến lược **content-led affiliate**:
 
 **User review**: Nghe trực tiếp 2 lần → "quá ổn" + "quá ok" ✅ (2026-05-19, chốt)
 
+> **Vai trò của yt_005**: Video này phục vụ mục đích **validate pipeline end-to-end**, không phải publish pilot chính thức. Bước tiếp theo là chạy pipeline trên 1 video mới hoàn toàn để kiểm chứng hệ thống không bị coupled với yt_005.
+
 **Commit history**:
 
 | Commit | Nội dung |
@@ -182,7 +184,8 @@ VFOS là hệ thống hỗ trợ chiến lược **content-led affiliate**:
 | `7f55c59` | BGM Mix v0 chốt |
 | `6c6544c` | bgm_mix_v2 voice +30% (voice=1.716, max=−5.3dB) |
 | `16ced1f` | fix: remove hardcoded _v1 from preview filename |
-| **`fee664e`** | **docs: record successful user approval of BGM mix v1 (commit chốt)** |
+| `fee664e` | docs: record successful user approval of BGM mix v1 |
+| **`f004bb4`** | **docs: align next milestone to end-to-end pilot (commit hiện tại)** |
 
 ---
 
@@ -197,7 +200,7 @@ VFOS là hệ thống hỗ trợ chiến lược **content-led affiliate**:
 - Xác nhận pipeline hoạt động đúng với video thật ngoài yt_005
 - Rút ra gap nếu có → log vào roadmap, không mở scope ngay
 
-> **Ghi chú**: BGM Mix v1 đã chốt sau 2 lần user-review (2026-05-19). Pipeline yt_005 đã validate đủ 3 phần. Bước tiếp theo là kiểm chứng pipeline trên video mới để chuẩn bị scale.
+> **Ghi chú**: BGM Mix v1 đã chốt sau 2 lần user-review (2026-05-19). yt_005 đã hoàn thành tốt vai trò **video test pipeline** — không phải publish pilot chính thức. Bước tiếp theo là kiểm chứng pipeline trên **1 video mới hoàn toàn** để xác nhận hệ thống không bị coupled với yt_005 trước khi scale.
 
 ---
 
@@ -291,9 +294,9 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mốc tại thời điểm cập nhật trạng thái | `fee664e` |
+| Commit mốc tại thời điểm cập nhật trạng thái | `f004bb4` |
 | Remote | `origin` (GitHub) |
-| Sync status | Đã push sau commit BGM Mix v1 user-approval |
+| Sync status | Đã push — milestone tiếp theo: end-to-end pilot video mới |
 
 **Untracked/modified ngoài scope** (tính đến 2026-05-19):
 - `docs/VFOS_VIDEO_EVIDENCE_STANDARD.md` — tạo trong vòng audit, chưa commit
