@@ -2,7 +2,7 @@
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
 > **Cập nhật lần cuối**: 2026-05-19
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `16ced1f`
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `fee664e`
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -149,7 +149,7 @@ VFOS là hệ thống hỗ trợ chiến lược **content-led affiliate**:
 
 ### ✅ Phần 3b — BGM Mix v1: ĐÃ CHỐT + USER REVIEW ĐẠT
 
-**Trạng thái**: v1 — production-ready, đã được user nghe và xác nhận "quá ổn" (2026-05-19)
+**Trạng thái**: v1 — production-ready, đã được user nghe 2 lần và xác nhận đạt (2026-05-19)
 
 **Tổng kết kỹ thuật**:
 - Script: `packages/voice/scripts/bgm-mix.ts` (cùng script v0, thêm `--voice-gain` + `--final-gain`)
@@ -172,7 +172,7 @@ VFOS là hệ thống hỗ trợ chiến lược **content-led affiliate**:
 - 2 streams: AV1 video + AAC audio, 53s
 - Không leak source audio
 
-**User review**: Nghe trực tiếp → "quá ổn" ✅
+**User review**: Nghe trực tiếp 2 lần → "quá ổn" + "quá ok" ✅ (2026-05-19, chốt)
 
 **Commit history**:
 
@@ -181,21 +181,23 @@ VFOS là hệ thống hỗ trợ chiến lược **content-led affiliate**:
 | `6382b75` | fix: shorten b10 CTA + add --only-blocks flag |
 | `7f55c59` | BGM Mix v0 chốt |
 | `6c6544c` | bgm_mix_v2 voice +30% (voice=1.716, max=−5.3dB) |
-| **`16ced1f`** | **fix: remove hardcoded _v1 from preview filename** |
+| `16ced1f` | fix: remove hardcoded _v1 from preview filename |
+| **`fee664e`** | **docs: record successful user approval of BGM mix v1 (commit chốt)** |
 
 ---
 
 ## 4. Phần đang chuẩn bị làm tiếp theo
 
-### ⏳ Phần 4 — Publish workflow: CHƯA BẮT ĐẦU
+### ⏳ Phần 4 — End-to-end pilot với video mới: CHƯA BẮT ĐẦU
 
 **Mục tiêu**:
-- Publish `yt_005_voice_blocks_bgm_preview_vi.mp4` lên Facebook Reels / TikTok VN
-- Gắn affiliate tag (Shopee / TikTok Shop)
-- Theo dõi performance (views, click, doanh thu)
-- Rút ra learning → áp dụng cho video tiếp theo
+- Chọn 1 video nguồn mới (TikTok TQ / YouTube Shorts)
+- Chạy toàn bộ pipeline hiện tại từ đầu đến cuối:
+  Script Writer → Voice Sync → BGM Mix → preview
+- Xác nhận pipeline hoạt động đúng với video thật ngoài yt_005
+- Rút ra gap nếu có → log vào roadmap, không mở scope ngay
 
-> **Ghi chú**: BGM Mix v1 đã user-review đạt (2026-05-19). Preview MP4 sẵn sàng publish. Bước tiếp theo là chuẩn bị nội dung caption, affiliate link, và đăng thực tế.
+> **Ghi chú**: BGM Mix v1 đã chốt sau 2 lần user-review (2026-05-19). Pipeline yt_005 đã validate đủ 3 phần. Bước tiếp theo là kiểm chứng pipeline trên video mới để chuẩn bị scale.
 
 ---
 
@@ -230,15 +232,14 @@ VFOS là hệ thống hỗ trợ chiến lược **content-led affiliate**:
 
 ## 7. Bước tiếp theo duy nhất
 
-> **Publish `yt_005` lên Facebook Reels / TikTok VN.**
+> **Chạy thử 1 video mới end-to-end qua toàn bộ pipeline VFOS hiện tại.**
 >
-> File sẵn sàng: `production/batch_001/yt_005/bgm_mix_v2/yt_005_voice_blocks_bgm_preview_vi.mp4`
+> Pipeline cần chạy đủ 3 phần:
+> 1. **Script Writer** — từ scene input → script_ai_vX.json
+> 2. **Voice Sync** — từ script → voice timeline MP3 + preview MP4
+> 3. **BGM Mix** — từ voice timeline → mixed audio + preview MP4 có nhạc
 >
-> Việc cần làm:
-> 1. Viết caption tiếng Việt + CTA affiliate
-> 2. Chuẩn bị link Shopee / TikTok Shop cho sản phẩm trong video
-> 3. Đăng lên Facebook Reels và/hoặc TikTok VN
-> 4. Theo dõi performance sau 24–48h đầu
+> Mục đích: xác nhận pipeline không bị coupled với yt_005, sẵn sàng scale sang video tiếp theo.
 
 ---
 
@@ -290,9 +291,9 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mốc tại thời điểm cập nhật trạng thái | `16ced1f` |
+| Commit mốc tại thời điểm cập nhật trạng thái | `fee664e` |
 | Remote | `origin` (GitHub) |
-| Sync status | Đã push sau commit BGM Mix v0 |
+| Sync status | Đã push sau commit BGM Mix v1 user-approval |
 
 **Untracked/modified ngoài scope** (tính đến 2026-05-19):
 - `docs/VFOS_VIDEO_EVIDENCE_STANDARD.md` — tạo trong vòng audit, chưa commit
