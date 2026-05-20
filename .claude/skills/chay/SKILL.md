@@ -1,3 +1,8 @@
+---
+name: chay
+description: Chạy VFOS Short-form Affiliate Factory v0 — pipeline yt-dlp → Script Writer → Voice Sync → BGM Mix → preview cho short-form video (15–90s, gadget/đồ gia dụng/đồ bếp) đăng Facebook Reels / TikTok VN gắn affiliate. Kích hoạt khi user gõ /chay, /chay <URL video>, hoặc /chay <chỉ thị ngắn>.
+---
+
 # Skill: /chay
 
 > **Skill ID**: `chay`
