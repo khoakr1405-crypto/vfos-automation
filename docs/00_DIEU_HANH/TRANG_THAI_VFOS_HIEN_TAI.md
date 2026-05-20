@@ -2,7 +2,7 @@
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
 > **Cập nhật lần cuối**: 2026-05-20
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `f06fa10`
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `80f7c0e`
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -203,19 +203,36 @@ VFOS là hệ thống hỗ trợ chiến lược **content-led affiliate**:
 
 ---
 
-### ⏳ Phần 5 — Đóng gói Con số 1 thành `/chay` skill: ĐANG LÀM
+### ✅ Phần 5 — Đóng gói Con số 1 thành `/chay` skill: ĐÃ CHỐT
 
-**Mục tiêu**:
-- Tạo skill `/chay` để user không cần dán prompt dài nữa
-- Đóng gói toàn bộ dây chuyền Short-form Factory thành 1 command
-- Tạo blueprint nhân bản cho Con số 2–10 sau này
+**Kết quả**:
+- `.claude/skills/chay/SKILL.md` — skill command vận hành Con số 1 (commit `83b1094`)
+- `docs/00_DIEU_HANH/VFOS_SHORTFORM_FACTORY_BLUEPRINT_V0.md` — blueprint nhân bản (commit `83b1094`)
+- Fix frontmatter để Claude Code đăng ký được slash command (commit `80f7c0e`)
 
-**Files tạo trong vòng này**:
-- `.claude/skills/chay/SKILL.md` — skill command vận hành Con số 1
-- `docs/00_DIEU_HANH/VFOS_SHORTFORM_FACTORY_BLUEPRINT_V0.md` — blueprint nhân bản
+---
 
-**Sau khi hoàn thành**:
-- Bước tiếp theo: Test `/chay` bằng lệnh ngắn thực tế trên 1 video mới
+### ⏸️ Phần 6 — Test `/chay` trên yt_007: DỪNG CÓ CHỦ ĐÍCH
+
+**Phân biệt rõ ràng**:
+- **`/chay` skill: HOẠT ĐỘNG ĐÚNG** — agent đọc skill, chạy đúng workflow theo thứ tự đến bước Script Writer
+- **Blocker nằm ở Script Writer**, không phải ở skill `/chay`
+
+**Pilot `yt_007`**: dừng có chủ đích sau bước Script Writer, KHÔNG phải thất bại mơ hồ.
+
+**Blocker phát hiện — Script Writer word-budget calibration cho video ngắn ≤50s**:
+
+| Video | Duration | Kết quả Script Writer |
+|---|---|---|
+| `yt_005` | 53s | ✅ PASS — 141 từ trong window |
+| `yt_006` | 59s | ✅ PASS — 165 từ trong window |
+| `yt_007` | **46s** | ❌ FAIL — word budget không khớp video ngắn |
+
+**Triệu chứng phụ**: Extender Pass có lúc **bù quá tay** và **hallucinate pattern "5 món"** (pattern từ video khác trong few-shot), tức là extender đang leak pattern qua video — không phải bám sát scene_input của video hiện tại.
+
+**Quyết định**:
+- **Artifacts `yt_007` giữ lại để debug**, KHÔNG xóa (`production/batch_001/yt_007/`)
+- Pilot `yt_007` không được publish, vai trò chuyển thành **test case debug** cho Script Writer calibration
 
 ---
 
@@ -250,16 +267,18 @@ VFOS là hệ thống hỗ trợ chiến lược **content-led affiliate**:
 
 ## 7. Bước tiếp theo duy nhất
 
-> **Test `/chay` bằng lệnh ngắn thực tế.**
+> **Fix Script Writer word-budget calibration cho video ngắn ≤50s.**
 >
-> Sau khi skill `/chay` được đóng gói:
-> 1. User gõ `/chay` hoặc `/chay <URL>` hoặc `/chay tự tìm video mới`
-> 2. Agent tự chạy dây chuyền Short-form Factory mà không cần prompt dài
-> 3. Xác nhận skill hoạt động đúng với video thật
+> **Lý do**: yt_007 (46s) FAIL dù yt_005 (53s) và yt_006 (59s) đều PASS — word budget hiện tại không tự co theo duration ngắn dưới 50s.
 >
-> Nếu test `/chay` thành công ổn định qua ≥3 video → xem xét tạo Con số 2.
+> **Hai việc phải làm song song** (không tách):
+> 1. **Calibration**: Sửa word-budget formula để PASS cho video ≤50s mà không phá yt_005/yt_006 đã PASS
+> 2. **Anti-leak**: Kiểm tra Extender Pass không leak pattern từ video khác — yt_007 bị hallucinate "5 món" (pattern từ yt_006) là dấu hiệu few-shot leakage
 >
-> **Command vận hành**: `/chay` — đóng gói tại `.claude/skills/chay/SKILL.md`
+> **Test case debug**: `production/batch_001/yt_007/` (giữ lại, không xóa)
+> **Acceptance**: yt_005 + yt_006 + yt_007 đều PASS quality guard, không có pattern leak chéo giữa video.
+>
+> **KHÔNG mở scope** sang Con số 2, watermark, publish, hay Knob nhân bản trong vòng fix này.
 
 ---
 
@@ -311,16 +330,12 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mốc tại thời điểm cập nhật trạng thái | `f06fa10` |
+| Commit mốc tại thời điểm cập nhật trạng thái | `80f7c0e` |
 | Remote | `origin` (GitHub) |
-| Sync status | Đã push — milestone tiếp theo: test `/chay` trên video thật |
+| Sync status | Đã push — milestone tiếp theo: fix Script Writer word-budget calibration cho ≤50s |
 
 **Untracked/modified ngoài scope** (tính đến 2026-05-20):
-- `docs/VFOS_VIDEO_EVIDENCE_STANDARD.md` — tạo trong vòng audit, chưa commit
-- `.claude/skills/vfos_video_analysis_evidence_gate.md` — tạo trong vòng audit, chưa commit
-- `apps/kernel/src/syscalls/voe.ts` — sửa VOE prompt trong vòng audit, chưa commit
-- `.claude/skills/chay/SKILL.md` — skill /chay, commit cùng vòng packaging
-- `docs/00_DIEU_HANH/VFOS_SHORTFORM_FACTORY_BLUEPRINT_V0.md` — blueprint nhân bản, commit cùng vòng packaging
+- `production/batch_001/yt_007/` — artifacts pilot dừng, GIỮ LẠI để debug, không xóa
 - Binary media (không commit): tất cả `.mp4`, `.mp3` trong `production/` — đã có `.gitignore`
 
 > File media là local artifact, đã có `.gitignore`, không commit binary.
