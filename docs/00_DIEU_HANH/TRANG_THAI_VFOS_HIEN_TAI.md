@@ -236,6 +236,34 @@ VFOS là hệ thống hỗ trợ chiến lược **content-led affiliate**:
 
 ---
 
+### ✅ Phần 7 — Permission Autonomy v0 cho `/chay`: ĐÃ CHỐT (2026-05-20)
+
+**Mục tiêu**: Giảm số prompt xin quyền lặp lại khi chạy `/chay` để chuẩn bị scale 50–100 video/ngày.
+
+**Audit dựa trên test yt_007** — các nhóm prompt lặp lại:
+- WebSearch + WebFetch(youtube.com) cho MODE 3 auto-source
+- `yt-dlp` tải video nguồn
+- `ffprobe` kiểm tra video
+- `ffmpeg` trích keyframe + xử lý media
+- `pnpm script:write / voice:sync / bgm:mix`
+- `mkdir` tạo output dir
+- `Start-Process` mở preview MP4
+- `git add / commit / push` lên master
+
+**File đã cập nhật**:
+- `.claude/settings.json` — project-level allow/deny/ask (commit vào repo)
+- `.claude/settings.local.json` — clean về `allow: []` (rules đã promote lên project)
+
+**Auto-approve (không hỏi nữa)**: `pnpm *`, `node *`, `tsx *`, `yt-dlp *`, `ffprobe *`, `ffmpeg *`, `mkdir *`, `Start-Process *`, `git add/commit/push origin *`, `git checkout -- *`, `git restore *`, `WebSearch`, `WebFetch` cho youtube.com/youtu.be/tiktok.com, `Read/Edit/Write/Glob/Grep(**)`.
+
+**Vẫn deny tuyệt đối**: `git push --force*` (mọi biến thể), `git push --delete *`, `git push -d *`, `git reset --hard*`, `git clean -fd/fx/fdx*`, `git branch -D *`, `rm -rf*`, `rm -fr*`, `curl|sh`, `wget|sh`, `Remove-Item -Recurse -Force *`, `iwr|iex`.
+
+**Vẫn ask (xác nhận tay)**: `gh pr create/merge*`, `gh repo delete*`, `git push upstream *`, sửa/xóa file load-bearing config (`biome.json`, `.env*`, `tsconfig*`, `package.json`, `.gitignore`).
+
+**KHÔNG bị mở**: Auto-publish FB/TikTok (không có rule nào allow), shell command lạ ngoài pipeline (default ask).
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
