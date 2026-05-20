@@ -1,7 +1,7 @@
 export { ElevenLabsClient } from './elevenlabs-client.js';
 export { loadDotEnv } from './load-env.js';
 export { probeAudioDuration } from './duration-probe.js';
-export { resolveVoice, resolveVoicePreset, VALID_PRESETS } from './voice-presets.js';
+export { resolveVoice } from './voice-presets.js';
 export type {
   AlignmentStatus,
   BlockVoiceResult,

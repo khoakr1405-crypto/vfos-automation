@@ -42,8 +42,8 @@ short-form video tiếng Việt có voice-over AI + BGM, sẵn sàng đăng Face
 | 7. QC | Built-in trong bgm-mix.ts | preview.mp4 | volumedetect report | FFmpeg |
 
 **Params đã chốt (Con số 1 — Short-form gadget)**:
-- Voice: ElevenLabs `eleven_v3`, speed=1.3, model default
-- Voice preset default: `voice_01` (`xPEfmymXC4WdBxGMznS7`)
+- Voice: ElevenLabs `eleven_v3`, speed=1.3
+- VFOS brand voice: `ZqE9vIHPcrC35dZv0Svu` — MỘT giọng duy nhất cho mọi video (chốt 2026-05-20). Multi-preset `voice_01..05` đã retire.
 - BGM volume: 0.0972 (-20.2 dBFS), Voice gain: 1.716 (+4.7 dB), Final gain: 1.3 (+2.3 dB)
 - BGM fadein: 1.5s, fadeout: 3.0s
 - BGM source default: `yt_005_bgm_v2_candidate_b.mp3` (ElevenLabs Music API, "Light cheerful, bright piano")
@@ -97,13 +97,13 @@ short-form video tiếng Việt có voice-over AI + BGM, sẵn sàng đăng Face
 | Yếu tố | Con số 1 (hiện tại) | Có thể thay |
 |---|---|---|
 | Script style | Content-led, reviewer ngắn, không quảng cáo cứng | Hài hước, storytelling, comparison |
-| Voice gender | Linh hoạt (voice_01–05) | Giọng chuyên biệt theo ngách |
+| Voice | 1 brand voice `ZqE9vIHPcrC35dZv0Svu` (Eleven v3) — cố định, không random | Đổi voice khác cho ngách khác (CHỈ khi user duyệt rõ ràng) |
 | BGM style | Light cheerful, bright piano | Lo-fi, energetic, hiphop... |
 | CTA style | Soft ("link bio nhé") | Stronger ("order ngay...") |
 | Text overlay | Không có (thủ công CapCut) | Tự động caption |
 | Speed | 1.3x TTS | 1.0x hoặc 1.5x |
 
-**Cách override**: Truyền `tone`, `cta_style`, `affiliate_angle` khác trong scene_input.json + chọn voice preset khác + thay BGM file.
+**Cách override**: Truyền `tone`, `cta_style`, `affiliate_angle` khác trong scene_input.json + thay BGM file. Voice CHỈ đổi khi có quyết định chiến lược (không đổi tự động theo ngách).
 
 ---
 
@@ -193,5 +193,5 @@ Những cải tiến core (hưởng lợi tất cả con) nên làm theo thứ t
 - Project memory: `docs/00_DIEU_HANH/TRANG_THAI_VFOS_HIEN_TAI.md`
 - Script Writer doc: `docs/SCRIPT_WRITER.md`
 - Video evidence standard: `docs/VFOS_VIDEO_EVIDENCE_STANDARD.md`
-- Voice presets: `packages/voice/src/voice-presets.ts`
+- Voice resolver: `packages/voice/src/voice-presets.ts` (single brand voice)
 - Schema types: `packages/script-writer/src/types.ts`

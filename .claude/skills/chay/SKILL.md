@@ -127,15 +127,15 @@ STEP 6   Chạy AI Script Writer
 STEP 7   Đánh giá script
          → Đọc script_ai_v1.txt toàn bộ — có tự nhiên không? Hook kéo view?
          → Không tô vẽ kết quả — nếu script kém thì nói thật
-STEP 8   Chọn voice preset
-         → Default: voice_01 (xPEfmymXC4WdBxGMznS7) — đã validate
-         → Nếu tone video khác (nam giọng trầm, giọng trẻ...): xem xét voice_02–05
-         → Ghi rõ preset chọn + lý do
+STEP 8   Voice config
+         → VFOS dùng MỘT brand voice duy nhất: `ZqE9vIHPcrC35dZv0Svu` (Eleven v3).
+           Lấy từ `ELEVENLABS_VOICE_ID` trong .env — KHÔNG truyền `--voice-id`.
+         → KHÔNG random giọng, KHÔNG đổi giọng theo tone video. Một giọng cho mọi video.
+         → Multi-preset `voice_01..voice_05` đã retire — KHÔNG dùng lại.
 STEP 9   Chạy Block-based Voice Sync
-         → pnpm voice:sync --script production/batch_001/<video_id>/script_ai_v1.json
-                          --source production/batch_001/<video_id>/<video_id>_source.mp4
+         → pnpm voice:sync --script-json production/batch_001/<video_id>/script_ai_v1_extended.json
                           --output-dir production/batch_001/<video_id>/voice_sync_v0
-                          --voice-preset voice_01 --speed 1.3
+                          --speed 1.3
          → Đọc manifest: kiểm tra overflow
          → Nếu có block overflow_minor (≤0.5s): chấp nhận
          → Nếu có block overflow (>0.5s): rút ngắn text block đó, regenerate --only-blocks <id>
@@ -323,7 +323,7 @@ Sau khi hoàn thành, báo cáo theo format:
 
 - Pipeline code: `packages/script-writer/`, `packages/voice/`
 - BGM source mặc định: `production/batch_001/yt_005/bgm/yt_005_bgm_v2_candidate_b.mp3`
-- Voice presets: `packages/voice/src/voice-presets.ts`
+- Voice resolver: `packages/voice/src/voice-presets.ts` (single brand voice, không còn multi-preset)
 - Schema types: `packages/script-writer/src/types.ts`
 - Blueprint nhân bản: `docs/00_DIEU_HANH/VFOS_SHORTFORM_FACTORY_BLUEPRINT_V0.md`
 - Project memory: `docs/00_DIEU_HANH/TRANG_THAI_VFOS_HIEN_TAI.md`

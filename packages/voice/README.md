@@ -136,78 +136,59 @@ Nếu thiếu ffprobe, audio vẫn được lưu — chỉ bỏ qua bước đo 
 
 ---
 
-## Voice Preset Library v0
+## Voice strategy — VFOS brand voice (chốt 2026-05-20)
 
-Operator có thể chọn giọng theo tên preset thay vì truyền voice ID thủ công.
+VFOS dùng **đúng 1 giọng** cho mọi output. Multi-preset `voice_01..voice_05`
+đã được retire — không dùng nữa, không gợi ý nữa.
 
-### Preset names
+| Thiết lập | Giá trị |
+|---|---|
+| Brand voice ID | `ZqE9vIHPcrC35dZv0Svu` |
+| Model | `eleven_v3` (audio tags `[excited]`, `[whispers]`... chỉ hoạt động với v3) |
+| Env var | `ELEVENLABS_VOICE_ID` + `ELEVENLABS_MODEL_ID` |
 
-| Preset     | Env var                  |
-|------------|--------------------------|
-| `default`  | `ELEVENLABS_VOICE_ID`    |
-| `voice_01` | `ELEVENLABS_VOICE_ID_01` |
-| `voice_02` | `ELEVENLABS_VOICE_ID_02` |
-| `voice_03` | `ELEVENLABS_VOICE_ID_03` |
-| `voice_04` | `ELEVENLABS_VOICE_ID_04` |
-| `voice_05` | `ELEVENLABS_VOICE_ID_05` |
-
-### Cách khai báo trong `.env`
+### `.env`
 
 ```dotenv
-ELEVENLABS_VOICE_ID=<default_voice_id>
-ELEVENLABS_VOICE_ID_01=<voice_id_1>
-ELEVENLABS_VOICE_ID_02=<voice_id_2>
-# ...
+ELEVENLABS_API_KEY=<your_key>
+ELEVENLABS_VOICE_ID=ZqE9vIHPcrC35dZv0Svu
+ELEVENLABS_MODEL_ID=eleven_v3
 ```
 
-### Dùng với `voice:generate`
+### Dùng `voice:generate`
 
 ```powershell
-# Không truyền flag → dùng preset "default" (ELEVENLABS_VOICE_ID)
+# Không cần flag — tự lấy brand voice + model v3 từ .env
 pnpm voice:generate --input script.txt --output out.mp3
 
-# Chọn preset cụ thể
-pnpm voice:generate --input script.txt --output out_v2.mp3 --voice-preset voice_02
-
-# Raw override (backward-compat, không ghi vào manifest)
+# Debug A/B với 1 voice khác (KHÔNG dùng trong /chay automation)
 pnpm voice:generate --input script.txt --output out.mp3 --voice-id <raw_id>
 ```
 
-### Dùng với `voice:sync`
+### Dùng `voice:sync`
 
 ```powershell
-# Dùng preset voice_01 cho toàn bộ sync
 pnpm voice:sync `
-  --script-json production/batch_001/yt_005/script_ai_v4_gpt4o_extended_polish.json `
-  --output-dir production/batch_001/yt_005/voice_sync_v0_preset1 `
-  --voice-preset voice_01
-
-# Regenerate 1 block với preset khác
-pnpm voice:sync `
-  --script-json production/batch_001/yt_005/script_ai_v4_gpt4o_extended_polish.json `
-  --output-dir production/batch_001/yt_005/voice_sync_v0_preset2 `
-  --voice-preset voice_02 `
-  --only-blocks b1
+  --script-json production/batch_001/<vid>/script_ai_v1_extended.json `
+  --output-dir  production/batch_001/<vid>/voice_sync_v0
 ```
 
-### Manifest traceability
+### Manifest
 
-`voice_sync_manifest.json` sẽ ghi:
+`voice_sync_manifest.json` ghi:
 ```json
 {
-  "voice_preset": "voice_02",
-  "voice_id": "<resolved_id>",
-  ...
+  "voice_preset": "vfos_default",
+  "voice_id": "ZqE9vIHPcrC35dZv0Svu",
+  "model_id": "eleven_v3"
 }
 ```
 
-Khi đọc manifest biết ngay block sync này dùng preset giọng nào.
-
 ### Nguyên tắc
 
-- **Operator chọn preset có chủ đích** — chưa random voice tự động ở v0.
-- Không hardcode voice ID trong source code.
-- Preset mới: khai báo env var + thêm vào `PRESET_ENV_MAP` trong `src/voice-presets.ts`.
+- **Không random giọng.** `/chay` không bao giờ đổi giọng nếu user không yêu cầu.
+- **Không hardcode voice ID** trong code — luôn qua env.
+- **Override `--voice-id <raw>`** chỉ là debug knob. Không dùng trong automation.
 
 ---
 

@@ -2,7 +2,7 @@
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
 > **Cập nhật lần cuối**: 2026-05-20
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `943ecc7` (Phần 10 commit sẽ ghi sau khi push)
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `3b52b97` (Phần 11 commit sẽ ghi sau khi push)
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -73,19 +73,10 @@ VFOS là hệ thống hỗ trợ chiến lược **content-led affiliate**:
 
 ---
 
-### ✅ Voice Preset Library v0: ĐÃ CHỐT
+### ⚠️ Voice Preset Library v0: ĐÃ RETIRE (xem Phần 11)
 
-**Trạng thái**: v0 — production-ready (tính đến 2026-05-19)
-
-**Tổng kết kỹ thuật**:
-- Module: `packages/voice/src/voice-presets.ts`
-- Preset map: `default` → `ELEVENLABS_VOICE_ID`, `voice_01`–`voice_05` → `ELEVENLABS_VOICE_ID_01..05`
-- `resolveVoice()`: priority chain — `--voice-id` (raw) > `--voice-preset` (lookup) > env default
-- Flag `--voice-preset` thêm vào cả `voice:generate` và `voice:sync`
-- Manifest `voice_sync_manifest.json` ghi cả `voice_preset` và `voice_id` để traceability
-- Backward-compat: không truyền flag → tiếp tục dùng `ELEVENLABS_VOICE_ID` như cũ
-
-**Commit**: `53341ea` — feat: add Voice Preset Library v0 (–voice-preset flag, resolveVoice, manifest traceability)
+**Lịch sử**: v0 chạy từ 2026-05-19 với 6 preset (`default` + `voice_01..05`).
+**Tình trạng hiện tại (2026-05-20)**: Đã retire — VFOS chuyển sang 1 brand voice duy nhất, xem Phần 11. `voice-presets.ts` còn nhưng chỉ là single-voice resolver.
 
 ---
 
@@ -377,6 +368,42 @@ VFOS là hệ thống hỗ trợ chiến lược **content-led affiliate**:
 
 ---
 
+### ✅ Phần 11 — VFOS Brand Voice consolidation (1 giọng duy nhất + Eleven v3): ĐÃ CHỐT (2026-05-20)
+
+**Quyết định chiến lược**: VFOS chuyển từ multi-preset (`voice_01..voice_05`) sang **MỘT giọng duy nhất** cho mọi output. Mục tiêu: thống nhất giọng thương hiệu trước khi cân nhắc mở lại multi-voice cho ngách khác.
+
+**Thiết lập mới**:
+- Brand voice ID: `ZqE9vIHPcrC35dZv0Svu`
+- Model: `eleven_v3` (audio tags `[excited]`, `[whispers]`... chỉ hoạt động với v3)
+- Env: `ELEVENLABS_VOICE_ID=ZqE9vIHPcrC35dZv0Svu` + `ELEVENLABS_MODEL_ID=eleven_v3`
+
+**Đã sửa**:
+- `.env` — xóa `ELEVENLABS_VOICE_ID_01..05`, set `ELEVENLABS_VOICE_ID=ZqE9vIHPcrC35dZv0Svu`, thêm `ELEVENLABS_MODEL_ID=eleven_v3`.
+- `.env.example` — gỡ section "Voice Presets" (5 dòng `_01..05`), gộp thành 1 brand voice + comment giải thích.
+- `packages/voice/src/voice-presets.ts` — rewrite: chỉ còn `resolveVoice({ voiceId? })` đọc env default hoặc raw `--voice-id` debug override. Xóa `PRESET_ENV_MAP`, `VALID_PRESETS`, `resolveVoicePreset`. File name giữ để không phá import.
+- `packages/voice/src/index.ts` — bỏ export `VALID_PRESETS`, `resolveVoicePreset`.
+- `packages/voice/scripts/generate.ts` + `sync.ts` — bỏ flag `--voice-preset`. Vẫn giữ `--voice-id` raw cho debug A/B. Comment header cập nhật.
+- `packages/voice/README.md` — rewrite section "Voice Preset Library v0" thành "VFOS brand voice strategy" (1 giọng).
+- `.claude/skills/chay/SKILL.md` — STEP 8 rewrite: KHÔNG dùng `voice_01..05`, KHÔNG random giọng. STEP 9 bỏ `--voice-preset voice_01`.
+- `docs/00_DIEU_HANH/VFOS_SHORTFORM_FACTORY_BLUEPRINT_V0.md` — params đã chốt + Knob C "Edit Profile" cập nhật: voice = brand voice cố định, không "linh hoạt voice_01–05".
+- `packages/voice/scripts/sync.ts:204` — fix pre-existing TS2532 error (results[i] possibly undefined). Side effect cleanup, không phải scope chính.
+
+**Smoke test thật (2026-05-20)**:
+```
+pnpm voice:generate --input production/smoke/voice_smoke.txt --output ...
+  Preset     : vfos_default
+  Voice ID   : ZqE9vIHPcrC35dZv0Svu     ← BRAND VOICE đúng
+  Model      : eleven_v3                  ← V3 đúng
+  Generated  : 4.32s mp3, 130 kb/s
+  Status     : PASS
+```
+
+**Override `--voice-id <raw>` giữ lại** vì sao: debug knob để A/B so brand voice với candidate khác khi cần. KHÔNG dùng trong /chay automation — skill explicitly cấm.
+
+**Trạng thái**: `pnpm --filter @vfos/voice typecheck` PASS. Biome trên file đã refactor (voice-presets.ts, index.ts) clean. Các file khác trong `packages/voice/` có 42 biome warning pre-existing — NOT touched (ngoài scope).
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
@@ -471,9 +498,9 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mốc tại thời điểm cập nhật trạng thái | `943ecc7` |
+| Commit mốc tại thời điểm cập nhật trạng thái | `3b52b97` |
 | Remote | `origin` (GitHub) |
-| Sync status | Đã push — milestone tiếp theo: fix Voice Sync autonomy (auto-handle SILENT + overflow trim) |
+| Sync status | Đã push — milestone tiếp theo: fix Voice Sync autonomy (auto-handle SILENT + overflow trim). Brand voice + Eleven v3 đã chốt ở Phần 11. |
 
 **Trạng thái artifacts production** (tính đến 2026-05-20):
 - `production/batch_001/yt_007/` (text artifacts): **ĐÃ commit** ở `df1609e` — scene_input, script v1/v2/v3, manifest BGM. Dùng làm reference cho vòng Voice Sync autonomy.

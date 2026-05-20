@@ -2,14 +2,18 @@
 /**
  * CLI: generate Vietnamese voiceover via ElevenLabs TTS API.
  *
+ * VFOS standardizes on ONE brand voice (set ELEVENLABS_VOICE_ID in .env)
+ * and model = `eleven_v3`. `--voice-id` is kept only for ad-hoc debug
+ * comparisons; do not use it in /chay automation.
+ *
  * Usage:
  *   pnpm voice:generate --input <script.txt> --output <out.mp3> [options]
  *
  * Options:
  *   --input         Path to plain-text script file (required)
  *   --output        Output MP3 path (required)
- *   --voice-preset  Named preset: default, voice_01…voice_05 (see voice-presets.ts)
- *   --voice-id      Raw ElevenLabs voice ID — direct override, use --voice-preset instead
+ *   --voice-id      Raw ElevenLabs voice ID — debug override only.
+ *                   When omitted, uses ELEVENLABS_VOICE_ID (brand voice).
  *   --model-id      ElevenLabs model ID (overrides ELEVENLABS_MODEL_ID env, default: eleven_v3)
  *                   Vietnamese-compatible: eleven_v3, eleven_flash_v2_5
  *                   DO NOT use eleven_multilingual_v2 — no Vietnamese support
@@ -19,15 +23,15 @@
  *   --speed         0.7–1.3, default 1.0
  */
 
-import { parseArgs } from 'node:util';
-import { readFile, mkdir } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
+import { mkdir, readFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
-import { loadDotEnv } from '../src/load-env.js';
-import { ElevenLabsClient } from '../src/elevenlabs-client.js';
+import { parseArgs } from 'node:util';
 import { probeAudioDuration } from '../src/duration-probe.js';
-import { resolveVoice } from '../src/voice-presets.js';
+import { ElevenLabsClient } from '../src/elevenlabs-client.js';
+import { loadDotEnv } from '../src/load-env.js';
 import type { VoiceSettings } from '../src/types.js';
+import { resolveVoice } from '../src/voice-presets.js';
 
 loadDotEnv();
 
@@ -35,15 +39,14 @@ loadDotEnv();
 
 const { values } = parseArgs({
   options: {
-    input:           { type: 'string' },
-    output:          { type: 'string' },
-    'voice-preset':  { type: 'string' },
-    'voice-id':      { type: 'string' },
-    'model-id':      { type: 'string' },
-    stability:       { type: 'string', default: '0.50' },
-    similarity:      { type: 'string', default: '0.75' },
-    style:           { type: 'string', default: '0.40' },
-    speed:           { type: 'string', default: '1.0' },
+    input: { type: 'string' },
+    output: { type: 'string' },
+    'voice-id': { type: 'string' },
+    'model-id': { type: 'string' },
+    stability: { type: 'string', default: '0.50' },
+    similarity: { type: 'string', default: '0.75' },
+    style: { type: 'string', default: '0.40' },
+    speed: { type: 'string', default: '1.0' },
   },
   allowPositionals: false,
   strict: true,
@@ -69,7 +72,6 @@ if (!apiKey) {
 
 const { voiceId, preset: voicePreset } = resolveVoice({
   voiceId: values['voice-id'],
-  voicePreset: values['voice-preset'],
 });
 
 const modelId = values['model-id'] ?? process.env['ELEVENLABS_MODEL_ID'] ?? 'eleven_v3';
@@ -93,10 +95,10 @@ const wordCount = scriptText.split(/\s+/).filter(Boolean).length;
 // ── Settings ─────────────────────────────────────────────────────────────────
 
 const settings: VoiceSettings = {
-  stability:        parseFloat(values.stability!),
-  similarity_boost: parseFloat(values.similarity!),
-  style:            parseFloat(values.style!),
-  speed:            parseFloat(values.speed!),
+  stability: Number.parseFloat(values.stability!),
+  similarity_boost: Number.parseFloat(values.similarity!),
+  style: Number.parseFloat(values.style!),
+  speed: Number.parseFloat(values.speed!),
 };
 
 const outputPath = resolve(values.output);
@@ -148,9 +150,7 @@ try {
   console.log('');
 } catch (err) {
   console.warn('');
-  console.warn(
-    'Warning: Could not probe duration (ffprobe not found or FFPROBE_PATH not set)',
-  );
+  console.warn('Warning: Could not probe duration (ffprobe not found or FFPROBE_PATH not set)');
   console.warn('  Audio was saved. Set FFPROBE_PATH to enable duration checking.');
   console.warn(err instanceof Error ? err.message : String(err));
 }
