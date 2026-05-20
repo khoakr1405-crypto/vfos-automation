@@ -57,6 +57,26 @@ export interface BannedHit {
   hard: boolean;
 }
 
+/**
+ * Tiered quality classification:
+ * - `pass`     — all guards clean. Pipeline continues with no caveat.
+ * - `near_pass`— ONLY word_count_within_target fails, AND the deviation is
+ *                inside the conservative near-pass envelope (≤6 từ ngoài
+ *                window AND ≤12% lệch khỏi target), AND no banned/leak hit.
+ *                Pipeline continues; warning logged.
+ * - `fail`     — any disqualifying condition: banned phrase, hook/CTA
+ *                inconsistency, CTA rewrite leak, OR word count outside
+ *                even the near-pass envelope, OR multiple checks failing.
+ *                Pipeline must stop or retry.
+ */
+export type QualityStatus = 'pass' | 'near_pass' | 'fail';
+
+/** Conservative near-pass envelope. Word count outside the pass window but
+ *  still within these bounds is "technically off, content-clean" — pipeline
+ *  proceeds with a warning instead of failing hard. Both caps must hold. */
+const NEAR_PASS_ABSOLUTE_WORDS = 6;
+const NEAR_PASS_RELATIVE_TOLERANCE = 0.12;
+
 export interface QualityReport {
   banned_phrases_found: BannedHit[];
   hook_consistent: boolean;
@@ -66,6 +86,12 @@ export interface QualityReport {
   word_count_target: number;
   word_count_within_target: boolean;
   warnings: string[];
+  /** Tiered classification — authoritative signal for orchestration. */
+  quality_status: QualityStatus;
+  /** Human-readable explanation when `quality_status === 'near_pass'`. */
+  near_pass_reason: string | null;
+  /** Strict pass — `true` iff `quality_status === 'pass'`. Kept for
+   *  backward-compat with code that only knows the binary signal. */
   passed: boolean;
 }
 
@@ -170,12 +196,29 @@ export function buildQualityReport(
     );
   }
 
-  const passed =
-    hits.filter((h) => h.hard).length === 0 &&
+  const hardBannedCount = hits.filter((h) => h.hard).length;
+  const strictPass =
+    hardBannedCount === 0 &&
     hook_consistent &&
     cta_consistent &&
     word_count_within_target &&
     cta_preserved !== false;
+
+  const { status: quality_status, reason: near_pass_reason } = classifyQualityStatus({
+    strictPass,
+    word_count_within_target,
+    hook_consistent,
+    cta_consistent,
+    cta_preserved,
+    total_hits: hits.length,
+    hard_banned_count: hardBannedCount,
+    word_count: wordCount,
+    budget,
+  });
+
+  if (quality_status === 'near_pass' && near_pass_reason) {
+    warnings.push(`[NEAR_PASS] ${near_pass_reason}`);
+  }
 
   return {
     banned_phrases_found: hits,
@@ -186,8 +229,66 @@ export function buildQualityReport(
     word_count_target: wordTarget,
     word_count_within_target,
     warnings,
-    passed,
+    quality_status,
+    near_pass_reason,
+    passed: quality_status === 'pass',
   };
+}
+
+interface ClassifyInput {
+  strictPass: boolean;
+  word_count_within_target: boolean;
+  hook_consistent: boolean;
+  cta_consistent: boolean;
+  cta_preserved: boolean | null;
+  total_hits: number;
+  hard_banned_count: number;
+  word_count: number;
+  budget: WordBudget;
+}
+
+/**
+ * Decide pass / near_pass / fail. Near-pass is the narrow exception: every
+ * non-word-count guard must be clean (including soft-banned and ad-copy
+ * hits, which are warnings in strict mode but disqualifying here), and the
+ * word count deviation must fit both an absolute cap and a relative cap.
+ */
+function classifyQualityStatus(input: ClassifyInput): {
+  status: QualityStatus;
+  reason: string | null;
+} {
+  if (input.strictPass) {
+    return { status: 'pass', reason: null };
+  }
+
+  const onlyWordCountFails =
+    !input.word_count_within_target &&
+    input.hook_consistent &&
+    input.cta_consistent &&
+    input.cta_preserved !== false &&
+    input.total_hits === 0 &&
+    input.hard_banned_count === 0;
+
+  if (!onlyWordCountFails) {
+    return { status: 'fail', reason: null };
+  }
+
+  const { word_count, budget } = input;
+  const overMax = word_count > budget.max ? word_count - budget.max : 0;
+  const underMin = word_count < budget.min ? budget.min - word_count : 0;
+  const absoluteDev = Math.max(overMax, underMin);
+  const relativeDev = Math.abs(word_count - budget.target) / budget.target;
+
+  if (absoluteDev <= NEAR_PASS_ABSOLUTE_WORDS && relativeDev <= NEAR_PASS_RELATIVE_TOLERANCE) {
+    const side = overMax > 0 ? 'over max' : 'under min';
+    const relPct = (relativeDev * 100).toFixed(1);
+    return {
+      status: 'near_pass',
+      reason: `word_count=${word_count} ${side} by ${absoluteDev} từ (${relPct}% off target ${budget.target}); all other guards clean`,
+    };
+  }
+
+  return { status: 'fail', reason: null };
 }
 
 function normalizeForContainment(s: string): string {

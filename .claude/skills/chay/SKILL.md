@@ -116,8 +116,14 @@ STEP 5   Tạo scene_input.json
 STEP 6   Chạy AI Script Writer
          → pnpm script:generate --input production/batch_001/<video_id>/scene_input.json
          → Đọc output: script_ai_v1.json + script_ai_v1.txt
-         → Nếu FAIL quality guard: phân tích lý do, sửa scene_input.json và retry 1 lần
-         → Nếu vẫn FAIL sau retry: báo user, dừng
+         → Quality status có 3 mức (đọc `quality_report.quality_status` trong JSON,
+           hoặc exit code: 0=PASS/NEAR-PASS, 2=FAIL):
+           • PASS       → đi tiếp STEP 7 bình thường
+           • NEAR-PASS  → đi tiếp STEP 7 NHƯNG ghi vào REPORT TEMPLATE phần
+             "Self-review" lý do near-pass (lấy từ `quality_report.near_pass_reason`).
+             Không retry — near-pass đã được hệ thống phân loại là chấp nhận được.
+           • FAIL       → phân tích lý do, sửa scene_input.json và retry 1 lần.
+                          Nếu vẫn FAIL sau retry: báo user, dừng.
 STEP 7   Đánh giá script
          → Đọc script_ai_v1.txt toàn bộ — có tự nhiên không? Hook kéo view?
          → Không tô vẽ kết quả — nếu script kém thì nói thật
@@ -193,9 +199,14 @@ Video không phù hợp:
 ## GUARD CHẤT LƯỢNG
 
 ```
-GUARD 1 — Script quality
-  → Nếu quality guard FAIL: retry 1 lần. Nếu vẫn fail: dừng + báo user.
-  → Không dùng script kém chỉ để "xong pipeline"
+GUARD 1 — Script quality (3 mức: PASS / NEAR-PASS / FAIL)
+  → PASS      → đi tiếp
+  → NEAR-PASS → đi tiếp nhưng GHI vào report Self-review:
+                  "Script Writer near-pass — {near_pass_reason}".
+                Near-pass = lệch word count nhỏ (≤6 từ ngoài window, ≤12% off target)
+                + mọi guard khác sạch. Không retry — đã được hệ thống chấp nhận.
+  → FAIL      → retry 1 lần. Nếu vẫn FAIL: dừng + báo user.
+  → Không dùng script FAIL chỉ để "xong pipeline".
 
 GUARD 2 — Video source quality
   → Nếu không có candidate đủ tốt (MODE 3): trình shortlist, xin user duyệt

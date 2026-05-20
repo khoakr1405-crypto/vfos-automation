@@ -24,7 +24,12 @@ import { dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { loadDotEnv } from '../src/load-env.js';
 import { ScriptWriterClient } from '../src/openai-client.js';
-import { type QualityReport, buildQualityReport, computeWordBudget } from '../src/quality-guard.js';
+import {
+  type QualityReport,
+  type QualityStatus,
+  buildQualityReport,
+  computeWordBudget,
+} from '../src/quality-guard.js';
 import type { GenerateResult, ScriptOutput } from '../src/types.js';
 import { ScriptWriterInputSchema } from '../src/types.js';
 
@@ -134,8 +139,12 @@ const pass1Quality = buildQualityReport(pass1.output, input.duration_target_s);
 await writeOutput(outputPath, textOutputPath, input, pass1, pass1Quality);
 printResult('Pass 1', pass1.output, pass1.meta, pass1Quality);
 
+// Extender only runs when pass 1 is a true `fail` (under target). Near-pass
+// is already acceptable, so we skip the extra API call to avoid risking a
+// regression on hook/CTA preservation just to nudge the count.
 const shouldExtend =
   extenderEnabled &&
+  pass1Quality.quality_status === 'fail' &&
   pass1Quality.hook_consistent &&
   pass1Quality.cta_consistent &&
   pass1Quality.banned_phrases_found.filter((h) => h.hard).length === 0 &&
@@ -156,6 +165,8 @@ if (!shouldExtend) {
   console.log('── Extender ────────────────────────────────────────────────');
   if (pass1Quality.passed) {
     console.log('  Skipped: pass 1 already PASSED quality guard.');
+  } else if (pass1Quality.quality_status === 'near_pass') {
+    console.log('  Skipped: pass 1 already NEAR-PASS (no extender needed).');
   } else if (!pass1Quality.hook_consistent || !pass1Quality.cta_consistent) {
     console.log('  Skipped: hook/CTA inconsistency — extender only fixes length, not structure.');
   } else if (pass1Quality.banned_phrases_found.some((h) => h.hard)) {
@@ -167,7 +178,7 @@ if (!shouldExtend) {
   console.log(`Files: ${outputPath}`);
   if (textOutputPath) console.log(`       ${textOutputPath}`);
   console.log('');
-  process.exit(pass1Quality.passed ? 0 : 1);
+  process.exit(exitCodeFor(pass1Quality.quality_status));
 }
 
 const {
@@ -221,7 +232,18 @@ if (extenderOutputPath) console.log(`  extended JSON: ${extenderOutputPath}`);
 if (extenderTextOutputPath) console.log(`  extended TXT : ${extenderTextOutputPath}`);
 console.log('');
 
-process.exit(pass2Quality.passed ? 0 : 2);
+process.exit(exitCodeFor(pass2Quality.quality_status));
+
+/**
+ * Exit-code contract — orchestration consumes this:
+ *   0  pass or near_pass — pipeline continues
+ *   2  fail — pipeline must stop or retry
+ * Other non-zero codes earlier in the script signal config/IO errors
+ * (missing input, OpenAI failure), not quality failures.
+ */
+function exitCodeFor(status: QualityStatus): number {
+  return status === 'fail' ? 2 : 0;
+}
 
 async function writeOutput(
   jsonPath: string,
@@ -266,7 +288,16 @@ function printResult(
   console.log(`  Response ID : ${meta.response_id}`);
   console.log('');
   console.log(`── Quality (${label}) ────────────────────────────────────`);
-  console.log(`  Passed         : ${quality.passed ? 'YES' : 'NO'}`);
+  const statusLabel =
+    quality.quality_status === 'pass'
+      ? 'PASS'
+      : quality.quality_status === 'near_pass'
+        ? 'NEAR-PASS'
+        : 'FAIL';
+  console.log(`  Status         : ${statusLabel}`);
+  if (quality.near_pass_reason) {
+    console.log(`  Near-pass why  : ${quality.near_pass_reason}`);
+  }
   console.log(`  Hook consistent: ${quality.hook_consistent ? 'yes' : 'NO'}`);
   console.log(`  CTA consistent : ${quality.cta_consistent ? 'yes' : 'NO'}`);
   if (quality.cta_preserved !== null) {
