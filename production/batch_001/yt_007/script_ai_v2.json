@@ -1,0 +1,165 @@
+{
+  "input": {
+    "video_id": "yt_007",
+    "content_goal": "content-led affiliate Shopee VN — may thai rau 4 trong 1 da nang, hero product single SKU",
+    "target_platform": "reels",
+    "duration_target_s": 44,
+    "tone": "nu reviewer than thien, nhip vua phai, co chut wow khi thay ket qua rau dieu dep, khong sen, khong quang cao cung",
+    "affiliate_angle": "may thai rau 4 trong 1 — chop rau cu chi vai giay, gon nhe, de rua, gia hop ly tren Shopee VN. Hop voi bep nho, nguoi luoi cat rau.",
+    "cta_style": "soft — 'link o bio nha' / 'comment so 1 minh gui link', khong noi gia cu the, khong ep mua",
+    "scene_timeline": [
+      {
+        "window_start_s": 0,
+        "window_end_s": 4,
+        "scene_type": "HOOK",
+        "visual_summary": "Ban tay cua nguoi nu (ao len trang dai tay) dang gio hop carton Fullstar 4-in-1 Chopper Plus tren ban bep da granite trang. Phong sau la bep dien duc kim loai. Hop chua xoay 360 do, mat truoc thay logo va hinh san pham.",
+        "notes": "Hook unboxing. Khan gia thay ngay san pham gi. Khong can text overlay — tu thi hieu da du."
+      },
+      {
+        "window_start_s": 4,
+        "window_end_s": 12,
+        "scene_type": "TRANSITION",
+        "visual_summary": "Hai ban tay dung dao roc bang dinh tren nap hop. Sau do keo san pham boc bubble wrap ra khoi hop. Ban tay deo gang nhua trong suot trong vai canh. Background bep am cung, mau go nau.",
+        "notes": "Doan unboxing tiep — khong qua dac trung. Voice nen lap day bang loi gioi thieu san pham va USP."
+      },
+      {
+        "window_start_s": 12,
+        "window_end_s": 18,
+        "scene_type": "TRANSITION",
+        "visual_summary": "Top-down view: ban tay lau sach khay/de chua trong suot cua chopper bang khan giay. Khay nhua trong, bo trong khung den. Tren ban granite trang.",
+        "notes": "Setup truoc khi demo. Voice gio thieu them chi tiet: 4-in-1, doi luoi de dang."
+      },
+      {
+        "window_start_s": 18,
+        "window_end_s": 26,
+        "scene_type": "KITCHEN",
+        "visual_summary": "Ban tay an manh nap trang cua chopper xuong tren mieng dua leo xanh (cucumber/zucchini). Trong khay duoi thay nhung khoi xanh nho deu tam tap. Tren ban canh con co potato vang.",
+        "notes": "Demo lan 1 — cucumber dice. Day la visual peak dau tien — khoi xanh deu dep."
+      },
+      {
+        "window_start_s": 26,
+        "window_end_s": 33,
+        "scene_type": "KITCHEN",
+        "visual_summary": "Ban tay an nap chopper xuong cu hanh tim (red onion). Cu hanh bi nen qua luoi grid vuong vao khay trong suot ben duoi. Khoi hanh tim nho deu nam day khay — mau tim noi bat tren nen trang.",
+        "notes": "Visual peak chinh — khoi hanh tim deu cuc dep. Doan satisfying nhat. Voice nen nho lai cho hinh anh tu noi."
+      },
+      {
+        "window_start_s": 33,
+        "window_end_s": 39,
+        "scene_type": "KITCHEN",
+        "visual_summary": "Doi luoi sang julienne — ban tay day mieng dua chuot xanh qua chopper, ra soi xanh dai tam tap roi xuong khay. Toc va vai nguoi mo trong phong sau, mat khong vao frame.",
+        "notes": "Demo doi luoi — minh chung 4-in-1: dice + julienne deu lam duoc."
+      },
+      {
+        "window_start_s": 39,
+        "window_end_s": 42,
+        "scene_type": "CTA",
+        "visual_summary": "Wide shot: toan bo san pham + phu kien (luoi cat thay the, choi ve sinh, nap thu thuc an) bay tren ban bep. Phia sau la bep co lo, gia gia vi, khoai tay vang ben canh. Day la canh tong ket san pham.",
+        "notes": "Wide shot cho thay tron bo. Voice CTA mem o day."
+      },
+      {
+        "window_start_s": 42,
+        "window_end_s": 46,
+        "scene_type": "OFF_TOPIC",
+        "visual_summary": "Brand outro: nen trang tinh, chu fullstar mau do voi tagline 'kitchen innovation' o trung tam. Khong co san pham, chi co logo.",
+        "notes": "Brand outro card. Khong viet voice cho doan nay — de fade ra. Cat ngan o khau render neu can."
+      }
+    ]
+  },
+  "output": {
+    "hook": "Mở hộp máy thái rau 4 trong 1, nhìn thôi đã thấy tiện.",
+    "blocks": [
+      {
+        "block_id": "b1",
+        "window_start_s": 0,
+        "window_end_s": 4,
+        "intent": "HOOK",
+        "line": "Mở hộp máy thái rau 4 trong 1, nhìn thôi đã thấy tiện.",
+        "notes": ""
+      },
+      {
+        "block_id": "b2",
+        "window_start_s": 4,
+        "window_end_s": 12,
+        "intent": "TRANSITION",
+        "line": "Đây là máy thái rau 4 trong 1, gọn nhẹ và dễ dùng.",
+        "notes": ""
+      },
+      {
+        "block_id": "b3",
+        "window_start_s": 12,
+        "window_end_s": 18,
+        "intent": "TRANSITION",
+        "line": "Có bốn lưỡi khác nhau, thay đổi dễ dàng.",
+        "notes": ""
+      },
+      {
+        "block_id": "b4",
+        "window_start_s": 18,
+        "window_end_s": 26,
+        "intent": "KITCHEN",
+        "line": "Thái dưa leo thành khối xanh nhỏ đều, nhìn cực thích mắt.",
+        "notes": ""
+      },
+      {
+        "block_id": "b5",
+        "window_start_s": 26,
+        "window_end_s": 33,
+        "intent": "KITCHEN",
+        "line": "Củ hành tím cũng được cắt đều tăm tắp, đẹp chưa từng thấy.",
+        "notes": ""
+      },
+      {
+        "block_id": "b6",
+        "window_start_s": 33,
+        "window_end_s": 39,
+        "intent": "KITCHEN",
+        "line": "Đổi lưỡi sang julienne, dưa chuột ra sợi dài đều tăm tắp.",
+        "notes": ""
+      },
+      {
+        "block_id": "b7",
+        "window_start_s": 39,
+        "window_end_s": 42,
+        "intent": "CTA",
+        "line": "Cái này hợp với bếp nhỏ, link ở bio nha.",
+        "notes": ""
+      },
+      {
+        "block_id": "b8",
+        "window_start_s": 42,
+        "window_end_s": 46,
+        "intent": "SILENT",
+        "line": "",
+        "notes": ""
+      }
+    ],
+    "cta": "Cái này hợp với bếp nhỏ, link ở bio nha.",
+    "full_script": "Mở hộp máy thái rau 4 trong 1, nhìn thôi đã thấy tiện.\n\nĐây là máy thái rau 4 trong 1, gọn nhẹ và dễ dùng.\n\nCó bốn lưỡi khác nhau, thay đổi dễ dàng.\n\nThái dưa leo thành khối xanh nhỏ đều, nhìn cực thích mắt.\n\nCủ hành tím cũng được cắt đều tăm tắp, đẹp chưa từng thấy.\n\nĐổi lưỡi sang julienne, dưa chuột ra sợi dài đều tăm tắp.\n\nCái này hợp với bếp nhỏ, link ở bio nha.",
+    "writer_notes": [
+      "Hook gây tò mò ngay từ đầu với unboxing.",
+      "Mô tả chi tiết từng công đoạn thái rau để tăng tính hấp dẫn.",
+      "CTA mềm mại, không ép buộc, phù hợp với tone video."
+    ]
+  },
+  "meta": {
+    "model": "gpt-4o-2024-08-06",
+    "input_tokens": 3839,
+    "output_tokens": 626,
+    "response_id": "resp_0fa0c6491414a62e006a0d821e87548199adb708c006b56ab5"
+  },
+  "quality_report": {
+    "banned_phrases_found": [],
+    "hook_consistent": true,
+    "cta_consistent": true,
+    "cta_preserved": null,
+    "word_count": 82,
+    "word_count_target": 123,
+    "word_count_within_target": false,
+    "warnings": [
+      "[WORD_COUNT] 82 words vs target 123 (-33.3%, outside ±8% window)"
+    ],
+    "passed": false
+  },
+  "generated_at": "2026-05-20T09:43:05.868Z"
+}
