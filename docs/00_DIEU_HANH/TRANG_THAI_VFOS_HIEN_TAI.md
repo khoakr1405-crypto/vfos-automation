@@ -2,7 +2,7 @@
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
 > **Cập nhật lần cuối**: 2026-05-20
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `65cb0b2` (Phần 9 commit sẽ ghi sau khi push)
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `943ecc7` (Phần 10 commit sẽ ghi sau khi push)
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -358,6 +358,25 @@ VFOS là hệ thống hỗ trợ chiến lược **content-led affiliate**:
 
 ---
 
+### ✅ Phần 10 — End-to-end pilot yt_007 qua `/chay`: PILOT THÀNH CÔNG nhưng CHƯA FULLY AUTONOMOUS (2026-05-20)
+
+**Phân biệt rõ ràng (KHÔNG tô vẽ)**:
+- **Pilot thành công**: `/chay` chạy hết dây chuyền end-to-end trên yt_007 (Script Writer → Voice Sync → BGM Mix → preview MP4 final).
+- **CHƯA fully autonomous**: vẫn phải có operator can thiệp tay ở Voice Sync layer. Không thể nói "Con số 1 đã đủ tự động hóa".
+
+**Kết quả Script Writer trên yt_007 lần này**: PASS **sạch** (không phải near_pass, không phải fail) — Short-video blocker đã không còn chặn case ≤50s này. Phần 8 + Phần 9 hoạt động đúng.
+
+**Điểm phải manual (không tự động)**:
+1. **Manual remove `b8` SILENT block**: Voice Sync hiện không tự xử lý SILENT/OFF_TOPIC block — operator phải tự loại bỏ trước khi voice sync chạy đẹp.
+2. **Manual trim `b4/b5/b6`**: các block ngắn vẫn có overflow nhỏ buộc operator rút text thủ công + regenerate.
+
+**Hệ quả về chiến lược nhân bản**:
+- **Con số 1 CHƯA đủ điều kiện nhân bản sang Con số 2–10**. Theo blueprint `VFOS_SHORTFORM_FACTORY_BLUEPRINT_V0.md` Quy tắc 1, nhân bản chỉ khi Core Pipeline chạy ổn định không cần operator can thiệp tay lặp lại.
+- Hiện tại Voice Sync vẫn cần operator → mỗi con copy ra sẽ lại cần operator → không scale 50–100 video/ngày.
+- Phải fix Voice Sync autonomy TRƯỚC khi mở rộng sang Con 2.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
@@ -389,20 +408,18 @@ VFOS là hệ thống hỗ trợ chiến lược **content-led affiliate**:
 
 ## 7. Bước tiếp theo duy nhất
 
-> **Mở lại `/chay` end-to-end pilot trên yt_007 (hoặc 1 video mới ≤50s).**
+> **Fix Voice Sync autonomy — hết operator can thiệp tay trong các case như yt_007.**
 >
-> **Lý do**: Sau Phần 8 + 9, mọi blocker automation đã được giải quyết:
-> - Anti-leak + CTA preservation: code-level guard hoạt động (Phần 8)
-> - Word count edge case: near-pass policy cho phép pipeline đi tiếp (Phần 9)
-> - yt_007 v3 sẽ phân loại near_pass, `/chay` đi tiếp Voice Sync với warning trong report.
+> **Lý do**: Pilot yt_007 chạy được end-to-end (Phần 10) nhưng vẫn cần operator manual remove `b8` SILENT + trim `b4/b5/b6`. Không thể nhân bản Con 2 khi Core Pipeline còn buộc tay người.
 >
-> **Acceptance**:
-> - Script Writer = PASS hoặc NEAR-PASS (cả 2 đều OK cho pipeline tiếp tục).
-> - Không có pattern leak chéo (no "5 món" cho video single-product, no CTA rewrite).
-> - Voice Sync + BGM Mix chạy được như yt_005/yt_006.
-> - Preview MP4 có thể play, không clipping, không source audio leak.
+> **Ba mục cụ thể (không tách)**:
+> 1. **Auto-handle SILENT / OFF_TOPIC block**: Voice Sync phải tự skip hoặc tự convert SILENT/OFF_TOPIC mà không buộc operator xoá tay khỏi script JSON.
+> 2. **Auto-handle overflow trên block ngắn**: nếu block ngắn có overflow nhỏ (đặc biệt ≤0.5s), Voice Sync phải tự rút text hoặc tự điều chỉnh speed cục bộ thay vì bắt operator regenerate `--only-blocks`.
+> 3. **Acceptance**: cho yt_007 chạy lại từ đầu qua `/chay` mà không cần can thiệp tay nào ngoài duyệt preview cuối.
 >
-> **KHÔNG mở scope** sang Con số 2, watermark, publish, hay tối ưu vô hạn calibration.
+> **Sau khi xong**: Core Pipeline đủ ổn định → mới xem xét nhân bản Con số 2 theo blueprint.
+>
+> **KHÔNG mở scope** sang Con số 2, watermark, publish, BGM ducking, hay refactor Script Writer thêm trong vòng fix này.
 
 ---
 
@@ -454,12 +471,12 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mốc tại thời điểm cập nhật trạng thái | `80f7c0e` |
+| Commit mốc tại thời điểm cập nhật trạng thái | `943ecc7` |
 | Remote | `origin` (GitHub) |
-| Sync status | Đã push — milestone tiếp theo: fix Script Writer word-budget calibration cho ≤50s |
+| Sync status | Đã push — milestone tiếp theo: fix Voice Sync autonomy (auto-handle SILENT + overflow trim) |
 
 **Untracked/modified ngoài scope** (tính đến 2026-05-20):
-- `production/batch_001/yt_007/` — artifacts pilot dừng, GIỮ LẠI để debug, không xóa
+- `production/batch_001/yt_007/` — artifacts pilot end-to-end (đã có preview final), GIỮ LẠI để vòng Voice Sync autonomy đối chiếu
 - Binary media (không commit): tất cả `.mp4`, `.mp3` trong `production/` — đã có `.gitignore`
 
 > File media là local artifact, đã có `.gitignore`, không commit binary.
