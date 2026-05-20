@@ -475,8 +475,9 @@ docs/
 | Remote | `origin` (GitHub) |
 | Sync status | Đã push — milestone tiếp theo: fix Voice Sync autonomy (auto-handle SILENT + overflow trim) |
 
-**Untracked/modified ngoài scope** (tính đến 2026-05-20):
-- `production/batch_001/yt_007/` — artifacts pilot end-to-end (đã có preview final), GIỮ LẠI để vòng Voice Sync autonomy đối chiếu
-- Binary media (không commit): tất cả `.mp4`, `.mp3` trong `production/` — đã có `.gitignore`
+**Trạng thái artifacts production** (tính đến 2026-05-20):
+- `production/batch_001/yt_007/` (text artifacts): **ĐÃ commit** ở `df1609e` — scene_input, script v1/v2/v3, manifest BGM. Dùng làm reference cho vòng Voice Sync autonomy.
+- `production/batch_001/yt_005/voice_sync_v0_preset1/` + `production/batch_001/yt_006/` (text artifacts): còn untracked, chấp nhận — không phải hot path hiện tại.
+- Binary media (không commit theo `.gitignore`): tất cả `.mp4`, `.mp3` trong `production/`.
 
 > File media là local artifact, đã có `.gitignore`, không commit binary.
