@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { zodTextFormat } from 'openai/helpers/zod';
 import { SCRIPT_EXTENDER_SYSTEM_PROMPT } from './extender-prompt.js';
+import { computeWordBudget } from './quality-guard.js';
 import { SCRIPT_WRITER_SYSTEM_PROMPT } from './system-prompt.js';
 import {
   type GenerateResult,
@@ -16,6 +17,34 @@ export interface ExpandInput {
   min_words: number;
   max_words: number;
   target_words: number;
+  /** Free-text goal of the video — used for product_mode heuristic. */
+  content_goal?: string;
+  /** Free-text affiliate angle — used for product_mode heuristic. */
+  affiliate_angle?: string;
+}
+
+export type ProductMode = 'multi_product' | 'single_or_few' | 'unknown';
+
+/**
+ * Detect whether the video is a multi-product listicle or a single-hero demo,
+ * from the free-text content_goal / affiliate_angle fields. Used by the
+ * extender prompt to forbid count-phrase hallucination ("5 món") on single-
+ * product videos. Conservative: returns 'unknown' when ambiguous so the
+ * prompt defaults to NO count phrase.
+ */
+export function detectProductMode(
+  content_goal: string | undefined,
+  affiliate_angle: string | undefined,
+): ProductMode {
+  const text = `${content_goal ?? ''} ${affiliate_angle ?? ''}`.toLowerCase();
+  if (/\b(hero product|single sku|single product|1 món|1 san pham|1 sản phẩm)\b/.test(text)) {
+    return 'single_or_few';
+  }
+  const countMatch = text.match(/(\d+)\s*(món|đồ|do|sản\s*phẩm|san\s*pham|item|product|sku)\b/);
+  if (countMatch?.[1] && Number.parseInt(countMatch[1], 10) >= 2) {
+    return 'multi_product';
+  }
+  return 'unknown';
 }
 
 export interface ScriptWriterClientConfig {
@@ -116,9 +145,11 @@ export class ScriptWriterClient {
 }
 
 function buildUserPayload(input: ScriptWriterInput): string {
-  const targetWords = Math.round(input.duration_target_s * 2.8);
-  const minWords = Math.round(targetWords * 0.95);
-  const maxWords = Math.round(targetWords * 1.05);
+  const {
+    target: targetWords,
+    min: minWords,
+    max: maxWords,
+  } = computeWordBudget(input.duration_target_s);
 
   const lines: string[] = [];
   lines.push('# Yêu cầu viết script');
@@ -172,6 +203,17 @@ function buildExtenderPayload(input: ExpandInput): string {
     input;
   const delta_min = min_words - current_word_count;
   const delta_max = max_words - current_word_count;
+  // Conservative target sits just inside min_words. The extender empirically
+  // overshoots when aimed at the middle of the window (yt_007 with target=123
+  // landed at 143, +16.3%). Aiming for min+3 gives the model breathing room
+  // to overshoot a few words and still land inside the window.
+  const conservative_target = min_words + 3;
+  const delta_conservative = conservative_target - current_word_count;
+  // Detect whether the video is a multi-product listicle or a single-hero
+  // demo. KITCHEN block count alone is unreliable (yt_007 has 3 KITCHEN
+  // blocks but they are 3 cuts of the SAME hero product). Use content_goal
+  // / affiliate_angle text signals instead, with conservative default.
+  const product_mode = detectProductMode(input.content_goal, input.affiliate_angle);
 
   const lines: string[] = [];
   lines.push('# Yêu cầu mở rộng script (Extender Pass)');
@@ -181,12 +223,41 @@ function buildExtenderPayload(input: ExpandInput): string {
   lines.push(`target_words: ${target_words}`);
   lines.push(`min_words: ${min_words}            # HARD LOWER BOUND`);
   lines.push(`max_words: ${max_words}            # HARD UPPER BOUND`);
+  lines.push(
+    `conservative_target: ${conservative_target}  # AIM HERE — landing near this is the goal`,
+  );
   lines.push(`words_needed_min: +${delta_min}        # cần thêm ít nhất ${delta_min} từ`);
-  lines.push(`words_needed_max: +${delta_max}        # không vượt quá +${delta_max} từ`);
+  lines.push(`words_needed_max: +${delta_max}        # KHÔNG vượt quá +${delta_max} từ`);
+  lines.push(
+    `words_to_add_target: +${delta_conservative}  # ideal addition — aim for this, not more`,
+  );
+  lines.push(`product_mode: ${product_mode}  # ${describeProductMode(product_mode)}`);
   lines.push('');
-  lines.push('## Hook và CTA pass 1 (GIỮ NGUYÊN — KHÔNG SỬA HOOK)');
+  lines.push('## Hook và CTA pass 1 (GIỮ NGUYÊN — KHÔNG SỬA HOOK, KHÔNG REWRITE CTA)');
   lines.push(`hook: ${JSON.stringify(original.hook)}`);
   lines.push(`cta:  ${JSON.stringify(original.cta)}`);
+  lines.push('');
+  // CANDIDATE flag = block eligible for expansion. KITCHEN/FILLER only;
+  // TRANSITION blocks expand poorly (gượng filler) per rule 4, and HOOK/CTA
+  // are protected by rule 1/2. Without this restriction the model expands
+  // TRANSITION blocks too (observed on yt_007 second test: model added
+  // 22 words to two TRANSITION blocks despite rule 4).
+  const candidateIntents = new Set(['KITCHEN', 'FILLER']);
+  const candidates = original.blocks.filter(
+    (b) =>
+      candidateIntents.has(b.intent) &&
+      Math.round((b.window_end_s - b.window_start_s) * 2.8) -
+        b.line.trim().split(/\s+/).filter(Boolean).length >=
+        5,
+  );
+  // Per-block expansion cap: roughly even split of words_to_add_target across
+  // candidates, +2 buffer. Prevents the model from dumping all expansion into
+  // one or two blocks and overshooting.
+  const per_block_cap =
+    candidates.length > 0 ? Math.max(5, Math.ceil(delta_conservative / candidates.length) + 2) : 0;
+  lines.push(
+    `per_block_cap: ${per_block_cap} từ  # max words to add per CANDIDATE block (soft cap, do not exceed by >2)`,
+  );
   lines.push('');
   lines.push('## Block pass 1 (kèm budget gợi ý + visual để bám)');
   for (let i = 0; i < original.blocks.length; i += 1) {
@@ -196,7 +267,8 @@ function buildExtenderPayload(input: ExpandInput): string {
     const wordsNow = b.line.trim().split(/\s+/).filter(Boolean).length;
     const budget = Math.round(window * 2.8);
     const gap = budget - wordsNow;
-    const flag = gap >= 5 ? '  <-- CANDIDATE TO EXPAND' : '';
+    const isCandidate = candidateIntents.has(b.intent) && gap >= 5;
+    const flag = isCandidate ? `  <-- CANDIDATE TO EXPAND (max +${per_block_cap} words)` : '';
     const scene = scene_timeline.find(
       (s) => s.window_start_s === b.window_start_s && s.window_end_s === b.window_end_s,
     );
@@ -211,17 +283,51 @@ function buildExtenderPayload(input: ExpandInput): string {
   lines.push('## Yêu cầu output');
   lines.push('1. GIỮ NGUYÊN line block đầu (HOOK) và `hook` field. KHÔNG ĐƯỢC ĐỔI.');
   lines.push(
-    '2. Mở rộng các block đánh dấu CANDIDATE — ưu tiên KITCHEN gap lớn nhất, sau đó CTA (nếu <8 từ), cuối cùng FILLER.',
+    '2. **CTA preservation**: line block CTA gốc PHẢI xuất hiện NGUYÊN VĂN trong line block CTA mới. Chỉ được THÊM 1 câu khẳng định mềm phía TRƯỚC (prepend) — không xóa, không paraphrase, không rewrite câu gốc. CTA `field` PHẢI bằng EXACT line block CTA mới.',
   );
-  lines.push('3. Mỗi câu mở rộng phải bám visual của scene đó, không bịa spec/giá.');
-  lines.push('4. KHÔNG dùng cụm cấm trong system prompt.');
-  lines.push('5. KHÔNG dùng từ "sản phẩm".');
-  lines.push('6. Giữ nguyên block_id, window_start_s, window_end_s, intent, số lượng block.');
   lines.push(
-    `7. Đếm lại từ trong full_script. PHẢI nằm trong [${min_words}, ${max_words}]. Nếu vẫn dưới, expand block khác.`,
+    '3. CHỈ mở rộng block đánh dấu CANDIDATE (chỉ KITCHEN/FILLER). Block không có flag — KỂ CẢ TRANSITION có gap lớn — phải GIỮ NGUYÊN line. TRANSITION mở rộng = gượng = FAIL.',
   );
-  lines.push('8. Ghi writer_notes nói rõ block nào đã expand, từ X→Y từ, lý do thêm câu gì.');
+  lines.push(
+    `   Mỗi CANDIDATE block: thêm tối đa ${per_block_cap} từ. KHÔNG dồn tất cả vào 1 block.`,
+  );
+  lines.push('4. Mỗi câu mở rộng phải bám visual của scene đó, không bịa spec/giá.');
+  lines.push('5. KHÔNG dùng cụm cấm trong system prompt.');
+  lines.push('6. KHÔNG dùng từ "sản phẩm".');
+  lines.push(
+    `7. **Anti-count-leak**: \`product_mode=${product_mode}\`. ${describeAntiLeak(product_mode)}`,
+  );
+  lines.push('8. Giữ nguyên block_id, window_start_s, window_end_s, intent, số lượng block.');
+  lines.push(
+    `9. **Aim conservative**: nhắm vào ${conservative_target} từ (≈ +${delta_conservative} thêm). Cho phép tới ${max_words} nhưng KHÔNG ép vào trần. Nếu chỉ thêm +${delta_min} đã đạt min thì DỪNG, không cố add thêm.`,
+  );
+  lines.push(
+    `10. Đếm lại từ trong full_script. PHẢI nằm trong [${min_words}, ${max_words}]. Nếu < min: expand thêm block khác. Nếu > max: cắt bớt cụm vừa thêm.`,
+  );
+  lines.push('11. Ghi writer_notes nói rõ block nào đã expand, từ X→Y từ, lý do thêm câu gì.');
   return lines.join('\n');
+}
+
+function describeProductMode(mode: ProductMode): string {
+  switch (mode) {
+    case 'multi_product':
+      return 'multi-product listicle — count phrase OK if khớp đúng số sản phẩm thật trong video';
+    case 'single_or_few':
+      return 'single hero product — TUYỆT ĐỐI KHÔNG count phrase';
+    default:
+      return 'không rõ — mặc định KHÔNG dùng count phrase để an toàn';
+  }
+}
+
+function describeAntiLeak(mode: ProductMode): string {
+  switch (mode) {
+    case 'multi_product':
+      return 'Video có nhiều món — count phrase OK NHƯNG phải khớp ĐÚNG số sản phẩm trong scene_timeline. Đọc visual_summary để đếm số sản phẩm THẬT, không bê số từ ví dụ.';
+    case 'single_or_few':
+      return 'Video có ÍT sản phẩm/single hero — TUYỆT ĐỐI KHÔNG dùng cụm "X món", "cả X món", "mấy món này", "X cái". Nói "cái này", "món này", "đồ này". Số sản phẩm chỉ suy từ scene_timeline hiện tại, KHÔNG bao giờ từ trí nhớ về clip khác.';
+    default:
+      return 'Không có signal rõ về số sản phẩm — DEFAULT AN TOÀN: KHÔNG dùng count phrase. Nếu chắc chắn video có nhiều sản phẩm thì phải khớp đúng số trong scene_timeline.';
+  }
 }
 
 /** Rough word budget hint per scene (model is allowed to deviate ±30%). */

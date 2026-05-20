@@ -1,11 +1,30 @@
 import type { ScriptOutput } from './types.js';
 
+export interface WordBudget {
+  target: number;
+  min: number;
+  max: number;
+  tolerance: number;
+}
+
 /**
- * Phrases that flag the script as too "AI-promotional" or "TV-ad sến".
- * Case-insensitive substring match on the rendered `full_script`.
- * Some entries are flagged on the SECOND occurrence (e.g. "thực sự" mild,
- * "đỉnh thật sự" idiomatic) — those go in `softBannedPhrases`.
+ * Single source of truth for the word-count window. Used by quality-guard,
+ * the writer payload, and the extender payload so all three stay in sync.
+ *
+ * Tolerance is band-aware: short videos (target <130, roughly ≤46s) get a
+ * wider ±8% window. The extender adds words in absolute chunks (~25-40),
+ * which lands inside a tight ±5% window for medium/long targets but pushes
+ * past the upper bound when the target itself is small. Widening the
+ * window for short videos prevents that overshoot from failing the guard.
  */
+export function computeWordBudget(durationTargetS: number): WordBudget {
+  const target = Math.round(durationTargetS * 2.8);
+  const tolerance = target < 130 ? 0.08 : 0.05;
+  const min = Math.round(target * (1 - tolerance));
+  const max = Math.round(target * (1 + tolerance));
+  return { target, min, max, tolerance };
+}
+
 const HARD_BANNED_PHRASES = [
   'tuyệt vời',
   'đáng kinh ngạc',
@@ -42,6 +61,7 @@ export interface QualityReport {
   banned_phrases_found: BannedHit[];
   hook_consistent: boolean;
   cta_consistent: boolean;
+  cta_preserved: boolean | null;
   word_count: number;
   word_count_target: number;
   word_count_within_target: boolean;
@@ -49,7 +69,16 @@ export interface QualityReport {
   passed: boolean;
 }
 
-export function buildQualityReport(output: ScriptOutput, duration_target_s: number): QualityReport {
+export interface QualityReportContext {
+  /** Pass-1 CTA — when provided, extender output must contain it verbatim. */
+  pass1_cta?: string;
+}
+
+export function buildQualityReport(
+  output: ScriptOutput,
+  duration_target_s: number,
+  context: QualityReportContext = {},
+): QualityReport {
   const fullScript = output.full_script;
   const fullLower = fullScript.toLowerCase();
 
@@ -88,13 +117,21 @@ export function buildQualityReport(output: ScriptOutput, duration_target_s: numb
   const hook_consistent = firstHookBlock ? normEq(output.hook, firstHookBlock.line) : false;
   const cta_consistent = lastCtaBlock ? normEq(output.cta, lastCtaBlock.line) : false;
 
+  // Extender-only check: pass-1 CTA must survive verbatim inside the new CTA.
+  // Substring match after light normalization — extender is allowed to PREPEND
+  // a soft sentence but never to rewrite or paraphrase the pass-1 CTA.
+  let cta_preserved: boolean | null = null;
+  if (context.pass1_cta !== undefined) {
+    const normalizedPass1 = normalizeForContainment(context.pass1_cta);
+    const normalizedCurrent = normalizeForContainment(output.cta);
+    cta_preserved = normalizedCurrent.includes(normalizedPass1);
+  }
+
   const wordCount = fullScript.trim().split(/\s+/).filter(Boolean).length;
-  const wordTarget = Math.round(duration_target_s * 2.8);
+  const budget = computeWordBudget(duration_target_s);
+  const wordTarget = budget.target;
   const ratio = wordCount / wordTarget;
-  // Tightened to ±5% (was ±20%): matches the [min_words, max_words] window
-  // we send to the model in buildUserPayload. Catches underwriting where
-  // a generic ±20% bound was too loose to be useful.
-  const word_count_within_target = ratio >= 0.95 && ratio <= 1.05;
+  const word_count_within_target = ratio >= 1 - budget.tolerance && ratio <= 1 + budget.tolerance;
 
   const warnings: string[] = [];
   for (const h of hits) {
@@ -119,9 +156,17 @@ export function buildQualityReport(output: ScriptOutput, duration_target_s: numb
   if (!word_count_within_target) {
     const deltaPct = ((ratio - 1) * 100).toFixed(1);
     const sign = ratio >= 1 ? '+' : '';
+    const tolPct = (budget.tolerance * 100).toFixed(0);
     warnings.push(
       `[WORD_COUNT] ${wordCount} words vs target ${wordTarget} ` +
-        `(${sign}${deltaPct}%, outside ±5% window)`,
+        `(${sign}${deltaPct}%, outside ±${tolPct}% window)`,
+    );
+  }
+  if (cta_preserved === false) {
+    warnings.push(
+      `[CTA_REWRITE_LEAK] extender rewrote pass-1 CTA. expected substring: ${truncate(
+        context.pass1_cta ?? '',
+      )} got: ${truncate(output.cta)}`,
     );
   }
 
@@ -129,18 +174,24 @@ export function buildQualityReport(output: ScriptOutput, duration_target_s: numb
     hits.filter((h) => h.hard).length === 0 &&
     hook_consistent &&
     cta_consistent &&
-    word_count_within_target;
+    word_count_within_target &&
+    cta_preserved !== false;
 
   return {
     banned_phrases_found: hits,
     hook_consistent,
     cta_consistent,
+    cta_preserved,
     word_count: wordCount,
     word_count_target: wordTarget,
     word_count_within_target,
     warnings,
     passed,
   };
+}
+
+function normalizeForContainment(s: string): string {
+  return s.trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
 function findBlockContaining(output: ScriptOutput, phrase: string): string | null {

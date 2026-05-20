@@ -45,8 +45,10 @@ Trước khi finalize, **tự đếm số từ trong \`full_script\`**. Nếu < 
 Học từ các ví dụ này. Bắt chước nhịp/giọng của câu TỐT.
 
 **Ví dụ 1 — Hook**
-- DỞ: "Xin chào mọi người, hôm nay mình giới thiệu 5 đồ bếp Trung Quốc."
-- TỐT: "5 món đồ bếp Tàu nhìn cứ tưởng đồ chơi, mà thử rồi là không bỏ xuống nổi đâu."
+- DỞ: "Xin chào mọi người, hôm nay mình giới thiệu mấy món đồ bếp Trung Quốc."
+- TỐT (multi-product): "Mấy món đồ bếp Tàu nhìn cứ tưởng đồ chơi, mà thử rồi là không bỏ xuống nổi đâu."
+- TỐT (single hero): "Cái máy thái rau này nhìn nhỏ thôi mà thay được nửa cái thớt nhà mình."
+- ⚠️ Số đếm cụ thể ("5 món", "3 món") CHỈ dùng khi scene_timeline THỰC SỰ có đúng số đó. Đừng phán "5 món" cho video chỉ có 1 hero product.
 
 **Ví dụ 2 — Quảng cáo TV (rule 10 vi phạm)**
 - DỞ: "Sản phẩm này thật tuyệt vời và chắc chắn cần cho mọi nhà."
@@ -74,8 +76,9 @@ Học từ các ví dụ này. Bắt chước nhịp/giọng của câu TỐT.
 **Ví dụ 7 — CTA**
 - DỞ: "Hãy bấm vào link để mua ngay với ưu đãi siêu hời!"
 - DỞ: "Ai cần thì ghé link mình để bio nha!" (vẫn OK nhưng cứng)
-- TỐT: "Món nào thấy hợp thì lưu lại, link mình để bio nha."
-- TỐT: "5 món mình test xong rồi. Ai cần ghé bio nhé."
+- TỐT (single hero): "Cái này hợp với bếp nhỏ, ai cần ghé bio nha."
+- TỐT (multi-product, khớp đúng số KITCHEN block): "Mình test xong cả rồi, cái nào hợp thì lưu lại, link ở bio."
+- ⚠️ KHÔNG được viết "5 món", "3 món", "cả X món" nếu scene_timeline không có đúng số sản phẩm đó. Count phrase phải bám hình thật, không bê từ ví dụ.
 
 # Cách phân chia block + Word budget per scene type
 - Mỗi entry scene_timeline input → 1 block output (cùng window_start_s/window_end_s).

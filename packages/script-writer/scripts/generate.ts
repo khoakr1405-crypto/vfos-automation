@@ -24,7 +24,7 @@ import { dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { loadDotEnv } from '../src/load-env.js';
 import { ScriptWriterClient } from '../src/openai-client.js';
-import { type QualityReport, buildQualityReport } from '../src/quality-guard.js';
+import { type QualityReport, buildQualityReport, computeWordBudget } from '../src/quality-guard.js';
 import type { GenerateResult, ScriptOutput } from '../src/types.js';
 import { ScriptWriterInputSchema } from '../src/types.js';
 
@@ -170,9 +170,11 @@ if (!shouldExtend) {
   process.exit(pass1Quality.passed ? 0 : 1);
 }
 
-const targetWords = Math.round(input.duration_target_s * 2.8);
-const minWords = Math.round(targetWords * 0.95);
-const maxWords = Math.round(targetWords * 1.05);
+const {
+  target: targetWords,
+  min: minWords,
+  max: maxWords,
+} = computeWordBudget(input.duration_target_s);
 
 process.stdout.write('Running Extender Pass… ');
 const t1 = Date.now();
@@ -185,6 +187,8 @@ try {
     target_words: targetWords,
     min_words: minWords,
     max_words: maxWords,
+    content_goal: input.content_goal,
+    affiliate_angle: input.affiliate_angle,
   });
 } catch (err) {
   console.error('');
@@ -195,7 +199,9 @@ try {
 const pass2Elapsed = ((Date.now() - t1) / 1000).toFixed(1);
 console.log(`done (${pass2Elapsed}s)`);
 
-const pass2Quality = buildQualityReport(pass2.output, input.duration_target_s);
+const pass2Quality = buildQualityReport(pass2.output, input.duration_target_s, {
+  pass1_cta: pass1.output.cta,
+});
 
 if (extenderOutputPath) {
   await writeOutput(extenderOutputPath, extenderTextOutputPath, input, pass2, pass2Quality, {
@@ -263,6 +269,9 @@ function printResult(
   console.log(`  Passed         : ${quality.passed ? 'YES' : 'NO'}`);
   console.log(`  Hook consistent: ${quality.hook_consistent ? 'yes' : 'NO'}`);
   console.log(`  CTA consistent : ${quality.cta_consistent ? 'yes' : 'NO'}`);
+  if (quality.cta_preserved !== null) {
+    console.log(`  CTA preserved  : ${quality.cta_preserved ? 'yes' : 'NO (rewrite/leak)'}`);
+  }
   console.log(`  Word in target : ${quality.word_count_within_target ? 'yes' : 'NO'}`);
   if (quality.warnings.length > 0) {
     console.log('  Warnings:');
