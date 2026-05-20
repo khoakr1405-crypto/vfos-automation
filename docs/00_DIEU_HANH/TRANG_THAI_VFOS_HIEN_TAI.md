@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-05-19
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `f004bb4`
+> **Cập nhật lần cuối**: 2026-05-20
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `f06fa10`
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -191,16 +191,31 @@ VFOS là hệ thống hỗ trợ chiến lược **content-led affiliate**:
 
 ## 4. Phần đang chuẩn bị làm tiếp theo
 
-### ⏳ Phần 4 — End-to-end pilot với video mới: CHƯA BẮT ĐẦU
+### ✅ Phần 4 — End-to-end pilot yt_006: ĐÃ HOÀN THÀNH (2026-05-20)
+
+**Kết quả**:
+- Video: `yt_006_source.mp4` (59s, 608x1080, portrait 9:16) — 5 gadget mini
+- Script Writer: 165 từ, PASS quality guard, TTS est. 58.9s
+- Voice Sync: 6/6 blocks FIT, no overflow, voice_01 preset, speed=1.3
+- BGM Mix: max_volume -4.3 dBFS, no clipping, no source audio leak, 2 streams
+- Preview: `yt_006_voice_blocks_bgm_preview_vi.mp4` — user mở và xem
+- **Xác nhận**: pipeline hoạt động đúng với video mới, không bị coupled với yt_005
+
+---
+
+### ⏳ Phần 5 — Đóng gói Con số 1 thành `/chay` skill: ĐANG LÀM
 
 **Mục tiêu**:
-- Chọn 1 video nguồn mới (TikTok TQ / YouTube Shorts)
-- Chạy toàn bộ pipeline hiện tại từ đầu đến cuối:
-  Script Writer → Voice Sync → BGM Mix → preview
-- Xác nhận pipeline hoạt động đúng với video thật ngoài yt_005
-- Rút ra gap nếu có → log vào roadmap, không mở scope ngay
+- Tạo skill `/chay` để user không cần dán prompt dài nữa
+- Đóng gói toàn bộ dây chuyền Short-form Factory thành 1 command
+- Tạo blueprint nhân bản cho Con số 2–10 sau này
 
-> **Ghi chú**: BGM Mix v1 đã chốt sau 2 lần user-review (2026-05-19). yt_005 đã hoàn thành tốt vai trò **video test pipeline** — không phải publish pilot chính thức. Bước tiếp theo là kiểm chứng pipeline trên **1 video mới hoàn toàn** để xác nhận hệ thống không bị coupled với yt_005 trước khi scale.
+**Files tạo trong vòng này**:
+- `.claude/skills/chay/SKILL.md` — skill command vận hành Con số 1
+- `docs/00_DIEU_HANH/VFOS_SHORTFORM_FACTORY_BLUEPRINT_V0.md` — blueprint nhân bản
+
+**Sau khi hoàn thành**:
+- Bước tiếp theo: Test `/chay` bằng lệnh ngắn thực tế trên 1 video mới
 
 ---
 
@@ -235,14 +250,16 @@ VFOS là hệ thống hỗ trợ chiến lược **content-led affiliate**:
 
 ## 7. Bước tiếp theo duy nhất
 
-> **Chạy thử 1 video mới end-to-end qua toàn bộ pipeline VFOS hiện tại.**
+> **Test `/chay` bằng lệnh ngắn thực tế.**
 >
-> Pipeline cần chạy đủ 3 phần:
-> 1. **Script Writer** — từ scene input → script_ai_vX.json
-> 2. **Voice Sync** — từ script → voice timeline MP3 + preview MP4
-> 3. **BGM Mix** — từ voice timeline → mixed audio + preview MP4 có nhạc
+> Sau khi skill `/chay` được đóng gói:
+> 1. User gõ `/chay` hoặc `/chay <URL>` hoặc `/chay tự tìm video mới`
+> 2. Agent tự chạy dây chuyền Short-form Factory mà không cần prompt dài
+> 3. Xác nhận skill hoạt động đúng với video thật
 >
-> Mục đích: xác nhận pipeline không bị coupled với yt_005, sẵn sàng scale sang video tiếp theo.
+> Nếu test `/chay` thành công ổn định qua ≥3 video → xem xét tạo Con số 2.
+>
+> **Command vận hành**: `/chay` — đóng gói tại `.claude/skills/chay/SKILL.md`
 
 ---
 
@@ -294,14 +311,16 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mốc tại thời điểm cập nhật trạng thái | `f004bb4` |
+| Commit mốc tại thời điểm cập nhật trạng thái | `f06fa10` |
 | Remote | `origin` (GitHub) |
-| Sync status | Đã push — milestone tiếp theo: end-to-end pilot video mới |
+| Sync status | Đã push — milestone tiếp theo: test `/chay` trên video thật |
 
-**Untracked/modified ngoài scope** (tính đến 2026-05-19):
+**Untracked/modified ngoài scope** (tính đến 2026-05-20):
 - `docs/VFOS_VIDEO_EVIDENCE_STANDARD.md` — tạo trong vòng audit, chưa commit
 - `.claude/skills/vfos_video_analysis_evidence_gate.md` — tạo trong vòng audit, chưa commit
 - `apps/kernel/src/syscalls/voe.ts` — sửa VOE prompt trong vòng audit, chưa commit
+- `.claude/skills/chay/SKILL.md` — skill /chay, commit cùng vòng packaging
+- `docs/00_DIEU_HANH/VFOS_SHORTFORM_FACTORY_BLUEPRINT_V0.md` — blueprint nhân bản, commit cùng vòng packaging
 - Binary media (không commit): tất cả `.mp4`, `.mp3` trong `production/` — đã có `.gitignore`
 
 > File media là local artifact, đã có `.gitignore`, không commit binary.
