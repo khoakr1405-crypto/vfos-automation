@@ -114,7 +114,7 @@ STEP 5   Tạo scene_input.json
          → scene_type hợp lệ: HOOK | KITCHEN | FILLER | TRANSITION | CTA | OFF_TOPIC
          → Viết Latinized Vietnamese để tránh encoding error trong JSON
 STEP 6   Chạy AI Script Writer
-         → pnpm script:write --input production/batch_001/<video_id>/scene_input.json
+         → pnpm script:generate --input production/batch_001/<video_id>/scene_input.json
          → Đọc output: script_ai_v1.json + script_ai_v1.txt
          → Nếu FAIL quality guard: phân tích lý do, sửa scene_input.json và retry 1 lần
          → Nếu vẫn FAIL sau retry: báo user, dừng

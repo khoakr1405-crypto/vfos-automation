@@ -245,7 +245,7 @@ VFOS là hệ thống hỗ trợ chiến lược **content-led affiliate**:
 - `yt-dlp` tải video nguồn
 - `ffprobe` kiểm tra video
 - `ffmpeg` trích keyframe + xử lý media
-- `pnpm script:write / voice:sync / bgm:mix`
+- `pnpm script:generate / voice:sync / bgm:mix`
 - `mkdir` tạo output dir
 - `Start-Process` mở preview MP4
 - `git add / commit / push` lên master
