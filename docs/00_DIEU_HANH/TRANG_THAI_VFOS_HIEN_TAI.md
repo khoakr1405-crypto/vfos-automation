@@ -442,23 +442,24 @@ pnpm voice:generate --input production/smoke/voice_smoke.txt --output ...
 | b7 CTA | 3s | 6.72s → 5.84s | **overflow_major** | retry @ 1.4 còn +2.84s, FAIL |
 | b8 SILENT | 4s | — | **skipped** | **AUTO-SKIPPED** silent_intent |
 
-**Đánh giá thật**:
-- ✅ **b8 SILENT autonomy hoàn thành**: operator KHÔNG còn cần xoá b8 khỏi script JSON. Skip tự động, manifest có metadata, stitch excludes b8 → timeline 44.0s chính xác.
-- ✅ **b5 overflow tự cứu được**: trước phải trim câu 3 thủ công, giờ retry @ 1.4 đưa về minor → pipeline đi tiếp.
-- ⚠️ **b7 CTA vẫn major**: 17 từ trong window 3s = ~5.84s ngay cả ở speed 1.4. Vượt 2x window — speed-up không thể cứu. Pipeline FAIL exit 2 với report rõ block + overflow_s. **Đây không phải bug Voice Sync** — đây là Script Writer/scene_input concern (CTA window 3s quá hẹp cho 17 từ).
+**Voice Sync Autonomy v0 — những gì ĐÃ đạt (xác nhận bằng smoke test thật, không suy đoán)**:
+- ✅ **SILENT block tự skip**: `intent="SILENT"` hoặc `line=""` được loại khỏi pipeline tự động. Manifest ghi metadata `generation_status="skipped"` + `skip_reason`. Stitch loại block, timeline vẫn đúng tổng duration video. b8 yt_007 verify trực tiếp — operator KHÔNG còn cần xoá thủ công khỏi script JSON.
+- ✅ **OFF_TOPIC policy rõ**: KHÔNG skip theo tên intent. Chỉ skip khi `line=""`. Block OFF_TOPIC có narration thật vẫn TTS bình thường. Đây là policy conservative — tôn trọng narration được viết có chủ đích.
+- ✅ **Minor overflow tự accept**: block có overflow ≤0.5s tự động accepted, log vào manifest, pipeline đi tiếp. b1/b4/b6 yt_007 verify trực tiếp.
+- ✅ **Borderline major overflow tự remediate qua speed-up**: b5 yt_007 ban đầu 7.6s/7s (MAJOR +0.6s) → retry @ speed 1.4 → 7.12s (overflow_minor +0.12s) → accepted. Đây là trường hợp trước phải trim câu 3 thủ công, giờ Voice Sync xử lý không cần operator.
 
-**Threshold 75-85%**:
-- ✅ 2/3 case manual operator (b8 SILENT + b5 overflow) đã tự xử lý.
-- ⚠️ Case b7 vẫn cần operator can thiệp NHƯNG đã có actionable failure rõ ràng (không phải silent pass), và nguyên nhân là Script Writer/scene_input scope (out of scope vòng này).
-- → ~80% ready. Stop optimizing theo nguyên tắc "75–85% là đủ chốt".
+**Voice Sync Autonomy v0 — những gì KHÔNG đạt (báo trung thực, không tô vẽ)**:
+- ⚠️ **b7 CTA yt_007 vẫn FAIL major**: 17 từ trong CTA window 3s. Initial TTS 6.72s (MAJOR +3.72s) → retry @ speed 1.4 → 5.84s (vẫn MAJOR +2.84s). Vượt gần 2x window — speed-up cap 1.4 (giới hạn để giọng không méo) không thể cứu. Pipeline exit 2 với actionable report.
+- ⚠️ **`/chay` CHƯA fully autonomous trên yt_007**: operator vẫn phải rút text trong script JSON cho b7 rồi `--only-blocks b7` lại. Pilot end-to-end vẫn cần 1 lần can thiệp.
 
-**Trạng thái**: `pnpm --filter @vfos/voice typecheck` PASS. Biome `noNonNullAssertion` count giữ nguyên baseline 9 trên sync.ts (không thêm violation mới — 2 cái thêm trong implementation đã được narrow bằng type predicate + non-null param).
+**Kết luận đúng (không phóng đại)**:
+- **Voice Sync KHÔNG còn là blocker chính của `/chay`**. Skip Policy + Overflow Remediation đã đóng được 2 nhóm case (SILENT + minor/borderline overflow) — tức là toàn bộ phạm vi mà sync layer có khả năng kỹ thuật để giải quyết một mình.
+- **Blocker tiếp theo nằm ở Script Writer**: model chưa enforce block-level timing budget khi viết. CTA window 3s lý ra cần script ≤8 từ (≈ 3s @ speed 1.3 cho tiếng Việt) nhưng model viết 17 từ. Đây không phải case Voice Sync layer có thể "cứu" — speed-up vô tận sẽ phá brand voice; auto-trim text ở sync layer thì layer này không có metadata core-vs-extender nên cũng không an toàn.
+- **`/chay` chưa fully autonomous** chừng nào Script Writer còn có thể trả output vi phạm trần thời gian của block ngắn.
 
-**Giới hạn còn lại để vòng sau** (KHÔNG mở scope vòng này):
-- Speed-up 1.3→1.4 chỉ rescue được block overflow nhẹ. Block overflow nghiêm trọng (như b7 yt_007) vẫn cần operator.
-- Để FULLY autonomous trên yt_007, cần fix Script Writer: enforce CTA word budget từ scene_input window (nếu CTA window ≤4s thì cap CTA ≤8-10 từ).
-- Hoặc fix scene_input.json để CTA window đủ rộng (5-6s).
-- Một trong hai cải tiến đó là milestone tiếp theo có thể cân nhắc — nhưng KHÔNG phải vòng Voice Sync.
+**Threshold 75-85%**: Voice Sync Autonomy v0 đạt ~80% phạm vi sync layer có thể tự xử lý. Stop optimizing layer này. Pivot sang Script Writer.
+
+**Trạng thái kỹ thuật**: `pnpm --filter @vfos/voice typecheck` PASS. Biome `noNonNullAssertion` count giữ nguyên baseline 9 trên sync.ts (2 cái thêm trong implementation đã được narrow bằng type predicate + non-null param threading, không thêm violation mới).
 
 ---
 
@@ -493,17 +494,20 @@ pnpm voice:generate --input production/smoke/voice_smoke.txt --output ...
 
 ## 7. Bước tiếp theo duy nhất
 
-> **Cân nhắc Script Writer CTA word budget từ scene_input window — case yt_007 b7 còn lại.**
+> **Fix Script Writer block-level timing budget — đặc biệt cho CTA và các block window ngắn.**
 >
-> **Lý do**: Phần 12 đã đóng 2/3 case manual của yt_007 (b8 SILENT auto-skip + b5 overflow auto-rescue). Case còn lại — b7 CTA 17 từ trong window 3s — không phải Voice Sync scope: speed-up cap 1.4 không thể cứu block overflow gấp 2x window. Đây là Script Writer hoặc scene_input concern.
+> **Lý do**: Voice Sync Autonomy v0 (Phần 12) đã đóng phần việc thuộc layer Voice Sync — SILENT skip, OFF_TOPIC policy, minor overflow accept, borderline major overflow auto-rescue qua speed-up. Voice Sync KHÔNG còn là blocker chính. Nhưng `/chay` vẫn CHƯA fully autonomous trên yt_007 vì b7 CTA: 17 từ trong window 3s, vượt gần 2x — speed-up cap 1.4 không thể cứu mà không phá brand voice.
 >
-> **Hai lựa chọn (chọn 1, không cả hai)**:
-> 1. **Script Writer enforce CTA word budget từ scene_input window**: nếu CTA window ≤4s thì cap CTA ≤8-10 từ (≈ tốc độ 1.3x TTS Việt).
-> 2. **scene_input.json widen CTA window**: convention mới — CTA tối thiểu 5-6s để đủ chỗ cho CTA tự nhiên (8-15 từ).
+> **Vấn đề thật**: Script Writer hiện không enforce trần thời gian khi viết từng block. Pass 1 + Extender đều tự do viết theo word count tổng (123 từ cho yt_007), không bị ràng buộc bởi window từng block. Hậu quả: block có window ≤4s vẫn nhận câu 15-17 từ → unfittable ngay cả khi Voice Sync chạy autonomy đầy đủ.
 >
-> **KHÔNG mở scope** sang Con số 2, publish, BGM ducking, watermark, hay refactor Script Writer cho việc khác trong vòng này.
+> **Phạm vi vòng tiếp theo (1 việc duy nhất, không tách)**:
+> 1. **Calibrate per-block word budget từ window**: đo tốc độ thực brand voice Eleven v3 @ 1.3x trên dataset thật (yt_005/006/007 manifests đều có sẵn duration/word per block). Chọn hệ số `words_per_second` bảo thủ + tolerance phù hợp cho từng intent. Không hardcode trước khi đo.
+> 2. **Script Writer enforce budget**: cả Pass 1 (Writer) và Extender nhận `per_block_word_budget` trong prompt + hard guard trong `quality-guard.ts` (block lệch budget quá ngưỡng → fail block-level, không pass tổng word count cứu được). CTA window 3s ⇒ budget phải đủ ngắn để Voice Sync fit @ speed 1.3.
+> 3. **Acceptance**: yt_007 chạy lại qua `/chay` không cần operator can thiệp tay nào ngoài duyệt preview cuối — bao gồm b7. Verify bằng exit code 0 trên cả Script Writer và Voice Sync.
 >
-> **Sau khi xong**: Core Pipeline đủ tự động end-to-end cho mọi short-video ≤90s → mới xem xét nhân bản Con số 2 theo blueprint.
+> **KHÔNG mở scope** sang Con số 2, publish, BGM ducking, watermark, scene_input window convention, hay refactor Voice Sync thêm trong vòng này.
+>
+> **Sau khi xong**: Core Pipeline đủ tự động end-to-end cho short-video ≤90s — đây là điều kiện cần để bàn tới nhân bản Con số 2 theo blueprint.
 
 ---
 
@@ -555,9 +559,9 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mốc tại thời điểm cập nhật trạng thái | `9231f56` (Phần 12 commit + push sau khi xong) |
+| Commit mốc tại thời điểm cập nhật trạng thái | `e083ded` (Phần 12 commit); status doc update sẽ commit riêng |
 | Remote | `origin` (GitHub) |
-| Sync status | Brand voice + Eleven v3 (Phần 11) đã push. Phần 12 (Voice Sync Autonomy v0) sắp commit. Milestone tiếp theo: Script Writer CTA word budget enforcement HOẶC scene_input CTA window convention. |
+| Sync status | Phần 11 (Brand Voice) + Phần 12 (Voice Sync Autonomy v0) đã push. Milestone tiếp theo duy nhất: Script Writer per-block timing budget — chốt sau khi yt_007 chạy lại qua `/chay` không cần can thiệp tay. |
 
 **Trạng thái artifacts production** (tính đến 2026-05-20):
 - `production/batch_001/yt_007/` (text artifacts): **ĐÃ commit** ở `df1609e` — scene_input, script v1/v2/v3, manifest BGM. Dùng làm reference cho vòng Voice Sync autonomy.
