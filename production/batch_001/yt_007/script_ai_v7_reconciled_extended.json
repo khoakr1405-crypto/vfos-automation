@@ -67,14 +67,14 @@
     ]
   },
   "output": {
-    "hook": "Đập hộp máy thái rau 4 trong 1 đây!",
+    "hook": "Đồ bếp Tàu nhìn đồ chơi mà thử là mê.",
     "blocks": [
       {
         "block_id": "b1",
         "window_start_s": 0,
         "window_end_s": 4,
         "intent": "HOOK",
-        "line": "Đập hộp máy thái rau 4 trong 1 đây!",
+        "line": "Đồ bếp Tàu nhìn đồ chơi mà thử là mê.",
         "notes": ""
       },
       {
@@ -82,7 +82,7 @@
         "window_start_s": 4,
         "window_end_s": 12,
         "intent": "TRANSITION",
-        "line": "Mở hộp ra nào, món này có thể thái, băm, và cắt chỉ.",
+        "line": "Máy thái rau 4 trong 1, gọn nhẹ, dễ dùng.",
         "notes": ""
       },
       {
@@ -90,7 +90,7 @@
         "window_start_s": 12,
         "window_end_s": 18,
         "intent": "TRANSITION",
-        "line": "Khay trong suốt, đổi lưỡi dễ dàng, tiện lợi cực.",
+        "line": "Dễ tháo lắp, đổi lưỡi nhanh chóng.",
         "notes": ""
       },
       {
@@ -98,24 +98,24 @@
         "window_start_s": 18,
         "window_end_s": 26,
         "intent": "KITCHEN",
-        "line": "Nhìn miếng dưa leo được thái đều chưa kìa! Cắt đều như thế này giúp món ăn thêm phần hấp dẫn.",
-        "notes": "Expanded b4 KITCHEN 9→19 từ: thêm câu cảm nhận về độ đều của miếng dưa leo."
+        "line": "Thái dưa leo thành khối đều đẹp, nhìn mê luôn. Lưỡi dao sắc bén giúp thao tác nhẹ nhàng, không cần dùng sức nhiều.",
+        "notes": "Expanded b4 KITCHEN 10→21 từ: thêm câu về lưỡi dao sắc bén."
       },
       {
         "block_id": "b5",
         "window_start_s": 26,
         "window_end_s": 33,
         "intent": "KITCHEN",
-        "line": "Cả hành tím cũng được cắt đẹp mê luôn. Màu tím nổi bật làm món ăn thêm phần bắt mắt.",
-        "notes": "Expanded b5 KITCHEN 9→18 từ: thêm câu cảm nhận về màu sắc của hành tím."
+        "line": "Hành tím cũng không thoát, đều tăm tắp. Màu sắc nổi bật làm món ăn thêm phần hấp dẫn.",
+        "notes": "Expanded b5 KITCHEN 8→16 từ: thêm câu về màu sắc nổi bật."
       },
       {
         "block_id": "b6",
         "window_start_s": 33,
         "window_end_s": 39,
         "intent": "KITCHEN",
-        "line": "Đổi lưỡi sang cắt sợi, dưa chuột ra sợi xanh đều. Thích hợp cho món salad tươi mát.",
-        "notes": "Expanded b6 KITCHEN 11→16 từ: thêm gợi ý dùng cho món salad."
+        "line": "Đổi lưỡi, dưa chuột ra sợi mỏng dài. Phù hợp cho món salad tươi ngon.",
+        "notes": "Expanded b6 KITCHEN 8→14 từ: thêm câu về món salad."
       },
       {
         "block_id": "b7",
@@ -135,25 +135,25 @@
       }
     ],
     "cta": "Link bio nha.",
-    "full_script": "Đập hộp máy thái rau 4 trong 1 đây!\n\nMở hộp ra nào, món này có thể thái, băm, và cắt chỉ.\n\nKhay trong suốt, đổi lưỡi dễ dàng, tiện lợi cực.\n\nNhìn miếng dưa leo được thái đều chưa kìa! Cắt đều như thế này giúp món ăn thêm phần hấp dẫn.\n\nCả hành tím cũng được cắt đẹp mê luôn. Màu tím nổi bật làm món ăn thêm phần bắt mắt.\n\nĐổi lưỡi sang cắt sợi, dưa chuột ra sợi xanh đều. Thích hợp cho món salad tươi mát.\n\nLink bio nha.",
+    "full_script": "Đồ bếp Tàu nhìn đồ chơi mà thử là mê.\n\nMáy thái rau 4 trong 1, gọn nhẹ, dễ dùng.\n\nDễ tháo lắp, đổi lưỡi nhanh chóng.\n\nThái dưa leo thành khối đều đẹp, nhìn mê luôn. Lưỡi dao sắc bén giúp thao tác nhẹ nhàng, không cần dùng sức nhiều.\n\nHành tím cũng không thoát, đều tăm tắp. Màu sắc nổi bật làm món ăn thêm phần hấp dẫn.\n\nĐổi lưỡi, dưa chuột ra sợi mỏng dài. Phù hợp cho món salad tươi ngon.\n\nLink bio nha.",
     "writer_notes": [
-      "Expanded b4 KITCHEN 9→19 từ: thêm câu cảm nhận về độ đều của miếng dưa leo.",
-      "Expanded b5 KITCHEN 9→18 từ: thêm câu cảm nhận về màu sắc của hành tím.",
-      "Expanded b6 KITCHEN 11→16 từ: thêm gợi ý dùng cho món salad."
+      "Expanded b4 KITCHEN 10→21 từ: thêm câu về lưỡi dao sắc bén.",
+      "Expanded b5 KITCHEN 8→16 từ: thêm câu về màu sắc nổi bật.",
+      "Expanded b6 KITCHEN 8→14 từ: thêm câu về món salad."
     ]
   },
   "meta": {
     "model": "gpt-4o-2024-08-06",
-    "input_tokens": 5208,
-    "output_tokens": 743,
-    "response_id": "resp_023f48aa729f0fa3006a0ea536b9088198ac954a0e3cf665f7"
+    "input_tokens": 5201,
+    "output_tokens": 718,
+    "response_id": "resp_08aa44409edb5ceb006a0e9cbe6164819a8d4b53021a8c7924"
   },
   "quality_report": {
     "banned_phrases_found": [],
     "hook_consistent": true,
     "cta_consistent": true,
     "cta_preserved": true,
-    "word_count": 94,
+    "word_count": 88,
     "word_count_target": 94,
     "word_count_within_target": true,
     "budget_mode": "timeline_aware",
@@ -162,40 +162,29 @@
     "target_adjustment_reason": "duration-based target 123 vượt 90% aggregate cap 105; reconciled to 94 (≤cap-11 từ buffer)",
     "block_budget_violations": [
       {
-        "block_id": "b5",
+        "block_id": "b4",
         "intent": "KITCHEN",
-        "window_duration_s": 7,
-        "max_words": 19,
-        "actual_words": 20,
-        "overflow_words": 1,
-        "severity": "minor",
-        "reason": "KITCHEN 20 từ vượt cap 19 +1"
-      },
-      {
-        "block_id": "b6",
-        "intent": "KITCHEN",
-        "window_duration_s": 6,
-        "max_words": 16,
-        "actual_words": 18,
+        "window_duration_s": 8,
+        "max_words": 22,
+        "actual_words": 24,
         "overflow_words": 2,
         "severity": "minor",
-        "reason": "KITCHEN 18 từ vượt cap 16 +2"
+        "reason": "KITCHEN 24 từ vượt cap 22 +2"
       }
     ],
     "warnings": [
-      "[BLOCK_BUDGET_MINOR] b5 (KITCHEN, 7s): KITCHEN 20 từ vượt cap 19 +1",
-      "[BLOCK_BUDGET_MINOR] b6 (KITCHEN, 6s): KITCHEN 18 từ vượt cap 16 +2",
-      "[NEAR_PASS] 2 minor block budget overflow(s) ≤2 từ — Voice Sync overflow_minor envelope absorbs",
+      "[BLOCK_BUDGET_MINOR] b4 (KITCHEN, 8s): KITCHEN 24 từ vượt cap 22 +2",
+      "[NEAR_PASS] 1 minor block budget overflow(s) ≤2 từ — Voice Sync overflow_minor envelope absorbs",
       "[BUDGET_RECONCILED] duration-based target 123 vượt 90% aggregate cap 105; reconciled to 94 (≤cap-11 từ buffer)"
     ],
     "quality_status": "near_pass",
-    "near_pass_reason": "2 minor block budget overflow(s) ≤2 từ — Voice Sync overflow_minor envelope absorbs",
+    "near_pass_reason": "1 minor block budget overflow(s) ≤2 từ — Voice Sync overflow_minor envelope absorbs",
     "passed": false
   },
   "extender_meta": {
-    "pass1_word_count": 64,
-    "pass1_response_id": "resp_0c590b42435af7a3006a0ea52e9924819aa09b1ee8e032dc89",
-    "pass2_response_id": "resp_023f48aa729f0fa3006a0ea536b9088198ac954a0e3cf665f7"
+    "pass1_word_count": 56,
+    "pass1_response_id": "resp_0c13fd3b9d6ee284006a0e9cb1afd4819a840b98feb5b78682",
+    "pass2_response_id": "resp_08aa44409edb5ceb006a0e9cbe6164819a8d4b53021a8c7924"
   },
-  "generated_at": "2026-05-21T06:25:00.499Z"
+  "generated_at": "2026-05-21T05:49:21.368Z"
 }

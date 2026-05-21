@@ -67,14 +67,14 @@
     ]
   },
   "output": {
-    "hook": "Mở hộp máy thái rau 4 trong 1, nhìn đã thấy tiện rồi.",
+    "hook": "Đập hộp máy thái rau 4 trong 1 đây!",
     "blocks": [
       {
         "block_id": "b1",
         "window_start_s": 0,
         "window_end_s": 4,
         "intent": "HOOK",
-        "line": "Mở hộp máy thái rau 4 trong 1, nhìn đã thấy tiện rồi.",
+        "line": "Đập hộp máy thái rau 4 trong 1 đây!",
         "notes": ""
       },
       {
@@ -82,7 +82,7 @@
         "window_start_s": 4,
         "window_end_s": 12,
         "intent": "TRANSITION",
-        "line": "Thiết kế nhỏ gọn, dễ tháo lắp, hợp với bếp nhỏ.",
+        "line": "Mở hộp ra nào, món này có thể thái, băm, và cắt chỉ.",
         "notes": ""
       },
       {
@@ -90,7 +90,7 @@
         "window_start_s": 12,
         "window_end_s": 18,
         "intent": "TRANSITION",
-        "line": "Có 4 lưỡi khác nhau, dễ dàng thay đổi theo nhu cầu.",
+        "line": "Khay trong suốt, đổi lưỡi dễ dàng, tiện lợi cực.",
         "notes": ""
       },
       {
@@ -98,7 +98,7 @@
         "window_start_s": 18,
         "window_end_s": 26,
         "intent": "KITCHEN",
-        "line": "Chỉ cần đẩy nhẹ, dưa leo đã thành khối xanh đều đẹp mắt. Nhìn là muốn ăn ngay!",
+        "line": "Nhìn miếng dưa leo được thái đều chưa kìa!",
         "notes": ""
       },
       {
@@ -106,7 +106,7 @@
         "window_start_s": 26,
         "window_end_s": 33,
         "intent": "KITCHEN",
-        "line": "Củ hành tím cũng không làm khó máy, từng khối nhỏ xinh xắn. Rất đã mắt!",
+        "line": "Cả hành tím cũng được cắt đẹp mê luôn.",
         "notes": ""
       },
       {
@@ -114,7 +114,7 @@
         "window_start_s": 33,
         "window_end_s": 39,
         "intent": "KITCHEN",
-        "line": "Đổi lưỡi, dưa chuột ra thành sợi dài đều tăm tắp. Quá tiện lợi!",
+        "line": "Đổi lưỡi sang cắt sợi, dưa chuột ra sợi xanh đều.",
         "notes": ""
       },
       {
@@ -122,7 +122,7 @@
         "window_start_s": 39,
         "window_end_s": 42,
         "intent": "CTA",
-        "line": "Món này hợp với bếp nhỏ, link ở bio nha.",
+        "line": "Link bio nha.",
         "notes": ""
       },
       {
@@ -134,34 +134,40 @@
         "notes": ""
       }
     ],
-    "cta": "Món này hợp với bếp nhỏ, link ở bio nha.",
-    "full_script": "Mở hộp máy thái rau 4 trong 1, nhìn đã thấy tiện rồi.\n\nThiết kế nhỏ gọn, dễ tháo lắp, hợp với bếp nhỏ.\n\nCó 4 lưỡi khác nhau, dễ dàng thay đổi theo nhu cầu.\n\nChỉ cần đẩy nhẹ, dưa leo đã thành khối xanh đều đẹp mắt. Nhìn là muốn ăn ngay!\n\nCủ hành tím cũng không làm khó máy, từng khối nhỏ xinh xắn. Rất đã mắt!\n\nĐổi lưỡi, dưa chuột ra thành sợi dài đều tăm tắp. Quá tiện lợi!\n\nMón này hợp với bếp nhỏ, link ở bio nha.",
+    "cta": "Link bio nha.",
+    "full_script": "Đập hộp máy thái rau 4 trong 1 đây!\n\nMở hộp ra nào, món này có thể thái, băm, và cắt chỉ.\n\nKhay trong suốt, đổi lưỡi dễ dàng, tiện lợi cực.\n\nNhìn miếng dưa leo được thái đều chưa kìa!\n\nCả hành tím cũng được cắt đẹp mê luôn.\n\nĐổi lưỡi sang cắt sợi, dưa chuột ra sợi xanh đều.\n\nLink bio nha.",
     "writer_notes": [
-      "Hook rõ ràng, gây chú ý ngay từ đầu.",
-      "KITCHEN blocks được mở rộng để đạt số từ cần thiết.",
-      "CTA mềm mại, phù hợp với tone video."
+      "Hook gây tò mò với việc đập hộp sản phẩm.",
+      "CTA ngắn gọn, dễ nhớ.",
+      "Chú ý không vượt quá từ cho phép từng block."
     ]
   },
   "meta": {
     "model": "gpt-4o-2024-08-06",
-    "input_tokens": 3839,
-    "output_tokens": 662,
-    "response_id": "resp_09678feda4ff1ce8006a0dcac78fa0819b8dcd5133802da4ed"
+    "input_tokens": 5344,
+    "output_tokens": 563,
+    "response_id": "resp_0c590b42435af7a3006a0ea52e9924819aa09b1ee8e032dc89"
   },
   "quality_report": {
     "banned_phrases_found": [],
     "hook_consistent": true,
     "cta_consistent": true,
     "cta_preserved": null,
-    "word_count": 94,
-    "word_count_target": 123,
+    "word_count": 64,
+    "word_count_target": 94,
     "word_count_within_target": false,
+    "budget_mode": "timeline_aware",
+    "duration_based_target": 123,
+    "aggregate_block_cap": 105,
+    "target_adjustment_reason": "duration-based target 123 vượt 90% aggregate cap 105; reconciled to 94 (≤cap-11 từ buffer)",
+    "block_budget_violations": [],
     "warnings": [
-      "[WORD_COUNT] 94 words vs target 123 (-23.6%, outside ±8% window)"
+      "[WORD_COUNT] [timeline_aware] 64 words vs target 94 (-31.9%, outside ±8% window)",
+      "[BUDGET_RECONCILED] duration-based target 123 vượt 90% aggregate cap 105; reconciled to 94 (≤cap-11 từ buffer)"
     ],
     "quality_status": "fail",
     "near_pass_reason": null,
     "passed": false
   },
-  "generated_at": "2026-05-20T14:53:01.591Z"
+  "generated_at": "2026-05-21T06:24:55.128Z"
 }

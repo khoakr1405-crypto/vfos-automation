@@ -67,14 +67,14 @@
     ]
   },
   "output": {
-    "hook": "Đập hộp máy thái rau 4 trong 1 đây!",
+    "hook": "Đồ bếp Tàu nhìn đồ chơi mà thử là mê.",
     "blocks": [
       {
         "block_id": "b1",
         "window_start_s": 0,
         "window_end_s": 4,
         "intent": "HOOK",
-        "line": "Đập hộp máy thái rau 4 trong 1 đây!",
+        "line": "Đồ bếp Tàu nhìn đồ chơi mà thử là mê.",
         "notes": ""
       },
       {
@@ -82,7 +82,7 @@
         "window_start_s": 4,
         "window_end_s": 12,
         "intent": "TRANSITION",
-        "line": "Mở hộp ra nào, món này có thể thái, băm, và cắt chỉ.",
+        "line": "Mở hộp ra là thấy ngay máy thái rau 4 trong 1.",
         "notes": ""
       },
       {
@@ -90,7 +90,7 @@
         "window_start_s": 12,
         "window_end_s": 18,
         "intent": "TRANSITION",
-        "line": "Khay trong suốt, đổi lưỡi dễ dàng, tiện lợi cực.",
+        "line": "Lắp ráp dễ dàng, đổi lưỡi nhanh gọn.",
         "notes": ""
       },
       {
@@ -98,31 +98,31 @@
         "window_start_s": 18,
         "window_end_s": 26,
         "intent": "KITCHEN",
-        "line": "Nhìn miếng dưa leo được thái đều chưa kìa! Cắt đều như thế này giúp món ăn thêm phần hấp dẫn.",
-        "notes": "Expanded b4 KITCHEN 9→19 từ: thêm câu cảm nhận về độ đều của miếng dưa leo."
+        "line": "Chỉ cần nhấn nhẹ, dưa leo đã thành khối đều tăm tắp.",
+        "notes": ""
       },
       {
         "block_id": "b5",
         "window_start_s": 26,
         "window_end_s": 33,
         "intent": "KITCHEN",
-        "line": "Cả hành tím cũng được cắt đẹp mê luôn. Màu tím nổi bật làm món ăn thêm phần bắt mắt.",
-        "notes": "Expanded b5 KITCHEN 9→18 từ: thêm câu cảm nhận về màu sắc của hành tím."
+        "line": "Hành tím thái nhanh, đều đẹp, nhìn thích mắt.",
+        "notes": ""
       },
       {
         "block_id": "b6",
         "window_start_s": 33,
         "window_end_s": 39,
         "intent": "KITCHEN",
-        "line": "Đổi lưỡi sang cắt sợi, dưa chuột ra sợi xanh đều. Thích hợp cho món salad tươi mát.",
-        "notes": "Expanded b6 KITCHEN 11→16 từ: thêm gợi ý dùng cho món salad."
+        "line": "Đổi lưỡi sang julienne, dưa chuột ra sợi ngay.",
+        "notes": ""
       },
       {
         "block_id": "b7",
         "window_start_s": 39,
         "window_end_s": 42,
         "intent": "CTA",
-        "line": "Link bio nha.",
+        "line": "Link ở bio nha.",
         "notes": ""
       },
       {
@@ -131,71 +131,38 @@
         "window_end_s": 46,
         "intent": "SILENT",
         "line": "",
-        "notes": ""
+        "notes": "Brand outro, không cần voice."
       }
     ],
-    "cta": "Link bio nha.",
-    "full_script": "Đập hộp máy thái rau 4 trong 1 đây!\n\nMở hộp ra nào, món này có thể thái, băm, và cắt chỉ.\n\nKhay trong suốt, đổi lưỡi dễ dàng, tiện lợi cực.\n\nNhìn miếng dưa leo được thái đều chưa kìa! Cắt đều như thế này giúp món ăn thêm phần hấp dẫn.\n\nCả hành tím cũng được cắt đẹp mê luôn. Màu tím nổi bật làm món ăn thêm phần bắt mắt.\n\nĐổi lưỡi sang cắt sợi, dưa chuột ra sợi xanh đều. Thích hợp cho món salad tươi mát.\n\nLink bio nha.",
+    "cta": "Link ở bio nha.",
+    "full_script": "Đồ bếp Tàu nhìn đồ chơi mà thử là mê.\n\nMở hộp ra là thấy ngay máy thái rau 4 trong 1.\n\nLắp ráp dễ dàng, đổi lưỡi nhanh gọn.\n\nChỉ cần nhấn nhẹ, dưa leo đã thành khối đều tăm tắp.\n\nHành tím thái nhanh, đều đẹp, nhìn thích mắt.\n\nĐổi lưỡi sang julienne, dưa chuột ra sợi ngay.\n\nLink ở bio nha.",
     "writer_notes": [
-      "Expanded b4 KITCHEN 9→19 từ: thêm câu cảm nhận về độ đều của miếng dưa leo.",
-      "Expanded b5 KITCHEN 9→18 từ: thêm câu cảm nhận về màu sắc của hành tím.",
-      "Expanded b6 KITCHEN 11→16 từ: thêm gợi ý dùng cho món salad."
+      "Hook tạo sự tò mò ngay từ đầu.",
+      "Giữ nhịp tự nhiên, không vượt quá cap.",
+      "CTA ngắn gọn, dễ nhớ."
     ]
   },
   "meta": {
     "model": "gpt-4o-2024-08-06",
-    "input_tokens": 5208,
-    "output_tokens": 743,
-    "response_id": "resp_023f48aa729f0fa3006a0ea536b9088198ac954a0e3cf665f7"
+    "input_tokens": 5061,
+    "output_tokens": 561,
+    "response_id": "resp_07192268344167da006a0e830e600c819bb1534b0b83517f03"
   },
   "quality_report": {
     "banned_phrases_found": [],
     "hook_consistent": true,
     "cta_consistent": true,
-    "cta_preserved": true,
-    "word_count": 94,
-    "word_count_target": 94,
-    "word_count_within_target": true,
-    "budget_mode": "timeline_aware",
-    "duration_based_target": 123,
-    "aggregate_block_cap": 105,
-    "target_adjustment_reason": "duration-based target 123 vượt 90% aggregate cap 105; reconciled to 94 (≤cap-11 từ buffer)",
-    "block_budget_violations": [
-      {
-        "block_id": "b5",
-        "intent": "KITCHEN",
-        "window_duration_s": 7,
-        "max_words": 19,
-        "actual_words": 20,
-        "overflow_words": 1,
-        "severity": "minor",
-        "reason": "KITCHEN 20 từ vượt cap 19 +1"
-      },
-      {
-        "block_id": "b6",
-        "intent": "KITCHEN",
-        "window_duration_s": 6,
-        "max_words": 16,
-        "actual_words": 18,
-        "overflow_words": 2,
-        "severity": "minor",
-        "reason": "KITCHEN 18 từ vượt cap 16 +2"
-      }
-    ],
+    "cta_preserved": null,
+    "word_count": 64,
+    "word_count_target": 123,
+    "word_count_within_target": false,
+    "block_budget_violations": [],
     "warnings": [
-      "[BLOCK_BUDGET_MINOR] b5 (KITCHEN, 7s): KITCHEN 20 từ vượt cap 19 +1",
-      "[BLOCK_BUDGET_MINOR] b6 (KITCHEN, 6s): KITCHEN 18 từ vượt cap 16 +2",
-      "[NEAR_PASS] 2 minor block budget overflow(s) ≤2 từ — Voice Sync overflow_minor envelope absorbs",
-      "[BUDGET_RECONCILED] duration-based target 123 vượt 90% aggregate cap 105; reconciled to 94 (≤cap-11 từ buffer)"
+      "[WORD_COUNT] 64 words vs target 123 (-48.0%, outside ±8% window)"
     ],
-    "quality_status": "near_pass",
-    "near_pass_reason": "2 minor block budget overflow(s) ≤2 từ — Voice Sync overflow_minor envelope absorbs",
+    "quality_status": "fail",
+    "near_pass_reason": null,
     "passed": false
   },
-  "extender_meta": {
-    "pass1_word_count": 64,
-    "pass1_response_id": "resp_0c590b42435af7a3006a0ea52e9924819aa09b1ee8e032dc89",
-    "pass2_response_id": "resp_023f48aa729f0fa3006a0ea536b9088198ac954a0e3cf665f7"
-  },
-  "generated_at": "2026-05-21T06:25:00.499Z"
+  "generated_at": "2026-05-21T03:59:28.321Z"
 }
