@@ -366,6 +366,16 @@ VFOS là hệ thống hỗ trợ chiến lược **content-led affiliate**:
 - Hiện tại Voice Sync vẫn cần operator → mỗi con copy ra sẽ lại cần operator → không scale 50–100 video/ngày.
 - Phải fix Voice Sync autonomy TRƯỚC khi mở rộng sang Con 2.
 
+**User review yt_007 preview (2026-05-21) — output quality**:
+- ✅ User đã xem preview MP4 final của yt_007 (đã commit qua `/chay` end-to-end) vào tối 2026-05-20 và đánh giá **"rất hài lòng"**.
+- Đây là bằng chứng cảm nhận mạnh thứ hai sau yt_005 BGM Mix v1 review ("quá ổn" / "quá ok") rằng **Con số 1 đã tạo được video có chất lượng cảm nhận tốt** — gadget kitchen demo + Việt hóa giọng AI + BGM piano nhẹ + CTA mềm.
+- yt_007 cũng là pilot đầu tiên dùng brand voice mới `ZqE9vIHPcrC35dZv0Svu` + Eleven v3 (Phần 11) — brand voice đứng vững được trên video thật, không chỉ trên smoke test.
+
+**Phân biệt rõ — KHÔNG được trộn 2 lớp đánh giá**:
+- **Output quality (cảm nhận người xem)**: user đã duyệt yt_007 ⇒ pipeline tạo được video đủ tốt để publish nếu muốn.
+- **Automation (zero-touch)**: vẫn CHƯA xong — Voice Sync autonomy đã đóng được phần lớn case (Phần 12), nhưng Script Writer còn vi phạm block-level timing budget với CTA window ngắn ⇒ vẫn cần operator can thiệp 1 lần cho yt_007 nếu rerun không có Phần 13.
+- Output user-approved KHÔNG có nghĩa automation đã đủ. Hai trục độc lập, đánh giá riêng.
+
 ---
 
 ### ✅ Phần 11 — VFOS Brand Voice consolidation (1 giọng duy nhất + Eleven v3): ĐÃ CHỐT (2026-05-20)
@@ -496,7 +506,7 @@ pnpm voice:generate --input production/smoke/voice_smoke.txt --output ...
 
 > **Fix Script Writer block-level timing budget — đặc biệt cho CTA và các block window ngắn.**
 >
-> **Lý do**: Voice Sync Autonomy v0 (Phần 12) đã đóng phần việc thuộc layer Voice Sync — SILENT skip, OFF_TOPIC policy, minor overflow accept, borderline major overflow auto-rescue qua speed-up. Voice Sync KHÔNG còn là blocker chính. Nhưng `/chay` vẫn CHƯA fully autonomous trên yt_007 vì b7 CTA: 17 từ trong window 3s, vượt gần 2x — speed-up cap 1.4 không thể cứu mà không phá brand voice.
+> **Lý do**: Output yt_007 đã được user duyệt là "rất hài lòng" về chất lượng cảm nhận (Phần 10 user review 2026-05-21) ⇒ pipeline tạo video đủ tốt khi chạy thành công. Voice Sync Autonomy v0 (Phần 12) đã đóng phần việc thuộc layer Voice Sync — SILENT skip, OFF_TOPIC policy, minor overflow accept, borderline major overflow auto-rescue qua speed-up. Voice Sync KHÔNG còn là blocker chính. Nhưng `/chay` vẫn CHƯA fully autonomous (zero-touch) trên yt_007 vì b7 CTA: 17 từ trong window 3s, vượt gần 2x — speed-up cap 1.4 không thể cứu mà không phá brand voice. Output user-approved ≠ automation đủ.
 >
 > **Vấn đề thật**: Script Writer hiện không enforce trần thời gian khi viết từng block. Pass 1 + Extender đều tự do viết theo word count tổng (123 từ cho yt_007), không bị ràng buộc bởi window từng block. Hậu quả: block có window ≤4s vẫn nhận câu 15-17 từ → unfittable ngay cả khi Voice Sync chạy autonomy đầy đủ.
 >
