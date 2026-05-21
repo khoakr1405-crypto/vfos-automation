@@ -2,7 +2,7 @@
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
 > **Cập nhật lần cuối**: 2026-05-21
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: Phần 13 (`341689e`) đã push; Phần 14 commit sẽ ghi sau khi push
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `e5e1469` — yt_007 zero-touch `/chay` run, Phần 12+13+14 verified end-to-end
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -624,18 +624,28 @@ pnpm voice:generate --input production/smoke/voice_smoke.txt --output ...
 
 ## 7. Bước tiếp theo duy nhất
 
-> **Chạy `/chay` end-to-end thật trên yt_007 với toàn bộ pipeline mới (Phần 12+13+14) — verify zero-touch trên video đã có user duyệt.**
+> **MỐC ĐÃ ĐẠT (2026-05-21)**: `/chay` đã chạy **zero-touch end-to-end** thành công trên yt_007 (commit `e5e1469`) — Script Writer → Voice Sync → BGM Mix → preview MP4 final, KHÔNG cần operator can thiệp tay. User đã xem preview và đánh giá "rất hài lòng". **yt_007 hoàn thành vai trò pilot. Không tiếp tục tối ưu riêng yt_007 nữa.**
 >
-> **Lý do**: Phần 14 (Budget Reconciliation) đã đóng blocker structural mismatch giữa global target và aggregate block cap. Smoke v7 thật trên yt_007 đạt NEAR-PASS (exit code 0, /chay đi tiếp). Cộng dồn:
-> - Phần 12 (Voice Sync Autonomy): SILENT auto-skip + minor overflow auto-rescue ✅
-> - Phần 13 (Block-Level Budget): b7 CTA không còn 17 từ, CTA stays "Link bio nha." ✅
-> - Phần 14 (Budget Reconciliation): không còn padding panic, "vô cùng" leak gone ✅
+> **Bước tiếp theo duy nhất: Chạy `/chay` end-to-end trên video mới `yt_008` để kiểm tra khả năng tổng quát của pipeline.**
 >
-> **Acceptance**: chạy `/chay` từ đầu trên yt_007 (Script Writer → Voice Sync → BGM Mix → preview), verify zero-touch — không cần operator can thiệp tay nào ngoài duyệt preview cuối. Nếu đạt → Core Pipeline xong, mở khả năng cân nhắc nhân bản Con số 2 theo blueprint.
+> **Lý do**: Tiếp tục tối ưu trên yt_007 sẽ overfit case duy nhất đó, không chứng minh được pipeline khái quát. yt_008 là test mới để verify dây chuyền không bị coupled với yt_007 sau khi:
+> - Phần 12 — Voice Sync Autonomy (SILENT skip + minor overflow auto-rescue)
+> - Phần 13 — Block-Level Budget (per-block cap enforcement, CTA tight)
+> - Phần 14 — Budget Reconciliation (target reconcile với aggregate block cap)
 >
-> **Giới hạn nội tại (chấp nhận, không tô vẽ)**: yt_007 v7 đạt NEAR-PASS không phải PASS sạch — vì 1 minor b4 KITCHEN +2 từ (sync layer overflow_minor envelope absorb). Đây là minor noise, không phải bug.
+> **Acceptance**: chạy `/chay` (mode 2 với URL hoặc mode 3 auto-source) tạo `yt_008` từ đầu — Script Writer → Voice Sync → BGM Mix → preview. Verify:
+> 1. Pipeline tự chạy không cần operator can thiệp tay
+> 2. Quality status PASS hoặc NEAR-PASS (exit 0) trên một video CHƯA TỪNG calibrate
+> 3. Output preview MP4 mở được, không leak source audio
 >
-> **KHÔNG mở scope** sang Con số 2, publish, BGM ducking, watermark, refactor Voice Sync/Script Writer thêm, hay video mới trong vòng tiếp theo.
+> **Quy tắc tuyệt đối cho vòng này**:
+> - **KHÔNG dùng lại yt_007 cho vòng kế tiếp.** yt_007 đã đóng vai trò pilot, mọi tinh chỉnh thêm trên nó sẽ là overfitting.
+> - **Khi `/chay` được gọi không args (mode 1): ưu tiên tạo/chạy yt_008**, KHÔNG quay lại yt_007 dù memory có nhắc đến.
+> - yt_007 artifacts giữ làm reference để so sánh — không touch.
+>
+> **KHÔNG mở scope** sang Con số 2, publish, BGM ducking, watermark, refactor Voice Sync/Script Writer thêm trong vòng này. Mục tiêu duy nhất: 1 video mới end-to-end qua pipeline hiện tại.
+>
+> **Sau khi xong**: nếu yt_008 chạy được clean → có bằng chứng pipeline generalize. Mới cân nhắc tới (a) nhân bản Con số 2 theo blueprint hoặc (b) cải tiến tiếp Core nếu phát hiện limit mới.
 
 ---
 
@@ -687,9 +697,9 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mốc tại thời điểm cập nhật trạng thái | `8d3e3cb` (trước Phần 13); Phần 13 commit sẽ ghi sau khi push |
+| Commit mốc tại thời điểm cập nhật trạng thái | `e5e1469` — yt_007 zero-touch `/chay` run, Phần 12+13+14 verified end-to-end |
 | Remote | `origin` (GitHub) |
-| Sync status | Phần 11 (Brand Voice) + Phần 12 (Voice Sync Autonomy) + Phần 13 (Block-Level Budget v0) — block-level timing budget enforce hoạt động, b7 CTA blocker đã xoá. Milestone tiếp theo: reconcile global target ↔ aggregate block cap HOẶC operator-side scene_input convention. |
+| Sync status | Phần 11–14 ĐÃ PUSH. Zero-touch milestone đạt trên yt_007. Bước tiếp: yt_008 generalization test qua `/chay`. |
 
 **Trạng thái artifacts production** (tính đến 2026-05-20):
 - `production/batch_001/yt_007/` (text artifacts): **ĐÃ commit** ở `df1609e` — scene_input, script v1/v2/v3, manifest BGM. Dùng làm reference cho vòng Voice Sync autonomy.
