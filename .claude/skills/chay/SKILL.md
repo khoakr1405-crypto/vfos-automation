@@ -106,6 +106,9 @@ STEP 4   Phân tích video thực tế
          → Trích keyframes: ffmpeg -vf "select='not(mod(n,150))',scale=300:-1" -vsync vfr frame_%03d.jpg
          → Mô tả từng keyframe dựa trên hình thật — KHÔNG hallucinate
          → Xác định scene timeline: sản phẩm gì, thời điểm nào, hook/CTA ở đâu
+         → Compliance R4 pre-scan: ghi chú keyframe nào có watermark / logo brand
+           nguồn / QR / mã vạch / PII (số ĐT, biển số, tên người). Đánh dấu để
+           xử lý ở STEP 11 (trim/crop/blur/cover).
 STEP 5   Tạo scene_input.json
          → Đặt tại: production/batch_001/<video_id>/scene_input.json
          → Schema: video_id, content_goal, target_platform (tiktok|reels|shorts),
@@ -143,6 +146,13 @@ STEP 6   Chạy AI Script Writer (Block-Level Budget + Reconciliation v0)
                retry 1 lần. Nếu vẫn FAIL: báo user, dừng.
 STEP 7   Đánh giá script
          → Đọc script_ai_v1.txt toàn bộ — có tự nhiên không? Hook kéo view?
+         → Compliance R1: script có copy từng câu kiểu dịch cứng từ audio gốc
+           không? Nếu có → viết lại trước khi sang Voice Sync.
+         → Compliance R3: script có chứa "tốt nhất / rẻ nhất / chính hãng 100% /
+           cam kết / đảm bảo / số 1 / duy nhất" không? Nếu có → operator sửa
+           thành soft claim trước khi sang Voice Sync.
+         → Compliance R5: tone là chia sẻ / trải nghiệm hay đang quảng cáo thô?
+           CTA có soft không?
          → Không tô vẽ kết quả — nếu script kém thì nói thật
 STEP 8   Voice config
          → VFOS dùng MỘT brand voice duy nhất: `ZqE9vIHPcrC35dZv0Svu` (Eleven v3).
@@ -181,11 +191,17 @@ STEP 10  Chạy BGM Mix
                         --bgm-file production/batch_001/yt_005/bgm/yt_005_bgm_v2_candidate_b.mp3
                         --bgm-volume 0.0972 --voice-gain 1.716 --final-gain 1.3
                         --bgm-fadein 1.5 --bgm-fadeout 3.0
-STEP 11  QC kỹ thuật
+STEP 11  QC kỹ thuật + Compliance R4 source-branding QC
          → Streams: phải có 2 (video + audio)
          → Duration: video ≈ audio, không lệch >0.5s
          → Source audio leak: none detected
          → max_volume: không vượt -1 dBFS (no clipping)
+         → Compliance R4 — quét preview cuối (mắt operator + STEP 4 pre-scan):
+           • Watermark / logo brand nguồn (TikTok-Douyin handle, logo TQ)
+           • QR code, mã vạch, voucher code
+           • PII: số ĐT, email, địa chỉ, tên người, biển số xe
+           Nếu phát hiện: trim → crop → blur → cover (theo thứ tự ưu tiên).
+           KHÔNG báo final khi còn leak.
          → Ghi rõ từng chỉ số — không bỏ qua
 STEP 12  Mở preview cho user
          → Start-Process <path>/bgm_mix_v1/<video_id>_voice_blocks_bgm_preview_vi.mp4
@@ -260,6 +276,34 @@ GUARD 4 — Audio QC
 GUARD 5 — Kết quả 75–85% là đủ
   → Không tối ưu vô hạn
   → Đạt ngưỡng dùng được → ghi lại → đi tiếp
+
+GUARD 6 — Affiliate Compliance + Source Branding v0
+  → R1 — Anti-copy nguồn: KHÔNG copy y nguyên kịch bản / góc dựng / narration
+         của video nguồn. Script phải có angle Việt Nam riêng (hook, nhịp, cụm
+         từ địa phương). Nếu phát hiện script bám sát từng câu của audio gốc:
+         viết lại trước khi sang Voice Sync.
+  → R2 — Affiliate product match: affiliate link gắn ở bước publish PHẢI khớp
+         đúng sản phẩm trong video (cùng SKU/model). KHÔNG video sản phẩm A gắn
+         link sản phẩm B vì "hot hơn" — gây hiểu lầm + risk affiliate ban + risk
+         pháp lý quảng cáo gian dối. `/chay` không tự chốt affiliate link
+         (publish manual) — guard này nhắc operator ở bước publish.
+  → R3 — Banned absolute claims trong script: tránh "tốt nhất", "rẻ nhất",
+         "chính hãng 100%", "cam kết", "đảm bảo", "số 1", "duy nhất",
+         "không thể tốt hơn", "rẻ nhất thị trường". Nếu Script Writer output
+         có 1 trong các cụm này: operator sửa thành soft claim ("mình thấy ổn",
+         "dùng được", "phù hợp với mình"). KHÔNG dùng làm hook hoặc CTA.
+  → R4 — Source branding QC (BẮT BUỘC trước final preview):
+         a. Watermark / logo / handle TikTok-Douyin / brand TQ ở góc frame
+         b. QR code, mã vạch, voucher code in trên bao bì / màn hình
+         c. PII: số điện thoại, email, địa chỉ, tên người, biển số xe
+         Nếu phát hiện ở keyframe (STEP 4) hoặc preview cuối (STEP 11): xử lý
+         theo thứ tự ưu tiên trim (cắt đoạn) → crop (nếu nằm góc) → blur →
+         cover bằng sticker/text. KHÔNG để leak ra preview final.
+  → R5 — Soft tone: ưu tiên content kiểu chia sẻ / trải nghiệm / hữu ích
+         ("Mình mua cái này về…", "thử dùng thấy…", "nhỏ mà tiện…"). TRÁNH
+         quảng cáo thô ("mua ngay", "hàng có sẵn", "click link bio mua liền",
+         "săn sale gấp"). CTA soft: "link bio nếu mọi người muốn xem",
+         "có ở mô tả nhé".
 ```
 
 ---
@@ -280,6 +324,11 @@ Bắt buộc chạy trước khi báo "hoàn thành":
 [ ] Manifest JSON: ghi đủ params để reproduce?
 [ ] Nếu phát hiện lỗi rõ ràng trong scope: đã sửa chưa?
 [ ] Báo cáo: đủ thông tin audit, không tô vẽ?
+[ ] Compliance R1: Script không copy y nguyên góc dựng / narration nguồn?
+[ ] Compliance R2: Affiliate target khớp đúng sản phẩm trong video (nhắc bước publish)?
+[ ] Compliance R3: Script không chứa từ tuyệt đối (tốt nhất / rẻ nhất / chính hãng 100% / cam kết / đảm bảo / số 1 / duy nhất)?
+[ ] Compliance R4: Preview cuối không leak logo brand nguồn, watermark, QR / mã vạch, PII?
+[ ] Compliance R5: Tone là chia sẻ / trải nghiệm, không quảng cáo thô?
 ```
 
 ---
@@ -297,6 +346,13 @@ KHÔNG BAO GIỜ:
   × Mở rộng sang longform dubbing / vietsub
   × Build router đa loại video / Con số 2
   × Tự ý auto-publish
+  × Copy y nguyên kịch bản / góc dựng từ video nguồn (vi phạm R1)
+  × Gắn affiliate link không khớp sản phẩm trong video (vi phạm R2)
+  × Để script đi qua Voice Sync khi còn từ tuyệt đối: tốt nhất / rẻ nhất /
+    chính hãng 100% / cam kết / đảm bảo / số 1 / duy nhất (vi phạm R3)
+  × Để watermark / logo brand nguồn / QR / mã vạch / PII leak ra preview cuối
+    (vi phạm R4)
+  × Viết CTA quảng cáo thô kiểu "mua ngay" / "săn sale gấp" (vi phạm R5)
 
 CHỈ LÀM TRONG SCOPE:
   ✓ 1 video mỗi lần /chay

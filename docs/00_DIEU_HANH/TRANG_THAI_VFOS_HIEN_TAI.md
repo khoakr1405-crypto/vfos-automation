@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-05-21
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `e5e1469` — yt_007 zero-touch `/chay` run, Phần 12+13+14 verified end-to-end
+> **Cập nhật lần cuối**: 2026-05-21 (Phần 15 — Affiliate Compliance + Source Branding Guard v0)
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `e5e1469` (zero-touch yt_007), Phần 15 commit sẽ bump khi push
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -593,6 +593,48 @@ pnpm voice:generate --input production/smoke/voice_smoke.txt --output ...
 
 ---
 
+### ✅ Phần 15 — Affiliate Compliance + Source Branding Guard v0: ĐÃ CHỐT (2026-05-21)
+
+**Mục tiêu**: Trước khi chạy `/chay` trên `yt_008` (video CHƯA TỪNG calibrate), cài 5 rule compliance bắt buộc để pipeline không tạo output vi phạm:
+(a) bản quyền/đạo nhái nội dung nguồn,
+(b) bait-and-switch affiliate (video sản phẩm A, link sản phẩm B),
+(c) ngôn ngữ quảng cáo tuyệt đối (Luật Quảng cáo VN — Điều 8 cấm "tốt nhất / số 1 / duy nhất" không có bằng chứng),
+(d) leak watermark / brand / QR / PII từ nguồn TQ ra preview VN,
+(e) tone quảng cáo thô làm giảm CTR + tăng risk platform policy (FB/TikTok).
+
+**Phạm vi cài đặt (KHÔNG mở scope sang Script Writer code)**:
+- `.claude/skills/chay/SKILL.md` — thêm GUARD 6 (5 rule R1–R5), update SELF-REVIEW checklist (+5 dòng compliance), HARD CONSTRAINTS (+5 dòng), note compliance ở STEP 4 (keyframe pre-scan), STEP 7 (script review), STEP 11 (final-preview QC).
+- `docs/00_DIEU_HANH/TRANG_THAI_VFOS_HIEN_TAI.md` — ghi phần này + bước tiếp theo yt_008 phải tuân GUARD 6.
+
+**5 Rule (chi tiết ở SKILL.md GUARD 6)**:
+1. **R1 — Anti-copy nguồn**: Script không bám sát narration / góc dựng video gốc. Phải có angle Việt riêng.
+2. **R2 — Affiliate product match**: link affiliate phải khớp đúng sản phẩm trong video (cùng SKU/model). Nhắc operator ở bước publish (publish vẫn manual, không trong `/chay`).
+3. **R3 — Banned absolute claims**: cấm "tốt nhất / rẻ nhất / chính hãng 100% / cam kết / đảm bảo / số 1 / duy nhất / không thể tốt hơn".
+4. **R4 — Source branding QC**: trim/crop/blur/cover watermark, logo brand nguồn, QR, mã vạch, PII trước khi báo final preview. Pre-scan ở STEP 4, enforce ở STEP 11.
+5. **R5 — Soft tone**: chia sẻ / trải nghiệm / hữu ích; không "mua ngay / săn sale gấp / hàng có sẵn".
+
+**Cơ chế enforce theo lớp** (operator-enforced v0, KHÔNG code-level):
+- **Lớp 1 — Script (STEP 7)**: operator kiểm tra R1/R3/R5 trước khi sang Voice Sync. Nếu vi phạm: sửa script tay rồi rerun voice sync.
+- **Lớp 2 — Preview (STEP 11)**: operator kiểm tra R4 trước khi báo final. Nếu phát hiện leak: xử lý theo thứ tự ưu tiên trim → crop → blur → cover.
+- **Lớp 3 — Publish (ngoài `/chay`)**: operator chốt affiliate link đúng sản phẩm (R2).
+
+**Triết lý — KHÔNG mở scope vòng này**:
+- KHÔNG promote R3 thành hard-banned phrases trong Script Writer `quality-guard.ts` (sẽ cân nhắc ở vòng sau nếu thấy vi phạm lặp lại trên ≥3 video).
+- KHÔNG build auto-detection logo/QR/PII (cần OCR + brand classifier — overkill cho v0).
+- KHÔNG build affiliate link selector trong `/chay` (publish vẫn manual).
+- Mục đích vòng này: cài checklist tối thiểu để yt_008 không vi phạm thấy rõ, không phải tự động hóa compliance.
+
+**Threshold 75-85%**: Đạt cho v0 — guard ở mức operator-enforced, đủ ngăn case vi phạm rõ ràng. Stop optimizing layer này.
+
+**Giới hạn còn lại (KHÔNG mở scope vòng này)**:
+- R3 chưa hard-block ở code Script Writer — vẫn dựa operator review STEP 7.
+- R4 chưa có auto-detection — vẫn dựa mắt operator + STEP 4 pre-scan + STEP 11 manual QC.
+- R2 chưa có cơ chế cross-check SKU — operator chốt link bằng tay khi publish.
+
+**Trạng thái kỹ thuật**: chỉ touch `.md`, không động code, không cần typecheck/biome.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
@@ -632,11 +674,18 @@ pnpm voice:generate --input production/smoke/voice_smoke.txt --output ...
 > - Phần 12 — Voice Sync Autonomy (SILENT skip + minor overflow auto-rescue)
 > - Phần 13 — Block-Level Budget (per-block cap enforcement, CTA tight)
 > - Phần 14 — Budget Reconciliation (target reconcile với aggregate block cap)
+> - **Phần 15 — Affiliate Compliance + Source Branding Guard v0 (R1–R5)** ← áp dụng từ yt_008
 >
 > **Acceptance**: chạy `/chay` (mode 2 với URL hoặc mode 3 auto-source) tạo `yt_008` từ đầu — Script Writer → Voice Sync → BGM Mix → preview. Verify:
-> 1. Pipeline tự chạy không cần operator can thiệp tay
+> 1. Pipeline tự chạy không cần operator can thiệp tay (automation track)
 > 2. Quality status PASS hoặc NEAR-PASS (exit 0) trên một video CHƯA TỪNG calibrate
 > 3. Output preview MP4 mở được, không leak source audio
+> 4. **Compliance GUARD 6** (operator-enforced theo SKILL.md):
+>    - R1: script không copy y nguyên narration nguồn
+>    - R3: script không chứa từ tuyệt đối (tốt nhất / rẻ nhất / chính hãng 100% / cam kết / đảm bảo)
+>    - R4: preview cuối không leak watermark / logo brand nguồn / QR / mã vạch / PII
+>    - R5: tone soft, không quảng cáo thô
+>    - R2 (product match): nhắc ở báo cáo cuối — chốt affiliate đúng sản phẩm khi publish
 >
 > **Quy tắc tuyệt đối cho vòng này**:
 > - **KHÔNG dùng lại yt_007 cho vòng kế tiếp.** yt_007 đã đóng vai trò pilot, mọi tinh chỉnh thêm trên nó sẽ là overfitting.
@@ -697,9 +746,9 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mốc tại thời điểm cập nhật trạng thái | `e5e1469` — yt_007 zero-touch `/chay` run, Phần 12+13+14 verified end-to-end |
+| Commit mốc tại thời điểm cập nhật trạng thái | `e5e1469` — yt_007 zero-touch (12+13+14). Phần 15 (compliance guard) sẽ có commit riêng push cùng vòng. |
 | Remote | `origin` (GitHub) |
-| Sync status | Phần 11–14 ĐÃ PUSH. Zero-touch milestone đạt trên yt_007. Bước tiếp: yt_008 generalization test qua `/chay`. |
+| Sync status | Phần 11–14 ĐÃ PUSH. Phần 15 ĐANG commit riêng. Bước tiếp: yt_008 generalization test qua `/chay` với GUARD 6. |
 
 **Trạng thái artifacts production** (tính đến 2026-05-20):
 - `production/batch_001/yt_007/` (text artifacts): **ĐÃ commit** ở `df1609e` — scene_input, script v1/v2/v3, manifest BGM. Dùng làm reference cho vòng Voice Sync autonomy.
