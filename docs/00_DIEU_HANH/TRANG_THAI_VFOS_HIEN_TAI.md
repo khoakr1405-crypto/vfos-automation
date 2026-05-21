@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-05-21 (Phần 15 — Affiliate Compliance + Source Branding Guard v0)
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `e5e1469` (zero-touch yt_007), Phần 15 commit sẽ bump khi push
+> **Cập nhật lần cuối**: 2026-05-21 (Phần 16 — /chay Auto-Source Retry + GUARD 6 Repair v1)
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `2881007` (Phần 15 compliance guard). Phần 16 commit sẽ bump khi push
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -635,6 +635,77 @@ pnpm voice:generate --input production/smoke/voice_smoke.txt --output ...
 
 ---
 
+### ✅ Phần 16 — /chay Auto-Source Retry + GUARD 6 Repair v1: ĐÃ CHỐT (2026-05-21)
+
+**Mục tiêu**: Trong vòng chạy yt_008 vừa rồi `/chay` lộ 3 lỗi vận hành rõ:
+1. Hỏi user quá nhiều ở bước sourcing (chọn mode, chọn ngách, chọn candidate) ngay cả khi memory đã ghi rõ next step.
+2. Khi candidate `rVLy0F8_IfQ` bị reject đúng theo GUARD 6, `/chay` lại hỏi user "làm gì tiếp?" thay vì tự search tiếp.
+3. GUARD 6 v0 (Phần 15) đang lẫn lộn giữa visual safety và affiliate/ad-copy/copy-risk — không có repair playbook, chỉ detect rồi reject.
+
+Vòng này sửa skill + docs để `/chay` tự quyết định + tự retry + GUARD 6 ưu tiên repair blur/mosaic. **KHÔNG sửa pipeline code, KHÔNG chạy video mới.**
+
+**Phạm vi cài đặt**:
+- `.claude/skills/chay/SKILL.md` — restructure lớn:
+  - MODE 1: thêm **AUTO-DECISION POLICY** (no-args /chay với memory rõ → không hỏi user mode/ngách/candidate).
+  - MODE 3: thêm **AUTO-SOURCE RETRY POLICY** (candidate fail → tự đổi keyword theo lý do fail, max 3 vòng trước khi hỏi user).
+  - Thêm section **CHANNEL/LANE PROFILE** với default lane set Con số 1 (lane_1 gadget bếp, lane_2 đồ gia dụng, lane_3 cleaning indoor, lane_4 organizer). Configurable per channel.
+  - **GUARD 6 rewrite**: chỉ còn 3 nhóm Visual Safety (logo/brand/watermark, QR/mã vạch, biển số/PII). Tách R1/R2/R3/R5 sang **GUARD 7 — Affiliate & Content Compliance**. R4 cũ absorbed vào GUARD 6.
+  - **GUARD 6 Repair Playbook**: Detect → Repair → Re-QC → Decision. Repair priority: blur/mosaic (ƯU TIÊN 1) → cover box/sticker → crop nhẹ → trim → NEEDS_NEW_CANDIDATE/NEEDS_USER.
+  - **Decision Status**: PASS / PASS_WITH_REPAIR / NEEDS_NEW_CANDIDATE / NEEDS_USER.
+  - STEP 4/7/11 cập nhật: STEP 4 pre-scan GUARD 6, STEP 7 review GUARD 7 R1/R3/R5, STEP 11 chạy Repair Playbook.
+  - SELF-REVIEW checklist: 10 dòng mới (4 cho GUARD 6, 4 cho GUARD 7, 2 cho AUTO-DECISION/RETRY).
+  - HARD CONSTRAINTS: 4 dòng mới (cấm hỏi user khi memory rõ, cấm reject mà không Repair, cấm hỏi sau lần fail đầu, cấm hard-code 1 ngách).
+  - REPORT TEMPLATE: thêm bảng "Detected issue → Repair action → Re-QC result" + Auto-Source Retry log table.
+- `docs/00_DIEU_HANH/TRANG_THAI_VFOS_HIEN_TAI.md` — ghi Phần 16 + cập nhật Mục 7 + Mục 10.
+
+**Auto-Decision Policy (no-args /chay) — tóm tắt**:
+- Khi memory có next step rõ (eg "chạy yt_008"): KHÔNG hỏi user "chọn mode/ngách/candidate".
+- Tự chọn MODE 3 auto-source, tự chọn lane từ CHANNEL/LANE PROFILE, tự search + chấm điểm + chọn candidate.
+- Chấm điểm trên 6 trục: source quality, visual clarity, viral signal, lane relevance, GUARD 6 visual safety risk, affiliate suitability.
+- Chỉ hỏi user khi: sau 3 vòng retry vẫn không có candidate đạt threshold / đổi chiến lược lớn / rủi ro cao / publish thật / hành động destructive.
+
+**Auto-Source Retry Policy — tóm tắt**:
+- Candidate fail GUARD 6 hoặc source threshold → KHÔNG hỏi user, tự ghi reject reason, tự đổi keyword theo lý do fail.
+- Mapping mẫu: tool công nghiệp/landscaping → indoor/home/organizer; biển số → tránh outdoor/street/car; brand logo lớn → demo clean no-watermark; không match Shopee VN → product phổ thông.
+- Max 3 vòng (1 initial + 2 retry). Sau 3 vòng vẫn fail → mới trình shortlist cho user.
+
+**GUARD 6 scope mới (LỚP 1 — Visual Safety only)**:
+1. Logo / brand / watermark
+2. QR code / mã vạch / voucher code
+3. Biển số xe / PII (số ĐT, email, địa chỉ, tên, khuôn mặt người không liên quan)
+
+**Tách khỏi GUARD 6** (chuyển sang GUARD 7 hoặc AUTO-DECISION):
+- Affiliate mismatch → GUARD 7 R2
+- Ad-copy risk (từ tuyệt đối) → GUARD 7 R3
+- Copy-risk (anti-copy nguồn) → GUARD 7 R1
+- Soft tone → GUARD 7 R5
+- Chọn mode/ngách/candidate → AUTO-DECISION POLICY ở MODE 1
+
+**Repair Playbook priority (Detect → Repair → Re-QC → Decision)**:
+1. **Blur / mosaic** ưu tiên số 1 — giữ nội dung chính tốt nhất (`boxblur`, `delogo`, `enable='between(t,a,b)'` cho frame range)
+2. Cover bằng box / sticker / text overlay
+3. Crop / zoom nhẹ (chỉ khi vùng vi phạm sát mép)
+4. Trim đoạn (chỉ khi vi phạm ở intro/outro)
+5. NEEDS_NEW_CANDIDATE → trigger Auto-Source Retry; NEEDS_USER → exit sau retry exhausted
+
+**Triết lý — KHÔNG mở scope vòng này**:
+- KHÔNG sửa pipeline code (Script Writer, Voice Sync, BGM).
+- KHÔNG chạy video mới, KHÔNG chạy yt_008.
+- KHÔNG mở Con số 2 / publish.
+- KHÔNG xây auto-detection logo/QR (operator vẫn detect bằng mắt + keyframe pre-scan ở STEP 4).
+- KHÔNG xây OCR / brand classifier (overkill cho v1).
+
+**Threshold 75-85%**: Đạt cho v1 — `/chay` không còn hỏi user vô tội vạ, có retry policy rõ, GUARD 6 có repair priority chính xác. Stop optimizing.
+
+**Giới hạn còn lại (KHÔNG mở scope)**:
+- Repair Playbook vẫn operator-executed (chưa có ffmpeg auto-pipeline blur/mosaic detect-and-apply).
+- Lane relevance chấm điểm vẫn dựa heuristic, chưa có classifier.
+- Channel Profile chưa có file config riêng — tạm dùng default lane set của Con số 1.
+
+**Trạng thái kỹ thuật**: chỉ touch `.md`, không động code, không cần typecheck/biome.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
@@ -674,18 +745,24 @@ pnpm voice:generate --input production/smoke/voice_smoke.txt --output ...
 > - Phần 12 — Voice Sync Autonomy (SILENT skip + minor overflow auto-rescue)
 > - Phần 13 — Block-Level Budget (per-block cap enforcement, CTA tight)
 > - Phần 14 — Budget Reconciliation (target reconcile với aggregate block cap)
-> - **Phần 15 — Affiliate Compliance + Source Branding Guard v0 (R1–R5)** ← áp dụng từ yt_008
+> - Phần 15 — Affiliate Compliance + Source Branding Guard v0
+> - **Phần 16 — /chay Auto-Source Retry + GUARD 6 Repair v1** ← áp dụng cho yt_008: no-args /chay phải tự quyết định + tự retry candidate fail, GUARD 6 ưu tiên repair blur/mosaic trước khi reject
 >
-> **Acceptance**: chạy `/chay` (mode 2 với URL hoặc mode 3 auto-source) tạo `yt_008` từ đầu — Script Writer → Voice Sync → BGM Mix → preview. Verify:
-> 1. Pipeline tự chạy không cần operator can thiệp tay (automation track)
-> 2. Quality status PASS hoặc NEAR-PASS (exit 0) trên một video CHƯA TỪNG calibrate
-> 3. Output preview MP4 mở được, không leak source audio
-> 4. **Compliance GUARD 6** (operator-enforced theo SKILL.md):
->    - R1: script không copy y nguyên narration nguồn
->    - R3: script không chứa từ tuyệt đối (tốt nhất / rẻ nhất / chính hãng 100% / cam kết / đảm bảo)
->    - R4: preview cuối không leak watermark / logo brand nguồn / QR / mã vạch / PII
->    - R5: tone soft, không quảng cáo thô
->    - R2 (product match): nhắc ở báo cáo cuối — chốt affiliate đúng sản phẩm khi publish
+> **Acceptance**: gọi `/chay` (no-args, để memory routing) tạo `yt_008` từ đầu — Script Writer → Voice Sync → BGM Mix → preview. Verify:
+> 1. **AUTO-DECISION POLICY**: `/chay` no-args KHÔNG hỏi user mode/ngách/candidate (memory đã ghi yt_008 + lane gadget bếp/đồ gia dụng đủ rõ).
+> 2. **AUTO-SOURCE RETRY**: nếu candidate đầu fail GUARD 6 hoặc threshold → `/chay` tự đổi keyword retry tối đa 3 vòng trước khi hỏi user.
+> 3. Pipeline tự chạy không cần operator can thiệp tay (automation track).
+> 4. Quality status PASS hoặc NEAR-PASS (exit 0) trên video CHƯA TỪNG calibrate.
+> 5. Output preview MP4 mở được, không leak source audio.
+> 6. **GUARD 6 Visual Safety v1** (3 nhóm: logo/brand/watermark, QR/mã vạch, biển số/PII):
+>    - Nếu detect vi phạm → Repair Playbook ưu tiên blur/mosaic.
+>    - Decision Status cuối: PASS hoặc PASS_WITH_REPAIR.
+>    - Bảng "Detected issue → Repair action → Re-QC result" ghi đầy đủ trong báo cáo.
+> 7. **GUARD 7 Affiliate & Content Compliance** (operator-enforced ở STEP 7):
+>    - R1: script không copy y nguyên narration nguồn.
+>    - R3: script không chứa từ tuyệt đối (tốt nhất / rẻ nhất / chính hãng 100% / cam kết / đảm bảo).
+>    - R5: tone soft, không quảng cáo thô.
+>    - R2 (product match): nhắc ở báo cáo cuối — chốt affiliate đúng sản phẩm khi publish.
 >
 > **Quy tắc tuyệt đối cho vòng này**:
 > - **KHÔNG dùng lại yt_007 cho vòng kế tiếp.** yt_007 đã đóng vai trò pilot, mọi tinh chỉnh thêm trên nó sẽ là overfitting.
@@ -746,9 +823,9 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mốc tại thời điểm cập nhật trạng thái | `e5e1469` — yt_007 zero-touch (12+13+14). Phần 15 (compliance guard) sẽ có commit riêng push cùng vòng. |
+| Commit mốc tại thời điểm cập nhật trạng thái | `2881007` — Phần 15 compliance guard ĐÃ PUSH. Phần 16 (/chay Auto-Source Retry + GUARD 6 Repair v1) sẽ có commit riêng push cùng vòng. |
 | Remote | `origin` (GitHub) |
-| Sync status | Phần 11–14 ĐÃ PUSH. Phần 15 ĐANG commit riêng. Bước tiếp: yt_008 generalization test qua `/chay` với GUARD 6. |
+| Sync status | Phần 11–15 ĐÃ PUSH. Phần 16 ĐANG commit riêng. Bước tiếp: yt_008 generalization test qua `/chay` với AUTO-DECISION + AUTO-SOURCE RETRY + GUARD 6 Repair Playbook. |
 
 **Trạng thái artifacts production** (tính đến 2026-05-20):
 - `production/batch_001/yt_007/` (text artifacts): **ĐÃ commit** ở `df1609e` — scene_input, script v1/v2/v3, manifest BGM. Dùng làm reference cho vòng Voice Sync autonomy.

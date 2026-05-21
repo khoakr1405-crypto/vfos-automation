@@ -62,6 +62,35 @@ Dù ở mode nào, agent phải làm ngay khi nhận `/chay`:
 - Chạy BGM Mix
 - QC + render preview
 
+**AUTO-DECISION POLICY (no-args /chay) — v1**
+
+Khi `/chay` được gọi không args VÀ Project Memory đã ghi next step rõ (ví dụ "chạy yt_008", "generalization test qua /chay", "không dùng lại yt_007"):
+
+- **KHÔNG hỏi** user các câu sau:
+  - "chọn mode nào"
+  - "chọn ngách nào"
+  - "chọn candidate nào"
+- Tự quyết định toàn bộ:
+  1. Chọn auto-source mode (≡ MODE 3) nếu memory không kèm URL cụ thể.
+  2. Chọn lane/ngách theo Project Memory hoặc CHANNEL/LANE PROFILE bên dưới.
+  3. Search candidate.
+  4. **Chấm điểm candidate** trên 6 trục:
+     - source quality (resolution, FPS, codec)
+     - visual clarity (đủ sáng, sản phẩm rõ trong frame)
+     - viral signal (view count, watch time, engagement nếu lấy được)
+     - lane relevance (match đúng lane đang nhắm)
+     - **GUARD 6 visual safety risk** (logo/brand/watermark, QR/mã vạch, biển số/PII)
+     - affiliate / content-led suitability (sản phẩm phổ thông VN, có trên Shopee VN)
+  5. Tự chọn candidate tốt nhất nếu đạt threshold.
+  6. Nếu fail threshold → trigger AUTO-SOURCE RETRY POLICY (xem MODE 3), KHÔNG hỏi user ngay.
+
+**CHỈ được hỏi user trong các trường hợp sau**:
+- Sau 3 vòng auto-source retry vẫn không có candidate đạt threshold.
+- Cần đổi chiến lược lớn (memory mâu thuẫn, không có lane khả thi).
+- Rủi ro cao không thể tự xử lý (toàn bộ candidate đều fail visual safety và không repair sạch).
+- Cần publish thật (publish vẫn ngoài scope `/chay`).
+- Hành động destructive / config / security (sửa config, secret access, rm/reset, push --force).
+
 ---
 
 ### MODE 2 — `/chay <URL>`
@@ -78,17 +107,55 @@ Dù ở mode nào, agent phải làm ngay khi nhận `/chay`:
 
 ---
 
-### MODE 3 — `/chay <yêu cầu ngắn>`
+### MODE 3 — `/chay <yêu cầu ngắn>` (HOẶC tự kích hoạt từ MODE 1 auto-decision)
 
-**Trigger**: Args là text không phải URL (ví dụ: "tự tìm video mới", "tìm gadget bếp viral", "tìm clip đồ gia dụng Shopee").
+**Trigger**:
+- Args là text không phải URL (ví dụ: "tự tìm video mới", "tìm gadget bếp viral").
+- HOẶC MODE 1 không args + memory ghi rõ next step là video mới → tự routing sang MODE 3.
 
 **Hành động — Auto-source mode**:
-1. Hiểu yêu cầu → xác định tiêu chí tìm kiếm
-2. Tìm candidate video phù hợp (YouTube Shorts, TikTok TQ, etc.)
-3. Đánh giá shortlist: chất lượng hình ảnh, duration, gadget demo rõ, không watermark lộ
-4. **Guard**: Nếu shortlist không đủ tốt (không đạt tiêu chí tối thiểu) → dừng ở đây, trình bày shortlist cho user duyệt. Không đốt pipeline cho video quá tệ.
-5. Nếu có ≥1 candidate đủ tốt → tải video tốt nhất và chạy pipeline đầy đủ
-6. Không giả vờ "đã xem" nếu không xem được thực sự — mô tả evidence thật (metadata, thumbnail, duration, visual keyframes)
+1. Hiểu yêu cầu / đọc memory → xác định tiêu chí tìm kiếm + lane từ CHANNEL/LANE PROFILE.
+2. Tìm candidate video phù hợp (YouTube Shorts, TikTok TQ, Douyin reup, etc.).
+3. Đánh giá shortlist trên 6 trục (xem MODE 1 AUTO-DECISION POLICY chấm điểm).
+4. **AUTO-SOURCE RETRY POLICY** — Nếu candidate fail GUARD 6 (visual safety) HOẶC không đạt source threshold (resolution thấp, blur, không portrait, off-topic lane, off-Shopee-VN):
+   a. **KHÔNG hỏi user ngay.**
+   b. Tự ghi reject reason vào báo cáo nội bộ.
+   c. Đổi keyword / search strategy dựa trên lý do fail. Mapping mẫu:
+      | Lý do fail | Keyword/strategy điều chỉnh |
+      |---|---|
+      | Tool công nghiệp / landscaping / outdoor work | indoor / home / organizer / household / kitchen |
+      | Biển số xe / outdoor / street | tránh outdoor/street/car/landscaping, ưu tiên indoor demo |
+      | Brand logo / watermark lớn không repair được | demo clean, "no logo", "no watermark", studio shot |
+      | Không match Shopee VN | product phổ thông: organizer, kitchen gadget, cleaning indoor, home life-hack |
+      | Lane drift (ngoài lane đang nhắm) | bám sát keyword lane: gadget bếp / đồ gia dụng / cleaning indoor / organizer |
+   d. Search tiếp **tối đa 3 vòng** (1 initial + 2 retry).
+   e. Mỗi vòng PHẢI dựa vào lý do fail vòng trước để cải thiện keyword, không retry cùng query.
+   f. Sau 3 vòng vẫn không có candidate đạt threshold → mới trình shortlist + reject log cho user duyệt. Đây là exit hợp lệ duy nhất để hỏi user ở giai đoạn sourcing.
+5. Nếu có ≥1 candidate đạt threshold → tải video tốt nhất và chạy pipeline đầy đủ (KHÔNG hỏi user xác nhận candidate).
+6. Không giả vờ "đã xem" nếu không xem được thực sự — mô tả evidence thật (metadata, thumbnail, duration, visual keyframes).
+
+---
+
+## CHANNEL / LANE PROFILE — KHÔNG HARD-CODE 1 NGÁCH
+
+`/chay` KHÔNG hard-code đi một dạng review sản phẩm hay một ngách cố định. Mỗi kênh / nick (FB Reels, TikTok VN) sau này có thể có **bộ lane riêng**.
+
+**Default lane set cho Con số 1 (configurable, không cố định toàn hệ thống)**:
+
+| Lane | Mô tả |
+|---|---|
+| `lane_1` | Gadget bếp (slicer, peeler, máy thái rau, đồ bếp mini đa năng) |
+| `lane_2` | Đồ gia dụng tiện lợi (gadget home, life hack, dụng cụ tiện ích) |
+| `lane_3` | Cleaning / satisfying indoor (vệ sinh, tẩy rửa, satisfying clean) |
+| `lane_4` | Organizer / space-saving (đồ thu gọn, lưu trữ thông minh) |
+
+**Quy tắc**:
+- Đây là **default lane set của Con số 1**, KHÔNG phải hardcode cho toàn hệ thống.
+- Mỗi kênh / nick sau này có thể override bằng **Channel Profile riêng** (mỗi nick TikTok/FB có thể chuyên ngách khác — eg nick A chuyên gadget bếp, nick B chuyên cleaning indoor).
+- `/chay` phải đọc Project Memory / Channel Profile để chọn lane:
+  - Nếu memory ghi rõ lane cho video tiếp theo → dùng lane đó, **KHÔNG hỏi**.
+  - Nếu memory không ghi → mặc định ưu tiên lane gần nhất đã chạy thành công, hoặc rotate `lane_1..lane_4` theo thứ tự.
+- **KHÔNG hỏi user "chọn ngách nào"** nếu memory + lane profile đủ rõ. Đây là vi phạm AUTO-DECISION POLICY.
 
 ---
 
@@ -106,9 +173,10 @@ STEP 4   Phân tích video thực tế
          → Trích keyframes: ffmpeg -vf "select='not(mod(n,150))',scale=300:-1" -vsync vfr frame_%03d.jpg
          → Mô tả từng keyframe dựa trên hình thật — KHÔNG hallucinate
          → Xác định scene timeline: sản phẩm gì, thời điểm nào, hook/CTA ở đâu
-         → Compliance R4 pre-scan: ghi chú keyframe nào có watermark / logo brand
-           nguồn / QR / mã vạch / PII (số ĐT, biển số, tên người). Đánh dấu để
-           xử lý ở STEP 11 (trim/crop/blur/cover).
+         → GUARD 6 Visual Safety pre-scan: ghi chú keyframe nào có watermark /
+           logo brand nguồn / QR / mã vạch / biển số / PII. Đánh dấu vùng (top-right,
+           center, frame range) để Repair Playbook xử lý ở STEP 11. Ưu tiên repair:
+           blur/mosaic (1) → cover (2) → crop (3) → trim (4) → NEEDS_NEW_CANDIDATE (5).
 STEP 5   Tạo scene_input.json
          → Đặt tại: production/batch_001/<video_id>/scene_input.json
          → Schema: video_id, content_goal, target_platform (tiktok|reels|shorts),
@@ -146,12 +214,12 @@ STEP 6   Chạy AI Script Writer (Block-Level Budget + Reconciliation v0)
                retry 1 lần. Nếu vẫn FAIL: báo user, dừng.
 STEP 7   Đánh giá script
          → Đọc script_ai_v1.txt toàn bộ — có tự nhiên không? Hook kéo view?
-         → Compliance R1: script có copy từng câu kiểu dịch cứng từ audio gốc
+         → GUARD 7 R1: script có copy từng câu kiểu dịch cứng từ audio gốc
            không? Nếu có → viết lại trước khi sang Voice Sync.
-         → Compliance R3: script có chứa "tốt nhất / rẻ nhất / chính hãng 100% /
+         → GUARD 7 R3: script có chứa "tốt nhất / rẻ nhất / chính hãng 100% /
            cam kết / đảm bảo / số 1 / duy nhất" không? Nếu có → operator sửa
            thành soft claim trước khi sang Voice Sync.
-         → Compliance R5: tone là chia sẻ / trải nghiệm hay đang quảng cáo thô?
+         → GUARD 7 R5: tone là chia sẻ / trải nghiệm hay đang quảng cáo thô?
            CTA có soft không?
          → Không tô vẽ kết quả — nếu script kém thì nói thật
 STEP 8   Voice config
@@ -191,17 +259,23 @@ STEP 10  Chạy BGM Mix
                         --bgm-file production/batch_001/yt_005/bgm/yt_005_bgm_v2_candidate_b.mp3
                         --bgm-volume 0.0972 --voice-gain 1.716 --final-gain 1.3
                         --bgm-fadein 1.5 --bgm-fadeout 3.0
-STEP 11  QC kỹ thuật + Compliance R4 source-branding QC
+STEP 11  QC kỹ thuật + GUARD 6 Visual Safety Detect → Repair → Re-QC → Decision
          → Streams: phải có 2 (video + audio)
          → Duration: video ≈ audio, không lệch >0.5s
          → Source audio leak: none detected
          → max_volume: không vượt -1 dBFS (no clipping)
-         → Compliance R4 — quét preview cuối (mắt operator + STEP 4 pre-scan):
-           • Watermark / logo brand nguồn (TikTok-Douyin handle, logo TQ)
-           • QR code, mã vạch, voucher code
-           • PII: số ĐT, email, địa chỉ, tên người, biển số xe
-           Nếu phát hiện: trim → crop → blur → cover (theo thứ tự ưu tiên).
-           KHÔNG báo final khi còn leak.
+         → GUARD 6 quét preview cuối (kết hợp pre-scan ở STEP 4):
+           • Logo / brand / watermark
+           • QR code / mã vạch / voucher code
+           • Biển số xe / PII (số ĐT, email, địa chỉ, tên người, khuôn mặt)
+           Nếu phát hiện: chạy Repair Playbook theo priority:
+           1) blur/mosaic (ƯU TIÊN), 2) cover box/sticker, 3) crop nhẹ,
+           4) trim đoạn, 5) NEEDS_NEW_CANDIDATE (trigger MODE 3 retry) /
+           NEEDS_USER (sau retry exhausted).
+           Sau repair → Re-QC trên output → gán Decision Status: PASS /
+           PASS_WITH_REPAIR / NEEDS_NEW_CANDIDATE / NEEDS_USER.
+           BẮT BUỘC ghi bảng "Detected issue → Repair action → Re-QC result"
+           vào REPORT.
          → Ghi rõ từng chỉ số — không bỏ qua
 STEP 12  Mở preview cho user
          → Start-Process <path>/bgm_mix_v1/<video_id>_voice_blocks_bgm_preview_vi.mp4
@@ -277,7 +351,77 @@ GUARD 5 — Kết quả 75–85% là đủ
   → Không tối ưu vô hạn
   → Đạt ngưỡng dùng được → ghi lại → đi tiếp
 
-GUARD 6 — Affiliate Compliance + Source Branding v0
+GUARD 6 — Visual Safety Detection v1 (LỚP 1 — đúng 3 nhóm)
+
+  Phạm vi GUARD 6 LỚP 1 CHỈ là Visual Safety. KHÔNG dồn vào đây các thứ:
+  affiliate mismatch, ad-copy risk, copy-risk, chọn mode/ngách/candidate.
+  Những thứ đó nằm ở GUARD 7 (Affiliate & Content Compliance) và AUTO-DECISION
+  POLICY (MODE 1).
+
+  Detect 3 nhóm:
+    1. Logo / brand / watermark (logo nguồn, TikTok-Douyin handle, brand TQ,
+       sticker shop, channel name overlay)
+    2. QR code / mã vạch / voucher code (in trên bao bì, in trên màn hình)
+    3. Biển số xe / PII (số điện thoại, email, địa chỉ, tên người, biển số xe,
+       khuôn mặt rõ của người không liên quan)
+
+  Quy trình bắt buộc: Detect → Repair → Re-QC → Decision.
+  KHÔNG reject candidate ngay khi detect. Luôn thử Repair Playbook trước.
+
+  ── GUARD 6 REPAIR PLAYBOOK (priority cao xuống thấp) ──
+
+  Repair priority:
+    1. **Blur / mosaic vùng vi phạm** — ƯU TIÊN SỐ 1
+       • Dùng cho: logo/brand/watermark, QR/mã vạch, biển số, PII, khuôn mặt.
+       • Lý do: giữ nội dung chính tốt nhất, ít làm hỏng frame.
+       • ffmpeg: `boxblur=20:5` cho vùng cố định (drawbox + crop + blur),
+         hoặc `delogo=x=W-150:y=10:w=140:h=60` cho watermark cố định góc,
+         hoặc enable=`'between(t,12,18)'` cho biển số xuất hiện theo frame.
+
+    2. **Cover bằng box / sticker / text overlay**
+       • Khi blur/mosaic nhìn xấu hoặc vùng vi phạm quá rõ.
+       • ffmpeg: `drawbox=...:color=black@1.0:t=fill`, hoặc overlay PNG sticker
+         (logo VFOS / decorative element).
+
+    3. **Crop / zoom nhẹ**
+       • CHỈ khi vùng vi phạm nằm sát mép (top/bottom/edge).
+       • KHÔNG dùng nếu làm mất sản phẩm/chủ thể chính của frame.
+       • Ưu tiên crop top/bottom với portrait 9:16 (cắt 100-150px sát mép).
+
+    4. **Trim đoạn vi phạm**
+       • CHỈ khi vi phạm nằm ở intro/outro/cuối video.
+       • KHÔNG ảnh hưởng nội dung chính (sản phẩm/demo).
+
+    5. **Fallback**:
+       • `NEEDS_NEW_CANDIDATE` — vi phạm xuyên suốt video, không repair sạch
+         được, hoặc repair làm video xấu rõ rệt → trigger AUTO-SOURCE RETRY
+         POLICY (xem MODE 3 step 4).
+       • `NEEDS_USER` — toàn bộ retry exhausted và không có lane khả thi, hoặc
+         cần quyết định lớn ngoài scope tự động.
+
+  ── DECISION STATUS (ghi vào báo cáo cuối) ──
+
+  | Status | Ý nghĩa |
+  |---|---|
+  | `PASS` | Không detect vi phạm visual safety |
+  | `PASS_WITH_REPAIR` | Detect vi phạm, repair sạch, re-QC OK |
+  | `NEEDS_NEW_CANDIDATE` | Không repair được → trigger retry source |
+  | `NEEDS_USER` | Cần user quyết định (sau retry exhausted) |
+
+  ── BẢNG REPAIR BẮT BUỘC TRONG REPORT TEMPLATE ──
+
+  | Detected issue | Repair action | Re-QC result |
+  |---|---|---|
+  | Ví dụ: Logo top-right frames 0-3s | boxblur top-right 200x100 | PASS_WITH_REPAIR |
+  | Ví dụ: License plate frames 12-18 | mosaic plate region with enable='between(t,12,18)' | PASS_WITH_REPAIR |
+  | Ví dụ: QR center product | drawbox cover + sticker | PASS_WITH_REPAIR |
+  | Ví dụ: Logo covers product entirely | (cannot repair cleanly) | NEEDS_NEW_CANDIDATE |
+
+GUARD 7 — Affiliate & Content Compliance (TÁCH KHỎI GUARD 6)
+  Đây KHÔNG phải Visual Safety. Đây là content/affiliate compliance enforced ở
+  Script layer + Publish layer. Operator-enforced ở STEP 7 (script review)
+  và bước publish (ngoài /chay).
+
   → R1 — Anti-copy nguồn: KHÔNG copy y nguyên kịch bản / góc dựng / narration
          của video nguồn. Script phải có angle Việt Nam riêng (hook, nhịp, cụm
          từ địa phương). Nếu phát hiện script bám sát từng câu của audio gốc:
@@ -292,18 +436,12 @@ GUARD 6 — Affiliate Compliance + Source Branding v0
          "không thể tốt hơn", "rẻ nhất thị trường". Nếu Script Writer output
          có 1 trong các cụm này: operator sửa thành soft claim ("mình thấy ổn",
          "dùng được", "phù hợp với mình"). KHÔNG dùng làm hook hoặc CTA.
-  → R4 — Source branding QC (BẮT BUỘC trước final preview):
-         a. Watermark / logo / handle TikTok-Douyin / brand TQ ở góc frame
-         b. QR code, mã vạch, voucher code in trên bao bì / màn hình
-         c. PII: số điện thoại, email, địa chỉ, tên người, biển số xe
-         Nếu phát hiện ở keyframe (STEP 4) hoặc preview cuối (STEP 11): xử lý
-         theo thứ tự ưu tiên trim (cắt đoạn) → crop (nếu nằm góc) → blur →
-         cover bằng sticker/text. KHÔNG để leak ra preview final.
   → R5 — Soft tone: ưu tiên content kiểu chia sẻ / trải nghiệm / hữu ích
          ("Mình mua cái này về…", "thử dùng thấy…", "nhỏ mà tiện…"). TRÁNH
          quảng cáo thô ("mua ngay", "hàng có sẵn", "click link bio mua liền",
          "săn sale gấp"). CTA soft: "link bio nếu mọi người muốn xem",
          "có ở mô tả nhé".
+  (R4 cũ đã ABSORBED vào GUARD 6 Visual Safety — không tồn tại độc lập nữa.)
 ```
 
 ---
@@ -324,11 +462,16 @@ Bắt buộc chạy trước khi báo "hoàn thành":
 [ ] Manifest JSON: ghi đủ params để reproduce?
 [ ] Nếu phát hiện lỗi rõ ràng trong scope: đã sửa chưa?
 [ ] Báo cáo: đủ thông tin audit, không tô vẽ?
-[ ] Compliance R1: Script không copy y nguyên góc dựng / narration nguồn?
-[ ] Compliance R2: Affiliate target khớp đúng sản phẩm trong video (nhắc bước publish)?
-[ ] Compliance R3: Script không chứa từ tuyệt đối (tốt nhất / rẻ nhất / chính hãng 100% / cam kết / đảm bảo / số 1 / duy nhất)?
-[ ] Compliance R4: Preview cuối không leak logo brand nguồn, watermark, QR / mã vạch, PII?
-[ ] Compliance R5: Tone là chia sẻ / trải nghiệm, không quảng cáo thô?
+[ ] GUARD 6 Visual Safety: detect xong 3 nhóm (logo/brand/watermark, QR/mã vạch, biển số/PII)?
+[ ] GUARD 6 Repair: vi phạm đã chạy Repair Playbook (priority blur/mosaic số 1)?
+[ ] GUARD 6 Decision Status: gán đúng PASS / PASS_WITH_REPAIR / NEEDS_NEW_CANDIDATE / NEEDS_USER?
+[ ] GUARD 6 Report: bảng "Detected issue → Repair action → Re-QC result" đã ghi vào REPORT?
+[ ] GUARD 7 R1 anti-copy: Script không copy y nguyên góc dựng / narration nguồn?
+[ ] GUARD 7 R2 product match: Affiliate target khớp đúng sản phẩm trong video (nhắc bước publish)?
+[ ] GUARD 7 R3 banned absolute: Script không chứa từ tuyệt đối (tốt nhất / rẻ nhất / chính hãng 100% / cam kết / đảm bảo / số 1 / duy nhất)?
+[ ] GUARD 7 R5 soft tone: Chia sẻ / trải nghiệm, không quảng cáo thô?
+[ ] AUTO-DECISION POLICY: KHÔNG hỏi user "chọn mode / chọn ngách / chọn candidate" khi memory đủ rõ?
+[ ] AUTO-SOURCE RETRY: candidate fail thì retry tối đa 3 vòng với keyword cải thiện trước khi hỏi user?
 ```
 
 ---
@@ -346,13 +489,21 @@ KHÔNG BAO GIỜ:
   × Mở rộng sang longform dubbing / vietsub
   × Build router đa loại video / Con số 2
   × Tự ý auto-publish
-  × Copy y nguyên kịch bản / góc dựng từ video nguồn (vi phạm R1)
-  × Gắn affiliate link không khớp sản phẩm trong video (vi phạm R2)
+  × Copy y nguyên kịch bản / góc dựng từ video nguồn (vi phạm GUARD 7 R1)
+  × Gắn affiliate link không khớp sản phẩm trong video (vi phạm GUARD 7 R2)
   × Để script đi qua Voice Sync khi còn từ tuyệt đối: tốt nhất / rẻ nhất /
-    chính hãng 100% / cam kết / đảm bảo / số 1 / duy nhất (vi phạm R3)
-  × Để watermark / logo brand nguồn / QR / mã vạch / PII leak ra preview cuối
-    (vi phạm R4)
-  × Viết CTA quảng cáo thô kiểu "mua ngay" / "săn sale gấp" (vi phạm R5)
+    chính hãng 100% / cam kết / đảm bảo / số 1 / duy nhất (vi phạm GUARD 7 R3)
+  × Để watermark / logo brand nguồn / QR / mã vạch / biển số / PII leak ra
+    preview cuối (vi phạm GUARD 6 Visual Safety — luôn ưu tiên Repair Playbook
+    blur/mosaic trước khi reject)
+  × Viết CTA quảng cáo thô kiểu "mua ngay" / "săn sale gấp" (vi phạm GUARD 7 R5)
+  × Hỏi user "chọn mode nào / chọn ngách nào / chọn candidate nào" khi Project
+    Memory đã ghi next step rõ (vi phạm AUTO-DECISION POLICY)
+  × Reject candidate fail GUARD 6 ngay mà không chạy Repair Playbook
+    (blur/mosaic là ưu tiên số 1)
+  × Hỏi user sau lần fail đầu tiên — phải retry MAX 3 vòng với keyword cải
+    thiện trước (vi phạm AUTO-SOURCE RETRY POLICY)
+  × Hard-code 1 ngách cố định cho /chay — phải đọc CHANNEL/LANE PROFILE
 
 CHỈ LÀM TRONG SCOPE:
   ✓ 1 video mỗi lần /chay
@@ -389,6 +540,21 @@ Sau khi hoàn thành, báo cáo theo format:
 | Duration | Xs | |
 | max_volume | -X dBFS | |
 | Source audio leak | none / detected | |
+
+### GUARD 6 Visual Safety (Detect → Repair → Re-QC → Decision)
+| Detected issue | Repair action | Re-QC result |
+|---|---|---|
+| (eg Logo top-right frames 0-3s) | (eg boxblur top-right 200x100) | PASS_WITH_REPAIR |
+| ... | ... | ... |
+
+**Decision Status overall**: PASS / PASS_WITH_REPAIR / NEEDS_NEW_CANDIDATE / NEEDS_USER
+
+### Auto-Source Retry log (nếu có dùng MODE 3 retry)
+| Vòng | Keyword/strategy | Candidate ID | Reject reason | Action |
+|---|---|---|---|---|
+| 1 | (initial keyword) | (eg rVLy0F8_IfQ) | (eg outdoor landscaping + biển số) | retry vòng 2 |
+| 2 | (keyword cải thiện) | ... | ... | retry vòng 3 / accepted / needs_user |
+| 3 | ... | ... | ... | accepted / needs_user |
 
 ### Self-review
 [Lỗi tự phát hiện và sửa / Giới hạn còn lại]
