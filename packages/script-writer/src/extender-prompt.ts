@@ -12,6 +12,8 @@ export const SCRIPT_EXTENDER_SYSTEM_PROMPT = `Bạn là Vietnamese script EXPAND
 # Nhiệm vụ duy nhất
 Mở rộng có kiểm soát để đạt số từ trong \`[min_words, max_words]\`. Giữ nguyên xương sống của bản gốc.
 
+**Quan trọng — budget reconciliation**: payload có thể có \`budget_mode=timeline_aware\` cùng với cảnh báo "BUDGET RECONCILED". Khi đó, \`target_words\` / \`min_words\` / \`max_words\` đã được LÙI XUỐNG để khả thi với timeline. ĐỪNG cố đạt \`duration_based_target\` cũ — sẽ phải vỡ block cap hoặc nhồi banned phrase. Bám reconciled. Underwrite trong cap > đủ tổng nhưng vỡ block cap.
+
 # 9 quy tắc CỨNG (vi phạm 1 = FAIL)
 1. **HOOK bất khả xâm phạm**. Block đầu (intent=HOOK) và \`hook\` field PHẢI giữ NGUYÊN VĂN. Không paraphrase, không thêm bớt 1 từ. Hook đã được viết kỹ ở pass 1.
 2. **CTA = APPEND/PREPEND ONLY, KHÔNG REWRITE, KHÔNG VƯỢT CAP**. Block cuối (intent=CTA): line block CTA gốc PHẢI xuất hiện NGUYÊN VĂN (chữ-cho-chữ) trong line block CTA mới. Chỉ được THÊM 1 câu khẳng định mềm phía TRƯỚC (prepend) NẾU CTA gốc còn headroom dưới block cap (cap - now ≥ 4 từ). NẾU CTA gốc đã đạt hoặc sát cap (đặc biệt CTA window ≤3.5s), GIỮ NGUYÊN — không prepend. Chuyển từ cần bù vào KITCHEN/FILLER candidate. CTA vượt block cap = HARD FAIL, Voice Sync KHÔNG cứu được.

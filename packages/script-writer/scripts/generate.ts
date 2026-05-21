@@ -23,15 +23,30 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { loadDotEnv } from '../src/load-env.js';
-import { ScriptWriterClient } from '../src/openai-client.js';
+import { type ExpandInput, ScriptWriterClient } from '../src/openai-client.js';
 import {
   type QualityReport,
   type QualityStatus,
   buildQualityReport,
-  computeWordBudget,
+  computeAggregateCapacity,
+  computeBlockBudget,
+  reconcileWordBudget,
 } from '../src/quality-guard.js';
-import type { GenerateResult, ScriptOutput } from '../src/types.js';
+import type { BlockIntent, GenerateResult, SceneType, ScriptOutput } from '../src/types.js';
 import { ScriptWriterInputSchema } from '../src/types.js';
+
+function intentForSceneType(sceneType: SceneType): BlockIntent {
+  switch (sceneType) {
+    case 'HOOK':
+    case 'KITCHEN':
+    case 'FILLER':
+    case 'TRANSITION':
+    case 'CTA':
+      return sceneType;
+    default:
+      return 'FILLER';
+  }
+}
 
 loadDotEnv();
 
@@ -192,17 +207,31 @@ if (!shouldExtend) {
   process.exit(exitCodeFor(pass1Quality.quality_status));
 }
 
-const {
-  target: targetWords,
-  min: minWords,
-  max: maxWords,
-} = computeWordBudget(input.duration_target_s);
+// Reconciled budget for extender — same calc as Writer + Guard so all three
+// stay aligned. Compute from scene_timeline (input) since pass1 might have
+// slightly different intents (OFF_TOPIC → FILLER/SILENT mapping decided by writer).
+const extenderCapacityBlocks = input.scene_timeline.map((s) => ({
+  intent: intentForSceneType(s.scene_type),
+  window_start_s: s.window_start_s,
+  window_end_s: s.window_end_s,
+}));
+const extenderCapacity = computeAggregateCapacity(extenderCapacityBlocks);
+const extenderBudget = reconcileWordBudget(input.duration_target_s, extenderCapacity);
+const targetWords = extenderBudget.target;
+const minWords = extenderBudget.min;
+const maxWords = extenderBudget.max;
+
+if (extenderBudget.mode === 'timeline_aware') {
+  console.log(
+    `  Budget reconciled: duration target ${extenderBudget.duration_based_target} → timeline-aware ${targetWords} (aggregate cap ${extenderBudget.aggregate_block_cap})`,
+  );
+}
 
 process.stdout.write('Running Extender Pass… ');
 const t1 = Date.now();
 let pass2: GenerateResult;
 try {
-  pass2 = await client.expand({
+  const expandInput: ExpandInput = {
     original: pass1.output,
     scene_timeline: input.scene_timeline,
     current_word_count: pass1Quality.word_count,
@@ -211,7 +240,11 @@ try {
     max_words: maxWords,
     content_goal: input.content_goal,
     affiliate_angle: input.affiliate_angle,
-  });
+    budget_mode: extenderBudget.mode,
+    duration_based_target: extenderBudget.duration_based_target,
+    aggregate_block_cap: extenderBudget.aggregate_block_cap,
+  };
+  pass2 = await client.expand(expandInput);
 } catch (err) {
   console.error('');
   console.error('Error: Extender Pass failed');
@@ -292,7 +325,14 @@ function printResult(
   console.log(`  Hook        : ${output.hook}`);
   console.log(`  CTA         : ${output.cta}`);
   console.log(`  Blocks      : ${output.blocks.length}`);
-  console.log(`  Words       : ${quality.word_count} (target ${quality.word_count_target})`);
+  console.log(
+    `  Words       : ${quality.word_count} (target ${quality.word_count_target}, mode ${quality.budget_mode})`,
+  );
+  if (quality.budget_mode === 'timeline_aware') {
+    console.log(
+      `  Budget       : duration-based ${quality.duration_based_target} → reconciled ${quality.word_count_target} (aggregate cap ${quality.aggregate_block_cap})`,
+    );
+  }
   console.log(`  Est. TTS    : ${estDurationS.toFixed(1)}s @ 170 WPM`);
   console.log(`  Input tok   : ${meta.input_tokens ?? 'n/a'}`);
   console.log(`  Output tok  : ${meta.output_tokens ?? 'n/a'}`);

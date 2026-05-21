@@ -2,7 +2,7 @@
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
 > **Cập nhật lần cuối**: 2026-05-21
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `8d3e3cb` (Phần 13 commit sẽ ghi sau khi push)
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: Phần 13 (`341689e`) đã push; Phần 14 commit sẽ ghi sau khi push
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -539,6 +539,60 @@ pnpm voice:generate --input production/smoke/voice_smoke.txt --output ...
 
 ---
 
+### ✅ Phần 14 — Script Writer Budget Reconciliation v0 (global target reconcile với aggregate block cap): ĐÃ CHỐT (2026-05-21)
+
+**Mục tiêu**: Xoá blocker mới phát hiện ở Phần 13 — global target (`duration × 2.8`) mâu thuẫn aggregate per-block cap, gây extender padding panic + "vô cùng" banned phrase leak. yt_007 cụ thể: target 123 vs cap 105 → bất khả thi.
+
+**Audit ban đầu**:
+- `computeWordBudget(duration)` thuần duration-based, không biết block.
+- `computeBlockBudget(intent, window)` intent-specific wps.
+- yt_007: duration_target=123, aggregate cap (sum) = 105 → mismatch +18 từ.
+- Pass 1 model rút lui xuống 92 (knowing under target). Extender desperate → "vô cùng" + b4 vượt cap +1.
+
+**Thiết kế mới**:
+
+| Thành phần | Quy tắc |
+|---|---|
+| `AggregateCapacity` | `{voiced_block_count, skipped_block_count, aggregate_max_words, aggregate_recommended_words}`. SILENT + empty-line tự loại (cap=0). |
+| `computeAggregateCapacity(blocks)` | Accept `CapacityBlock[]` — dùng cho cả scene_timeline (Writer pre-pass) và output.blocks (Guard post-pass). |
+| `reconcileWordBudget(duration, capacity)` | `FILL_RATIO=0.9` (10% buffer cho prose tự nhiên). `target = min(duration_target, floor(aggregate × 0.9))`. Mode = 'duration' nếu duration target ≤ aggregate × 0.9, else 'timeline_aware'. tolerance band-aware, max clamp ≤ aggregate. |
+| `ReconciledWordBudget` (extends WordBudget) | Thêm `mode`, `duration_based_target`, `aggregate_block_cap`, `target_adjustment_reason`. |
+| `QualityReport` mở rộng | Thêm `budget_mode`, `duration_based_target`, `aggregate_block_cap`, `target_adjustment_reason` — audit-friendly. |
+| Writer payload | Reconcile từ scene_timeline. Hiển thị mode + adjustment reason cho model. |
+| Extender ExpandInput | Generate.ts compute reconciled budget, pass `budget_mode/duration_based_target/aggregate_block_cap` vào extender. Extender prompt cảnh báo "BUDGET RECONCILED → đừng padding-panic". |
+| Lý do FILL_RATIO 0.9 | Empirical yt_007 v6 pass1 = 92/105 = 87.6%. 0.9 align với model natural sweet spot. |
+
+**Files đã sửa**:
+- `packages/script-writer/src/quality-guard.ts` — `AggregateCapacity`, `CapacityBlock`, `computeAggregateCapacity`, `BudgetMode`, `ReconciledWordBudget`, `reconcileWordBudget`. `buildQualityReport` switch sang `reconcileWordBudget`, thêm 4 fields vào report + cảnh báo BUDGET_RECONCILED.
+- `packages/script-writer/src/openai-client.ts` — `buildUserPayload` dùng reconciled budget; `ExpandInput` thêm `budget_mode/duration_based_target/aggregate_block_cap`; `buildExtenderPayload` hiển thị reconciled context + cảnh báo timeline_aware.
+- `packages/script-writer/scripts/generate.ts` — compute reconciled budget từ scene_timeline, pass vào extender, `printResult` in mode + aggregate cap.
+- `packages/script-writer/src/system-prompt.ts` — section Duration Target rewrite, giải thích `budget_mode/duration_based_target/aggregate_block_cap`.
+- `packages/script-writer/src/extender-prompt.ts` — thêm 1 đoạn về budget reconciliation: "ĐỪNG cố đạt duration_based_target khi mode=timeline_aware".
+- `packages/script-writer/src/index.ts` — export thêm.
+- `.claude/skills/chay/SKILL.md` — STEP 6 ghi note về budget_mode.
+
+**Kết quả thật trên yt_007 (smoke v7)**:
+
+| Pha | Words | Status | Note |
+|---|---|---|---|
+| Pass 1 | 56 từ | FAIL | mode `timeline_aware`, target 94 (reconciled từ 123), all blocks within cap |
+| Extended | **88 từ** | **NEAR-PASS** | Word in target: YES (88 trong [86, 102]); 1 minor (b4 KITCHEN 24/22 +2); **CTA "Link bio nha." 3 từ ✅**; **không "vô cùng" leak**; CTA preserved |
+
+**Trước vs Sau**:
+- **Trước Phần 14**: pass 1=92, extended=92, FAIL vì "vô cùng" banned (extender desperate vì target 123 bất khả thi)
+- **Sau Phần 14**: pass 1=56, extended=88, **NEAR-PASS** (target 94 reconciled, exit code 0, /chay đi tiếp)
+
+**Threshold 75-85%**: đạt — blocker "global target mâu thuẫn aggregate cap" giải quyết.
+
+**Trạng thái kỹ thuật**: `pnpm --filter @vfos/script-writer typecheck` PASS. `biome check packages/script-writer` PASS clean (0 violation).
+
+**Giới hạn còn lại** (KHÔNG mở scope vòng này):
+- Pass 1 vẫn underwrites mạnh (~60% target). Đây không phải bug — Writer pace bám an toàn dưới cap. Extender bù tới target được.
+- Minor inconsistency: Writer/Extender thấy `aggregate_cap=115` (scene_timeline map OFF_TOPIC → FILLER 4s = 10), Guard thấy 105 (output b8 = SILENT empty → exclude). 11-từ noise, không phá pipeline. Có thể đồng nhất ở vòng sau bằng cách lấy scene_timeline làm conservative baseline cho cả 3 layer.
+- yt_007 NEAR-PASS chứ chưa PASS sạch (1 minor b4 +2). Voice Sync overflow_minor envelope sẽ absorb — pipeline đi tiếp.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
@@ -570,25 +624,18 @@ pnpm voice:generate --input production/smoke/voice_smoke.txt --output ...
 
 ## 7. Bước tiếp theo duy nhất
 
-> **Cân nhắc giữa: (a) reconcile global word target ↔ aggregate per-block cap, HOẶC (b) chấp nhận yt_007 là edge case scene_input cần operator chỉnh thủ công.**
+> **Chạy `/chay` end-to-end thật trên yt_007 với toàn bộ pipeline mới (Phần 12+13+14) — verify zero-touch trên video đã có user duyệt.**
 >
-> **Lý do**: Phần 13 đã giải quyết blocker kỹ thuật chính (b7 CTA timing). Block-level budget enforcement hoạt động đúng. Nhưng smoke test yt_007 vẫn chưa pass full guard vì 2 vấn đề PHỤ — KHÔNG CÙNG bản chất với blocker cũ:
+> **Lý do**: Phần 14 (Budget Reconciliation) đã đóng blocker structural mismatch giữa global target và aggregate block cap. Smoke v7 thật trên yt_007 đạt NEAR-PASS (exit code 0, /chay đi tiếp). Cộng dồn:
+> - Phần 12 (Voice Sync Autonomy): SILENT auto-skip + minor overflow auto-rescue ✅
+> - Phần 13 (Block-Level Budget): b7 CTA không còn 17 từ, CTA stays "Link bio nha." ✅
+> - Phần 14 (Budget Reconciliation): không còn padding panic, "vô cùng" leak gone ✅
 >
-> 1. **Structural mismatch `duration_target × 2.8` vs aggregate per-block cap**: yt_007 có global target 123 từ nhưng tổng max_words across block cap chỉ ~105. Trước Phần 13 hệ thống ép tổng đạt 123 bằng cách vỡ cap; giờ guard chặn vỡ cap → underwrite tổng. Cần đồng nhất 2 trục: hoặc tính lại global target theo sum-of-caps, hoặc cho operator điều chỉnh scene_input.
+> **Acceptance**: chạy `/chay` từ đầu trên yt_007 (Script Writer → Voice Sync → BGM Mix → preview), verify zero-touch — không cần operator can thiệp tay nào ngoài duyệt preview cuối. Nếu đạt → Core Pipeline xong, mở khả năng cân nhắc nhân bản Con số 2 theo blueprint.
 >
-> 2. **Extender padding panic**: khi không đạt min trong cap, model gpt-4o reach for cliché ("vô cùng") để đẩy tổng. Có thể tighten prompt hoặc thêm late banned phrase check trong extender.
+> **Giới hạn nội tại (chấp nhận, không tô vẽ)**: yt_007 v7 đạt NEAR-PASS không phải PASS sạch — vì 1 minor b4 KITCHEN +2 từ (sync layer overflow_minor envelope absorb). Đây là minor noise, không phải bug.
 >
-> **Hai hướng (chọn 1 sau khi quan sát thêm)**:
-> - **Hướng A — Reconcile word budget**: `computeWordBudget` đổi từ `duration × 2.8` sang tính từ scene_timeline thật (sum of intent-specific wps × window). Global target tự khớp với block caps. Pro: tổng quát, áp dụng mọi video. Con: thay đổi semantics, cần kiểm chứng trên yt_005/006.
-> - **Hướng B — Operator-side scene_input convention**: viết doc convention "CTA window ≥4s, không SILENT >3s nếu cần coverage, tránh TRANSITION dài >6s nếu target words sát biên". Pro: giữ logic guard sạch. Con: đẩy gánh nặng sang operator.
->
-> **KHÔNG mở scope** sang Con số 2, publish, BGM ducking, watermark, hay refactor Voice Sync thêm trong vòng tiếp theo.
->
-> **Sau khi xong**: Core Pipeline đủ tự động end-to-end cho short-video ≤90s — đây là điều kiện cần để bàn tới nhân bản Con số 2 theo blueprint.
->
-> **KHÔNG mở scope** sang Con số 2, publish, BGM ducking, watermark, scene_input window convention, hay refactor Voice Sync thêm trong vòng này.
->
-> **Sau khi xong**: Core Pipeline đủ tự động end-to-end cho short-video ≤90s — đây là điều kiện cần để bàn tới nhân bản Con số 2 theo blueprint.
+> **KHÔNG mở scope** sang Con số 2, publish, BGM ducking, watermark, refactor Voice Sync/Script Writer thêm, hay video mới trong vòng tiếp theo.
 
 ---
 

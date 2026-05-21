@@ -113,9 +113,17 @@ STEP 5   Tạo scene_input.json
                    scene_timeline[] (window_start_s, window_end_s, scene_type, visual_summary, notes)
          → scene_type hợp lệ: HOOK | KITCHEN | FILLER | TRANSITION | CTA | OFF_TOPIC
          → Viết Latinized Vietnamese để tránh encoding error trong JSON
-STEP 6   Chạy AI Script Writer (Block-Level Budget v0)
+STEP 6   Chạy AI Script Writer (Block-Level Budget + Reconciliation v0)
          → pnpm script:generate --input production/batch_001/<video_id>/scene_input.json
          → Đọc output: script_ai_v1.json + script_ai_v1.txt + block_budget_violations
+         → Quality report có thêm:
+           • budget_mode = "duration" (target = duration × 2.8) HOẶC
+             "timeline_aware" (target đã lùi xuống vì aggregate cap < duration target)
+           • aggregate_block_cap: tổng cap của các block có voice (vật lý ceiling)
+           • duration_based_target: số tham chiếu cũ
+           • target_adjustment_reason: lý do target lùi xuống nếu mode=timeline_aware
+         → Khi mode=timeline_aware: ĐỪNG hoang mang vì target nhỏ hơn cũ —
+           timeline thật chỉ chứa được bấy nhiêu. Pipeline tiếp tục bình thường.
          → Quality status có 3 mức (đọc `quality_report.quality_status` trong JSON,
            hoặc exit code: 0=PASS/NEAR-PASS, 2=FAIL):
            • PASS       → đi tiếp STEP 7 bình thường

@@ -1,7 +1,12 @@
 import OpenAI from 'openai';
 import { zodTextFormat } from 'openai/helpers/zod';
 import { SCRIPT_EXTENDER_SYSTEM_PROMPT } from './extender-prompt.js';
-import { computeBlockBudget, computeWordBudget, countWords } from './quality-guard.js';
+import {
+  computeAggregateCapacity,
+  computeBlockBudget,
+  countWords,
+  reconcileWordBudget,
+} from './quality-guard.js';
 import { SCRIPT_WRITER_SYSTEM_PROMPT } from './system-prompt.js';
 import {
   type BlockIntent,
@@ -22,6 +27,13 @@ export interface ExpandInput {
   content_goal?: string;
   /** Free-text affiliate angle — used for product_mode heuristic. */
   affiliate_angle?: string;
+  /** When 'timeline_aware', the model is told NOT to padding-panic for the
+   *  old duration target — reconciled target is the real ceiling. */
+  budget_mode?: 'duration' | 'timeline_aware';
+  /** Original duration × 2.8 — shown for context only, not the aim. */
+  duration_based_target?: number;
+  /** Sum of per-block max_words — physical ceiling, can't exceed. */
+  aggregate_block_cap?: number;
 }
 
 export type ProductMode = 'multi_product' | 'single_or_few' | 'unknown';
@@ -161,11 +173,19 @@ function intentForSceneType(sceneType: string): BlockIntent {
 }
 
 function buildUserPayload(input: ScriptWriterInput): string {
-  const {
-    target: targetWords,
-    min: minWords,
-    max: maxWords,
-  } = computeWordBudget(input.duration_target_s);
+  // Compute aggregate capacity from scene_timeline (mapping scene_type → block
+  // intent) then reconcile duration target. Writer prompt sees the reconciled
+  // numbers, so it doesn't get asked for more words than the timeline can hold.
+  const capacityBlocks = input.scene_timeline.map((s) => ({
+    intent: intentForSceneType(s.scene_type),
+    window_start_s: s.window_start_s,
+    window_end_s: s.window_end_s,
+  }));
+  const capacity = computeAggregateCapacity(capacityBlocks);
+  const budget = reconcileWordBudget(input.duration_target_s, capacity);
+  const targetWords = budget.target;
+  const minWords = budget.min;
+  const maxWords = budget.max;
 
   const lines: string[] = [];
   lines.push('# Yêu cầu viết script');
@@ -173,9 +193,24 @@ function buildUserPayload(input: ScriptWriterInput): string {
   lines.push(`video_id: ${input.video_id}`);
   lines.push(`platform: ${input.target_platform}`);
   lines.push(`duration_target_s: ${input.duration_target_s}`);
-  lines.push(`target_words: ${targetWords}     # full_script must be near this`);
-  lines.push(`min_words: ${minWords}            # full_script length is HARD LOWER BOUND`);
-  lines.push(`max_words: ${maxWords}            # full_script length is hard upper bound`);
+  lines.push(`budget_mode: ${budget.mode}`);
+  lines.push(
+    `duration_based_target: ${budget.duration_based_target}   # raw duration × 2.8 reference`,
+  );
+  lines.push(`aggregate_block_cap: ${budget.aggregate_block_cap}    # sum of per-block max_words`);
+  lines.push(
+    `target_words: ${targetWords}     # RECONCILED target — aim here, not duration target`,
+  );
+  lines.push(
+    `min_words: ${minWords}            # HARD LOWER BOUND (derived from reconciled target)`,
+  );
+  lines.push(`max_words: ${maxWords}            # HARD UPPER BOUND (clamped at aggregate cap)`);
+  if (budget.target_adjustment_reason) {
+    lines.push(`budget_adjustment: ${budget.target_adjustment_reason}`);
+    lines.push(
+      '  → Timeline không đủ chứa duration target. ĐỪNG cố đạt duration_based_target — bám reconciled target.',
+    );
+  }
   lines.push(`content_goal: ${input.content_goal}`);
   lines.push(`affiliate_angle: ${input.affiliate_angle}`);
   lines.push(`cta_style: ${input.cta_style}`);
@@ -299,9 +334,25 @@ function buildExtenderPayload(input: ExpandInput): string {
   lines.push('');
   lines.push('## Tình trạng hiện tại');
   lines.push(`current_word_count: ${current_word_count}`);
-  lines.push(`target_words: ${target_words}`);
-  lines.push(`min_words: ${min_words}            # HARD LOWER BOUND`);
-  lines.push(`max_words: ${max_words}            # HARD UPPER BOUND`);
+  if (input.budget_mode) lines.push(`budget_mode: ${input.budget_mode}`);
+  if (input.duration_based_target !== undefined && input.aggregate_block_cap !== undefined) {
+    lines.push(
+      `duration_based_target: ${input.duration_based_target}   # raw duration × 2.8 — NOT the aim if reconciled`,
+    );
+    lines.push(
+      `aggregate_block_cap: ${input.aggregate_block_cap}    # physical ceiling across voiced blocks`,
+    );
+  }
+  lines.push(`target_words: ${target_words}     # RECONCILED — this is the aim`);
+  lines.push(
+    `min_words: ${min_words}            # HARD LOWER BOUND (derived from reconciled target)`,
+  );
+  lines.push(`max_words: ${max_words}            # HARD UPPER BOUND (clamped at aggregate cap)`);
+  if (input.budget_mode === 'timeline_aware') {
+    lines.push(
+      '⚠ BUDGET RECONCILED: duration target không khả thi với timeline này. ĐỪNG padding-panic để đạt duration target — bám reconciled target/min/max. Underwrite trong cap > vỡ cap.',
+    );
+  }
   lines.push(
     `conservative_target: ${conservative_target}  # AIM HERE — landing near this is the goal`,
   );

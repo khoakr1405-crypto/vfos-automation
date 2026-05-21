@@ -80,6 +80,135 @@ export function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
+/* ── Aggregate block capacity + budget reconciliation ──────────────────────
+ *
+ * The duration-based target (duration × 2.8) was originally derived from a
+ * 170 WPM TTS pacing assumption that treats the whole video as uniformly
+ * voiced at the same wps. Real timelines mix intents with intent-specific
+ * caps (CTA 2.4 wps, TRANSITION 2.2, SILENT 0). When the duration target
+ * exceeds the sum of per-block caps, no script can satisfy both — the model
+ * either violates block caps or pads with banned phrases ("vô cùng" leak
+ * observed on yt_007 v6 extender). Reconciliation cuts the global target
+ * down to the largest value that's actually achievable across the timeline.
+ */
+
+export interface AggregateCapacity {
+  /** Blocks that contribute voice (cap > 0 AND has narration or could). */
+  voiced_block_count: number;
+  /** Blocks excluded from capacity: SILENT, empty-line, or intent with 0 cap. */
+  skipped_block_count: number;
+  /** Sum of per-block max_words across voiced blocks. */
+  aggregate_max_words: number;
+  /** Sum of per-block recommended_words across voiced blocks. */
+  aggregate_recommended_words: number;
+}
+
+/** Block descriptor accepted by capacity computation. Works for both the
+ *  input scene (mapped to intent) and the output ScriptBlock. */
+export interface CapacityBlock {
+  intent: BlockIntent;
+  window_start_s: number;
+  window_end_s: number;
+  /** When present and empty (after trim), the block is treated as no-voice. */
+  line?: string;
+}
+
+export function computeAggregateCapacity(blocks: ReadonlyArray<CapacityBlock>): AggregateCapacity {
+  let aggregate_max_words = 0;
+  let aggregate_recommended_words = 0;
+  let voiced_block_count = 0;
+  let skipped_block_count = 0;
+  for (const b of blocks) {
+    const window = b.window_end_s - b.window_start_s;
+    const budget = computeBlockBudget(b.intent, window);
+    const lineIsEmpty = b.line !== undefined && b.line.trim() === '';
+    if (budget.max_words <= 0 || lineIsEmpty) {
+      skipped_block_count += 1;
+      continue;
+    }
+    aggregate_max_words += budget.max_words;
+    aggregate_recommended_words += budget.recommended_words;
+    voiced_block_count += 1;
+  }
+  return {
+    voiced_block_count,
+    skipped_block_count,
+    aggregate_max_words,
+    aggregate_recommended_words,
+  };
+}
+
+/**
+ * Fraction of aggregate cap the writer should aim for. 10% headroom keeps
+ * prose natural — not every block lands at exact cap, and Voice Sync needs
+ * a little buffer for TTS variance. Empirical: yt_007 v6 pass1 landed at
+ * 87.6% of aggregate cap naturally (92/105), so 0.90 matches the model's
+ * actual sweet spot when given strict block caps.
+ */
+const TIMELINE_FILL_RATIO = 0.9;
+
+export type BudgetMode = 'duration' | 'timeline_aware';
+
+export interface ReconciledWordBudget extends WordBudget {
+  /** 'duration' = duration-based target fits inside aggregate cap headroom;
+   *  'timeline_aware' = target was reduced to fit aggregate cap. */
+  mode: BudgetMode;
+  /** Original duration × 2.8 target, before reconciliation. */
+  duration_based_target: number;
+  /** Sum of per-block max_words. Hard physical ceiling. */
+  aggregate_block_cap: number;
+  /** Non-null when mode === 'timeline_aware', explaining the adjustment. */
+  target_adjustment_reason: string | null;
+}
+
+/**
+ * Reconcile a duration-based global target with the aggregate block cap.
+ * - If duration target ≤ aggregate × FILL_RATIO: keep duration-based.
+ * - Else: drop target to floor(aggregate × FILL_RATIO) so the writer is
+ *   not asked for more than the timeline can hold.
+ *
+ * Min/max derive from the reconciled target via the same band-aware
+ * tolerance as `computeWordBudget`, then `max` is clamped at aggregate
+ * cap so the upper bound is never physically impossible.
+ */
+export function reconcileWordBudget(
+  durationTargetS: number,
+  capacity: AggregateCapacity,
+): ReconciledWordBudget {
+  const durationBased = computeWordBudget(durationTargetS);
+  const aggregateCap = capacity.aggregate_max_words;
+  const aggregateAim = Math.floor(aggregateCap * TIMELINE_FILL_RATIO);
+
+  let target = durationBased.target;
+  let mode: BudgetMode = 'duration';
+  let adjustmentReason: string | null = null;
+
+  if (aggregateCap > 0 && durationBased.target > aggregateAim) {
+    target = aggregateAim;
+    mode = 'timeline_aware';
+    adjustmentReason = `duration-based target ${durationBased.target} vượt ${(TIMELINE_FILL_RATIO * 100).toFixed(0)}% aggregate cap ${aggregateCap}; reconciled to ${aggregateAim} (≤cap-${aggregateCap - aggregateAim} từ buffer)`;
+  }
+
+  const tolerance = target < 130 ? 0.08 : 0.05;
+  const min = Math.max(0, Math.round(target * (1 - tolerance)));
+  // Clamp max so the upper bound is never above what the timeline physically allows.
+  const max =
+    aggregateCap > 0
+      ? Math.min(aggregateCap, Math.round(target * (1 + tolerance)))
+      : Math.round(target * (1 + tolerance));
+
+  return {
+    target,
+    min,
+    max,
+    tolerance,
+    mode,
+    duration_based_target: durationBased.target,
+    aggregate_block_cap: aggregateCap,
+    target_adjustment_reason: adjustmentReason,
+  };
+}
+
 export type BlockViolationSeverity = 'minor' | 'major';
 
 export interface BlockBudgetViolation {
@@ -207,6 +336,15 @@ export interface QualityReport {
   word_count: number;
   word_count_target: number;
   word_count_within_target: boolean;
+  /** 'duration' = global target derived from duration × 2.8, used as-is.
+   *  'timeline_aware' = target was reduced to fit aggregate block cap. */
+  budget_mode: BudgetMode;
+  /** Original duration × 2.8 before any reconciliation. */
+  duration_based_target: number;
+  /** Sum of per-block max_words across voiced blocks — physical ceiling. */
+  aggregate_block_cap: number;
+  /** Non-null when budget_mode === 'timeline_aware': why target was reduced. */
+  target_adjustment_reason: string | null;
   /** Per-block timing budget violations. Any major → fail; minor → degrades
    *  pass to near_pass within existing envelope. SILENT blocks with empty
    *  line are exempt. */
@@ -280,9 +418,21 @@ export function buildQualityReport(
   }
 
   const wordCount = fullScript.trim().split(/\s+/).filter(Boolean).length;
-  const budget = computeWordBudget(duration_target_s);
+  // Timeline-aware budget: aggregate per-block caps from the actual output
+  // blocks (SILENT/empty-line excluded), then reconcile duration target down
+  // if it would exceed 90% of aggregate cap. This is the post-pass guard;
+  // the Writer/Extender prompts use the same reconciled values upstream.
+  const capacity = computeAggregateCapacity(
+    output.blocks.map((b) => ({
+      intent: b.intent,
+      window_start_s: b.window_start_s,
+      window_end_s: b.window_end_s,
+      line: b.line,
+    })),
+  );
+  const budget = reconcileWordBudget(duration_target_s, capacity);
   const wordTarget = budget.target;
-  const ratio = wordCount / wordTarget;
+  const ratio = wordTarget > 0 ? wordCount / wordTarget : 1;
   const word_count_within_target = ratio >= 1 - budget.tolerance && ratio <= 1 + budget.tolerance;
 
   const block_budget_violations = checkBlockBudgets(output);
@@ -313,8 +463,9 @@ export function buildQualityReport(
     const deltaPct = ((ratio - 1) * 100).toFixed(1);
     const sign = ratio >= 1 ? '+' : '';
     const tolPct = (budget.tolerance * 100).toFixed(0);
+    const modeTag = budget.mode === 'timeline_aware' ? ' [timeline_aware]' : '';
     warnings.push(
-      `[WORD_COUNT] ${wordCount} words vs target ${wordTarget} ` +
+      `[WORD_COUNT]${modeTag} ${wordCount} words vs target ${wordTarget} ` +
         `(${sign}${deltaPct}%, outside ±${tolPct}% window)`,
     );
   }
@@ -356,6 +507,9 @@ export function buildQualityReport(
   if (quality_status === 'near_pass' && near_pass_reason) {
     warnings.push(`[NEAR_PASS] ${near_pass_reason}`);
   }
+  if (budget.mode === 'timeline_aware' && budget.target_adjustment_reason) {
+    warnings.push(`[BUDGET_RECONCILED] ${budget.target_adjustment_reason}`);
+  }
 
   return {
     banned_phrases_found: hits,
@@ -365,6 +519,10 @@ export function buildQualityReport(
     word_count: wordCount,
     word_count_target: wordTarget,
     word_count_within_target,
+    budget_mode: budget.mode,
+    duration_based_target: budget.duration_based_target,
+    aggregate_block_cap: budget.aggregate_block_cap,
+    target_adjustment_reason: budget.target_adjustment_reason,
     block_budget_violations,
     warnings,
     quality_status,

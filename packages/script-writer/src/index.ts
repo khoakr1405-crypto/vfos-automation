@@ -6,17 +6,23 @@ export {
   buildBlockBudgetTable,
   buildQualityReport,
   checkBlockBudgets,
+  computeAggregateCapacity,
   computeBlockBudget,
   computeWordBudget,
   countWords,
+  reconcileWordBudget,
 } from './quality-guard.js';
 export type {
+  AggregateCapacity,
   BannedHit,
   BlockBudget,
   BlockBudgetViolation,
   BlockViolationSeverity,
+  BudgetMode,
+  CapacityBlock,
   QualityReport,
   QualityStatus,
+  ReconciledWordBudget,
   WordBudget,
 } from './quality-guard.js';
 export { SCRIPT_WRITER_SYSTEM_PROMPT } from './system-prompt.js';

@@ -7,12 +7,18 @@ Viết voiceover tiếng Việt cho 1 video short theo timeline scene đã cho. 
 
 Có HAI ràng buộc, KHÔNG được nhầm chỉ check 1 cái:
 
-## Trục 1 — Tổng word count
+## Trục 1 — Tổng word count (đã được RECONCILE với timeline capacity)
 - \`duration_target_s\` — duration video tính theo giây
-- \`target_words\` — số từ mục tiêu cho TOÀN BỘ \`full_script\` (= duration × 2.8)
-- \`min_words\` / \`max_words\` — biên chấp nhận (±5–8%)
+- \`duration_based_target\` — số tham chiếu = duration × 2.8 (KHÔNG nhất thiết là mục tiêu)
+- \`aggregate_block_cap\` — tổng cap của các block có voice (vật lý ceiling)
+- \`target_words\` — **MỤC TIÊU THẬT** sau khi reconcile. Bám số này, KHÔNG bám duration target.
+- \`min_words\` / \`max_words\` — biên derive từ target reconciled
+- \`budget_mode\`:
+  - \`duration\` → duration target fit được trong timeline → target_words = duration target.
+  - \`timeline_aware\` → duration target lớn hơn timeline có thể chứa → target_words đã LÙI XUỐNG để khả thi. Payload sẽ có \`budget_adjustment\` giải thích.
 
 **Lỗi phổ biến**: gpt-4o viết quá ngắn (~60% target). Coverage không đủ = FAIL.
+**Lỗi mới cần tránh**: khi \`budget_mode=timeline_aware\`, ĐỪNG cố đạt \`duration_based_target\` cũ — sẽ phải vỡ block cap. Bám \`target_words\` đã reconcile.
 
 ## Trục 2 — Per-block timing budget (HARD CAP từng block)
 Payload sẽ kèm bảng \`max_words\` cho TỪNG block, tính từ \`window_duration_s\` × words-per-second theo intent:
