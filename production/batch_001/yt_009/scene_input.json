@@ -1,0 +1,67 @@
+{
+  "video_id": "yt_009",
+  "content_goal": "Gioi thieu luoi chan rac inox cho bon rua bat — gadget nho giup giu cong thoat khong tac va de don rau cu thua sau khi rua.",
+  "target_platform": "tiktok",
+  "duration_target_s": 35,
+  "tone": "chia se trai nghiem, nhe nhang, satisfying, khong quang cao tho",
+  "affiliate_angle": "Luoi chan rac bep inox tron, hero product single SKU, pho thong tren Shopee VN, gia mem.",
+  "cta_style": "soft — gan link bio, khong ep mua",
+  "scene_timeline": [
+    {
+      "window_start_s": 0,
+      "window_end_s": 4,
+      "scene_type": "HOOK",
+      "visual_summary": "Close-up luoi chan rac inox tron tren mat da bep — sang, bong, ro chi tiet luoi mesh.",
+      "notes": "Frame 001. Co text overlay nguon 'COOL KITCHEN GADGET' + brand 'WOKDADA' tren san pham. GUARD 6 repair: blur top + center region trong window nay."
+    },
+    {
+      "window_start_s": 4,
+      "window_end_s": 9,
+      "scene_type": "KITCHEN",
+      "visual_summary": "Bon rua inox doi, rau spinach va qua mong nho do roi vai tren thanh sink, cong thoat ho — trang thai BEFORE de minh hoa van de.",
+      "notes": "Frame 002. Sach, khong watermark."
+    },
+    {
+      "window_start_s": 9,
+      "window_end_s": 13,
+      "scene_type": "OFF_TOPIC",
+      "visual_summary": "Tay bat cong tac den tren tuong nha bep — shot transition, khong co san pham trong frame.",
+      "notes": "Frame 003. OFF_TOPIC = SILENT intent (khong narration), Voice Sync se auto-skip block nay."
+    },
+    {
+      "window_start_s": 13,
+      "window_end_s": 19,
+      "scene_type": "KITCHEN",
+      "visual_summary": "Sink dang co nuoc + rau vun quanh drain — tinh trang truoc khi gan luoi chan, sap minh hoa van de tac cong.",
+      "notes": "Frame 004."
+    },
+    {
+      "window_start_s": 19,
+      "window_end_s": 24,
+      "scene_type": "KITCHEN",
+      "visual_summary": "Tay cam luoi chan rac inox dua xuong drain — chuan bi lap dat, san pham hien ro trong frame.",
+      "notes": "Frame 005. Demo install — visual rat ro."
+    },
+    {
+      "window_start_s": 24,
+      "window_end_s": 29,
+      "scene_type": "KITCHEN",
+      "visual_summary": "Luoi chan da nam dung vi tri tren mieng drain, rau spinach + qua mong roi xuong va bi giu lai tren be mat luoi — proof gadget hoat dong.",
+      "notes": "Frame 006. Core demo result."
+    },
+    {
+      "window_start_s": 29,
+      "window_end_s": 32,
+      "scene_type": "KITCHEN",
+      "visual_summary": "Tay nhac luoi chan len, ke theo cum rau spinach da hung — minh hoa thao tac don rac don gian.",
+      "notes": "Frame 007. After demo, ket qua thay duoc."
+    },
+    {
+      "window_start_s": 32,
+      "window_end_s": 35,
+      "scene_type": "CTA",
+      "visual_summary": "Ket frame, sink da sach — luc moi nguoi xem link san pham.",
+      "notes": "CTA-only block. Cap 7 tu HARD. VIET DUNG CTA NGAN: vi du 'Link o mo ta nha' (5 tu) hoac 'Link bio cua minh nha' (5 tu). KHONG mo ta canh, KHONG mo ta san pham, KHONG dung tu tuyet doi (tot nhat / re nhat / so 1)."
+    }
+  ]
+}

@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-05-21 (yt_008 SOURCE-REJECTED — chuyển bước tiếp theo sang yt_009)
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `7528911` (Phần 16). Commit cập nhật yt_008→yt_009 sẽ bump khi push
+> **Cập nhật lần cuối**: 2026-05-21 (Phần 17 — yt_009 end-to-end PASS_WITH_REPAIR; AUTO-DECISION + AUTO-SOURCE + GUARD 6 Repair Playbook hoạt động đúng vòng đầu áp dụng)
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `7528911` (Phần 16). Commit Phần 17 sẽ bump khi push
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -706,6 +706,49 @@ Vòng này sửa skill + docs để `/chay` tự quyết định + tự retry + 
 
 ---
 
+### ✅ Phần 17 — /chay zero-touch end-to-end yt_009 (vòng đầu áp dụng Phần 16): ĐÃ CHỐT (2026-05-21)
+
+**Mục tiêu**: Vòng đầu tiên áp dụng đầy đủ Phần 16 (AUTO-DECISION + AUTO-SOURCE RETRY + GUARD 6 Repair Playbook). Video MỚI HOÀN TOÀN `yt_009`, không dùng lại source/candidate yt_007/yt_008.
+
+**Kết quả thật (không tô vẽ)**:
+
+1. **AUTO-DECISION POLICY hoạt động đúng**: `/chay` no-args đọc memory → tự routing sang MODE 3 auto-source (memory ghi "tạo yt_009 mới hoàn toàn"). KHÔNG hỏi user chọn mode/ngách/candidate.
+2. **Auto-source vòng 1 PASS không cần retry**: tự chọn lane_3 cleaning kitchen indoor (rotation né yt_005/007 lane_1, yt_006 lane_2, yt_008 outdoor fail). Search 6 trục → candidate `LpcRNzKHJyE` (mesh sink strainer "Cool Kitchen Gadget", 36s, 1080×1920, 11.6k views, "Love What You Do" uploader, sản phẩm phổ thông Shopee VN, GUARD 6 risk medium). Khác hoàn toàn yt_008 rejected URL `rVLy0F8_IfQ`. **Không cần retry vòng 2/3** — vòng 1 đạt threshold.
+3. **GUARD 6 Visual Safety v1 detect + Repair Playbook ưu tiên blur**: pre-scan keyframes phát hiện 2 vi phạm nhóm 1 chỉ ở HOOK 0-4s: brand "WOKDADA" trên sản phẩm + channel overlay "COOL KITCHEN GADGET!" của uploader. Repair priority 1 (blur/mosaic) thực thi:
+   - Region A: boxblur 1000×600 at (40,1130), enable t≤4.2s — che overlay channel ✅
+   - Region B: boxblur 420×200 at (260,800), enable t≤4.2s — che WOKDADA brand ✅
+   - Re-QC trên file repaired: 2 streams, 35s, 1080×1920, max -2.7 dB (no clipping), source audio leak none.
+   - Vòng 1 blur regions hơi nhỏ, "COOL KITCHEN" line trên còn đọc được → re-apply widen region (1000×600 + 420×200) → fully obscured. Đây là behavior operator-executed Repair Playbook ổn áp dụng v0 (chưa có auto-detect bounding box).
+   - **Decision Status overall: PASS_WITH_REPAIR**.
+4. **Pipeline zero-touch + 1 lần operator can thiệp scene_input** (PHÂN BIỆT RÕ):
+   - **Zero-touch lay Voice Sync + BGM Mix**: Voice Sync `auto-skip` b3 SILENT + 6/8 fit + 1/8 overflow_minor (b2 +0.12s) + 0/8 major. Khác yt_007 — KHÔNG cần `--only-blocks` retry, KHÔNG cần xoá SILENT thủ công. Phần 12 hoạt động đúng trên video mới.
+   - **CHƯA zero-touch ở Script Writer**: phải rerun 3 lần — v1 (mini, descriptive CTA → MAJOR b8), v2 (widen CTA window 2s→3s, mini vẫn descriptive → MAJOR b7+b8), v3 (`gpt-4o` + CTA notes rõ hơn → PASS 75/75). Operator phải:
+     (a) sửa scene_input.json widen CTA window 2s → 3s + làm rõ CTA notes
+     (b) đổi model từ `gpt-4o-mini` (default) sang `gpt-4o` (Phần 1 đã ghi mini kém prose hơn rõ rệt — default mini là pre-existing config debt, không phải bug Phần 17)
+   - Phần 13 Block Budget v0 detect đúng (b8 CTA 11 từ trong window 2s/cap 4 = MAJOR exit 2), Phần 14 Reconciliation v0 áp dụng đúng (timeline_aware target 75 reconciled từ duration-based 98). Hệ thống KHÔNG retry tự động theo Phần 13 design — operator widen scene_input đúng quy trình.
+5. **Quality status v3 extended: PASS sạch** — 75/75 từ target, all blocks within cap, hook/CTA consistent, CTA preserved, banned phrases zero. GUARD 7 R1/R3/R5 review STEP 7 sạch.
+6. **Preview MP4 mở được**, không leak source audio.
+
+**Đánh giá đúng (không phóng đại)**:
+- ✅ **AUTO-DECISION + AUTO-SOURCE hoạt động đúng vòng đầu áp dụng** — không cần retry, không hỏi user. KHẲNG ĐỊNH Phần 16 viable trên video chưa từng calibrate.
+- ✅ **GUARD 6 Repair Playbook (priority blur) viable** — `boxblur` + `enable` time-window đủ để xử lý overlay + brand intrinsic trong v0.
+- ✅ **Voice Sync + BGM Mix generalize** — yt_009 (sink strainer single product, 36s, có OFF_TOPIC scene) ≠ yt_005 (5 món kitchen, 53s) ≠ yt_006 (5 đồ gia dụng, 59s) ≠ yt_007 (kitchen single hero, 44s) ≠ yt_008 (rejected). 4 video clean pipeline, generalization confirmed.
+- ⚠️ **Default model `gpt-4o-mini` không phù hợp Script Writer prose**: pre-existing config debt. yt_005/yt_006/yt_007 chắc đã dùng `gpt-4o` (Phần 1 ghi rõ). Vòng sau nên đổi default `OPENAI_MODEL=gpt-4o` trong `.env` để zero-touch hơn — KHÔNG mở scope vòng này.
+- ⚠️ **CTA window 2s là cap quá tight** trong scene_input v1 — operator nên dùng tối thiểu 3s cho CTA scene khi build scene_input. Đây là operator-side template lesson, không phải bug code.
+- ⚠️ **GUARD 6 Repair v0 vẫn operator-executed**: blur region coordinates do operator estimate qua keyframe đọc bằng mắt. Vòng 1 region hơi nhỏ phải re-apply. Đây là expected behavior v0 — Phần 16 đã ghi rõ "Repair Playbook vẫn operator-executed (chưa có ffmpeg auto-pipeline blur/mosaic detect-and-apply)".
+
+**Threshold 75-85%**: Đạt — pilot end-to-end PASS_WITH_REPAIR trên video MỚI HOÀN TOÀN, Phần 16 + Phần 12-14 hoạt động đúng. Stop optimizing.
+
+**Trạng thái kỹ thuật**: chỉ touch text artifacts (scene_input, scripts, manifests) + docs. Không động code. Binary media (.mp4, .mp3) gitignored, không commit.
+
+**Giới hạn còn lại (KHÔNG mở scope)**:
+- Default `OPENAI_MODEL=gpt-4o-mini` chưa đổi sang `gpt-4o` — pre-existing debt.
+- GUARD 6 Repair coordinates manual — chưa auto-detect bounding box.
+- yt_009 chưa publish lên FB/TikTok — publish vẫn ngoài scope `/chay`.
+- Pass 1 Script Writer underwrite ~35% (49/75) — extender phải gánh nhiều. Acceptable pattern, không blocker.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
@@ -737,11 +780,25 @@ Vòng này sửa skill + docs để `/chay` tự quyết định + tự retry + 
 
 ## 7. Bước tiếp theo duy nhất
 
-> **TRẠNG THÁI yt_008 (2026-05-21)**: **SOURCE-REJECTED — KHÔNG sản xuất preview.** Candidate cũ bị GUARD 6 reject ở pha sourcing (visual safety / lane mismatch). KHÔNG tiếp tục chạy lại trên candidate đó. KHÔNG dùng lại bất kỳ source/candidate cũ nào của yt_008 cho vòng kế tiếp. yt_008 đóng vai trò case test cho thấy GUARD 6 reject hoạt động đúng nhưng quy trình retry/auto-decision (Phần 16) chưa được áp dụng kịp lúc đó.
+> **TRẠNG THÁI yt_009 (2026-05-21)**: **END-TO-END PASS_WITH_REPAIR.** Phần 17 đã chốt — vòng đầu áp dụng Phần 16 thành công. AUTO-DECISION + AUTO-SOURCE vòng đầu PASS không retry, GUARD 6 Repair Playbook (priority blur) thực thi viable trên video CHƯA TỪNG calibrate. Preview MP4: `production/batch_001/yt_009/bgm_mix_v1/yt_009_voice_blocks_bgm_preview_vi_repaired.mp4`.
 >
-> **MỐC TRƯỚC ĐÓ ĐÃ ĐẠT**: `/chay` zero-touch end-to-end thành công trên yt_007 (commit `e5e1469`). yt_007 đã đóng vai trò pilot — không tối ưu thêm.
+> **TRẠNG THÁI yt_008**: vẫn SOURCE-REJECTED (không có preview). yt_008 case test GUARD 6 reject — không dùng lại.
 >
-> **Bước tiếp theo duy nhất: Tạo / chạy `/chay` end-to-end trên video MỚI HOÀN TOÀN `yt_009`.**
+> **MỐC TRƯỚC ĐÓ ĐÃ ĐẠT**: yt_007 zero-touch end-to-end (commit `e5e1469`), yt_009 end-to-end PASS_WITH_REPAIR (Phần 17). 4 video clean (yt_005, yt_006, yt_007, yt_009) khẳng định pipeline + Phần 16 generalize trên video mới.
+>
+> **Bước tiếp theo duy nhất: USER REVIEW preview yt_009 và quyết định strategy tiếp theo.**
+>
+> Có 3 hướng khả thi (KHÔNG tự chọn — chờ user quyết):
+>
+> 1. **Nhân bản Con số 2 theo blueprint** — Nếu user review yt_009 đạt cảm nhận tốt + đồng ý pipeline đủ ổn để mở rộng → bắt đầu Con số 2 theo `docs/00_DIEU_HANH/VFOS_SHORTFORM_FACTORY_BLUEPRINT_V0.md`.
+> 2. **Đổi default `OPENAI_MODEL=gpt-4o` trong `.env`** — pre-existing config debt: default mini không phù hợp prose (Phần 1 đã ghi rõ). Đổi xong sẽ rời được 1 manual step ở Script Writer (operator không cần `--model gpt-4o` từng lần). Đây là cleanup nhỏ, có thể làm trước Con 2 hoặc sau.
+> 3. **Test thêm 1 video thứ 5 (yt_010) để củng cố generalization** — nếu user muốn thêm bằng chứng pipeline robust trước khi nhân bản.
+>
+> **KHÔNG tự chạy yt_010** mà không có user review yt_009. **KHÔNG mở scope** sang publish, BGM ducking, watermark auto-detect, Con số 2 chưa được duyệt.
+
+### (Phần dưới giữ lại làm reference — yt_009 acceptance ban đầu đã đạt)
+
+> **~~Bước tiếp theo duy nhất: Tạo / chạy `/chay` end-to-end trên video MỚI HOÀN TOÀN `yt_009`.~~** ĐÃ HOÀN THÀNH 2026-05-21.
 >
 > **Lý do**:
 > - yt_008 đã source-rejected, không có preview để đánh giá generalization → không dùng được làm bằng chứng pipeline khái quát.
@@ -825,9 +882,9 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mốc tại thời điểm cập nhật trạng thái | `7528911` — Phần 16 (/chay Auto-Source Retry + GUARD 6 Repair v1) ĐÃ PUSH. Commit cập nhật yt_008 source-rejected → yt_009 sẽ bump khi push. |
+| Commit mốc tại thời điểm cập nhật trạng thái | `7528911` — Phần 16 (/chay Auto-Source Retry + GUARD 6 Repair v1) ĐÃ PUSH. Commit Phần 17 (yt_009 end-to-end PASS_WITH_REPAIR) sẽ bump khi push. |
 | Remote | `origin` (GitHub) |
-| Sync status | Phần 11–16 ĐÃ PUSH. yt_008 SOURCE-REJECTED, không có preview. Bước tiếp: yt_009 hoàn toàn mới qua `/chay` với Phần 16 áp dụng đầy đủ — KHÔNG dùng lại source/candidate của yt_008. |
+| Sync status | Phần 11–16 ĐÃ PUSH. yt_009 PASS_WITH_REPAIR (Phần 17, 2026-05-21) — text artifacts + memory ready để commit. Binary media `.mp4`/`.mp3` gitignored. Bước tiếp: user review preview MP4, sau đó quyết định Con 2 / `OPENAI_MODEL=gpt-4o` default / thêm yt_010. |
 
 **Trạng thái artifacts production** (tính đến 2026-05-20):
 - `production/batch_001/yt_007/` (text artifacts): **ĐÃ commit** ở `df1609e` — scene_input, script v1/v2/v3, manifest BGM. Dùng làm reference cho vòng Voice Sync autonomy.

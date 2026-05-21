@@ -1,0 +1,179 @@
+{
+  "input": {
+    "video_id": "yt_009",
+    "content_goal": "Gioi thieu luoi chan rac inox cho bon rua bat — gadget nho giup giu cong thoat khong tac va de don rau cu thua sau khi rua.",
+    "target_platform": "tiktok",
+    "duration_target_s": 35,
+    "tone": "chia se trai nghiem, nhe nhang, satisfying, khong quang cao tho",
+    "affiliate_angle": "Luoi chan rac bep inox tron, hero product single SKU, pho thong tren Shopee VN, gia mem.",
+    "cta_style": "soft — gan link bio, khong ep mua",
+    "scene_timeline": [
+      {
+        "window_start_s": 0,
+        "window_end_s": 4,
+        "scene_type": "HOOK",
+        "visual_summary": "Close-up luoi chan rac inox tron tren mat da bep — sang, bong, ro chi tiet luoi mesh.",
+        "notes": "Frame 001. Co text overlay nguon 'COOL KITCHEN GADGET' + brand 'WOKDADA' tren san pham. GUARD 6 repair: blur top + center region trong window nay."
+      },
+      {
+        "window_start_s": 4,
+        "window_end_s": 9,
+        "scene_type": "KITCHEN",
+        "visual_summary": "Bon rua inox doi, rau spinach va qua mong nho do roi vai tren thanh sink, cong thoat ho — trang thai BEFORE de minh hoa van de.",
+        "notes": "Frame 002. Sach, khong watermark."
+      },
+      {
+        "window_start_s": 9,
+        "window_end_s": 13,
+        "scene_type": "OFF_TOPIC",
+        "visual_summary": "Tay bat cong tac den tren tuong nha bep — shot transition, khong co san pham trong frame.",
+        "notes": "Frame 003. OFF_TOPIC = SILENT intent (khong narration), Voice Sync se auto-skip block nay."
+      },
+      {
+        "window_start_s": 13,
+        "window_end_s": 19,
+        "scene_type": "KITCHEN",
+        "visual_summary": "Sink dang co nuoc + rau vun quanh drain — tinh trang truoc khi gan luoi chan, sap minh hoa van de tac cong.",
+        "notes": "Frame 004."
+      },
+      {
+        "window_start_s": 19,
+        "window_end_s": 24,
+        "scene_type": "KITCHEN",
+        "visual_summary": "Tay cam luoi chan rac inox dua xuong drain — chuan bi lap dat, san pham hien ro trong frame.",
+        "notes": "Frame 005. Demo install — visual rat ro."
+      },
+      {
+        "window_start_s": 24,
+        "window_end_s": 29,
+        "scene_type": "KITCHEN",
+        "visual_summary": "Luoi chan da nam dung vi tri tren mieng drain, rau spinach + qua mong roi xuong va bi giu lai tren be mat luoi — proof gadget hoat dong.",
+        "notes": "Frame 006. Core demo result."
+      },
+      {
+        "window_start_s": 29,
+        "window_end_s": 32,
+        "scene_type": "KITCHEN",
+        "visual_summary": "Tay nhac luoi chan len, ke theo cum rau spinach da hung — minh hoa thao tac don rac don gian.",
+        "notes": "Frame 007. After demo, ket qua thay duoc."
+      },
+      {
+        "window_start_s": 32,
+        "window_end_s": 35,
+        "scene_type": "CTA",
+        "visual_summary": "Ket frame, sink da sach — luc moi nguoi xem link san pham.",
+        "notes": "CTA-only block. Cap 7 tu HARD. VIET DUNG CTA NGAN: vi du 'Link o mo ta nha' (5 tu) hoac 'Link bio cua minh nha' (5 tu). KHONG mo ta canh, KHONG mo ta san pham, KHONG dung tu tuyet doi (tot nhat / re nhat / so 1)."
+      }
+    ]
+  },
+  "output": {
+    "hook": "Lưới chặn rác inox này sáng bóng ghê.",
+    "blocks": [
+      {
+        "block_id": "b1",
+        "window_start_s": 0,
+        "window_end_s": 4,
+        "intent": "HOOK",
+        "line": "Lưới chặn rác inox này sáng bóng ghê.",
+        "notes": ""
+      },
+      {
+        "block_id": "b2",
+        "window_start_s": 4,
+        "window_end_s": 9,
+        "intent": "KITCHEN",
+        "line": "Rau rơi lung tung, cống dễ tắc. Có cái này, bếp gọn hơn hẳn.",
+        "notes": "Expanded b2 KITCHEN 7→14 từ: thêm câu gợi ý dùng bám visual."
+      },
+      {
+        "block_id": "b3",
+        "window_start_s": 9,
+        "window_end_s": 13,
+        "intent": "SILENT",
+        "line": "",
+        "notes": ""
+      },
+      {
+        "block_id": "b4",
+        "window_start_s": 13,
+        "window_end_s": 19,
+        "intent": "KITCHEN",
+        "line": "Nước ngập và rau bám quanh cống, phiền ghê. Lắp lưới vào là xong ngay.",
+        "notes": "Expanded b4 KITCHEN 9→16 từ: thêm câu giải pháp bám visual."
+      },
+      {
+        "block_id": "b5",
+        "window_start_s": 19,
+        "window_end_s": 24,
+        "intent": "KITCHEN",
+        "line": "Cầm lưới chặn, chuẩn bị lắp đặt. Dễ dàng và nhanh chóng.",
+        "notes": "Expanded b5 KITCHEN 7→11 từ: thêm câu cảm nhận bám visual."
+      },
+      {
+        "block_id": "b6",
+        "window_start_s": 24,
+        "window_end_s": 29,
+        "intent": "KITCHEN",
+        "line": "Lưới giữ rau lại, không lo tắc nữa. Nhìn mà thấy yên tâm.",
+        "notes": "Expanded b6 KITCHEN 8→13 từ: thêm câu cảm nhận bám visual."
+      },
+      {
+        "block_id": "b7",
+        "window_start_s": 29,
+        "window_end_s": 32,
+        "intent": "KITCHEN",
+        "line": "Nhấc lưới, rau đi ngay. Rất tiện lợi.",
+        "notes": "Expanded b7 KITCHEN 5→8 từ: thêm câu cảm nhận bám visual."
+      },
+      {
+        "block_id": "b8",
+        "window_start_s": 32,
+        "window_end_s": 35,
+        "intent": "CTA",
+        "line": "Link bio của mình nha.",
+        "notes": ""
+      }
+    ],
+    "cta": "Link bio của mình nha.",
+    "full_script": "Lưới chặn rác inox này sáng bóng ghê.\n\nRau rơi lung tung, cống dễ tắc. Có cái này, bếp gọn hơn hẳn.\n\nNước ngập và rau bám quanh cống, phiền ghê. Lắp lưới vào là xong ngay.\n\nCầm lưới chặn, chuẩn bị lắp đặt. Dễ dàng và nhanh chóng.\n\nLưới giữ rau lại, không lo tắc nữa. Nhìn mà thấy yên tâm.\n\nNhấc lưới, rau đi ngay. Rất tiện lợi.\n\nLink bio của mình nha.",
+    "writer_notes": [
+      "Expanded b2 KITCHEN 7→14 từ: thêm câu gợi ý dùng bám visual.",
+      "Expanded b4 KITCHEN 9→16 từ: thêm câu giải pháp bám visual.",
+      "Expanded b5 KITCHEN 7→11 từ: thêm câu cảm nhận bám visual.",
+      "Expanded b6 KITCHEN 8→13 từ: thêm câu cảm nhận bám visual.",
+      "Expanded b7 KITCHEN 5→8 từ: thêm câu cảm nhận bám visual."
+    ]
+  },
+  "meta": {
+    "model": "gpt-4o-2024-08-06",
+    "input_tokens": 4945,
+    "output_tokens": 781,
+    "response_id": "resp_0cd5513058009caf006a0f373eb278819899c93d8eeb5eb2e5"
+  },
+  "quality_report": {
+    "banned_phrases_found": [],
+    "hook_consistent": true,
+    "cta_consistent": true,
+    "cta_preserved": true,
+    "word_count": 75,
+    "word_count_target": 75,
+    "word_count_within_target": true,
+    "budget_mode": "timeline_aware",
+    "duration_based_target": 98,
+    "aggregate_block_cap": 84,
+    "target_adjustment_reason": "duration-based target 98 vượt 90% aggregate cap 84; reconciled to 75 (≤cap-9 từ buffer)",
+    "block_budget_violations": [],
+    "warnings": [
+      "[BUDGET_RECONCILED] duration-based target 98 vượt 90% aggregate cap 84; reconciled to 75 (≤cap-9 từ buffer)"
+    ],
+    "quality_status": "pass",
+    "near_pass_reason": null,
+    "passed": true
+  },
+  "extender_meta": {
+    "pass1_word_count": 49,
+    "pass1_response_id": "resp_0e7f7b3cad531f8a006a0f3739b790819b80bda0727ab59261",
+    "pass2_response_id": "resp_0cd5513058009caf006a0f373eb278819899c93d8eeb5eb2e5"
+  },
+  "generated_at": "2026-05-21T16:48:04.975Z"
+}
