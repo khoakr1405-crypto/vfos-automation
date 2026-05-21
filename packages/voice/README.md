@@ -165,7 +165,7 @@ pnpm voice:generate --input script.txt --output out.mp3
 pnpm voice:generate --input script.txt --output out.mp3 --voice-id <raw_id>
 ```
 
-### Dùng `voice:sync`
+### Dùng `voice:sync` (Autonomy v0)
 
 ```powershell
 pnpm voice:sync `
@@ -173,14 +173,39 @@ pnpm voice:sync `
   --output-dir  production/batch_001/<vid>/voice_sync_v0
 ```
 
+`voice:sync` tự xử lý:
+- **Skip SILENT / empty-line block**: block có `intent="SILENT"` hoặc `line=""` được skip
+  tự động — không TTS, không vào timeline. Manifest ghi `generation_status="skipped"`.
+- **Overflow remediation**: nếu block vượt window >0.5s (MAJOR_OVERFLOW), tự retry 1 lần
+  ở speed +0.1 (cap mặc định 1.4). Nếu thành công → đi tiếp; nếu vẫn major → exit code 2.
+
+Exit code: `0` nếu mọi block FIT / overflow_minor / skipped; `2` nếu còn MAJOR_OVERFLOW
+sau remediation (operator cần rút text trong script JSON rồi `--only-blocks <id>` lại).
+
 ### Manifest
 
-`voice_sync_manifest.json` ghi:
+`voice_sync_manifest.json` ghi cho từng block:
 ```json
 {
-  "voice_preset": "vfos_default",
-  "voice_id": "ZqE9vIHPcrC35dZv0Svu",
-  "model_id": "eleven_v3"
+  "block_id": "b8",
+  "intent": "SILENT",
+  "generation_status": "skipped",
+  "skip_reason": "silent_intent",
+  "fit_status": "skipped"
+}
+```
+hoặc với remediation:
+```json
+{
+  "block_id": "b7",
+  "fit_status": "fit",
+  "speed_applied": 1.4,
+  "overflow_remediation": {
+    "attempted": true,
+    "from_speed": 1.3, "to_speed": 1.4,
+    "from_overflow_s": 0.8, "to_overflow_s": 0.0,
+    "outcome": "remediated_to_fit"
+  }
 }
 ```
 

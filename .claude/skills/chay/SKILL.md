@@ -132,13 +132,22 @@ STEP 8   Voice config
            Lấy từ `ELEVENLABS_VOICE_ID` trong .env — KHÔNG truyền `--voice-id`.
          → KHÔNG random giọng, KHÔNG đổi giọng theo tone video. Một giọng cho mọi video.
          → Multi-preset `voice_01..voice_05` đã retire — KHÔNG dùng lại.
-STEP 9   Chạy Block-based Voice Sync
+STEP 9   Chạy Block-based Voice Sync (Autonomy v0)
          → pnpm voice:sync --script-json production/batch_001/<video_id>/script_ai_v1_extended.json
                           --output-dir production/batch_001/<video_id>/voice_sync_v0
                           --speed 1.3
-         → Đọc manifest: kiểm tra overflow
-         → Nếu có block overflow_minor (≤0.5s): chấp nhận
-         → Nếu có block overflow (>0.5s): rút ngắn text block đó, regenerate --only-blocks <id>
+         → Voice Sync TỰ XỬ LÝ:
+           1. SILENT block (intent=SILENT hoặc line trống) → tự skip, không TTS, không vào timeline.
+              Operator KHÔNG cần xoá b8 SILENT khỏi script JSON trước khi chạy.
+           2. MAJOR_OVERFLOW (>0.5s) → tự retry 1 lần ở speed +0.1 (cap 1.4):
+              • remediated_to_fit / remediated_to_minor → pipeline đi tiếp
+              • still_major → exit code 2, dừng pipeline có chủ đích
+         → Exit code:
+           • 0 → mọi block FIT / overflow_minor / skipped — đi tiếp STEP 10
+           • 2 → còn MAJOR_OVERFLOW sau remediation. Đọc bảng QC để biết block nào.
+                 Rút text trong script JSON cho block đó (drop câu cuối hoặc rút câu),
+                 rồi rerun `pnpm voice:sync --only-blocks <id1>,<id2>`. Vẫn không tự ý đổi voice
+                 hoặc nâng speed cap.
 STEP 10  Chạy BGM Mix
          → BGM source mặc định: production/batch_001/yt_005/bgm/yt_005_bgm_v2_candidate_b.mp3
            (60s, "Light cheerful, bright piano, warm friendly" — đã validate yt_005 + yt_006)
@@ -212,9 +221,17 @@ GUARD 2 — Video source quality
   → Nếu không có candidate đủ tốt (MODE 3): trình shortlist, xin user duyệt
   → Không chạy pipeline cho video quá tệ
 
-GUARD 3 — Voice overflow
+GUARD 3 — Voice Sync Autonomy v0
+  → SILENT block (intent=SILENT hoặc line=""): Voice Sync tự skip, không cần
+    operator xoá khỏi script JSON. Manifest ghi `generation_status="skipped"`,
+    `skip_reason="silent_intent" | "empty_line"`, `fit_status="skipped"`.
   → overflow_minor (≤0.5s): chấp nhận — log vào manifest
-  → overflow (>0.5s): rút ngắn text + regenerate block đó
+  → overflow_major (>0.5s): Voice Sync tự retry 1 lần ở speed +0.1 (cap 1.4):
+    • outcome remediated_to_fit / remediated_to_minor → accept, đi tiếp
+    • outcome still_major → exit code 2, dừng pipeline. Operator rút text trong
+      script JSON cho block đó rồi `--only-blocks <id>` lại.
+  → KHÔNG nâng speed cap quá 1.4 (giọng méo), KHÔNG auto-trim text (sync layer
+    không biết câu nào core vs extender)
 
 GUARD 4 — Audio QC
   → Nếu max_volume > -1 dBFS: clipping — điều chỉnh final-gain trước khi báo done
@@ -235,7 +252,7 @@ Bắt buộc chạy trước khi báo "hoàn thành":
 [ ] Keyframes: mô tả dựa trên hình thật, không hallucinate?
 [ ] scene_input.json: schema hợp lệ, scene_type đúng enum?
 [ ] Script Writer: PASS quality guard? Hook/CTA không cứng?
-[ ] Voice Sync: tất cả blocks FIT hoặc overflow_minor?
+[ ] Voice Sync: tất cả blocks FIT / overflow_minor / skipped? Không có MAJOR sót lại?
 [ ] BGM Mix: 2 streams? Không clipping? Không leak source audio?
 [ ] Preview: đã mở và có thể play?
 [ ] Binary media: KHÔNG nằm trong git commit?

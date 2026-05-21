@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-05-20
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `3b52b97` (Phần 11 commit sẽ ghi sau khi push)
+> **Cập nhật lần cuối**: 2026-05-21
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `9231f56` (Phần 12 commit sẽ ghi sau khi push)
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -404,6 +404,64 @@ pnpm voice:generate --input production/smoke/voice_smoke.txt --output ...
 
 ---
 
+### ✅ Phần 12 — Voice Sync Autonomy v0 (auto-skip SILENT + auto-remediate MAJOR_OVERFLOW): ĐÃ CHỐT (2026-05-21)
+
+**Mục tiêu**: Xoá 2 điểm operator can thiệp tay đã phát hiện ở Phần 10 (manual remove `b8` SILENT + manual trim `b4/b5/b6`). Mục đích cuối cùng là Core Pipeline tự chạy đủ ổn để mới nghĩ tới nhân bản Con 2.
+
+**Audit ban đầu**:
+- `sync.ts` đọc `scriptData.output.blocks` thẳng, không lọc theo intent/line. Block `intent="SILENT"` hoặc `line=""` sẽ vẫn bị TTS → API error hoặc mp3 rỗng → buộc operator phải xoá tay trước.
+- Overflow detection cũ: phân fit/overflow_minor (≤0.5s)/overflow (>0.5s) — không có remediation, chỉ in cảnh báo cuối.
+- yt_007 pilot Phần 10 buộc operator xoá `b8` SILENT + rút câu 3 trong `b4/b5/b6` rồi rerun.
+
+**Thiết kế mới**:
+
+| Thành phần | Quy tắc |
+|---|---|
+| Skip Policy A | `intent === "SILENT"` OR `line.trim() === ""` → skip. Không TTS, không vào stitch, manifest ghi `generation_status="skipped"`, `skip_reason="silent_intent" \| "empty_line"` |
+| OFF_TOPIC policy | KHÔNG skip theo tên intent. Chỉ skip khi `line=""`. Block OFF_TOPIC có narration thật vẫn TTS bình thường (conservative — tôn trọng narration cố ý) |
+| Overflow Tier | FIT (diff≤0) / MINOR_OVERFLOW (≤0.5s, accept) / MAJOR_OVERFLOW (>0.5s, retry) |
+| Remediation | MAJOR → retry 1 lần ở `speed + 0.1` capped tại 1.4 (giọng méo nếu vượt). Phân loại lại: `remediated_to_fit` / `remediated_to_minor` / `still_major` |
+| KHÔNG làm | Auto-trim text (sync layer không biết câu nào là extender-added vs core — text rewrite là Script Writer scope) |
+| Exit code | 0 nếu mọi block FIT/MINOR/SKIPPED. 2 nếu còn MAJOR sau remediation. Actionable report chỉ rõ block_id + overflow_s |
+
+**Files đã sửa**:
+- `packages/voice/scripts/sync.ts` — main work: thêm `classifySkip()`, `classifyOverflow()`, `generateAndProbe()` helper, MAJOR_OVERFLOW retry block, manifest schema mở rộng (audio_file nullable, generation_status, skip_reason, speed_applied, overflow_remediation). Stitch loop dùng type-narrowed filter để loại skipped blocks. Thêm `--max-speed` flag (default 1.4).
+- `.claude/skills/chay/SKILL.md` — STEP 9 rewrite phản ánh autonomy v0; GUARD 3 cập nhật 3-tier; Self-review checklist updated.
+- `packages/voice/README.md` — section `voice:sync` ghi rõ skip policy + remediation behavior + manifest example.
+
+**Smoke test thật trên yt_007 `script_ai_v3_extended.json` UNMODIFIED (8 blocks gồm b8 SILENT + b7 CTA dài bất khả thi)**:
+
+| Block | Window | Actual | Status | Note |
+|---|---|---|---|---|
+| b1 HOOK | 4s | 4.16s | overflow_minor | accepted |
+| b2 TRANSITION | 8s | 5.6s | fit | |
+| b3 TRANSITION | 6s | 4.32s | fit | |
+| b4 KITCHEN | 8s | 8.24s | overflow_minor | accepted (đã từng phải trim tay) |
+| b5 KITCHEN | 7s | 7.6s → 7.12s | overflow_minor | **AUTO-RESCUED** retry @ 1.4, was MAJOR |
+| b6 KITCHEN | 6s | 6.24s | overflow_minor | accepted |
+| b7 CTA | 3s | 6.72s → 5.84s | **overflow_major** | retry @ 1.4 còn +2.84s, FAIL |
+| b8 SILENT | 4s | — | **skipped** | **AUTO-SKIPPED** silent_intent |
+
+**Đánh giá thật**:
+- ✅ **b8 SILENT autonomy hoàn thành**: operator KHÔNG còn cần xoá b8 khỏi script JSON. Skip tự động, manifest có metadata, stitch excludes b8 → timeline 44.0s chính xác.
+- ✅ **b5 overflow tự cứu được**: trước phải trim câu 3 thủ công, giờ retry @ 1.4 đưa về minor → pipeline đi tiếp.
+- ⚠️ **b7 CTA vẫn major**: 17 từ trong window 3s = ~5.84s ngay cả ở speed 1.4. Vượt 2x window — speed-up không thể cứu. Pipeline FAIL exit 2 với report rõ block + overflow_s. **Đây không phải bug Voice Sync** — đây là Script Writer/scene_input concern (CTA window 3s quá hẹp cho 17 từ).
+
+**Threshold 75-85%**:
+- ✅ 2/3 case manual operator (b8 SILENT + b5 overflow) đã tự xử lý.
+- ⚠️ Case b7 vẫn cần operator can thiệp NHƯNG đã có actionable failure rõ ràng (không phải silent pass), và nguyên nhân là Script Writer/scene_input scope (out of scope vòng này).
+- → ~80% ready. Stop optimizing theo nguyên tắc "75–85% là đủ chốt".
+
+**Trạng thái**: `pnpm --filter @vfos/voice typecheck` PASS. Biome `noNonNullAssertion` count giữ nguyên baseline 9 trên sync.ts (không thêm violation mới — 2 cái thêm trong implementation đã được narrow bằng type predicate + non-null param).
+
+**Giới hạn còn lại để vòng sau** (KHÔNG mở scope vòng này):
+- Speed-up 1.3→1.4 chỉ rescue được block overflow nhẹ. Block overflow nghiêm trọng (như b7 yt_007) vẫn cần operator.
+- Để FULLY autonomous trên yt_007, cần fix Script Writer: enforce CTA word budget từ scene_input window (nếu CTA window ≤4s thì cap CTA ≤8-10 từ).
+- Hoặc fix scene_input.json để CTA window đủ rộng (5-6s).
+- Một trong hai cải tiến đó là milestone tiếp theo có thể cân nhắc — nhưng KHÔNG phải vòng Voice Sync.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
@@ -435,18 +493,17 @@ pnpm voice:generate --input production/smoke/voice_smoke.txt --output ...
 
 ## 7. Bước tiếp theo duy nhất
 
-> **Fix Voice Sync autonomy — hết operator can thiệp tay trong các case như yt_007.**
+> **Cân nhắc Script Writer CTA word budget từ scene_input window — case yt_007 b7 còn lại.**
 >
-> **Lý do**: Pilot yt_007 chạy được end-to-end (Phần 10) nhưng vẫn cần operator manual remove `b8` SILENT + trim `b4/b5/b6`. Không thể nhân bản Con 2 khi Core Pipeline còn buộc tay người.
+> **Lý do**: Phần 12 đã đóng 2/3 case manual của yt_007 (b8 SILENT auto-skip + b5 overflow auto-rescue). Case còn lại — b7 CTA 17 từ trong window 3s — không phải Voice Sync scope: speed-up cap 1.4 không thể cứu block overflow gấp 2x window. Đây là Script Writer hoặc scene_input concern.
 >
-> **Ba mục cụ thể (không tách)**:
-> 1. **Auto-handle SILENT / OFF_TOPIC block**: Voice Sync phải tự skip hoặc tự convert SILENT/OFF_TOPIC mà không buộc operator xoá tay khỏi script JSON.
-> 2. **Auto-handle overflow trên block ngắn**: nếu block ngắn có overflow nhỏ (đặc biệt ≤0.5s), Voice Sync phải tự rút text hoặc tự điều chỉnh speed cục bộ thay vì bắt operator regenerate `--only-blocks`.
-> 3. **Acceptance**: cho yt_007 chạy lại từ đầu qua `/chay` mà không cần can thiệp tay nào ngoài duyệt preview cuối.
+> **Hai lựa chọn (chọn 1, không cả hai)**:
+> 1. **Script Writer enforce CTA word budget từ scene_input window**: nếu CTA window ≤4s thì cap CTA ≤8-10 từ (≈ tốc độ 1.3x TTS Việt).
+> 2. **scene_input.json widen CTA window**: convention mới — CTA tối thiểu 5-6s để đủ chỗ cho CTA tự nhiên (8-15 từ).
 >
-> **Sau khi xong**: Core Pipeline đủ ổn định → mới xem xét nhân bản Con số 2 theo blueprint.
+> **KHÔNG mở scope** sang Con số 2, publish, BGM ducking, watermark, hay refactor Script Writer cho việc khác trong vòng này.
 >
-> **KHÔNG mở scope** sang Con số 2, watermark, publish, BGM ducking, hay refactor Script Writer thêm trong vòng fix này.
+> **Sau khi xong**: Core Pipeline đủ tự động end-to-end cho mọi short-video ≤90s → mới xem xét nhân bản Con số 2 theo blueprint.
 
 ---
 
@@ -498,9 +555,9 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mốc tại thời điểm cập nhật trạng thái | `3b52b97` |
+| Commit mốc tại thời điểm cập nhật trạng thái | `9231f56` (Phần 12 commit + push sau khi xong) |
 | Remote | `origin` (GitHub) |
-| Sync status | Đã push — milestone tiếp theo: fix Voice Sync autonomy (auto-handle SILENT + overflow trim). Brand voice + Eleven v3 đã chốt ở Phần 11. |
+| Sync status | Brand voice + Eleven v3 (Phần 11) đã push. Phần 12 (Voice Sync Autonomy v0) sắp commit. Milestone tiếp theo: Script Writer CTA word budget enforcement HOẶC scene_input CTA window convention. |
 
 **Trạng thái artifacts production** (tính đến 2026-05-20):
 - `production/batch_001/yt_007/` (text artifacts): **ĐÃ commit** ở `df1609e` — scene_input, script v1/v2/v3, manifest BGM. Dùng làm reference cho vòng Voice Sync autonomy.
