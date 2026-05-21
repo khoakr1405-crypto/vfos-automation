@@ -113,17 +113,26 @@ STEP 5   Tạo scene_input.json
                    scene_timeline[] (window_start_s, window_end_s, scene_type, visual_summary, notes)
          → scene_type hợp lệ: HOOK | KITCHEN | FILLER | TRANSITION | CTA | OFF_TOPIC
          → Viết Latinized Vietnamese để tránh encoding error trong JSON
-STEP 6   Chạy AI Script Writer
+STEP 6   Chạy AI Script Writer (Block-Level Budget v0)
          → pnpm script:generate --input production/batch_001/<video_id>/scene_input.json
-         → Đọc output: script_ai_v1.json + script_ai_v1.txt
+         → Đọc output: script_ai_v1.json + script_ai_v1.txt + block_budget_violations
          → Quality status có 3 mức (đọc `quality_report.quality_status` trong JSON,
            hoặc exit code: 0=PASS/NEAR-PASS, 2=FAIL):
            • PASS       → đi tiếp STEP 7 bình thường
            • NEAR-PASS  → đi tiếp STEP 7 NHƯNG ghi vào REPORT TEMPLATE phần
              "Self-review" lý do near-pass (lấy từ `quality_report.near_pass_reason`).
              Không retry — near-pass đã được hệ thống phân loại là chấp nhận được.
-           • FAIL       → phân tích lý do, sửa scene_input.json và retry 1 lần.
-                          Nếu vẫn FAIL sau retry: báo user, dừng.
+           • FAIL       → đọc `quality_report.block_budget_violations`:
+             - Nếu có MAJOR violation ở CTA hoặc block khác (>2 từ over cap):
+               KHÔNG retry tự động. Đây là cảnh báo scene_input có window quá
+               hẹp cho intent đó. Operator phải:
+               (a) sửa scene_input.json: widen window của block bị vi phạm,
+                   HOẶC giảm duration_target_s nếu tổng target không khả thi,
+               (b) rồi rerun /chay từ STEP 5.
+             - Nếu chỉ MINOR violations (≤2 từ over cap, intent ≠ CTA):
+               Voice Sync overflow_minor envelope sẽ hấp thụ — pipeline tiếp tục.
+             - Nếu fail vì lý do khác (banned phrase, hook/CTA mismatch):
+               retry 1 lần. Nếu vẫn FAIL: báo user, dừng.
 STEP 7   Đánh giá script
          → Đọc script_ai_v1.txt toàn bộ — có tự nhiên không? Hook kéo view?
          → Không tô vẽ kết quả — nếu script kém thì nói thật
@@ -212,9 +221,13 @@ GUARD 1 — Script quality (3 mức: PASS / NEAR-PASS / FAIL)
   → PASS      → đi tiếp
   → NEAR-PASS → đi tiếp nhưng GHI vào report Self-review:
                   "Script Writer near-pass — {near_pass_reason}".
-                Near-pass = lệch word count nhỏ (≤6 từ ngoài window, ≤12% off target)
-                + mọi guard khác sạch. Không retry — đã được hệ thống chấp nhận.
-  → FAIL      → retry 1 lần. Nếu vẫn FAIL: dừng + báo user.
+                Near-pass = (lệch word count nhỏ ≤6 từ ≤12% off target) HOẶC
+                (≤2 minor block violations cap ≤2 từ ngoài CTA) — đều với mọi
+                guard khác sạch. Không retry — đã được hệ thống chấp nhận.
+  → FAIL      → KIỂM TRA `block_budget_violations`:
+                - MAJOR (CTA over cap, hoặc non-CTA over >2 từ): KHÔNG retry tự
+                  động. Đây là scene_input issue — operator sửa scene_input rồi rerun.
+                - Lý do khác: retry 1 lần. Nếu vẫn FAIL: dừng + báo user.
   → Không dùng script FAIL chỉ để "xong pipeline".
 
 GUARD 2 — Video source quality

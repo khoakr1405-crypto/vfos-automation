@@ -2,9 +2,19 @@ export { SCRIPT_EXTENDER_SYSTEM_PROMPT } from './extender-prompt.js';
 export { ScriptWriterClient } from './openai-client.js';
 export type { ExpandInput, ScriptWriterClientConfig } from './openai-client.js';
 export { loadDotEnv } from './load-env.js';
-export { buildQualityReport, computeWordBudget } from './quality-guard.js';
+export {
+  buildBlockBudgetTable,
+  buildQualityReport,
+  checkBlockBudgets,
+  computeBlockBudget,
+  computeWordBudget,
+  countWords,
+} from './quality-guard.js';
 export type {
   BannedHit,
+  BlockBudget,
+  BlockBudgetViolation,
+  BlockViolationSeverity,
   QualityReport,
   QualityStatus,
   WordBudget,

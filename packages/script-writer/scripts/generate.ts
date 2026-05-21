@@ -142,6 +142,12 @@ printResult('Pass 1', pass1.output, pass1.meta, pass1Quality);
 // Extender only runs when pass 1 is a true `fail` (under target). Near-pass
 // is already acceptable, so we skip the extra API call to avoid risking a
 // regression on hook/CTA preservation just to nudge the count.
+// Additional guard: extender only EXPANDS, so it cannot fix major block
+// budget violations (e.g., CTA too long). When pass 1 has any major block
+// violation, skip extender — operator must widen scene_input or accept fail.
+const pass1MajorBlockViolations = pass1Quality.block_budget_violations.filter(
+  (v) => v.severity === 'major',
+).length;
 const shouldExtend =
   extenderEnabled &&
   pass1Quality.quality_status === 'fail' &&
@@ -149,7 +155,8 @@ const shouldExtend =
   pass1Quality.cta_consistent &&
   pass1Quality.banned_phrases_found.filter((h) => h.hard).length === 0 &&
   !pass1Quality.word_count_within_target &&
-  pass1Quality.word_count < pass1Quality.word_count_target;
+  pass1Quality.word_count < pass1Quality.word_count_target &&
+  pass1MajorBlockViolations === 0;
 
 if (!extenderEnabled) {
   console.log('Extender: not requested. Done.');
@@ -173,6 +180,10 @@ if (!shouldExtend) {
     console.log('  Skipped: hard-banned phrase in pass 1 — fix prose root cause first.');
   } else if (pass1Quality.word_count > pass1Quality.word_count_target) {
     console.log('  Skipped: pass 1 over-target, not under. Extender only expands.');
+  } else if (pass1MajorBlockViolations > 0) {
+    console.log(
+      `  Skipped: pass 1 has ${pass1MajorBlockViolations} major block budget violation(s). Extender can only expand, cannot trim. Operator must widen scene_input window or shorten block line manually.`,
+    );
   }
   console.log('');
   console.log(`Files: ${outputPath}`);
@@ -304,6 +315,21 @@ function printResult(
     console.log(`  CTA preserved  : ${quality.cta_preserved ? 'yes' : 'NO (rewrite/leak)'}`);
   }
   console.log(`  Word in target : ${quality.word_count_within_target ? 'yes' : 'NO'}`);
+  const major = quality.block_budget_violations.filter((v) => v.severity === 'major');
+  const minor = quality.block_budget_violations.filter((v) => v.severity === 'minor');
+  console.log(
+    `  Block budgets  : ${quality.block_budget_violations.length === 0 ? 'all within cap' : `${major.length} major, ${minor.length} minor`}`,
+  );
+  if (quality.block_budget_violations.length > 0) {
+    console.log('  Block budget violations:');
+    console.log('    block | intent     | window  | cap | actual | over | severity');
+    console.log('    ------|------------|---------|-----|--------|------|---------');
+    for (const v of quality.block_budget_violations) {
+      console.log(
+        `    ${v.block_id.padEnd(5)} | ${v.intent.padEnd(10)} | ${`${v.window_duration_s.toFixed(1)}s`.padEnd(7)} | ${String(v.max_words).padEnd(3)} | ${String(v.actual_words).padEnd(6)} | +${String(v.overflow_words).padEnd(3)} | ${v.severity.toUpperCase()}`,
+      );
+    }
+  }
   if (quality.warnings.length > 0) {
     console.log('  Warnings:');
     for (const w of quality.warnings) console.log(`    - ${w}`);
