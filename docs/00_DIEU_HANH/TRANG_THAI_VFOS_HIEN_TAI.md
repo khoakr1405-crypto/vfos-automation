@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-05-21 (Phần 16 — /chay Auto-Source Retry + GUARD 6 Repair v1)
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `2881007` (Phần 15 compliance guard). Phần 16 commit sẽ bump khi push
+> **Cập nhật lần cuối**: 2026-05-21 (yt_008 SOURCE-REJECTED — chuyển bước tiếp theo sang yt_009)
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `7528911` (Phần 16). Commit cập nhật yt_008→yt_009 sẽ bump khi push
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -737,41 +737,43 @@ Vòng này sửa skill + docs để `/chay` tự quyết định + tự retry + 
 
 ## 7. Bước tiếp theo duy nhất
 
-> **MỐC ĐÃ ĐẠT (2026-05-21)**: `/chay` đã chạy **zero-touch end-to-end** thành công trên yt_007 (commit `e5e1469`) — Script Writer → Voice Sync → BGM Mix → preview MP4 final, KHÔNG cần operator can thiệp tay. User đã xem preview và đánh giá "rất hài lòng". **yt_007 hoàn thành vai trò pilot. Không tiếp tục tối ưu riêng yt_007 nữa.**
+> **TRẠNG THÁI yt_008 (2026-05-21)**: **SOURCE-REJECTED — KHÔNG sản xuất preview.** Candidate cũ bị GUARD 6 reject ở pha sourcing (visual safety / lane mismatch). KHÔNG tiếp tục chạy lại trên candidate đó. KHÔNG dùng lại bất kỳ source/candidate cũ nào của yt_008 cho vòng kế tiếp. yt_008 đóng vai trò case test cho thấy GUARD 6 reject hoạt động đúng nhưng quy trình retry/auto-decision (Phần 16) chưa được áp dụng kịp lúc đó.
 >
-> **Bước tiếp theo duy nhất: Chạy `/chay` end-to-end trên video mới `yt_008` để kiểm tra khả năng tổng quát của pipeline.**
+> **MỐC TRƯỚC ĐÓ ĐÃ ĐẠT**: `/chay` zero-touch end-to-end thành công trên yt_007 (commit `e5e1469`). yt_007 đã đóng vai trò pilot — không tối ưu thêm.
 >
-> **Lý do**: Tiếp tục tối ưu trên yt_007 sẽ overfit case duy nhất đó, không chứng minh được pipeline khái quát. yt_008 là test mới để verify dây chuyền không bị coupled với yt_007 sau khi:
-> - Phần 12 — Voice Sync Autonomy (SILENT skip + minor overflow auto-rescue)
-> - Phần 13 — Block-Level Budget (per-block cap enforcement, CTA tight)
-> - Phần 14 — Budget Reconciliation (target reconcile với aggregate block cap)
-> - Phần 15 — Affiliate Compliance + Source Branding Guard v0
-> - **Phần 16 — /chay Auto-Source Retry + GUARD 6 Repair v1** ← áp dụng cho yt_008: no-args /chay phải tự quyết định + tự retry candidate fail, GUARD 6 ưu tiên repair blur/mosaic trước khi reject
+> **Bước tiếp theo duy nhất: Tạo / chạy `/chay` end-to-end trên video MỚI HOÀN TOÀN `yt_009`.**
 >
-> **Acceptance**: gọi `/chay` (no-args, để memory routing) tạo `yt_008` từ đầu — Script Writer → Voice Sync → BGM Mix → preview. Verify:
-> 1. **AUTO-DECISION POLICY**: `/chay` no-args KHÔNG hỏi user mode/ngách/candidate (memory đã ghi yt_008 + lane gadget bếp/đồ gia dụng đủ rõ).
-> 2. **AUTO-SOURCE RETRY**: nếu candidate đầu fail GUARD 6 hoặc threshold → `/chay` tự đổi keyword retry tối đa 3 vòng trước khi hỏi user.
-> 3. Pipeline tự chạy không cần operator can thiệp tay (automation track).
-> 4. Quality status PASS hoặc NEAR-PASS (exit 0) trên video CHƯA TỪNG calibrate.
-> 5. Output preview MP4 mở được, không leak source audio.
-> 6. **GUARD 6 Visual Safety v1** (3 nhóm: logo/brand/watermark, QR/mã vạch, biển số/PII):
+> **Lý do**:
+> - yt_008 đã source-rejected, không có preview để đánh giá generalization → không dùng được làm bằng chứng pipeline khái quát.
+> - yt_009 là vòng đầu tiên áp dụng đầy đủ Phần 16 (AUTO-DECISION + AUTO-SOURCE RETRY + GUARD 6 Repair Playbook).
+> - Vẫn cần 1 video mới end-to-end thành công để chứng minh pipeline không coupled với yt_007.
+>
+> **Acceptance cho yt_009**: gọi `/chay` (no-args, để memory routing) tạo `yt_009` từ đầu — Script Writer → Voice Sync → BGM Mix → preview. Verify:
+> 1. **AUTO-DECISION POLICY** (Phần 16): `/chay` no-args KHÔNG hỏi user "chọn mode / chọn ngách / chọn candidate" — memory đã ghi yt_009 + default lane set Con số 1 đủ rõ.
+> 2. **AUTO-SOURCE RETRY** (Phần 16): nếu candidate đầu fail GUARD 6 hoặc threshold → `/chay` tự đổi keyword retry tối đa 3 vòng trước khi hỏi user. KHÔNG hỏi user sau lần fail đầu tiên.
+> 3. **KHÔNG dùng lại candidate / source / URL cũ của yt_008** ở bất kỳ vòng retry nào. Nếu tình cờ search ra lại video đó → loại khỏi shortlist.
+> 4. Pipeline tự chạy không cần operator can thiệp tay (automation track).
+> 5. Quality status PASS hoặc NEAR-PASS (exit 0) trên video CHƯA TỪNG calibrate.
+> 6. Output preview MP4 mở được, không leak source audio.
+> 7. **GUARD 6 Visual Safety v1** (3 nhóm: logo/brand/watermark, QR/mã vạch, biển số/PII):
 >    - Nếu detect vi phạm → Repair Playbook ưu tiên blur/mosaic.
 >    - Decision Status cuối: PASS hoặc PASS_WITH_REPAIR.
 >    - Bảng "Detected issue → Repair action → Re-QC result" ghi đầy đủ trong báo cáo.
-> 7. **GUARD 7 Affiliate & Content Compliance** (operator-enforced ở STEP 7):
+> 8. **GUARD 7 Affiliate & Content Compliance** (operator-enforced ở STEP 7):
 >    - R1: script không copy y nguyên narration nguồn.
 >    - R3: script không chứa từ tuyệt đối (tốt nhất / rẻ nhất / chính hãng 100% / cam kết / đảm bảo).
 >    - R5: tone soft, không quảng cáo thô.
 >    - R2 (product match): nhắc ở báo cáo cuối — chốt affiliate đúng sản phẩm khi publish.
 >
 > **Quy tắc tuyệt đối cho vòng này**:
-> - **KHÔNG dùng lại yt_007 cho vòng kế tiếp.** yt_007 đã đóng vai trò pilot, mọi tinh chỉnh thêm trên nó sẽ là overfitting.
-> - **Khi `/chay` được gọi không args (mode 1): ưu tiên tạo/chạy yt_008**, KHÔNG quay lại yt_007 dù memory có nhắc đến.
-> - yt_007 artifacts giữ làm reference để so sánh — không touch.
+> - **KHÔNG dùng lại candidate / source / URL của yt_008** — yt_008 source-rejected là quyết định cuối, không retry trên nó.
+> - **KHÔNG dùng lại yt_007 cho vòng kế tiếp** — đã đóng vai trò pilot, mọi tinh chỉnh thêm sẽ là overfitting.
+> - **Khi `/chay` được gọi không args (mode 1): ưu tiên tạo/chạy yt_009**, KHÔNG quay lại yt_007 / yt_008 dù memory có nhắc đến tên cũ.
+> - yt_007 / yt_008 artifacts giữ làm reference — không touch.
 >
-> **KHÔNG mở scope** sang Con số 2, publish, BGM ducking, watermark, refactor Voice Sync/Script Writer thêm trong vòng này. Mục tiêu duy nhất: 1 video mới end-to-end qua pipeline hiện tại.
+> **KHÔNG mở scope** sang Con số 2, publish, BGM ducking, watermark, refactor Voice Sync/Script Writer thêm trong vòng này. Mục tiêu duy nhất: 1 video mới (yt_009) end-to-end qua pipeline hiện tại với Phần 16 áp dụng đầy đủ.
 >
-> **Sau khi xong**: nếu yt_008 chạy được clean → có bằng chứng pipeline generalize. Mới cân nhắc tới (a) nhân bản Con số 2 theo blueprint hoặc (b) cải tiến tiếp Core nếu phát hiện limit mới.
+> **Sau khi xong**: nếu yt_009 chạy được clean → có bằng chứng pipeline generalize sau Phần 12–16. Mới cân nhắc tới (a) nhân bản Con số 2 theo blueprint hoặc (b) cải tiến tiếp Core nếu phát hiện limit mới.
 
 ---
 
@@ -823,9 +825,9 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mốc tại thời điểm cập nhật trạng thái | `2881007` — Phần 15 compliance guard ĐÃ PUSH. Phần 16 (/chay Auto-Source Retry + GUARD 6 Repair v1) sẽ có commit riêng push cùng vòng. |
+| Commit mốc tại thời điểm cập nhật trạng thái | `7528911` — Phần 16 (/chay Auto-Source Retry + GUARD 6 Repair v1) ĐÃ PUSH. Commit cập nhật yt_008 source-rejected → yt_009 sẽ bump khi push. |
 | Remote | `origin` (GitHub) |
-| Sync status | Phần 11–15 ĐÃ PUSH. Phần 16 ĐANG commit riêng. Bước tiếp: yt_008 generalization test qua `/chay` với AUTO-DECISION + AUTO-SOURCE RETRY + GUARD 6 Repair Playbook. |
+| Sync status | Phần 11–16 ĐÃ PUSH. yt_008 SOURCE-REJECTED, không có preview. Bước tiếp: yt_009 hoàn toàn mới qua `/chay` với Phần 16 áp dụng đầy đủ — KHÔNG dùng lại source/candidate của yt_008. |
 
 **Trạng thái artifacts production** (tính đến 2026-05-20):
 - `production/batch_001/yt_007/` (text artifacts): **ĐÃ commit** ở `df1609e` — scene_input, script v1/v2/v3, manifest BGM. Dùng làm reference cho vòng Voice Sync autonomy.
