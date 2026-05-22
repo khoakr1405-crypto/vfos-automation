@@ -59,9 +59,22 @@ short-form video tiếng Việt có voice-over AI + BGM, sẵn sàng đăng Face
 
 Đây là 4 "knob" có thể thay để tạo ra con mới mà **không cần fork kiến trúc**:
 
-> **Note Phần 20 (2026-05-22)**: Mỗi Con có thể chọn **lane orientation** giữa **Video-First** (default, tìm video trước → match affiliate sau) và **Product-First** (chốt sản phẩm TikTok Shop trước → tìm video/demo tương đồng sau, có GUARD 8 Product Match). Lane KHÔNG phải knob configurable — là **mode operational** chọn ngay khi gọi `/chay` (MODE 1/2/3 = Video-First, MODE 4 = Product-First). Mỗi Con có thể chạy **cả hai lane** tùy ngữ cảnh sản phẩm/content. Chi tiết Product-First: `.claude/skills/chay/SKILL.md` section "PRODUCT-FIRST LANE v0" + "GUARD 8".
-
-> **Note Phần 21 (2026-05-22)**: Product-First Lane có 2 sub-path: (a) user dán link TikTok Shop cụ thể, (b) **Auto Product Discovery** — `/chay product-first` không kèm link → agent tự tìm candidate sản phẩm theo lane, chấm Product Selection Scoring 6 trục, auto chọn nếu ≥13/18 và trục risk ≥2. Discovery KHÔNG bịa link/giá/hoa hồng — nếu không lấy được data TikTok Shop trực tiếp thì báo limitation + xin user dán link. Chi tiết: `.claude/skills/chay/SKILL.md` section "PRODUCT DISCOVERY MODE v0" + "PRODUCT SELECTION SCORING".
+> **Note Phần 20–22 (2026-05-22)** — **SUPERSEDED bởi Phần 22 pivot**:
+>
+> Phần 20+21 ban đầu mô tả "Product-First Lane" chung (Shopee + TikTok Shop song song). Phần 22 (2026-05-22) **pivot Product-First → Shopee-First Only v0**, **TikTok Shop defer** (future lane, không triển khai trong giai đoạn này).
+>
+> **Lane orientation hiện tại** (sau Phần 22):
+> - **Video-First** (default MODE 1/2/3) — tìm video trước → match Shopee affiliate sau. ACTIVE.
+> - **Shopee-First** (MODE 4) — chọn sản phẩm **Shopee VN** trước → tìm video/demo tương đồng sau, output **Facebook Reels + Shopee Affiliate**, có **GUARD 8 Shopee Product Match**. ACTIVE (lane chính hiện tại).
+> - **TikTok-Shop-First** — TikTok Video → TikTok Shop Affiliate. **FUTURE / DEFER** (chốt 2026-05-22 Phần 22). KHÔNG triển khai trong giai đoạn này. Sẽ revisit khi user mở lại scope.
+>
+> Lane KHÔNG phải knob configurable — là **mode operational** chọn ngay khi gọi `/chay` (MODE 1/2/3 = Video-First; MODE 4 = Shopee-First). Trigger chung `/chay product-first` → mặc định route Shopee-First (TikTok Shop defer).
+>
+> **Shopee Product Card 10 field** (Phần 22 schema mới): `shopee_product_url`, `product_name`, `price_vnd`, `commission_pct`, `sales_count`, `rating`, `review_count`, `shop_name`, `why_worthwhile`, `data_confidence`. Field unknown ghi `"unknown"` — KHÔNG bịa.
+>
+> **Shopee Product Discovery Mode** (Phần 21+22): `/chay shopee-first` hoặc `/chay product-first` không kèm link → agent tự tìm candidate Shopee theo lane, chấm Shopee Product Selection Scoring 6 trục, auto chọn nếu ≥13/18 và trục risk ≥2. Discovery KHÔNG bịa link Shopee/giá/hoa hồng — nếu không lấy được data Shopee trực tiếp thì báo limitation + xin user dán link Shopee.
+>
+> Chi tiết: `.claude/skills/chay/SKILL.md` sections "SHOPEE-FIRST LANE v0" + "SHOPEE PRODUCT DISCOVERY MODE v0" + "SHOPEE PRODUCT SELECTION SCORING" + "GUARD 8 SHOPEE PRODUCT MATCH GUARD".
 
 ### Knob A — Source Profile (cách tìm video)
 
@@ -115,10 +128,12 @@ short-form video tiếng Việt có voice-over AI + BGM, sẵn sàng đăng Face
 
 Định nghĩa: Khai thác thị trường nào, gắn affiliate nào?
 
-| Yếu tố | Con số 1 (hiện tại) | Ví dụ Con 2+ |
+> **Cập nhật Phần 22 (2026-05-22)**: Ví dụ "Con 2 dùng TikTok Shop VN" ở bảng dưới là **hypothetical illustration** của Knob D, KHÔNG phải lane active. TikTok Shop hiện đang **DEFER** (xem note Phần 22 ở đầu Section 3). Con 2 thực tế khi user duyệt mở sẽ vẫn nên dùng **Shopee VN** trừ khi user mở lại scope TikTok Shop.
+
+| Yếu tố | Con số 1 (hiện tại) | Ví dụ Con 2+ (hypothetical) |
 |---|---|---|
 | Ngách | Gadget / đồ gia dụng / đồ bếp | Làm đẹp / skincare |
-| Platform affiliate | Shopee VN | TikTok Shop VN |
+| Platform affiliate | **Shopee VN** (ACTIVE) | TikTok Shop VN *(future, defer — xem Phần 22)* |
 | CTA target | "Link bio" | "Bình luận SHOPEE" |
 | Audience | Nội trợ, gia đình, người thích đồ bếp | GenZ, beauty |
 | Price positioning | Giá rẻ, hàng Trung Quốc | Giá trung, hàng brand |
@@ -136,12 +151,16 @@ Con số 1: Gadget đồ bếp từ TQ → Shopee VN → Facebook Reels
   Edit: Voice-over tiếng Việt, BGM piano nhẹ, CTA soft
   Niche: Shopee, đồ gia dụng, giá rẻ
 
-Con số 2 (ví dụ): Đồ làm đẹp từ TQ → TikTok Shop VN → TikTok Reels
+Con số 2 (ví dụ hypothetical — TikTok Shop CURRENTLY DEFER per Phần 22):
+  Đồ làm đẹp từ TQ → TikTok Shop VN → TikTok Reels
   Source: Douyin hashtag scrape (agent mới — THAY)
   Score: Duration 15–60s, portrait, skincare demo rõ (THAY tiêu chí)
   Edit: Voice nữ, BGM pop nhẹ, CTA "thả tim + bình luận SHOP" (THAY voice + BGM + CTA)
   Niche: TikTok Shop, skincare, GenZ (THAY)
   Core pipeline: GIỮ NGUYÊN (yt-dlp + Script Writer + Voice Sync + BGM Mix)
+  ⚠️ Note: Phần 22 (2026-05-22) defer TikTok Shop. Khi user duyệt Con 2 thật,
+  default sẽ là Shopee VN + Facebook Reels, không phải TikTok Shop + TikTok
+  Reels. Ví dụ trên giữ làm illustration cho Knob D khi mở lại TikTok Shop.
 ```
 
 **Điều quan trọng**: Con 2 chỉ thay 4 knob, không xây lại Script Writer hay Voice Sync.

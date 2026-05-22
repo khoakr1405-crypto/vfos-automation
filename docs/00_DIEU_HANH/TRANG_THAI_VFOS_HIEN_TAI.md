@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-05-22 (Phần 21 — Auto Product Discovery v0 cho Product-First Lane)
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `0be4503` (Phần 20 Product-First Lane v0 + GUARD 8). Phần 21 commit sẽ bump khi push
+> **Cập nhật lần cuối**: 2026-05-22 (Phần 22 — Pivot Product-First → Shopee-First Only v0, TikTok Shop defer)
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `9c7d595` (Phần 21 Auto Product Discovery v0). Phần 22 commit sẽ bump khi push
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -1011,6 +1011,107 @@ Vòng này sửa skill + docs để `/chay` tự quyết định + tự retry + 
 
 **Trạng thái kỹ thuật**: chỉ touch `.md`, không động code, không cần typecheck/biome.
 
+**⚠️ SUPERSEDED bởi Phần 22**: Phần 21 nói về "Product-First Lane" chung (Shopee + TikTok Shop). Phần 22 (2026-05-22) pivot Product-First → **Shopee-First Only v0**, TikTok Shop defer. Đọc Phần 22 để biết schema/trigger/guard mới nhất.
+
+---
+
+### ✅ Phần 22 — Pivot Product-First → Shopee-First Only v0 (TikTok Shop defer): ĐÃ CHỐT (2026-05-22)
+
+**Quyết định user**:
+1. HỦY hướng làm song song Shopee + TikTok Shop.
+2. Chỉ làm **1 hướng trước: Shopee**.
+3. TikTok Shop **defer** — chưa thiết kế sâu, chưa tích hợp.
+4. Luồng ưu tiên: **Video → Facebook Reels → Shopee Affiliate**.
+
+**Mục tiêu**: Pivot toàn bộ wording "Product-First Lane" (Phần 20+21) thành **Shopee-First Lane v0** — platform cụ thể, không chung chung. TikTok Shop ghi rõ là future/deferred, KHÔNG active lane song song.
+
+**Vì sao pivot**: 
+- Tránh dàn trải scope (2 platform cùng lúc → khó verify hiệu quả).
+- Shopee có data accessibility tốt hơn TikTok Shop (HTML render, có Affiliate dashboard, scraping/lookup tin cậy hơn).
+- Mục tiêu thương mại VFOS North Star (100-200M VND/tháng) cần 1 luồng hoàn chỉnh trước, không 2 luồng dở dang.
+- Facebook Reels là target platform ưu tiên user — Shopee phối tốt nhất.
+
+**Phạm vi cài đặt (KHÔNG sửa code pipeline, KHÔNG chạy video mới, KHÔNG tìm sản phẩm thật, KHÔNG code scraper)**:
+
+- `.claude/skills/chay/SKILL.md` — pivot toàn diện:
+  - Description frontmatter: "Facebook Reels gắn Shopee Affiliate (TikTok Shop future lane defer)".
+  - MÔ TẢ section: "Content-led affiliate Shopee VN", "Platform target Facebook Reels".
+  - **LANE TYPES table**: thêm hàng `TikTok-Shop-First` với trạng thái **FUTURE / DEFER** rõ ràng; row `Product-First` đổi thành `Shopee-First` ACTIVE.
+  - **MODE 4** rewrite: triggers Shopee-First (`/chay shopee-first`, `/chay product-first shopee`, `/chay facebook shopee`, `/chay làm video Facebook Reels gắn Shopee`). Trigger chung `/chay product-first` → route mặc định Shopee-First.
+  - **SHOPEE-FIRST LANE v0** section (thay PRODUCT-FIRST LANE v0).
+  - **Shopee Product Card 10 field** (tăng từ 6): `shopee_product_url`, `product_name`, `price_vnd`, `commission_pct`, `sales_count`, `rating`, `review_count`, `shop_name`, `why_worthwhile`, `data_confidence`. Field `data_confidence` mới (high/medium/low) phản ánh trung thực mức độ verify data.
+  - **SHOPEE PRODUCT DISCOVERY MODE v0** (thay PRODUCT DISCOVERY MODE v0).
+  - **SHOPEE PRODUCT SELECTION SCORING** — 6 trục giữ nguyên, wording cập nhật (trục 2 "Shopee affiliate potential", trục 3 "Visual appeal cho Facebook Reels", trục 4 "Vietnam audience fit (Facebook Reels VN)").
+  - **WORKFLOW SHOPEE-FIRST** PF-STEP 1–6 (thay WORKFLOW PRODUCT-FIRST). `affiliate_target` field trong scene_input.json thêm `"platform": "shopee"` + `"shop_name"`.
+  - **AUTO-DECISION POLICY trong Shopee-First** — thêm rule **KHÔNG hỏi "Shopee hay TikTok Shop"**.
+  - **GUARD 8 — SHOPEE PRODUCT MATCH GUARD** (thay PRODUCT MATCH GUARD). 5 trục giữ nguyên, wording Shopee.
+  - **SELF-REVIEW** — đổi entries Product-First → Shopee-First, thêm check `data_confidence`, thêm check "không hỏi Shopee/TikTok Shop platform".
+  - **HARD CONSTRAINTS** — thêm 2 rule mới: "× Hỏi user Shopee hay TikTok Shop" + "× Triển khai tool/scraper TikTok Shop trong scope hiện tại".
+  - **REPORT TEMPLATE** — bảng Shopee Product Card 10 field, bảng GUARD 8 Shopee Match.
+- `docs/00_DIEU_HANH/TRANG_THAI_VFOS_HIEN_TAI.md` — Phần 22 + cập nhật Mục 7 (route 4 đổi từ TikTok Shop test → Shopee test) + Mục 10 (commit pointer).
+- `docs/00_DIEU_HANH/VFOS_SHORTFORM_FACTORY_BLUEPRINT_V0.md` — note Phần 22 pivot, mark TikTok Shop là future lane.
+
+**LANE TYPES sau Phần 22**:
+
+| Lane | Platform affiliate | Platform publish | Trạng thái |
+|---|---|---|---|
+| Video-First (default MODE 1/2/3) | Shopee VN | Facebook Reels | **ACTIVE** |
+| Shopee-First (MODE 4) | Shopee VN | Facebook Reels | **ACTIVE (lane chính hiện tại)** |
+| Content-Led affiliate (overlay triết lý) | — | — | **ACTIVE (triết lý nền)** |
+| TikTok-Shop-First | TikTok Shop VN | TikTok Việt Nam | **FUTURE / DEFER** |
+
+**Shopee Product Card 10 field**:
+
+| # | Field | Mô tả |
+|---|---|---|
+| 1 | `shopee_product_url` | URL Shopee VN (bắt buộc) |
+| 2 | `product_name` | Tên sản phẩm (bắt buộc) |
+| 3 | `price_vnd` | Giá VNĐ (unknown nếu không lấy được) |
+| 4 | `commission_pct` | % hoa hồng Shopee Affiliate (unknown nếu không có) |
+| 5 | `sales_count` | Số đã bán (unknown nếu không có) |
+| 6 | `rating` | Rating trung bình (unknown nếu không có) |
+| 7 | `review_count` | Số review (unknown nếu không có) |
+| 8 | `shop_name` | Tên shop (unknown nếu không có) |
+| 9 | `why_worthwhile` | Lý do đáng làm 5 điểm (bắt buộc, agent tự viết) |
+| 10 | `data_confidence` | high / medium / low (bắt buộc, phản ánh trung thực) |
+
+**Triggers /chay sau Phần 22**:
+- `/chay shopee-first` (primary trigger)
+- `/chay product-first shopee` (đồng nghĩa)
+- `/chay facebook shopee` (đồng nghĩa, nhấn FB Reels)
+- `/chay làm video Facebook Reels gắn Shopee`
+- `/chay product-first` (route mặc định → Shopee-First trong giai đoạn này)
+- `/chay tìm sản phẩm Shopee trước`
+
+**TikTok Shop defer — KHÔNG triển khai trong scope hiện tại**:
+- Không thiết kế sâu TikTok Shop Product Card.
+- Không build TikTok Shop scraper/API integration.
+- Không cập nhật trigger TikTok Shop là active.
+- Không hỏi user "Shopee hay TikTok Shop" — mặc định Shopee.
+- Sẽ revisit khi user mở lại scope rõ ràng (eg Phần 25+).
+
+**GUARD policy không đổi**:
+- GUARD 6 Visual Safety vẫn là 3 nhóm gốc (logo/brand/watermark, QR/mã vạch, biển số/PII). KHÔNG nhét Shopee Match Guard vào GUARD 6.
+- GUARD 7 Affiliate & Content Compliance không đổi.
+- GUARD 8 rename thành "SHOPEE PRODUCT MATCH GUARD" (TikTok-Shop-First defer → không có GUARD 8 variant TikTok Shop trong giai đoạn này).
+
+**Triết lý — KHÔNG mở scope vòng này**:
+- KHÔNG sửa code pipeline (Script Writer / Voice Sync / BGM).
+- KHÔNG chạy video mới, KHÔNG chạy yt_011.
+- KHÔNG tìm sản phẩm thật, KHÔNG code scraper Shopee.
+- KHÔNG triển khai TikTok Shop bất cứ thứ gì.
+- KHÔNG publish, KHÔNG mở Con số 2.
+- KHÔNG xóa artifact yt_005..yt_010.
+
+**Threshold 75-85%**: Đạt cho v0 — wording pivot toàn diện, Shopee schema rõ, TikTok Shop ghi defer rõ. Sẵn sàng cho Phần 23 (test Shopee-First Discovery trên 1 sản phẩm Shopee thật). Stop optimizing v0.
+
+**Giới hạn còn lại (KHÔNG mở scope vòng này)**:
+- Shopee data accessibility trong runtime hiện tại vẫn chưa verify thật (cần test WebFetch Shopee.vn xem render HTML như nào). Discovery có thể vẫn dừng ở limitation step.
+- 4 video đã chạy (yt_005..yt_010) đều dùng wording "Shopee VN" trong scene_input — không cần migrate, đã consistent.
+- Phần 20/21 wording "Product-First" trong các Phần đã commit không sửa retroactively — chỉ note SUPERSEDED ở header Phần 21.
+
+**Trạng thái kỹ thuật**: chỉ touch `.md`, không động code, không cần typecheck/biome.
+
 ---
 
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
@@ -1061,11 +1162,11 @@ Vòng này sửa skill + docs để `/chay` tự quyết định + tự retry + 
 > 1. **Nhân bản Con số 2 theo blueprint** — 5 video clean + AUTO-SOURCE RETRY verified là đủ bằng chứng pipeline ổn. Mở `docs/00_DIEU_HANH/VFOS_SHORTFORM_FACTORY_BLUEPRINT_V0.md` cho ngách thứ 2. Đây là path commercial progress (VFOS North Star).
 > 2. **Đổi default `OPENAI_MODEL=gpt-4o` trong `.env`** — pre-existing config debt. Cleanup nhỏ, operator không cần `--model gpt-4o` flag từng lần. Có thể làm trước Con 2 hoặc sau.
 > 3. **Test thêm yt_011** — nếu user muốn thêm bằng chứng. Nhưng 5 video clean + 1 retry success thường đủ; thêm video có thể là over-validation.
-> 4. **Test thử Product-First Lane v0 (Phần 20 + Phần 21) trên 1 sản phẩm cụ thể** — 2 sub-path:
->    - **4a** — `/chay product-first <link TikTok Shop>` (user dán link cụ thể) → parse + Product Card + GUARD 8 Product Match end-to-end.
->    - **4b** — `/chay product-first` (auto discovery, Phần 21) → agent tự tìm candidate sản phẩm theo lane, chấm Product Selection Scoring, chọn auto nếu đạt threshold. **Lưu ý**: nếu môi trường runtime hiện tại không có quyền truy cập TikTok Shop data → Discovery sẽ dừng ở limitation step và xin user dán link (expected behavior, không phải bug).
+> 4. **Test thử Shopee-First Lane v0 (Phần 20 + Phần 21 + Phần 22) trên 1 sản phẩm Shopee cụ thể** — 2 sub-path (TikTok Shop defer, KHÔNG test trong giai đoạn này):
+>    - **4a** — `/chay shopee-first <link Shopee>` (user dán link Shopee cụ thể) → parse + Shopee Product Card 10 field + GUARD 8 Shopee Product Match end-to-end.
+>    - **4b** — `/chay shopee-first` hoặc `/chay product-first` (auto discovery, Phần 21+22) → agent tự tìm candidate Shopee theo lane, chấm Shopee Product Selection Scoring, chọn auto nếu đạt threshold. **Lưu ý**: nếu môi trường runtime hiện tại không có quyền truy cập Shopee data → Discovery sẽ dừng ở limitation step và xin user dán link Shopee (expected behavior).
 >
-> **KHÔNG tự chạy yt_011** mà không có user quyết định. **KHÔNG tự chạy Product-First Discovery thật** (sub-path 4b) mà không có user quyết định — Discovery Mode đã được khai báo capability ở Phần 21 nhưng vòng chạy thật là Phần 22 nếu user duyệt. **KHÔNG mở scope** sang publish, BGM ducking, watermark auto-detect, Con số 2 chưa được duyệt.
+> **KHÔNG tự chạy yt_011** mà không có user quyết định. **KHÔNG tự chạy Shopee-First Discovery thật** (sub-path 4b) mà không có user quyết định — Discovery Mode đã được khai báo capability ở Phần 21+22 nhưng vòng chạy thật là Phần 23 nếu user duyệt. **KHÔNG mở scope** sang publish, BGM ducking, watermark auto-detect, Con số 2 chưa được duyệt, **TikTok Shop chưa được duyệt mở lại**.
 
 ### (Phần dưới giữ lại làm reference — yt_009 acceptance ban đầu đã đạt)
 
@@ -1153,9 +1254,9 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mốc tại thời điểm cập nhật trạng thái | `0be4503` — Phần 20 (Product-First Lane v0 + GUARD 8). Phần 21 (Auto Product Discovery v0) commit sẽ bump khi push. |
+| Commit mốc tại thời điểm cập nhật trạng thái | `9c7d595` — Phần 21 (Auto Product Discovery v0). Phần 22 (Pivot Shopee-First Only, TikTok Shop defer) commit sẽ bump khi push. |
 | Remote | `origin` (GitHub) |
-| Sync status | Phần 11–20 ĐÃ PUSH. Phần 21 ĐANG commit (chỉ docs/skill, không code, không binary, không chạy video/sản phẩm thật). Bước tiếp: user quyết định strategy 4 hướng (Con 2 / OPENAI_MODEL gpt-4o default / yt_011 Video-First / yt_011 Product-First test sub-path 4a hoặc 4b). |
+| Sync status | Phần 11–21 ĐÃ PUSH. Phần 22 ĐANG commit (chỉ docs/skill, không code, không binary, không chạy video/sản phẩm thật, không code scraper). Bước tiếp: user quyết định strategy 4 hướng (Con 2 / OPENAI_MODEL gpt-4o default / yt_011 Video-First / yt_011 Shopee-First test sub-path 4a hoặc 4b). |
 
 **Trạng thái artifacts production** (tính đến 2026-05-20):
 - `production/batch_001/yt_007/` (text artifacts): **ĐÃ commit** ở `df1609e` — scene_input, script v1/v2/v3, manifest BGM. Dùng làm reference cho vòng Voice Sync autonomy.
