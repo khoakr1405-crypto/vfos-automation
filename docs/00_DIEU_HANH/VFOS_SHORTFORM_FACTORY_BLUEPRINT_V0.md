@@ -59,6 +59,8 @@ short-form video tiếng Việt có voice-over AI + BGM, sẵn sàng đăng Face
 
 Đây là 4 "knob" có thể thay để tạo ra con mới mà **không cần fork kiến trúc**:
 
+> **Note Phần 20 (2026-05-22)**: Mỗi Con có thể chọn **lane orientation** giữa **Video-First** (default, tìm video trước → match affiliate sau) và **Product-First** (chốt sản phẩm TikTok Shop trước → tìm video/demo tương đồng sau, có GUARD 8 Product Match). Lane KHÔNG phải knob configurable — là **mode operational** chọn ngay khi gọi `/chay` (MODE 1/2/3 = Video-First, MODE 4 = Product-First). Mỗi Con có thể chạy **cả hai lane** tùy ngữ cảnh sản phẩm/content. Chi tiết Product-First: `.claude/skills/chay/SKILL.md` section "PRODUCT-FIRST LANE v0" + "GUARD 8".
+
 ### Knob A — Source Profile (cách tìm video)
 
 Định nghĩa: TÌM video ở đâu, theo cách nào?

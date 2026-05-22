@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-05-22 (Phần 19 update — yt_010 visual repair **v4** USER-APPROVED PASS_WITH_REPAIR sau user feedback round; residual minor accepted for pilot)
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `2c807ed` (Phần 19 yt_010 generalization). Visual repair v4 commit sẽ bump khi push
+> **Cập nhật lần cuối**: 2026-05-22 (Phần 20 — Product-First Lane v0 + GUARD 8 Product Match Guard thêm vào /chay khung đa-lane)
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `eb5bc00` (Phần 19 yt_010 v4 USER-APPROVED). Phần 20 commit sẽ bump khi push
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -866,6 +866,79 @@ Vòng này sửa skill + docs để `/chay` tự quyết định + tự retry + 
 
 ---
 
+### ✅ Phần 20 — Product-First Lane v0 + GUARD 8 Product Match Guard: ĐÃ CHỐT (2026-05-22)
+
+**Mục tiêu**: Thêm 1 lane mới vào `/chay` — **Product-First Lane** — đảo thứ tự thông thường: chốt **sản phẩm TikTok Shop trước**, sau đó tìm video/demo tương đồng. Là **lane song song**, KHÔNG thay thế Video-First (default cho MODE 1/2/3).
+
+**Vì sao cần**: 5 video pipeline qua (yt_005/006/007/009/010) đều theo Video-First (tìm video rồi cố match affiliate). Pattern này hạn chế khi muốn ưu tiên 1 SKU có hoa hồng tốt / hot TikTok Shop — affiliate target không rõ từ đầu, gây risk bait-and-switch (clip A nhưng link B). Product-First đảo lại: lock affiliate target trước, source chỉ là demo phù hợp.
+
+**Phạm vi cài đặt (KHÔNG sửa code pipeline, KHÔNG chạy video mới)**:
+- `.claude/skills/chay/SKILL.md` — thêm:
+  - Section **LANE TYPES** (3 framing: Video-First / Product-First / Content-Led overlay).
+  - **MODE 4** `/chay product-first [<args>]` trong MODE ROUTING.
+  - Section **PRODUCT-FIRST LANE v0** với spec Product Card 6 field + PF-STEP 0–6 workflow + AUTO-DECISION POLICY riêng cho Product-First.
+  - **GUARD 8 — PRODUCT MATCH GUARD** (riêng, TÁCH KHỎI GUARD 6 + GUARD 7) với 5 trục tương đồng + 3 decision status.
+  - Update SELF-REVIEW (+3 dòng cho Product-First), HARD CONSTRAINTS (+4 dòng), REPORT TEMPLATE (+2 bảng Product Card + GUARD 8 Match).
+- `docs/00_DIEU_HANH/TRANG_THAI_VFOS_HIEN_TAI.md` — Phần 20 + Mục 7 + Mục 10.
+- `docs/00_DIEU_HANH/VFOS_SHORTFORM_FACTORY_BLUEPRINT_V0.md` — note ngắn về khung đa-lane.
+
+**LANE TYPES — 3 framing song song**:
+
+| Lane | Khởi điểm | Mode mặc định |
+|---|---|---|
+| **Video-First / Content-First** | Tìm video trước, match affiliate sau | MODE 1/2/3 (default) |
+| **Product-First** | Chọn sản phẩm TikTok Shop trước, tìm video/demo sau | MODE 4 (mới) |
+| **Content-Led affiliate** | Triết lý nền — nội dung kéo view, CTA gắn mềm | Áp dụng cả 2 lane trên |
+
+**PRODUCT CARD — 6 field bắt buộc** (lưu `product_card.json`):
+1. `link_tiktok_shop` — URL (bắt buộc)
+2. `product_name` — tên chính thức (bắt buộc)
+3. `price_vnd` — giá (ghi `"unknown"` nếu không lấy được — KHÔNG bịa)
+4. `commission_pct` — % hoa hồng (`"unknown"` nếu không có)
+5. `sales_review_signal` — số bán/review/rating (`"unknown"` nếu không có)
+6. `why_worthwhile` — lý do đáng làm gồm 5 điểm: (a) vấn đề giải quyết, (b) ai mua, (c) visual demo có dễ hiểu không, (d) phù hợp content-led affiliate không, (e) tiềm năng chuyển đổi
+
+**GUARD 8 — PRODUCT MATCH GUARD (5 trục)**:
+1. Công dụng tương đồng
+2. Hình dáng / thiết kế tương đồng
+3. Cách dùng tương đồng
+4. Bối cảnh sử dụng tương đồng
+5. Không khác bản chất sản phẩm
+
+**Decision Status (3 mức)**:
+- `MATCH_CONFIRMED` (5/5 đạt) → pipeline chạy
+- `MATCH_NEEDS_REVIEW` (4/5 + 1 mơ hồ) → user duyệt
+- `MISMATCH_REJECT` (≥2 fail HOẶC trục 5 fail) → tự retry tìm clip khác, max 3 vòng
+
+**Anti-bait-and-switch (HARD RULE)**: clip demo và affiliate link trong Card phải trỏ về **cùng 1 sản phẩm thực tế**. KHÔNG cho clip sản phẩm A gắn link sản phẩm B chỉ vì "cùng ngành". Đây vừa là GUARD 8 trục 5 (khác bản chất) vừa là GUARD 7 R2 ở publish layer.
+
+**Nguồn video/demo cho phép Product-First** (chỉ là nguồn tham khảo demo, KHÔNG phải nguồn để gắn affiliate):
+- TikTok, Douyin, AliExpress, Temu, YouTube, nguồn demo khác phù hợp.
+
+**Limitation báo trung thực**: agent có thể KHÔNG có quyền lấy data TikTok Shop trực tiếp (giá, hoa hồng, sales). Trong trường hợp đó:
+- Báo limitation cho user.
+- Đề xuất user dán link TikTok Shop để parse metadata.
+- Ghi `"unknown"` cho field không lấy được — **KHÔNG bịa giá / hoa hồng / số bán / review** (vi phạm sẽ là tô vẽ kết quả).
+
+**Triết lý — KHÔNG mở scope vòng này**:
+- KHÔNG sửa code pipeline (Script Writer / Voice Sync / BGM).
+- KHÔNG chạy video mới, KHÔNG chạy yt_011.
+- KHÔNG tìm sản phẩm thật trong vòng này — chỉ định nghĩa khung.
+- KHÔNG publish, KHÔNG mở Con số 2, KHÔNG xóa artifact.
+- KHÔNG nhét Product Match Guard vào GUARD 6 (Visual Safety) — TÁCH RIÊNG là GUARD 8.
+- KHÔNG để Product-First thay thế Video-First — là LANE SONG SONG.
+
+**Threshold 75-85%**: Đạt cho v0 — khung framework + spec rõ, sẵn sàng cho lần chạy thử thật (ngoài scope vòng này). Stop optimizing.
+
+**Giới hạn còn lại (KHÔNG mở scope vòng này)**:
+- GUARD 8 vẫn operator-enforced (chấm 5 trục bằng đánh giá người) — chưa có auto product-match scoring bằng image embedding hoặc OCR product name.
+- Product Card data scraping (giá / hoa hồng / số bán) chưa có integration TikTok Shop API — operator dán link manual.
+- Chưa test thật Product-First trên 1 sản phẩm cụ thể (sẽ là Phần 21 nếu user duyệt). Khung này là design only.
+
+**Trạng thái kỹ thuật**: chỉ touch `.md`, không động code, không cần typecheck/biome.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
@@ -909,13 +982,14 @@ Vòng này sửa skill + docs để `/chay` tự quyết định + tự retry + 
 >
 > **Bước tiếp theo duy nhất: USER quyết định strategy tiếp theo.**
 >
-> Có 3 hướng khả thi (KHÔNG tự chọn — chờ user quyết):
+> Có 4 hướng khả thi (KHÔNG tự chọn — chờ user quyết):
 >
 > 1. **Nhân bản Con số 2 theo blueprint** — 5 video clean + AUTO-SOURCE RETRY verified là đủ bằng chứng pipeline ổn. Mở `docs/00_DIEU_HANH/VFOS_SHORTFORM_FACTORY_BLUEPRINT_V0.md` cho ngách thứ 2. Đây là path commercial progress (VFOS North Star).
 > 2. **Đổi default `OPENAI_MODEL=gpt-4o` trong `.env`** — pre-existing config debt. Cleanup nhỏ, operator không cần `--model gpt-4o` flag từng lần. Có thể làm trước Con 2 hoặc sau.
 > 3. **Test thêm yt_011** — nếu user muốn thêm bằng chứng. Nhưng 5 video clean + 1 retry success thường đủ; thêm video có thể là over-validation.
+> 4. **Test thử Product-First Lane v0 (Phần 20) trên 1 sản phẩm cụ thể** — vòng đầu chạy thật `/chay product-first <link TikTok Shop>` để verify Product Card + GUARD 8 Product Match hoạt động end-to-end. Cần user dán link TikTok Shop trước (do agent có thể không có quyền lấy data trực tiếp).
 >
-> **KHÔNG tự chạy yt_011** mà không có user quyết định. **KHÔNG mở scope** sang publish, BGM ducking, watermark auto-detect, Con số 2 chưa được duyệt.
+> **KHÔNG tự chạy yt_011** mà không có user quyết định. **KHÔNG tự chạy Product-First** mà không có link TikTok Shop từ user. **KHÔNG mở scope** sang publish, BGM ducking, watermark auto-detect, Con số 2 chưa được duyệt.
 
 ### (Phần dưới giữ lại làm reference — yt_009 acceptance ban đầu đã đạt)
 
@@ -1003,9 +1077,9 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mốc tại thời điểm cập nhật trạng thái | `2c807ed` — Phần 19 (yt_010 generalization end-to-end). Visual repair v4 USER-APPROVED commit sẽ bump khi push. |
+| Commit mốc tại thời điểm cập nhật trạng thái | `eb5bc00` — Phần 19 (yt_010 v4 USER-APPROVED). Phần 20 (Product-First Lane v0 + GUARD 8) commit sẽ bump khi push. |
 | Remote | `origin` (GitHub) |
-| Sync status | Phần 11–19 base ĐÃ PUSH. Visual repair v4 manifest + TRANG_THAI update ĐANG commit. Output final yt_010: `bgm_mix_v1/yt_010_voice_blocks_bgm_preview_vi_repaired_v4.mp4` (binary gitignored, **không commit**). v1/v2/v3 mp4 giữ trên đĩa làm history (cũng gitignored). Text artifact: `yt_010_visual_repair_manifest.json` ghi đầy đủ 6 box repair + filter chain v4. Bước tiếp: user quyết định strategy (Con 2 / `OPENAI_MODEL=gpt-4o` default / yt_011). |
+| Sync status | Phần 11–19 ĐÃ PUSH (gồm yt_010 v4). Phần 20 ĐANG commit (chỉ docs/skill, không code, không binary). Bước tiếp: user quyết định strategy 4 hướng (Con 2 / OPENAI_MODEL gpt-4o default / yt_011 Video-First / yt_011 Product-First test). |
 
 **Trạng thái artifacts production** (tính đến 2026-05-20):
 - `production/batch_001/yt_007/` (text artifacts): **ĐÃ commit** ở `df1609e` — scene_input, script v1/v2/v3, manifest BGM. Dùng làm reference cho vòng Voice Sync autonomy.

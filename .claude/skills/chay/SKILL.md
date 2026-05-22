@@ -29,6 +29,25 @@ Dây chuyền này phục vụ:
 
 ---
 
+## LANE TYPES — Khung đa lane (KHÔNG mutually exclusive)
+
+`/chay` hỗ trợ **3 framing**, không một framing nào thay thế các framing khác:
+
+| Lane | Khởi điểm | Khi nào dùng |
+|---|---|---|
+| **Video-First / Content-First** | Tìm **video** trước, sau đó **match affiliate** nếu hợp bối cảnh | Default cho MODE 1/2/3 — content kéo view là trụ chính, affiliate gắn mềm theo nội dung |
+| **Product-First** | Chọn **sản phẩm TikTok Shop / Shopee VN** trước, sau đó **tìm video/demo tương đồng** | Khi user muốn ưu tiên 1 sản phẩm cụ thể có hoa hồng tốt / hot trên TikTok Shop, cần content có visual demo khớp đúng sản phẩm |
+| **Content-Led affiliate** (overlay) | Nội dung kéo view là chính, CTA/affiliate gắn mềm chỉ khi hợp bối cảnh | Là **triết lý nền** áp dụng cho cả 2 lane trên — không phải lane riêng. Tránh quảng cáo thô (GUARD 7 R5). |
+
+**Quan hệ giữa Lane và Mode**:
+- MODE 1/2/3 (no-args/URL/text) chạy theo lane **Video-First** default.
+- MODE 4 (mới) chạy theo lane **Product-First**.
+- Cả 2 lane luôn áp dụng triết lý Content-Led affiliate.
+
+Chi tiết Product-First Lane: xem section **"PRODUCT-FIRST LANE v0"** bên dưới.
+
+---
+
 ## BƯỚC 0 — BẮT BUỘC MỖI LẦN CHẠY
 
 Dù ở mode nào, agent phải làm ngay khi nhận `/chay`:
@@ -136,6 +155,28 @@ Khi `/chay` được gọi không args VÀ Project Memory đã ghi next step rõ
 
 ---
 
+### MODE 4 — `/chay product-first [<args>]` (Product-First Lane)
+
+**Trigger**:
+- `/chay product-first`
+- `/chay product-first <link TikTok Shop>` (link sản phẩm cụ thể)
+- `/chay tìm sản phẩm TikTok Shop trước`
+- `/chay chọn product trước, video sau`
+
+**Hành động**: chuyển sang **Product-First Lane** — tìm sản phẩm trước, video/demo sau. Workflow chi tiết: xem section **"PRODUCT-FIRST LANE v0"** bên dưới.
+
+**Tóm tắt thứ tự**:
+1. Tìm/chốt sản phẩm TikTok Shop tiềm năng (hoặc parse link user dán).
+2. Tạo **Product Card** đầy đủ 6 field (link, tên, giá, hoa hồng, số bán/review, lý do đáng làm).
+3. Tìm video/demo tương đồng từ TikTok / Douyin / AliExpress / Temu / YouTube / nguồn demo khác.
+4. Chạy **PRODUCT MATCH GUARD** (xem GUARD 8) chấm 5 tiêu chí tương đồng.
+5. Chỉ chạy pipeline (Script → Voice → BGM) nếu Decision = `MATCH_CONFIRMED`.
+6. `MATCH_NEEDS_REVIEW` → trình user duyệt. `MISMATCH_REJECT` → tự tìm clip khác trong retry limit, hết retry mới hỏi user.
+
+**Limitation phải báo rõ**: nếu không có quyền/truy cập lấy TikTok Shop data trực tiếp (giá, hoa hồng, số bán), **báo limitation cho user**, đề xuất user dán link sản phẩm. **KHÔNG bịa** giá / hoa hồng / số bán / review.
+
+---
+
 ## CHANNEL / LANE PROFILE — KHÔNG HARD-CODE 1 NGÁCH
 
 `/chay` KHÔNG hard-code đi một dạng review sản phẩm hay một ngách cố định. Mỗi kênh / nick (FB Reels, TikTok VN) sau này có thể có **bộ lane riêng**.
@@ -156,6 +197,89 @@ Khi `/chay` được gọi không args VÀ Project Memory đã ghi next step rõ
   - Nếu memory ghi rõ lane cho video tiếp theo → dùng lane đó, **KHÔNG hỏi**.
   - Nếu memory không ghi → mặc định ưu tiên lane gần nhất đã chạy thành công, hoặc rotate `lane_1..lane_4` theo thứ tự.
 - **KHÔNG hỏi user "chọn ngách nào"** nếu memory + lane profile đủ rõ. Đây là vi phạm AUTO-DECISION POLICY.
+
+---
+
+## PRODUCT-FIRST LANE v0
+
+**Triết lý**: Đảo thứ tự — chốt **sản phẩm TikTok Shop trước**, sau đó **đi tìm video/demo tương đồng**. Mục đích: ưu tiên 1 SKU có hoa hồng tốt / hot trên TikTok Shop VN, đảm bảo affiliate target rõ ràng từ đầu thay vì khớp sau cùng.
+
+**Quan hệ với Video-First Lane**: là **lane song song**, KHÔNG thay thế. Mặc định MODE 1/2/3 vẫn là Video-First. Chỉ kích hoạt Product-First khi user gọi MODE 4 (`/chay product-first ...`).
+
+### PRODUCT CARD — 6 field BẮT BUỘC
+
+Khi vào Product-First Lane, agent phải tạo **Product Card** với 6 field. Lưu tại `production/batch_001/<video_id>/product_card.json`.
+
+| # | Field | Mô tả | Nếu không có data |
+|---|---|---|---|
+| 1 | `link_tiktok_shop` | URL TikTok Shop VN của sản phẩm | bắt buộc — nếu không có thì không lập card |
+| 2 | `product_name` | Tên sản phẩm chính thức (theo listing) | bắt buộc |
+| 3 | `price_vnd` | Giá hiện tại (VNĐ) | ghi `"unknown"` nếu không lấy được — KHÔNG bịa |
+| 4 | `commission_pct` | % hoa hồng affiliate | ghi `"unknown"` nếu không lấy được — KHÔNG bịa |
+| 5 | `sales_review_signal` | Số bán / số review / rating nếu có (eg `"5k+ bán, 4.8★ 320 review"`) | ghi `"unknown"` |
+| 6 | `why_worthwhile` | Lý do đáng làm — phải bao gồm 5 điểm: (a) giải quyết vấn đề gì, (b) ai có thể mua, (c) visual demo có dễ hiểu không, (d) có phù hợp content-led affiliate không, (e) có tiềm năng chuyển đổi không | bắt buộc — operator/agent tự viết, ngắn gọn |
+
+**Quy tắc bịa**: nếu không lấy được data trực tiếp (giá, hoa hồng, sales/review), **luôn ghi `"unknown"`**. Nếu cả 3 field trên đều `unknown` mà user chưa dán link → agent báo limitation rõ ràng + đề xuất user dán link TikTok Shop. KHÔNG bịa giá, KHÔNG bịa hoa hồng, KHÔNG bịa số bán.
+
+### NGUỒN VIDEO/DEMO THAM KHẢO cho Product-First
+
+Sau khi có Product Card, được phép tìm video/demo từ:
+
+- TikTok (clip user-gen, demo organic)
+- Douyin (clip TQ gốc)
+- AliExpress (product page demo)
+- Temu (product page demo)
+- YouTube (Shorts + long-form demo)
+- Nguồn demo sản phẩm khác phù hợp (Lazada, Shopee CN, brand official page)
+
+**Đây chỉ là nguồn tham khảo video/demo** — KHÔNG phải nguồn để gắn affiliate. Affiliate luôn trỏ về `link_tiktok_shop` trong Product Card.
+
+**Bắt buộc**: sản phẩm trong clip phải **tương đồng thật** với sản phẩm trong Product Card (xem GUARD 8 — Product Match Guard).
+
+### WORKFLOW PRODUCT-FIRST (khác Video-First ở STEP 1–3)
+
+```
+PF-STEP 0   Đọc Project Memory + xác định mode (MODE 4 trigger từ args)
+PF-STEP 1   Tìm/chốt sản phẩm TikTok Shop
+            → Nếu user dán link: parse link, lấy metadata
+            → Nếu không có link: agent thử tìm sản phẩm tiềm năng theo
+              lane (xem CHANNEL/LANE PROFILE). Nếu không có quyền lấy data
+              TikTok Shop trực tiếp → BÁO LIMITATION, đề xuất user dán link.
+              KHÔNG bịa product.
+PF-STEP 2   Lập Product Card (6 field). Lưu product_card.json.
+            → Field unknown phải ghi rõ "unknown", không bịa.
+PF-STEP 3   Tìm video/demo tương đồng từ nguồn cho phép (TikTok / Douyin /
+            AliExpress / Temu / YouTube / nguồn khác).
+            → Ưu tiên clip demo sản phẩm thật, có visual rõ, duration 15-90s.
+PF-STEP 4   Chạy PRODUCT MATCH GUARD (GUARD 8) chấm 5 tiêu chí tương đồng.
+            → MATCH_CONFIRMED       → đi tiếp PF-STEP 5
+            → MATCH_NEEDS_REVIEW    → trình user duyệt clip + product card
+                                      trước khi đi tiếp
+            → MISMATCH_REJECT       → tự tìm clip khác (retry limit 3 vòng
+                                      giống AUTO-SOURCE RETRY POLICY). Hết
+                                      retry → trình shortlist + reject log
+                                      cho user.
+PF-STEP 5   Tải video tốt nhất → tiếp tục WORKFLOW Short-Form Factory v0
+            từ STEP 4 (phân tích keyframes) trở đi như Video-First Lane.
+            → scene_input.json phải có thêm field "affiliate_target":
+              {"link": <link_tiktok_shop>, "product_name": <product_name>}
+              để Script Writer biết target sản phẩm chính xác (giúp R2
+              product match ở GUARD 7 không sai khi script viết).
+PF-STEP 6+  Phần còn lại giống Video-First (Script → Voice → BGM → QC →
+            preview). Áp dụng GUARD 6 visual safety + GUARD 7 affiliate
+            compliance như bình thường.
+```
+
+### AUTO-DECISION POLICY trong Product-First
+
+Khi user gọi MODE 4 (`/chay product-first`) và memory đã có lane rõ:
+
+- **KHÔNG hỏi**: chọn nguồn tham khảo video nào, chọn clip nào sau khi chấm Match Guard (nếu CONFIRMED).
+- **PHẢI hỏi**:
+  - Nếu agent không có quyền lấy product data trực tiếp từ TikTok Shop → báo limitation + xin user dán link.
+  - Nếu Match Guard ra `MATCH_NEEDS_REVIEW` → trình clip cho user.
+  - Nếu 3 vòng retry vẫn `MISMATCH_REJECT` → trình shortlist.
+  - Nếu Product Card có ≥2 field unknown trong (price/commission/sales) → báo cho user biết, hỏi xem có muốn tiếp tục hay dán thêm dữ liệu.
 
 ---
 
@@ -442,6 +566,59 @@ GUARD 7 — Affiliate & Content Compliance (TÁCH KHỎI GUARD 6)
          "săn sale gấp"). CTA soft: "link bio nếu mọi người muốn xem",
          "có ở mô tả nhé".
   (R4 cũ đã ABSORBED vào GUARD 6 Visual Safety — không tồn tại độc lập nữa.)
+
+GUARD 8 — PRODUCT MATCH GUARD (CHỈ áp dụng Product-First Lane, TÁCH KHỎI GUARD 6 + GUARD 7)
+  Đây KHÔNG phải Visual Safety (GUARD 6) và KHÔNG phải Content Compliance (GUARD 7).
+  Đây là guard chấm độ tương đồng giữa sản phẩm trong clip nguồn với sản phẩm
+  trong Product Card (TikTok Shop). Mục đích: chặn bait-and-switch affiliate
+  — KHÔNG cho clip sản phẩm A gắn link sản phẩm B chỉ vì "cùng ngành".
+
+  Chỉ kích hoạt khi MODE 4 (Product-First Lane). MODE 1/2/3 (Video-First) KHÔNG
+  chạy GUARD 8 — Video-First dùng GUARD 7 R2 ở Publish layer thay thế.
+
+  → Tiêu chí (5 trục, chấm độc lập, ALL phải đạt để CONFIRMED):
+    1. **Công dụng tương đồng** — clip demo cùng chức năng với sản phẩm Card.
+       Ví dụ: Card = "miếng lọc rác bồn rửa inox" → clip phải là miếng lọc/chặn
+       rác bồn rửa. KHÔNG dùng clip "rổ lọc trà" dù cùng inox.
+    2. **Hình dáng / thiết kế tương đồng** — visual sản phẩm trong clip giống
+       hoặc gần giống sản phẩm Card. Material, form factor, kích thước
+       relative phải match.
+    3. **Cách dùng tương đồng** — thao tác dùng trong clip phù hợp cách dùng
+       của sản phẩm Card. Ví dụ: Card = "khay chia ngăn kéo" → clip phải show
+       chia ngăn trong drawer, KHÔNG show xếp tủ kệ.
+    4. **Bối cảnh sử dụng tương đồng** — môi trường dùng (bếp, drawer, sink,
+       phòng khách) khớp với context Card.
+    5. **Không khác bản chất sản phẩm** — KHÔNG dùng clip tool công nghiệp
+       cho sản phẩm gia dụng nhỏ. KHÔNG dùng clip nồi cơm công nghiệp cho
+       nồi cơm mini home.
+
+  → Decision Status (3 mức):
+    • `MATCH_CONFIRMED`     — 5/5 tiêu chí đạt. Pipeline được phép chạy.
+    • `MATCH_NEEDS_REVIEW`  — 4/5 đạt + 1 trục mơ hồ (eg hình dáng gần giống
+                              nhưng khác màu/material biến thể). Trình user
+                              duyệt clip + Product Card trước khi đi tiếp.
+                              KHÔNG tự ý chạy pipeline.
+    • `MISMATCH_REJECT`     — ≥2 trục fail HOẶC trục 5 (khác bản chất) fail.
+                              Tự tìm clip khác trong retry limit 3 vòng.
+                              Hết retry → trình shortlist + reject log cho
+                              user, KHÔNG hỏi sau lần fail đầu.
+
+  → Anti-bait-and-switch (HARD RULE):
+    Affiliate link trong Product Card phải trỏ về **chính xác sản phẩm có
+    trong clip demo**. KHÔNG được dùng clip sản phẩm A gắn link sản phẩm B
+    chỉ vì A và B "cùng ngành" (eg cả 2 đều là organizer, hoặc cả 2 đều là
+    đồ bếp). Đây là vi phạm Luật Quảng cáo VN + risk affiliate ban + giảm
+    trust người xem.
+
+  → Final report bắt buộc có bảng:
+    | Tiêu chí | Card | Clip | Đạt? |
+    |---|---|---|---|
+    | 1. Công dụng | ... | ... | ✅/⚠️/❌ |
+    | 2. Hình dáng | ... | ... | ✅/⚠️/❌ |
+    | 3. Cách dùng | ... | ... | ✅/⚠️/❌ |
+    | 4. Bối cảnh | ... | ... | ✅/⚠️/❌ |
+    | 5. Bản chất | ... | ... | ✅/⚠️/❌ |
+    | **Decision** | | | MATCH_CONFIRMED / NEEDS_REVIEW / MISMATCH_REJECT |
 ```
 
 ---
@@ -472,6 +649,9 @@ Bắt buộc chạy trước khi báo "hoàn thành":
 [ ] GUARD 7 R5 soft tone: Chia sẻ / trải nghiệm, không quảng cáo thô?
 [ ] AUTO-DECISION POLICY: KHÔNG hỏi user "chọn mode / chọn ngách / chọn candidate" khi memory đủ rõ?
 [ ] AUTO-SOURCE RETRY: candidate fail thì retry tối đa 3 vòng với keyword cải thiện trước khi hỏi user?
+[ ] (Product-First Lane only) Product Card có đủ 6 field? Field unknown ghi "unknown", không bịa giá/hoa hồng/số bán?
+[ ] (Product-First Lane only) GUARD 8 Product Match: 5/5 tiêu chí PASS = MATCH_CONFIRMED? Có bảng "Card | Clip | Đạt?" trong report?
+[ ] (Product-First Lane only) Affiliate link trong Card khớp đúng sản phẩm trong clip (không bait-and-switch A→B)?
 ```
 
 ---
@@ -504,6 +684,15 @@ KHÔNG BAO GIỜ:
   × Hỏi user sau lần fail đầu tiên — phải retry MAX 3 vòng với keyword cải
     thiện trước (vi phạm AUTO-SOURCE RETRY POLICY)
   × Hard-code 1 ngách cố định cho /chay — phải đọc CHANNEL/LANE PROFILE
+  × (Product-First Lane) Bịa giá / hoa hồng / số bán / review trong Product
+    Card — luôn ghi "unknown" nếu không lấy được data trực tiếp
+  × (Product-First Lane) Chạy pipeline khi GUARD 8 = MISMATCH_REJECT chưa
+    qua retry — phải retry tìm clip khác, không bypass
+  × (Product-First Lane) Dùng clip sản phẩm A gắn affiliate sản phẩm B vì
+    "cùng ngành" — đây là bait-and-switch, vi phạm GUARD 8 trục 5 (khác bản
+    chất) + GUARD 7 R2
+  × Coi Product-First Lane là replacement của Video-First — đây là LANE
+    SONG SONG trong khung đa-lane, KHÔNG thay thế default MODE 1/2/3
 
 CHỈ LÀM TRONG SCOPE:
   ✓ 1 video mỗi lần /chay
@@ -522,9 +711,10 @@ Sau khi hoàn thành, báo cáo theo format:
 ```
 ## /chay — Báo cáo
 
-**Mode**: [1 / 2 (URL) / 3 (auto-source)]
+**Mode**: [1 / 2 (URL) / 3 (auto-source) / 4 (Product-First Lane)]
+**Lane**: [Video-First / Product-First]
 **Video ID**: [yt_NNN]
-**Nguồn**: [URL hoặc "tự tìm từ yêu cầu: ..."]
+**Nguồn**: [URL hoặc "tự tìm từ yêu cầu: ..." hoặc "Product-First từ TikTok Shop link: ..."]
 
 ### Đã làm
 - [ ] Tải video: [duration, resolution, format]
@@ -555,6 +745,27 @@ Sau khi hoàn thành, báo cáo theo format:
 | 1 | (initial keyword) | (eg rVLy0F8_IfQ) | (eg outdoor landscaping + biển số) | retry vòng 2 |
 | 2 | (keyword cải thiện) | ... | ... | retry vòng 3 / accepted / needs_user |
 | 3 | ... | ... | ... | accepted / needs_user |
+
+### Product Card (CHỈ Product-First Lane / MODE 4)
+| Field | Giá trị |
+|---|---|
+| link_tiktok_shop | (URL) |
+| product_name | ... |
+| price_vnd | ... / unknown |
+| commission_pct | ... / unknown |
+| sales_review_signal | ... / unknown |
+| why_worthwhile | (lý do gồm 5 điểm: vấn đề / ai mua / visual demo / hợp content-led / tiềm năng chuyển đổi) |
+
+### GUARD 8 Product Match (CHỈ Product-First Lane)
+| Tiêu chí | Card | Clip | Đạt? |
+|---|---|---|---|
+| 1. Công dụng | ... | ... | ✅/⚠️/❌ |
+| 2. Hình dáng / thiết kế | ... | ... | ✅/⚠️/❌ |
+| 3. Cách dùng | ... | ... | ✅/⚠️/❌ |
+| 4. Bối cảnh sử dụng | ... | ... | ✅/⚠️/❌ |
+| 5. Bản chất sản phẩm | ... | ... | ✅/⚠️/❌ |
+
+**Decision Status Product Match**: MATCH_CONFIRMED / MATCH_NEEDS_REVIEW / MISMATCH_REJECT
 
 ### Self-review
 [Lỗi tự phát hiện và sửa / Giới hạn còn lại]
