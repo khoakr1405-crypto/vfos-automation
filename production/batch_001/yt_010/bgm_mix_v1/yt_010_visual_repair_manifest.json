@@ -1,0 +1,131 @@
+{
+  "video_id": "yt_010",
+  "source_candidate": "Il56I8UU2FQ",
+  "source_url": "https://youtube.com/shorts/Il56I8UU2FQ",
+  "source_channel": "Amazon Finds Hub",
+  "repair_version": "v4",
+  "decision_status": "PASS_WITH_REPAIR",
+  "naming_note": "User feedback round dùng 'v2' nhưng tệp v2/v3 đã có trong repo từ commit 2c807ed. v4 = iteration mới (4th) sau khi reposition tọa độ. KHÔNG ghi đè v1/v2/v3 (giữ history). Nếu user muốn output cuối là 'v2' về mặt naming, có thể rename — báo cho user quyết định.",
+  "technical_qc": {
+    "status": "PASS",
+    "duration_s": 18.0,
+    "video_codec": "h264",
+    "audio_codec": "aac",
+    "resolution": "1080x1920",
+    "stream_count": 2,
+    "max_volume_dB": -2.9,
+    "mean_volume_dB": -21.6,
+    "clipping": false,
+    "source_audio_leak": "none",
+    "audio_modification": "none_copy_from_bgm_mixed"
+  },
+  "guard_6_violations_v4": [
+    {
+      "id": "A",
+      "issue": "Top banner source channel CTA 'CHECK THE LINK IN Description TO ORDER THE PRODUCT' (2 lines)",
+      "time_range": "0-18s",
+      "v3_box": "1080x130 @ (0,0) - chỉ che 1 phần, dòng dưới lộ",
+      "v4_box": "1080x220 @ (0,0)",
+      "delta": "extended height 130→220 to cover both banner lines",
+      "repair_priority": "1_blur",
+      "repair_action": "boxblur=20:5 throughout 0-18s",
+      "re_qc": "PASS - both lines fully covered"
+    },
+    {
+      "id": "B",
+      "issue": "HOOK center text 'Amazon Organization Find for small spaces'",
+      "time_range": "0-3.5s",
+      "v3_box": "900x310 @ (90,650) - quá cao, miss text dưới",
+      "v4_box": "760x520 @ (200,750)",
+      "delta": "tighter width (900→760) + repositioned vertical to match actual text y=918-1242",
+      "repair_priority": "1_blur",
+      "repair_action": "boxblur=20:5 enable between(t,0,3.5)",
+      "re_qc": "PASS - all 3 lines covered, product organizer below visible"
+    },
+    {
+      "id": "C",
+      "issue": "Starbucks siren logo on hand-held card (moving 13-15.5s)",
+      "time_range": "13-15.5s",
+      "v1_box": "900x1000 @ (?,?) - quá rộng che cả hero product",
+      "v3_box": "500x500 @ (100,220) - sai vị trí, siren thật ở x=504-792",
+      "v4_box": "700x600 @ (180,420)",
+      "delta": "repositioned right + extended down based on actual siren measurement x=504-792, y=486-1026",
+      "repair_priority": "1_blur",
+      "repair_action": "boxblur=22:6 enable between(t,13,15.5)",
+      "re_qc": "PASS_PARTIAL - siren obscured, faint green tinge through blur at edges (card motion), text/logo not readable"
+    },
+    {
+      "id": "D",
+      "issue": "Scotch tape brand text on dispenser",
+      "time_range": "13-15.5s",
+      "v3_box": "350x120 @ (480,180)",
+      "v4_box": "340x220 @ (510,180)",
+      "delta": "minor: extended height 120→220, kept position",
+      "repair_priority": "1_blur",
+      "repair_action": "boxblur=18:5 enable between(t,13,15.5)",
+      "re_qc": "PASS - dispenser text obscured, dispenser shape still visible"
+    },
+    {
+      "id": "E",
+      "issue": "STARBUCKS card text in drawer (moving as drawer slides 15.5-18s)",
+      "time_range": "15.5-18s",
+      "v3_box": "250x80 @ (150,590) - sai vị trí",
+      "v4_box": "720x380 @ (160,640)",
+      "delta": "MUCH WIDER: drawer moves ~430px horizontally from t=16s (x=540-864) to t=17s (x=229-432), static box cần wide để cover whole range",
+      "repair_priority": "1_blur",
+      "repair_action": "boxblur=18:5 enable between(t,15.5,18)",
+      "re_qc": "PASS - STARBUCKS fully covered at both t=16s and t=17s. Wide box là trade-off cho moving drawer."
+    },
+    {
+      "id": "F",
+      "issue": "SIMPLY MINTS brand on tins in lower-left drawer",
+      "time_range": "15.5-18s",
+      "v3_box": "350x200 @ (40,1060) - sai vị trí",
+      "v4_box": "360x240 @ (20,900)",
+      "delta": "repositioned to actual MINTS location at t=17s source x=40-310, y=918-1107",
+      "repair_priority": "1_blur",
+      "repair_action": "boxblur=15:4 enable between(t,15.5,18)",
+      "re_qc": "PASS - both MINTS tins covered when visible at t=17s"
+    }
+  ],
+  "user_feedback_round": {
+    "feedback_received": "1. Vùng blur/mosaic đầu video quá lớn, che nhiều sản phẩm. 2. Một đoạn giữa video blur che gần trung tâm, làm giảm độ tự nhiên.",
+    "response_strategy": "Tighter boxes theo đúng vùng vi phạm thực tế. HOOK: thu từ 900x310 còn 760x520 phù hợp đúng text. Middle siren: 700x600 tại x=180 (không phải 900x1000 như v1).",
+    "trade_off_acknowledged": "STARBUCKS drawer 15.5-18s phải dùng box 720×380 (wide) vì drawer slide làm card di chuyển 430px horizontally trong window. Static-box không thể tight hơn mà vẫn cover được moving card. Đây là limit của yt_010 source có heavy brand pollution + motion."
+  },
+  "residual_minor": [
+    "Siren Starbucks t=13-15.5s: faint green tinge có thể nhìn thấy qua blur ở edges khi card di chuyển ngoài center. Logo/text không đọc được.",
+    "Animal/pet image trên 1 card khác (visible at t=13.5s) không được phân loại vào GUARD 6 nhóm 1 (logo/QR/PII). Không repair."
+  ],
+  "residual_acceptance": "Acceptable cho pilot v0. Nếu publish thật, cần motion-tracking ffmpeg (out of scope v0) hoặc nguồn ít brand pollution hơn.",
+  "lesson_learned": [
+    "yt_010 source có brand pollution NẶNG: top banner + HOOK overlay + Starbucks card di chuyển + Scotch tape + drawer brands. Heuristic chấm điểm vòng auto-source nên đánh giá brand density cao hơn.",
+    "Coordinate measurement từ keyframes 400-scale: scale factor 1080/400 = 2.7 (KHÔNG phải 3.6). Bài học lặp lại từ yt_009 — vẫn dễ sai.",
+    "Moving elements (hand-held cards, sliding drawers) không thể tight blur trong v0. Trade-off width vs coverage là thực tế.",
+    "Iteration cost: 5 lần render (v4, v4b, v4c, v4d, v4 final) để fix coordinate errors. Nếu auto-detect bounding box (OCR-based) thì sẽ tránh được — roadmap v1."
+  ],
+  "versions": {
+    "v1": {
+      "file": "yt_010_voice_blocks_bgm_preview_vi_repaired.mp4",
+      "status": "SUPERSEDED_BY_V4",
+      "issue": "Wide blur regions 900×1000 obscured hero product demo t=11-17s"
+    },
+    "v2": {
+      "file": "yt_010_voice_blocks_bgm_preview_vi_repaired_v2.mp4",
+      "status": "SUPERSEDED_BY_V4",
+      "issue": "Tight blur but missed Starbucks siren logo, STARBUCKS/SIMPLY MINTS drawer text"
+    },
+    "v3": {
+      "file": "yt_010_voice_blocks_bgm_preview_vi_repaired_v3.mp4",
+      "status": "SUPERSEDED_BY_V4",
+      "issue": "Tightened HOOK to 900×310 but still wide on Starbucks 500×500 + STARBUCKS drawer coord wrong + banner only 130 high"
+    },
+    "v4": {
+      "file": "yt_010_voice_blocks_bgm_preview_vi_repaired_v4.mp4",
+      "status": "RECOMMENDED_OUTPUT",
+      "ffmpeg_filter": "[0:v]split=7[base][r_top][r_hook][r_siren][r_scotch][r_drwsbux][r_mints];[r_top]crop=1080:220:0:0,boxblur=20:5[b_top];[base][b_top]overlay=0:0:enable='between(t,0,18)'[v1];[r_hook]crop=760:520:200:750,boxblur=20:5[b_hook];[v1][b_hook]overlay=200:750:enable='between(t,0,3.5)'[v2];[r_siren]crop=700:600:180:420,boxblur=22:6[b_siren];[v2][b_siren]overlay=180:420:enable='between(t,13,15.5)'[v3];[r_scotch]crop=340:220:510:180,boxblur=18:5[b_scotch];[v3][b_scotch]overlay=510:180:enable='between(t,13,15.5)'[v4];[r_drwsbux]crop=720:380:160:640,boxblur=18:5[b_drwsbux];[v4][b_drwsbux]overlay=160:640:enable='between(t,15.5,18)'[v5];[r_mints]crop=360:240:20:900,boxblur=15:4[b_mints];[v5][b_mints]overlay=20:900:enable='between(t,15.5,18)'[vout]",
+      "iterations_v4_internal": 5
+    }
+  },
+  "created_at": "2026-05-22T21:55:00+07:00"
+}

@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-05-22 (Phần 19 — yt_010 end-to-end PASS_WITH_REPAIR sau 1 vòng AUTO-SOURCE RETRY; 5 video clean confirm generalization)
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `37ff734` (Phần 18 yt_009 v2 user-approved). Phần 19 commit sẽ bump khi push
+> **Cập nhật lần cuối**: 2026-05-22 (Phần 19 update — yt_010 visual repair **v4** USER-APPROVED PASS_WITH_REPAIR sau user feedback round; residual minor accepted for pilot)
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `2c807ed` (Phần 19 yt_010 generalization). Visual repair v4 commit sẽ bump khi push
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -899,23 +899,23 @@ Vòng này sửa skill + docs để `/chay` tự quyết định + tự retry + 
 
 > **TRẠNG THÁI yt_009 (2026-05-22)**: **USER-APPROVED PASS_WITH_REPAIR final.** Phần 17 + Phần 18. Output: `production/batch_001/yt_009/bgm_mix_v1/yt_009_voice_blocks_bgm_preview_vi_repaired_v2.mp4`.
 >
-> **TRẠNG THÁI yt_010 (2026-05-22)**: **END-TO-END PASS_WITH_REPAIR sau 1 vòng AUTO-SOURCE RETRY.** Phần 19 đã chốt. Vòng 1 candidate (`fBPWqAMg4U8` LORAfied) reject vì multi-step tutorial + face PII + Target store + GUARD 7 R1 violation. Vòng 2 candidate (`Il56I8UU2FQ` Amazon Finds Hub 3-tier organizer) accepted với GUARD 6 Repair Playbook wide blur. Output: `production/batch_001/yt_010/bgm_mix_v1/yt_010_voice_blocks_bgm_preview_vi_repaired.mp4`.
+> **TRẠNG THÁI yt_010 (2026-05-22)**: **USER-APPROVED PASS_WITH_REPAIR — visual repair v4 final.** Phần 19. Vòng 1 candidate reject, vòng 2 accepted. Visual repair iterated v1 (thô, 900×1000 wide) → v2 (missed drawer brands) → v3 (7 targeted blur layers nhưng tọa độ HOOK + STARBUCKS drawer + siren chưa đúng) → **v4 (USER-APPROVED, repositioned boxes sau user feedback round, 5 lần render nội bộ để fix coordinate errors)**. v4 boxes thật khít: top banner 1080×220 (extend từ 130 cover 2 dòng), HOOK 760×520 đúng vùng text, siren 700×600 @ (180,420) đúng vị trí center-right, STARBUCKS drawer 720×380 cover moving range x=540→230, SIMPLY MINTS 360×240 @ (20,900). Residual chấp nhận pilot: faint green tinge Starbucks siren qua blur ở edges (logo/text không đọc được). User chốt: KHÔNG iterate v5, motion-tracking ngoài scope. Output: `production/batch_001/yt_010/bgm_mix_v1/yt_010_voice_blocks_bgm_preview_vi_repaired_v4.mp4` (giữ v1/v2/v3 trên đĩa làm history, không overwrite).
 >
 > **TRẠNG THÁI yt_008**: vẫn SOURCE-REJECTED (không có preview). Không dùng lại.
 >
-> **MỐC TRƯỚC ĐÓ ĐÃ ĐẠT**: 5 video clean qua pipeline (yt_005, yt_006, yt_007, yt_009, yt_010). Phần 16 AUTO-SOURCE RETRY POLICY verified end-to-end (yt_010 Phần 19 là vòng đầu trigger retry thật). Phần 12-14 + Phần 16 + Phần 17 + Phần 18 generalize across diverse durations (18s, 35s, 44s, 53s, 59s) và content types (single-product/multi-product/cleaning/kitchen/organizer).
+> **MỐC ĐÃ ĐẠT**: 5 video clean qua pipeline (yt_005, yt_006, yt_007, yt_009, yt_010). Cả 5 đều USER-APPROVED hoặc operator-verified. Phần 16 AUTO-SOURCE RETRY POLICY verified end-to-end. Pipeline generalize across diverse durations (18s, 35s, 44s, 53s, 59s) và content types (single-product/multi-product/cleaning/kitchen/organizer).
 >
-> **Bước tiếp theo duy nhất: USER REVIEW preview yt_010 và quyết định strategy tiếp theo.**
+> **Bài học Source Profile từ yt_010**: YouTube Shorts source có nhiều overlay/brand lặt vặt (channel CTA throughout, branded products). Nếu tiếp tục: ưu tiên clean studio demo sources, hoặc build auto-detection bounding box để giảm manual repair iteration.
+>
+> **Bước tiếp theo duy nhất: USER quyết định strategy tiếp theo.**
 >
 > Có 3 hướng khả thi (KHÔNG tự chọn — chờ user quyết):
 >
 > 1. **Nhân bản Con số 2 theo blueprint** — 5 video clean + AUTO-SOURCE RETRY verified là đủ bằng chứng pipeline ổn. Mở `docs/00_DIEU_HANH/VFOS_SHORTFORM_FACTORY_BLUEPRINT_V0.md` cho ngách thứ 2. Đây là path commercial progress (VFOS North Star).
 > 2. **Đổi default `OPENAI_MODEL=gpt-4o` trong `.env`** — pre-existing config debt. Cleanup nhỏ, operator không cần `--model gpt-4o` flag từng lần. Có thể làm trước Con 2 hoặc sau.
-> 3. **Test thêm yt_011** — nếu user muốn thêm bằng chứng. Nhưng 5 video clean + 1 retry success thường đủ; thêm video có thể là over-validation, không cần thiết cho thương mại.
+> 3. **Test thêm yt_011** — nếu user muốn thêm bằng chứng. Nhưng 5 video clean + 1 retry success thường đủ; thêm video có thể là over-validation.
 >
-> **Nếu user feedback yt_010 không đạt** (visual demo bị blur che quá nhiều, source brand pollution quá heavy, etc.) → re-search vòng 3 hoặc đổi lane khác (lane_2 đồ gia dụng untouched ngoài yt_006 multi-product). KHÔNG tự ý làm trước khi user feedback.
->
-> **KHÔNG tự chạy yt_011** mà không có user feedback yt_010. **KHÔNG mở scope** sang publish, BGM ducking, watermark auto-detect, Con số 2 chưa được duyệt.
+> **KHÔNG tự chạy yt_011** mà không có user quyết định. **KHÔNG mở scope** sang publish, BGM ducking, watermark auto-detect, Con số 2 chưa được duyệt.
 
 ### (Phần dưới giữ lại làm reference — yt_009 acceptance ban đầu đã đạt)
 
@@ -1003,9 +1003,9 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mốc tại thời điểm cập nhật trạng thái | `37ff734` — Phần 18 (yt_009 visual repair v2 USER-APPROVED). Phần 19 (yt_010 generalization end-to-end) sẽ bump khi push. |
+| Commit mốc tại thời điểm cập nhật trạng thái | `2c807ed` — Phần 19 (yt_010 generalization end-to-end). Visual repair v4 USER-APPROVED commit sẽ bump khi push. |
 | Remote | `origin` (GitHub) |
-| Sync status | Phần 11–18 ĐÃ PUSH. Phần 19 ĐANG commit text artifacts yt_010. Output final yt_010: `bgm_mix_v1/yt_010_voice_blocks_bgm_preview_vi_repaired.mp4` (binary gitignored, **không commit**). Text artifacts commit: scene_input, script_ai_v1 + extended (Pass 1 PASS sạch nên dùng v1, không có v2/v3), voice sync manifest, bgm mix manifest. Bước tiếp: user review yt_010 + quyết định Con 2 / `OPENAI_MODEL=gpt-4o` default / yt_011. |
+| Sync status | Phần 11–19 base ĐÃ PUSH. Visual repair v4 manifest + TRANG_THAI update ĐANG commit. Output final yt_010: `bgm_mix_v1/yt_010_voice_blocks_bgm_preview_vi_repaired_v4.mp4` (binary gitignored, **không commit**). v1/v2/v3 mp4 giữ trên đĩa làm history (cũng gitignored). Text artifact: `yt_010_visual_repair_manifest.json` ghi đầy đủ 6 box repair + filter chain v4. Bước tiếp: user quyết định strategy (Con 2 / `OPENAI_MODEL=gpt-4o` default / yt_011). |
 
 **Trạng thái artifacts production** (tính đến 2026-05-20):
 - `production/batch_001/yt_007/` (text artifacts): **ĐÃ commit** ở `df1609e` — scene_input, script v1/v2/v3, manifest BGM. Dùng làm reference cho vòng Voice Sync autonomy.
