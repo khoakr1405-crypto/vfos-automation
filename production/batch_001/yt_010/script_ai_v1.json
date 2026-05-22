@@ -1,0 +1,142 @@
+{
+  "input": {
+    "video_id": "yt_010",
+    "content_goal": "Gioi thieu bo khay chia ngan keo nhua trong nhieu compartment — do gia dung gon nhe, giup phan loai vat dung nho trong ngan keo bep, ngan keo ban, ngan trang diem.",
+    "target_platform": "tiktok",
+    "duration_target_s": 18,
+    "tone": "chia se trai nghiem, nhe nhang, satisfying, khong quang cao tho",
+    "affiliate_angle": "Khay chia ngan keo nhua trong nhieu compartment (Amazon Find style), hero product single SKU, pho thong tren Shopee VN, gia mem.",
+    "cta_style": "soft — gan link bio, khong ep mua",
+    "scene_timeline": [
+      {
+        "window_start_s": 0,
+        "window_end_s": 3,
+        "scene_type": "HOOK",
+        "visual_summary": "Mat da marble + tile backsplash trang, frame mo dau — chuan bi cho demo organizer ngan keo.",
+        "notes": "Frame 001. GUARD 6 vi pham nhom 1: top banner 'CHECK THE LINK IN Description TO ORDER THE PRODUCT' xuyen suot video + center text 'Amazon Organization Find for small spaces' frame 001. Repair: blur top banner suot 0-18.5s + blur center HOOK text 0-3s."
+      },
+      {
+        "window_start_s": 3,
+        "window_end_s": 6,
+        "scene_type": "KITCHEN",
+        "visual_summary": "Ngan keo rong duoc keo ra, lo san go cua ngan keo trang trang thai BEFORE.",
+        "notes": "Frame 002. Visual sach (sau khi blur top banner)."
+      },
+      {
+        "window_start_s": 6,
+        "window_end_s": 9,
+        "scene_type": "KITCHEN",
+        "visual_summary": "Bo khay chia nhua trong nhieu o vuong nho da duoc lap trong ngan keo, day deu vua khit.",
+        "notes": "Frame 003. Core product reveal — sap pham lap dat hien ro."
+      },
+      {
+        "window_start_s": 9,
+        "window_end_s": 12,
+        "scene_type": "KITCHEN",
+        "visual_summary": "Tay cho cum kep giay vang (paper clip) vao mot o cua khay chia — minh hoa cong dung phan loai vat nho.",
+        "notes": "Frame 004. Demo usage."
+      },
+      {
+        "window_start_s": 12,
+        "window_end_s": 15,
+        "scene_type": "KITCHEN",
+        "visual_summary": "Tay tiep tuc xep them vat dung nho vao cac o khay khac — pin AA, cuc nho, tag.",
+        "notes": "Frame 005. Tiep tuc demo."
+      },
+      {
+        "window_start_s": 15,
+        "window_end_s": 18,
+        "scene_type": "CTA",
+        "visual_summary": "Ngan keo dang dong lai sau khi sap xep xong — ket frame.",
+        "notes": "CTA-only block. Cap 7 tu HARD. VIET DUNG CTA NGAN: vi du 'Link bio cua minh nha' (5 tu) hoac 'Link o mo ta nha' (5 tu). KHONG mo ta canh, KHONG mo ta san pham, KHONG dung tu tuyet doi. Frame 007. Note: frame 006 t~14-15s co Starbucks gift card lo logo — GUARD 6 repair blur card region t=13-16s."
+      }
+    ]
+  },
+  "output": {
+    "hook": "Gọn gàng chưa, xem thử cái này.",
+    "blocks": [
+      {
+        "block_id": "b1",
+        "window_start_s": 0,
+        "window_end_s": 3,
+        "intent": "HOOK",
+        "line": "Gọn gàng chưa, xem thử cái này.",
+        "notes": ""
+      },
+      {
+        "block_id": "b2",
+        "window_start_s": 3,
+        "window_end_s": 6,
+        "intent": "KITCHEN",
+        "line": "Trước khi sắp xếp, ngăn kéo trống trơn.",
+        "notes": ""
+      },
+      {
+        "block_id": "b3",
+        "window_start_s": 6,
+        "window_end_s": 9,
+        "intent": "KITCHEN",
+        "line": "Khay chia nhựa nhiều ngăn, vừa khít.",
+        "notes": ""
+      },
+      {
+        "block_id": "b4",
+        "window_start_s": 9,
+        "window_end_s": 12,
+        "intent": "KITCHEN",
+        "line": "Đặt kẹp giấy vào ngăn, tiện ghê.",
+        "notes": ""
+      },
+      {
+        "block_id": "b5",
+        "window_start_s": 12,
+        "window_end_s": 15,
+        "intent": "KITCHEN",
+        "line": "Xếp pin, nút, tag gọn gàng.",
+        "notes": ""
+      },
+      {
+        "block_id": "b6",
+        "window_start_s": 15,
+        "window_end_s": 18,
+        "intent": "CTA",
+        "line": "Link bio của mình nha.",
+        "notes": ""
+      }
+    ],
+    "cta": "Link bio của mình nha.",
+    "full_script": "Gọn gàng chưa, xem thử cái này.\n\nTrước khi sắp xếp, ngăn kéo trống trơn.\n\nKhay chia nhựa nhiều ngăn, vừa khít.\n\nĐặt kẹp giấy vào ngăn, tiện ghê.\n\nXếp pin, nút, tag gọn gàng.\n\nLink bio của mình nha.",
+    "writer_notes": [
+      "Hook tạo sự tò mò, phù hợp với visual gọn gàng.",
+      "CTA ngắn, rõ ràng, không vượt cap.",
+      "KITCHEN blocks mô tả chi tiết từng bước sắp xếp."
+    ]
+  },
+  "meta": {
+    "model": "gpt-4o-2024-08-06",
+    "input_tokens": 4987,
+    "output_tokens": 432,
+    "response_id": "resp_012dbf66f5061deb006a0fd4fc7ae88199b164070643b2db54"
+  },
+  "quality_report": {
+    "banned_phrases_found": [],
+    "hook_consistent": true,
+    "cta_consistent": true,
+    "cta_preserved": null,
+    "word_count": 40,
+    "word_count_target": 42,
+    "word_count_within_target": true,
+    "budget_mode": "timeline_aware",
+    "duration_based_target": 50,
+    "aggregate_block_cap": 47,
+    "target_adjustment_reason": "duration-based target 50 vượt 90% aggregate cap 47; reconciled to 42 (≤cap-5 từ buffer)",
+    "block_budget_violations": [],
+    "warnings": [
+      "[BUDGET_RECONCILED] duration-based target 50 vượt 90% aggregate cap 47; reconciled to 42 (≤cap-5 từ buffer)"
+    ],
+    "quality_status": "pass",
+    "near_pass_reason": null,
+    "passed": true
+  },
+  "generated_at": "2026-05-22T04:01:07.250Z"
+}
