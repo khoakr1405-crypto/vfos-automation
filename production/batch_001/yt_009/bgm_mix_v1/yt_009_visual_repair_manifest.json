@@ -1,0 +1,61 @@
+{
+  "video_id": "yt_009",
+  "generated_at": "2026-05-22T00:05:00Z",
+  "source_video": "production/batch_001/yt_009/yt_009_source.mp4",
+  "voice_bgm_audio": "production/batch_001/yt_009/bgm_mix_v1/yt_009_voice_bgm_mixed.mp3",
+  "guard_6_visual_safety_version": "v1",
+  "visual_repair_iterations": [
+    {
+      "iteration": "v1",
+      "preview_mp4": "production/batch_001/yt_009/bgm_mix_v1/yt_009_voice_blocks_bgm_preview_vi_repaired.mp4",
+      "user_review": "Vùng blur HOOK hơi thô — wide rectangular blur che luôn cả phần thân sản phẩm. Brand 24-29s chưa được kiểm tra cẩn thận.",
+      "status": "SUPERSEDED_BY_V2"
+    },
+    {
+      "iteration": "v2",
+      "preview_mp4": "production/batch_001/yt_009/bgm_mix_v1/yt_009_voice_blocks_bgm_preview_vi_repaired_v2.mp4",
+      "generated_at": "2026-05-22T00:05:00Z",
+      "guard_6_detect_repair_reqc_table": [
+        {
+          "detected_issue": "Source text overlay 'COOL KITCHEN GADGET!' at bottom of HOOK (0-4s)",
+          "region_source_px": {"x": 0, "y": 1130, "w": 1080, "h": 470},
+          "enable_window_s": [0, 4.2],
+          "repair_priority_used": "2_cover_drawbox",
+          "repair_action": "drawbox solid warm-beige #8A7B65 full-width band, looks like deliberate lower-third design instead of harsh blur (đáp đúng user feedback 'switch to overlay/cover đẹp hơn')",
+          "re_qc_result": "PASS_WITH_REPAIR — source text fully covered, band looks intentional"
+        },
+        {
+          "detected_issue": "Brand 'WOKDADA' engraved on inox rim of mesh product (HOOK 0-4s)",
+          "region_source_px": {"x": 240, "y": 820, "w": 440, "h": 200},
+          "enable_window_s": [0, 4.2],
+          "repair_priority_used": "1_blur_mosaic",
+          "repair_action": "boxblur=20:5 localized only on brand region (vs v1 wide rect that also obscured product detail). v2b expanded coverage so 'DA' tail not visible.",
+          "re_qc_result": "PASS_WITH_REPAIR — WOKDADA fully covered, product mesh detail still visible"
+        },
+        {
+          "detected_issue": "Brand 'WOKDADA' visible at right side of mesh rim during demo (24-29.5s)",
+          "region_source_px": {"x": 590, "y": 540, "w": 280, "h": 240},
+          "enable_window_s": [24, 29.5],
+          "repair_priority_used": "1_blur_mosaic",
+          "repair_action": "boxblur=20:5 localized at right-side rim. Confirmed visible at t=24.5s + t=28s in source frames before repair.",
+          "re_qc_result": "PASS_WITH_REPAIR — brand region covered, spinach+water demo result still clearly visible"
+        }
+      ],
+      "decision_status_overall": "PASS_WITH_REPAIR",
+      "technical_qc": {
+        "streams": 2,
+        "video_codec": "h264",
+        "audio_codec": "aac",
+        "video_duration_s": 35,
+        "audio_duration_s": 35,
+        "max_volume_dB": -2.7,
+        "mean_volume_dB": -22.6,
+        "no_clipping": true,
+        "source_audio_leak": "none"
+      },
+      "ffmpeg_filter_chain": "[0:v]split=3[base][region1][region2];[region1]crop=440:200:240:820,boxblur=20:5[blur1];[region2]crop=280:240:590:540,boxblur=20:5[blur2];[base][blur1]overlay=x=240:y=820:enable='between(t,0,4.2)'[v1];[v1][blur2]overlay=x=590:y=540:enable='between(t,24,29.5)'[v2];[v2]drawbox=x=0:y=1130:w=1080:h=470:color=0x8A7B65@1.0:t=fill:enable='between(t,0,4.2)'[vout]",
+      "audio_reused_from": "yt_009_voice_bgm_mixed.mp3 (untouched — Script/Voice/BGM not re-rendered per user instruction)"
+    }
+  ],
+  "next_step_after_v2": "User review preview_repaired_v2.mp4. If approved → chốt yt_009 final. Nếu cần tinh chỉnh thêm vùng → v3."
+}

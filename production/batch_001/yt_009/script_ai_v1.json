@@ -1,0 +1,207 @@
+{
+  "input": {
+    "video_id": "yt_009",
+    "content_goal": "Gioi thieu luoi chan rac inox cho bon rua bat — gadget nho giup giu cong thoat khong tac va de don rau cu thua sau khi rua.",
+    "target_platform": "tiktok",
+    "duration_target_s": 35,
+    "tone": "chia se trai nghiem, nhe nhang, satisfying, khong quang cao tho",
+    "affiliate_angle": "Luoi chan rac bep inox tron, hero product single SKU, pho thong tren Shopee VN, gia mem.",
+    "cta_style": "soft — gan link bio, khong ep mua",
+    "scene_timeline": [
+      {
+        "window_start_s": 0,
+        "window_end_s": 4,
+        "scene_type": "HOOK",
+        "visual_summary": "Close-up luoi chan rac inox tron tren mat da bep — sang, bong, ro chi tiet luoi mesh.",
+        "notes": "Frame 001. Co text overlay nguon 'COOL KITCHEN GADGET' + brand 'WOKDADA' tren san pham. GUARD 6 repair: blur top + center region trong window nay."
+      },
+      {
+        "window_start_s": 4,
+        "window_end_s": 9,
+        "scene_type": "KITCHEN",
+        "visual_summary": "Bon rua inox doi, rau spinach va qua mong nho do roi vai tren thanh sink, cong thoat ho — trang thai BEFORE de minh hoa van de.",
+        "notes": "Frame 002. Sach, khong watermark."
+      },
+      {
+        "window_start_s": 9,
+        "window_end_s": 13,
+        "scene_type": "OFF_TOPIC",
+        "visual_summary": "Tay bat cong tac den tren tuong nha bep — shot transition, khong co san pham trong frame.",
+        "notes": "Frame 003. OFF_TOPIC = SILENT intent (khong narration), Voice Sync se auto-skip block nay."
+      },
+      {
+        "window_start_s": 13,
+        "window_end_s": 19,
+        "scene_type": "KITCHEN",
+        "visual_summary": "Sink dang co nuoc + rau vun quanh drain — tinh trang truoc khi gan luoi chan, sap minh hoa van de tac cong.",
+        "notes": "Frame 004."
+      },
+      {
+        "window_start_s": 19,
+        "window_end_s": 24,
+        "scene_type": "KITCHEN",
+        "visual_summary": "Tay cam luoi chan rac inox dua xuong drain — chuan bi lap dat, san pham hien ro trong frame.",
+        "notes": "Frame 005. Demo install — visual rat ro."
+      },
+      {
+        "window_start_s": 24,
+        "window_end_s": 29,
+        "scene_type": "KITCHEN",
+        "visual_summary": "Luoi chan da nam dung vi tri tren mieng drain, rau spinach + qua mong roi xuong va bi giu lai tren be mat luoi — proof gadget hoat dong.",
+        "notes": "Frame 006. Core demo result."
+      },
+      {
+        "window_start_s": 29,
+        "window_end_s": 33,
+        "scene_type": "KITCHEN",
+        "visual_summary": "Tay nhac luoi chan len, ke theo cum rau spinach da hung — minh hoa thao tac don rac don gian.",
+        "notes": "Frame 007. After demo, ket qua thay duoc."
+      },
+      {
+        "window_start_s": 33,
+        "window_end_s": 35,
+        "scene_type": "CTA",
+        "visual_summary": "Sink gan nhu sach, chi con 1 la rau sot canh drain — trang thai sau khi don, ket frame.",
+        "notes": "Frame 008. CTA window het — phai cuc ngan, soft CTA chi 1 cau."
+      }
+    ]
+  },
+  "output": {
+    "hook": "Luoi chan rac inox này giữ cho bồn rửa luôn sạch sẽ.",
+    "blocks": [
+      {
+        "block_id": "b1",
+        "window_start_s": 0,
+        "window_end_s": 4,
+        "intent": "HOOK",
+        "line": "Luoi chan rac inox này giữ cho bồn rửa luôn sạch sẽ.",
+        "notes": ""
+      },
+      {
+        "block_id": "b2",
+        "window_start_s": 4,
+        "window_end_s": 9,
+        "intent": "KITCHEN",
+        "line": "Bồn rửa inox đầy rau spinach và quả mỏng, nhìn rất bừa bộn.",
+        "notes": ""
+      },
+      {
+        "block_id": "b3",
+        "window_start_s": 9,
+        "window_end_s": 13,
+        "intent": "SILENT",
+        "line": "",
+        "notes": ""
+      },
+      {
+        "block_id": "b4",
+        "window_start_s": 13,
+        "window_end_s": 19,
+        "intent": "KITCHEN",
+        "line": "Rau và nước xung quanh drain, tình trạng trước khi lắp đặt.",
+        "notes": ""
+      },
+      {
+        "block_id": "b5",
+        "window_start_s": 19,
+        "window_end_s": 24,
+        "intent": "KITCHEN",
+        "line": "Tay cầm lưới chắn rác inox đưa xuống drain, chuẩn bị lắp đặt.",
+        "notes": ""
+      },
+      {
+        "block_id": "b6",
+        "window_start_s": 24,
+        "window_end_s": 29,
+        "intent": "KITCHEN",
+        "line": "Lưới chắn đã nằm đúng vị trí, giữ rau spinach và quả mỏng lại.",
+        "notes": ""
+      },
+      {
+        "block_id": "b7",
+        "window_start_s": 29,
+        "window_end_s": 33,
+        "intent": "KITCHEN",
+        "line": "Tay nhấc lưới chắn lên, rau đã được giữ lại rất dễ dàng.",
+        "notes": ""
+      },
+      {
+        "block_id": "b8",
+        "window_start_s": 33,
+        "window_end_s": 35,
+        "intent": "CTA",
+        "line": "Bồn rửa giờ sạch sẽ, chỉ còn một lá rau nhỏ.",
+        "notes": ""
+      }
+    ],
+    "cta": "Bồn rửa giờ sạch sẽ, chỉ còn một lá rau nhỏ.",
+    "full_script": "Luoi chan rac inox này giữ cho bồn rửa luôn sạch sẽ.\n\nBồn rửa inox đầy rau spinach và quả mỏng, nhìn rất bừa bộn.\n\n\nRau và nước xung quanh drain, tình trạng trước khi lắp đặt.\n\nTay cầm lưới chắn rác inox đưa xuống drain, chuẩn bị lắp đặt.\n\nLưới chắn đã nằm đúng vị trí, giữ rau spinach và quả mỏng lại.\n\nTay nhấc lưới chắn lên, rau đã được giữ lại rất dễ dàng.\n\nBồn rửa giờ sạch sẽ, chỉ còn một lá rau nhỏ.",
+    "writer_notes": [
+      "Hook tạo sự tò mò về sản phẩm.",
+      "Các block KITCHEN mô tả rõ ràng tình trạng trước và sau khi sử dụng.",
+      "CTA nhẹ nhàng, không ép buộc mua sắm."
+    ]
+  },
+  "meta": {
+    "model": "gpt-4o-mini-2024-07-18",
+    "input_tokens": 5059,
+    "output_tokens": 596,
+    "response_id": "resp_0c56f88e5273d0df006a0f36d936ec819ab6e1350124272d03"
+  },
+  "quality_report": {
+    "banned_phrases_found": [],
+    "hook_consistent": true,
+    "cta_consistent": true,
+    "cta_preserved": null,
+    "word_count": 88,
+    "word_count_target": 75,
+    "word_count_within_target": false,
+    "budget_mode": "timeline_aware",
+    "duration_based_target": 98,
+    "aggregate_block_cap": 84,
+    "target_adjustment_reason": "duration-based target 98 vượt 90% aggregate cap 84; reconciled to 75 (≤cap-9 từ buffer)",
+    "block_budget_violations": [
+      {
+        "block_id": "b1",
+        "intent": "HOOK",
+        "window_duration_s": 4,
+        "max_words": 11,
+        "actual_words": 12,
+        "overflow_words": 1,
+        "severity": "minor",
+        "reason": "HOOK 12 từ vượt cap 11 +1"
+      },
+      {
+        "block_id": "b7",
+        "intent": "KITCHEN",
+        "window_duration_s": 4,
+        "max_words": 11,
+        "actual_words": 13,
+        "overflow_words": 2,
+        "severity": "minor",
+        "reason": "KITCHEN 13 từ vượt cap 11 +2"
+      },
+      {
+        "block_id": "b8",
+        "intent": "CTA",
+        "window_duration_s": 2,
+        "max_words": 4,
+        "actual_words": 11,
+        "overflow_words": 7,
+        "severity": "major",
+        "reason": "CTA 11 từ trong window 2.0s vượt cap 4 — Voice Sync không cứu được"
+      }
+    ],
+    "warnings": [
+      "[WORD_COUNT] [timeline_aware] 88 words vs target 75 (+17.3%, outside ±8% window)",
+      "[BLOCK_BUDGET_MINOR] b1 (HOOK, 4s): HOOK 12 từ vượt cap 11 +1",
+      "[BLOCK_BUDGET_MINOR] b7 (KITCHEN, 4s): KITCHEN 13 từ vượt cap 11 +2",
+      "[BLOCK_BUDGET_MAJOR] b8 (CTA, 2s): CTA 11 từ trong window 2.0s vượt cap 4 — Voice Sync không cứu được",
+      "[BUDGET_RECONCILED] duration-based target 98 vượt 90% aggregate cap 84; reconciled to 75 (≤cap-9 từ buffer)"
+    ],
+    "quality_status": "fail",
+    "near_pass_reason": null,
+    "passed": false
+  },
+  "generated_at": "2026-05-21T16:46:31.272Z"
+}

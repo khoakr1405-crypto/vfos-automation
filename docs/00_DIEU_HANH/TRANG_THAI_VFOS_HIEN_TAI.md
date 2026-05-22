@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-05-21 (Phần 17 — yt_009 end-to-end PASS_WITH_REPAIR; AUTO-DECISION + AUTO-SOURCE + GUARD 6 Repair Playbook hoạt động đúng vòng đầu áp dụng)
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `7528911` (Phần 16). Commit Phần 17 sẽ bump khi push
+> **Cập nhật lần cuối**: 2026-05-22 (Phần 18 — yt_009 Visual Repair v2 USER-APPROVED final)
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `14ea741` (Phần 17 zero-touch yt_009). Phần 18 commit sẽ bump khi push
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -749,6 +749,61 @@ Vòng này sửa skill + docs để `/chay` tự quyết định + tự retry + 
 
 ---
 
+### ✅ Phần 18 — yt_009 Visual Repair v2 USER-APPROVED final: ĐÃ CHỐT (2026-05-22)
+
+**Mục tiêu**: User review preview repaired v1 (Phần 17) phản hồi 2 điểm cần cải thiện:
+1. Vùng blur/mosaic ở HOOK 0-4s hơi thô (wide rectangular blur che cả phần thân sản phẩm) — chuyển sang overlay/cover đẹp hơn.
+2. Có brand "WOKDADA" trên sản phẩm ở đoạn ~24s chưa được xử lý.
+
+**Phạm vi cài đặt (KHÔNG động Script/Voice/BGM theo yêu cầu user)**:
+- Chỉ re-render visual layer: filter_complex ffmpeg crop+boxblur+overlay+drawbox.
+- Audio reuse y nguyên `yt_009_voice_bgm_mixed.mp3` (cùng voice timeline + BGM mix Phần 17).
+- Không sửa code pipeline.
+
+**GUARD 6 Repair Playbook v2 (Detect → Repair → Re-QC → Decision)**:
+
+| Detected issue | Repair priority | Repair action | Re-QC |
+|---|---|---|---|
+| Source overlay "COOL KITCHEN GADGET!" đáy HOOK (0-4s) — blur v1 thô | **2_cover** | `drawbox` solid `#8A7B65` warm-beige x=0,y=1130,w=1080,h=470, looks deliberate lower-third design | ✅ PASS_WITH_REPAIR |
+| Brand "WOKDADA" khắc trên vành inox HOOK (0-4s) | **1_blur** | `boxblur=20:5` localized x=240,y=820,w=440,h=200 (tight, không che thân mesh) | ✅ PASS_WITH_REPAIR |
+| Brand "WOKDADA" hiện ở vành phải mesh trong demo (24-29.5s) — confirmed t=24.5s + t=28s | **1_blur** | `boxblur=20:5` localized x=590,y=540,w=280,h=240, enable `between(t,24,29.5)` | ✅ PASS_WITH_REPAIR |
+
+**Decision Status overall**: `PASS_WITH_REPAIR` (3 issue, 3 repair, 3 re-QC pass).
+
+**Output final**:
+- `production/batch_001/yt_009/bgm_mix_v1/yt_009_voice_blocks_bgm_preview_vi_repaired_v2.mp4` (binary, gitignored).
+- Manifest: `production/batch_001/yt_009/bgm_mix_v1/yt_009_visual_repair_manifest.json` (commit text).
+- v1 preview `..._repaired.mp4` giữ làm reference, status `SUPERSEDED_BY_V2`.
+
+**QC kỹ thuật v2**:
+
+| Chỉ số | Giá trị | Nhận xét |
+|---|---|---|
+| Streams | 2 (h264 + aac) | ✅ |
+| Duration | 35.000s | ✅ video ≈ audio |
+| max_volume | -2.7 dB | ✅ no clipping |
+| mean_volume | -22.6 dB | ✅ balanced |
+| Source audio leak | none | ✅ audio reuse từ bgm_mixed |
+| File size | 22M | ✅ (v1 23M) |
+
+**Iteration notes (báo trung thực)**:
+- Lần render đầu (v2a) WOKDADA box thiếu coverage phía phải, "DA" letters còn đọc được → iterate sang v2b với box rộng hơn (440×200 thay vì 280×160) → fully obscured.
+- Bài học toạ độ: chuyển hệ tọa độ từ keyframe 300px-scale lên 1080px-full phải dùng scale factor 3.6, không phải 2.7 (scale factor 2.7 chỉ đúng cho 400px-scale).
+- Brand có thể xuất hiện ngắn ở 19-24s (frame 5 lúc hand đưa mesh xuống) và 29-32s (frame 7 lúc lifted) nhưng visibility không clear-cut → v2 chỉ cover 24-29.5s là window confirmed brand visible.
+
+**User feedback (2026-05-22)**: **DUYỆT v2** — "Kết quả tổng thể: nguồn phù hợp hơn yt_008, visual demo rõ, affiliate fit tốt, audio QC ổn." v2 là output final yt_009.
+
+**Threshold 75-85%**: Đạt — GUARD 6 Repair Playbook hoạt động đúng cả 2 lớp (cover #2 cho text overlay foreign + blur #1 cho brand engraving), user duyệt cảm nhận.
+
+**Trạng thái kỹ thuật**: chỉ touch ffmpeg render + 1 file manifest JSON. Không động code pipeline. Binary mp4/jpg gitignored, **không commit**.
+
+**Giới hạn còn lại (KHÔNG mở scope)**:
+- Brand visibility ngoài 24-29.5s (frame 5 hand đưa xuống, frame 7 lifted) chưa cover — chấp nhận vì visibility marginal, không xử lý thiếu sẽ là over-engineering.
+- v2a → v2b iteration thủ công — chưa có auto verify-and-iterate. Phần 16 đã ghi rõ Repair Playbook v0 vẫn operator-executed.
+- GUARD 6 Repair v0 vẫn manual coordinates — chưa có OCR/object-detection auto bounding box.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
@@ -780,7 +835,7 @@ Vòng này sửa skill + docs để `/chay` tự quyết định + tự retry + 
 
 ## 7. Bước tiếp theo duy nhất
 
-> **TRẠNG THÁI yt_009 (2026-05-21)**: **END-TO-END PASS_WITH_REPAIR.** Phần 17 đã chốt — vòng đầu áp dụng Phần 16 thành công. AUTO-DECISION + AUTO-SOURCE vòng đầu PASS không retry, GUARD 6 Repair Playbook (priority blur) thực thi viable trên video CHƯA TỪNG calibrate. Preview MP4: `production/batch_001/yt_009/bgm_mix_v1/yt_009_voice_blocks_bgm_preview_vi_repaired.mp4`.
+> **TRẠNG THÁI yt_009 (2026-05-22)**: **USER-APPROVED PASS_WITH_REPAIR final.** Phần 17 + Phần 18 đã chốt. AUTO-DECISION + AUTO-SOURCE vòng đầu PASS không retry, GUARD 6 Repair Playbook (priority blur + cover) thực thi viable trên video CHƯA TỪNG calibrate, visual repair v2 user duyệt. **Output final**: `production/batch_001/yt_009/bgm_mix_v1/yt_009_voice_blocks_bgm_preview_vi_repaired_v2.mp4` (binary gitignored, không commit). v1 preview giữ làm reference (`SUPERSEDED_BY_V2`).
 >
 > **TRẠNG THÁI yt_008**: vẫn SOURCE-REJECTED (không có preview). yt_008 case test GUARD 6 reject — không dùng lại.
 >
@@ -882,9 +937,9 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mốc tại thời điểm cập nhật trạng thái | `7528911` — Phần 16 (/chay Auto-Source Retry + GUARD 6 Repair v1) ĐÃ PUSH. Commit Phần 17 (yt_009 end-to-end PASS_WITH_REPAIR) sẽ bump khi push. |
+| Commit mốc tại thời điểm cập nhật trạng thái | `14ea741` — Phần 17 (yt_009 zero-touch /chay run) đang ahead of origin/master, sẽ push cùng commit Phần 18 (visual repair v2 USER-APPROVED). |
 | Remote | `origin` (GitHub) |
-| Sync status | Phần 11–16 ĐÃ PUSH. yt_009 PASS_WITH_REPAIR (Phần 17, 2026-05-21) — text artifacts + memory ready để commit. Binary media `.mp4`/`.mp3` gitignored. Bước tiếp: user review preview MP4, sau đó quyết định Con 2 / `OPENAI_MODEL=gpt-4o` default / thêm yt_010. |
+| Sync status | Phần 11–16 ĐÃ PUSH. Phần 17 + Phần 18 ĐANG commit + push cùng vòng. Output final yt_009: `bgm_mix_v1/yt_009_voice_blocks_bgm_preview_vi_repaired_v2.mp4` (binary gitignored, **không commit**). Text artifacts commit: scene_input, script v1/v2/v3, voice sync manifest, bgm mix manifest, **visual repair manifest mới**. Bước tiếp: user quyết định Con 2 / `OPENAI_MODEL=gpt-4o` default / thêm yt_010. |
 
 **Trạng thái artifacts production** (tính đến 2026-05-20):
 - `production/batch_001/yt_007/` (text artifacts): **ĐÃ commit** ở `df1609e` — scene_input, script v1/v2/v3, manifest BGM. Dùng làm reference cho vòng Voice Sync autonomy.
