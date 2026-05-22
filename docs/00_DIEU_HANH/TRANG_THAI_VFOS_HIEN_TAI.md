@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-05-22 (Phần 20 — Product-First Lane v0 + GUARD 8 Product Match Guard thêm vào /chay khung đa-lane)
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `eb5bc00` (Phần 19 yt_010 v4 USER-APPROVED). Phần 20 commit sẽ bump khi push
+> **Cập nhật lần cuối**: 2026-05-22 (Phần 21 — Auto Product Discovery v0 cho Product-First Lane)
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `0be4503` (Phần 20 Product-First Lane v0 + GUARD 8). Phần 21 commit sẽ bump khi push
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -939,6 +939,80 @@ Vòng này sửa skill + docs để `/chay` tự quyết định + tự retry + 
 
 ---
 
+### ✅ Phần 21 — Auto Product Discovery v0 cho Product-First Lane: ĐÃ CHỐT (2026-05-22)
+
+**Mục tiêu**: Mở rộng Product-First Lane (Phần 20) để agent **tự tìm 1 sản phẩm TikTok Shop tiềm năng** khi user gọi `/chay product-first` **không kèm link**. Trước đó MODE 4 yêu cầu user dán link mỗi lần — Discovery v0 cho phép no-link path.
+
+**Vì sao cần**: Phần 20 chỉ định nghĩa khung Product-First; thực tế operator gọi MODE 4 không có sản phẩm cụ thể trong đầu vẫn cần agent tự sourcing được. Bằng cách thêm Discovery Mode + Product Selection Scoring, agent có capability:
+- Tự tìm candidate sản phẩm theo lane (CHANNEL/LANE PROFILE).
+- Chấm 6 trục → quyết định `PRODUCT_SELECTED` / `PRODUCT_NEEDS_USER_REVIEW` / `PRODUCT_REJECTED`.
+- Tự chọn candidate cao điểm nhất khi đủ threshold (KHÔNG hỏi user lựa chọn nhỏ).
+- Báo limitation rõ nếu không có quyền lấy TikTok Shop data trực tiếp.
+
+**Phạm vi cài đặt (KHÔNG sửa code pipeline, KHÔNG chạy video mới, KHÔNG tìm sản phẩm thật vòng này)**:
+- `.claude/skills/chay/SKILL.md` — thêm:
+  - MODE 4 trigger update: `/chay product-first` = auto discovery (no-link); `/chay product-first <link>` = parse link cụ thể.
+  - Section **PRODUCT DISCOVERY MODE v0** — behavior + ưu tiên + HARD RULE limitation truy cập.
+  - Section **PRODUCT SELECTION SCORING** — 6 trục thang 0–3, threshold ≥13/18 = `PRODUCT_SELECTED`, auto-tie-breaker.
+  - PF-STEP 1 update: branch logic user-dán-link vs Discovery (3 vòng retry search).
+  - AUTO-DECISION POLICY Product-First update — thêm rule "KHÔNG hỏi chọn sản phẩm nếu có ≥1 PRODUCT_SELECTED".
+  - SELF-REVIEW +3 dòng Discovery Mode.
+  - HARD CONSTRAINTS +4 dòng Discovery (cấm bịa link/product, cấm bỏ qua scoring, cấm hỏi khi đã có SELECTED).
+  - REPORT TEMPLATE: +2 bảng (Product Selection Scoring 6 trục + Product Discovery Retry log).
+- `docs/00_DIEU_HANH/TRANG_THAI_VFOS_HIEN_TAI.md` — Phần 21 + cập nhật Mục 7 (hướng 4 hợp nhất discovery) + Mục 10 (commit pointer).
+- `docs/00_DIEU_HANH/VFOS_SHORTFORM_FACTORY_BLUEPRINT_V0.md` — note ngắn Discovery Mode enable.
+
+**PRODUCT SELECTION SCORING — 6 trục (mỗi trục 0–3, total max 18)**:
+
+| # | Trục | Strong (3) |
+|---|---|---|
+| 1 | Demo clarity | Tự nhìn 3s hiểu công dụng |
+| 2 | Affiliate potential | Giá vừa + hoa hồng ≥10% + 1k+ bán |
+| 3 | Visual appeal | Trước/sau rõ, satisfying motion |
+| 4 | Vietnam audience fit | Đồ dùng phổ thông VN |
+| 5 | Source/demo availability | Nhiều clip TikTok/Douyin demo |
+| 6 | Risk level (cao=an toàn) | Đồ gia dụng phổ thông, không claim |
+
+**Threshold**:
+- ≥13/18 AND không trục 0 AND trục 6 ≥ 2 → `PRODUCT_SELECTED`
+- 10–12 HOẶC 1 trục = 0 (trừ trục 6) HOẶC trục 6 = 1 → `PRODUCT_NEEDS_USER_REVIEW`
+- <10 HOẶC trục 6 = 0 → `PRODUCT_REJECTED`
+
+**Auto-decision khi Discovery**:
+- 1 candidate `SELECTED` → auto chọn.
+- ≥2 candidates `SELECTED` → auto chọn cao điểm nhất, tie-break theo trục 1 → trục 5.
+- 0 candidate `SELECTED` → retry search 3 vòng đổi keyword, hết retry mới trình shortlist.
+
+**Data policy (KHÔNG đổi từ Phần 20 — củng cố thêm)**:
+- `link_tiktok_shop` không lấy được đáng tin cậy → KHÔNG tạo Product Card, BÁO LIMITATION + xin user dán link.
+- `price_vnd` / `commission_pct` / `sales_review_signal` không lấy được → ghi `"unknown"`, KHÔNG bịa.
+- Nếu ≥2 field unknown trong (price/commission/sales) → báo user, hỏi có dán dữ liệu thêm.
+
+**Tích hợp GUARD 8 (giữ nguyên từ Phần 20)**:
+- Sau Discovery → Product Card có link + product_name → vào PF-STEP 3 (tìm video/demo tương đồng).
+- GUARD 8 Product Match 5 trục vẫn bắt buộc trước khi chạy pipeline.
+- `MATCH_CONFIRMED` → pipeline chạy. `MATCH_NEEDS_REVIEW` → user duyệt. `MISMATCH_REJECT` → retry clip, max 3 vòng.
+
+**Triết lý — KHÔNG mở scope vòng này**:
+- KHÔNG sửa code pipeline (Script Writer / Voice Sync / BGM).
+- KHÔNG chạy video mới, KHÔNG chạy yt_011.
+- KHÔNG tìm sản phẩm thật trong vòng này — chỉ khai báo capability.
+- KHÔNG publish, KHÔNG mở Con số 2, KHÔNG xóa artifact.
+- KHÔNG nhét Product Selection Scoring vào GUARD 6/7/8 — đây là scoring ở PF-STEP 1 (pre-card), khác guard ở STEP 11 (visual safety) hay GUARD 8 (match guard ở PF-STEP 4).
+- KHÔNG để Product-First Discovery thay thế Video-First — vẫn là LANE SONG SONG.
+
+**Threshold 75-85%**: Đạt cho v0 — framework + scoring rubric + decision rules đủ rõ. Sẵn sàng cho Phần 22 (chạy thật Product-First Discovery trên 1 sản phẩm). Stop optimizing v0.
+
+**Giới hạn còn lại (KHÔNG mở scope vòng này)**:
+- Product Selection Scoring vẫn operator-enforced (agent chấm tay 6 trục) — chưa có auto-ranking bằng TikTok Shop API scrape.
+- Discovery Mode chưa test thật end-to-end (sẽ là Phần 22 nếu user duyệt).
+- Threshold ≥13/18 là heuristic v0 — có thể điều chỉnh sau khi test thật.
+- Nếu agent không có quyền truy cập TikTok Shop trong môi trường runtime hiện tại → Discovery Mode sẽ luôn dừng ở limitation step, xin user dán link. Đây là **expected behavior** cho v0, không phải bug.
+
+**Trạng thái kỹ thuật**: chỉ touch `.md`, không động code, không cần typecheck/biome.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
@@ -987,9 +1061,11 @@ Vòng này sửa skill + docs để `/chay` tự quyết định + tự retry + 
 > 1. **Nhân bản Con số 2 theo blueprint** — 5 video clean + AUTO-SOURCE RETRY verified là đủ bằng chứng pipeline ổn. Mở `docs/00_DIEU_HANH/VFOS_SHORTFORM_FACTORY_BLUEPRINT_V0.md` cho ngách thứ 2. Đây là path commercial progress (VFOS North Star).
 > 2. **Đổi default `OPENAI_MODEL=gpt-4o` trong `.env`** — pre-existing config debt. Cleanup nhỏ, operator không cần `--model gpt-4o` flag từng lần. Có thể làm trước Con 2 hoặc sau.
 > 3. **Test thêm yt_011** — nếu user muốn thêm bằng chứng. Nhưng 5 video clean + 1 retry success thường đủ; thêm video có thể là over-validation.
-> 4. **Test thử Product-First Lane v0 (Phần 20) trên 1 sản phẩm cụ thể** — vòng đầu chạy thật `/chay product-first <link TikTok Shop>` để verify Product Card + GUARD 8 Product Match hoạt động end-to-end. Cần user dán link TikTok Shop trước (do agent có thể không có quyền lấy data trực tiếp).
+> 4. **Test thử Product-First Lane v0 (Phần 20 + Phần 21) trên 1 sản phẩm cụ thể** — 2 sub-path:
+>    - **4a** — `/chay product-first <link TikTok Shop>` (user dán link cụ thể) → parse + Product Card + GUARD 8 Product Match end-to-end.
+>    - **4b** — `/chay product-first` (auto discovery, Phần 21) → agent tự tìm candidate sản phẩm theo lane, chấm Product Selection Scoring, chọn auto nếu đạt threshold. **Lưu ý**: nếu môi trường runtime hiện tại không có quyền truy cập TikTok Shop data → Discovery sẽ dừng ở limitation step và xin user dán link (expected behavior, không phải bug).
 >
-> **KHÔNG tự chạy yt_011** mà không có user quyết định. **KHÔNG tự chạy Product-First** mà không có link TikTok Shop từ user. **KHÔNG mở scope** sang publish, BGM ducking, watermark auto-detect, Con số 2 chưa được duyệt.
+> **KHÔNG tự chạy yt_011** mà không có user quyết định. **KHÔNG tự chạy Product-First Discovery thật** (sub-path 4b) mà không có user quyết định — Discovery Mode đã được khai báo capability ở Phần 21 nhưng vòng chạy thật là Phần 22 nếu user duyệt. **KHÔNG mở scope** sang publish, BGM ducking, watermark auto-detect, Con số 2 chưa được duyệt.
 
 ### (Phần dưới giữ lại làm reference — yt_009 acceptance ban đầu đã đạt)
 
@@ -1077,9 +1153,9 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mốc tại thời điểm cập nhật trạng thái | `eb5bc00` — Phần 19 (yt_010 v4 USER-APPROVED). Phần 20 (Product-First Lane v0 + GUARD 8) commit sẽ bump khi push. |
+| Commit mốc tại thời điểm cập nhật trạng thái | `0be4503` — Phần 20 (Product-First Lane v0 + GUARD 8). Phần 21 (Auto Product Discovery v0) commit sẽ bump khi push. |
 | Remote | `origin` (GitHub) |
-| Sync status | Phần 11–19 ĐÃ PUSH (gồm yt_010 v4). Phần 20 ĐANG commit (chỉ docs/skill, không code, không binary). Bước tiếp: user quyết định strategy 4 hướng (Con 2 / OPENAI_MODEL gpt-4o default / yt_011 Video-First / yt_011 Product-First test). |
+| Sync status | Phần 11–20 ĐÃ PUSH. Phần 21 ĐANG commit (chỉ docs/skill, không code, không binary, không chạy video/sản phẩm thật). Bước tiếp: user quyết định strategy 4 hướng (Con 2 / OPENAI_MODEL gpt-4o default / yt_011 Video-First / yt_011 Product-First test sub-path 4a hoặc 4b). |
 
 **Trạng thái artifacts production** (tính đến 2026-05-20):
 - `production/batch_001/yt_007/` (text artifacts): **ĐÃ commit** ở `df1609e` — scene_input, script v1/v2/v3, manifest BGM. Dùng làm reference cho vòng Voice Sync autonomy.

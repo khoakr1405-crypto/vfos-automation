@@ -158,16 +158,18 @@ Khi `/chay` được gọi không args VÀ Project Memory đã ghi next step rõ
 ### MODE 4 — `/chay product-first [<args>]` (Product-First Lane)
 
 **Trigger**:
-- `/chay product-first`
-- `/chay product-first <link TikTok Shop>` (link sản phẩm cụ thể)
+- `/chay product-first` — **auto product discovery**: agent tự tìm sản phẩm TikTok Shop tiềm năng theo lane
+- `/chay product-first <link TikTok Shop>` — link sản phẩm cụ thể (user dán, skip discovery)
+- `/chay product-first tự tìm sản phẩm`
 - `/chay tìm sản phẩm TikTok Shop trước`
+- `/chay chọn sản phẩm trước, video sau`
 - `/chay chọn product trước, video sau`
 
-**Hành động**: chuyển sang **Product-First Lane** — tìm sản phẩm trước, video/demo sau. Workflow chi tiết: xem section **"PRODUCT-FIRST LANE v0"** bên dưới.
+**Hành động**: chuyển sang **Product-First Lane** — tìm sản phẩm trước, video/demo sau. Workflow chi tiết: xem section **"PRODUCT-FIRST LANE v0"** + **"PRODUCT DISCOVERY MODE v0"** bên dưới.
 
 **Tóm tắt thứ tự**:
-1. Tìm/chốt sản phẩm TikTok Shop tiềm năng (hoặc parse link user dán).
-2. Tạo **Product Card** đầy đủ 6 field (link, tên, giá, hoa hồng, số bán/review, lý do đáng làm).
+1. **Auto product discovery** (no-link) HOẶC parse link user dán → chốt 1 sản phẩm candidate.
+2. Tạo **Product Card** đầy đủ 6 field (link, tên, giá, hoa hồng, số bán/review, lý do đáng làm). Field unknown ghi `"unknown"`.
 3. Tìm video/demo tương đồng từ TikTok / Douyin / AliExpress / Temu / YouTube / nguồn demo khác.
 4. Chạy **PRODUCT MATCH GUARD** (xem GUARD 8) chấm 5 tiêu chí tương đồng.
 5. Chỉ chạy pipeline (Script → Voice → BGM) nếu Decision = `MATCH_CONFIRMED`.
@@ -221,6 +223,63 @@ Khi vào Product-First Lane, agent phải tạo **Product Card** với 6 field. 
 
 **Quy tắc bịa**: nếu không lấy được data trực tiếp (giá, hoa hồng, sales/review), **luôn ghi `"unknown"`**. Nếu cả 3 field trên đều `unknown` mà user chưa dán link → agent báo limitation rõ ràng + đề xuất user dán link TikTok Shop. KHÔNG bịa giá, KHÔNG bịa hoa hồng, KHÔNG bịa số bán.
 
+### PRODUCT DISCOVERY MODE v0 — Auto tìm sản phẩm khi không có link
+
+**Trigger**: MODE 4 được gọi **không kèm link** (`/chay product-first`, `/chay product-first tự tìm sản phẩm`, `/chay tìm sản phẩm TikTok Shop trước`, `/chay chọn sản phẩm trước, video sau`).
+
+**Mục tiêu**: agent tự chọn 1 sản phẩm TikTok Shop tiềm năng theo lane đang nhắm, lập Product Card, rồi mới sang PF-STEP 3 (tìm video/demo). KHÔNG bắt user phải dán link mỗi lần.
+
+**Behavior bắt buộc**:
+
+1. Đọc Project Memory + CHANNEL/LANE PROFILE để xác định lane đang chạy.
+2. Tự tìm/chọn candidate sản phẩm TikTok Shop phù hợp lane. Ưu tiên sản phẩm:
+   - dễ demo bằng video (visual rõ, kết quả thấy được nhanh)
+   - visual rõ (form factor đơn giản, không cần caption hiểu công dụng)
+   - giá vừa phải (không quá rẻ → không đáng làm; không quá đắt → khó chuyển đổi VN)
+   - có hoa hồng (nếu lấy được data thật)
+   - số bán / review / rating tốt (nếu lấy được)
+   - **KHÔNG** phải brand lớn khó xử lý (thương hiệu có legal team / IP risk)
+   - **KHÔNG** thuộc ngành nhạy cảm / claim rủi ro (y tế, mỹ phẩm chức năng, thực phẩm chức năng, đồ điện tử cao cấp)
+   - dễ tìm video/demo tương đồng thật từ nguồn cho phép (TikTok / Douyin / AliExpress / Temu / YouTube)
+3. Chấm từng candidate trên 6 trục **PRODUCT SELECTION SCORING** (xem bên dưới).
+4. Nếu candidate đạt threshold (score đủ cao + không vào nhóm rủi ro) → **tạo Product Card đầy đủ 6 field** (data unknown ghi `"unknown"`).
+5. Nếu Product Card đủ dữ liệu tối thiểu (link + product_name + why_worthwhile) → tiếp tục PF-STEP 3 (tìm video/demo tương đồng).
+6. Nếu thiếu link TikTok Shop đáng tin cậy / agent không có quyền truy cập TikTok Shop data → **dừng auto-discovery, báo limitation rõ ràng**: *"Không đủ quyền/data để tự lấy link TikTok Shop đáng tin cậy. Cần user dán link hoặc cấp nguồn sản phẩm."* KHÔNG bịa link, KHÔNG bịa product.
+
+**HARD RULE — limitation truy cập TikTok Shop**:
+Nếu agent không thể lấy URL TikTok Shop thật (do TikTok Shop chặn scraping / không có MCP integration / không có browser access live), thì **không được tạo Product Card hoàn chỉnh**. Phải báo limitation và xin user dán link.
+
+### PRODUCT SELECTION SCORING — 6 trục chấm candidate sản phẩm
+
+Mỗi candidate sản phẩm trong Discovery Mode được chấm trên 6 trục độc lập. Mỗi trục thang điểm 0–3 (0=fail, 1=yếu, 2=trung bình, 3=mạnh). Tổng max: 18.
+
+| # | Trục | Câu hỏi đánh giá | Score 0 (fail) | Score 3 (strong) |
+|---|---|---|---|---|
+| 1 | **Demo clarity** | Nhìn video là hiểu công dụng không? | Cần caption / explainer dài mới hiểu | Tự nhìn 3s đầu hiểu ngay |
+| 2 | **Affiliate potential** | Giá / hoa hồng / số bán có đáng làm không? | Giá lẻ + hoa hồng 0% + ít người bán | Giá vừa + hoa hồng ≥10% + 1k+ bán |
+| 3 | **Visual appeal** | Có tạo được short-form hấp dẫn không? | Sản phẩm không có visual demo (eg gói bột) | Có "trước/sau" rõ, satisfying motion |
+| 4 | **Vietnam audience fit** | Người xem VN có dễ liên hệ không? | Sản phẩm chỉ phù hợp văn hoá khác (eg pickled fish, kimchi tool) | Đồ dùng phổ thông VN, gadget gia đình |
+| 5 | **Source/demo availability** | Có dễ tìm video/demo tương đồng thật không? | Không có clip nào ngoài listing tĩnh | Nhiều clip TikTok/Douyin/AliExpress demo |
+| 6 | **Risk level** | Có rủi ro claim / brand lớn / hàng nhạy cảm không? | Y tế / mỹ phẩm chức năng / brand A++ | Đồ gia dụng phổ thông, không claim sức khoẻ |
+
+**Threshold quyết định**:
+- Tổng score ≥ **13/18** AND **không có trục nào = 0** AND trục 6 (risk) ≥ 2 → `PRODUCT_SELECTED`
+- Tổng score 10–12 HOẶC có 1 trục = 0 (trừ trục 6) HOẶC trục 6 = 1 → `PRODUCT_NEEDS_USER_REVIEW`
+- Tổng score < 10 HOẶC trục 6 = 0 (rủi ro cao) → `PRODUCT_REJECTED`
+
+**Auto-decision rule trong Discovery**:
+- Nếu **chỉ 1 candidate** đạt `PRODUCT_SELECTED` → tự chọn, không hỏi user.
+- Nếu **≥2 candidates** đạt `PRODUCT_SELECTED` → tự chọn candidate có **tổng score cao nhất**. Tie-breaker: ưu tiên trục 1 (demo clarity) cao hơn, rồi trục 5 (source availability).
+- Nếu **không có candidate** nào đạt `PRODUCT_SELECTED` → mở rộng search 1 vòng (đổi keyword theo lane), tối đa 3 vòng search (giống AUTO-SOURCE RETRY POLICY).
+- Hết 3 vòng vẫn không có → trình shortlist (cao nhất tổng score) cho user duyệt + báo lý do reject.
+
+**Phải hỏi user (Discovery Mode)**:
+- Không lấy được link TikTok Shop đáng tin cậy → báo limitation + xin user dán link.
+- Hoa hồng / giá / số bán thiếu nhiều ảnh hưởng quyết định (≥2 field unknown trong nhóm price/commission/sales) → báo cho user, hỏi có dán dữ liệu thêm hay tiếp tục với data thiếu.
+- Tất cả candidates đều `PRODUCT_NEEDS_USER_REVIEW` (không có `SELECTED` rõ) → trình shortlist.
+- Sản phẩm nằm trong nhóm rủi ro nhưng có tín hiệu tiềm năng (eg viral nhưng claim y tế) → hỏi user có làm tiếp với soft tone không.
+- Cần publish thật (publish vẫn ngoài scope `/chay`).
+
 ### NGUỒN VIDEO/DEMO THAM KHẢO cho Product-First
 
 Sau khi có Product Card, được phép tìm video/demo từ:
@@ -241,13 +300,23 @@ Sau khi có Product Card, được phép tìm video/demo từ:
 ```
 PF-STEP 0   Đọc Project Memory + xác định mode (MODE 4 trigger từ args)
 PF-STEP 1   Tìm/chốt sản phẩm TikTok Shop
-            → Nếu user dán link: parse link, lấy metadata
-            → Nếu không có link: agent thử tìm sản phẩm tiềm năng theo
-              lane (xem CHANNEL/LANE PROFILE). Nếu không có quyền lấy data
-              TikTok Shop trực tiếp → BÁO LIMITATION, đề xuất user dán link.
-              KHÔNG bịa product.
+            → Nếu user dán link: parse link, lấy metadata trực tiếp.
+            → Nếu không có link (auto discovery): chạy PRODUCT DISCOVERY MODE v0:
+              1. Đọc lane từ CHANNEL/LANE PROFILE.
+              2. Tìm candidate sản phẩm TikTok Shop theo lane (loại brand lớn,
+                 ngành nhạy cảm, claim rủi ro).
+              3. Chấm PRODUCT SELECTION SCORING 6 trục → quyết định
+                 PRODUCT_SELECTED / PRODUCT_NEEDS_USER_REVIEW / PRODUCT_REJECTED.
+              4. Nếu PRODUCT_SELECTED → đi PF-STEP 2.
+              5. Nếu PRODUCT_REJECTED / không có candidate đạt threshold:
+                 retry search 1 vòng đổi keyword theo lane, max 3 vòng.
+              6. Hết 3 vòng vẫn không có → trình shortlist + reject log cho user.
+              7. Nếu KHÔNG có quyền lấy data TikTok Shop trực tiếp → BÁO
+                 LIMITATION ngay, đề xuất user dán link. KHÔNG bịa product.
 PF-STEP 2   Lập Product Card (6 field). Lưu product_card.json.
             → Field unknown phải ghi rõ "unknown", không bịa.
+            → Nếu Discovery Mode: kèm Product Selection Scoring (6 trục + total)
+              trong product_card.json để audit lý do chọn candidate.
 PF-STEP 3   Tìm video/demo tương đồng từ nguồn cho phép (TikTok / Douyin /
             AliExpress / Temu / YouTube / nguồn khác).
             → Ưu tiên clip demo sản phẩm thật, có visual rõ, duration 15-90s.
@@ -272,14 +341,21 @@ PF-STEP 6+  Phần còn lại giống Video-First (Script → Voice → BGM → 
 
 ### AUTO-DECISION POLICY trong Product-First
 
-Khi user gọi MODE 4 (`/chay product-first`) và memory đã có lane rõ:
+Khi user gọi MODE 4 (`/chay product-first` có hoặc không kèm link) và memory đã có lane rõ:
 
-- **KHÔNG hỏi**: chọn nguồn tham khảo video nào, chọn clip nào sau khi chấm Match Guard (nếu CONFIRMED).
+- **KHÔNG hỏi**:
+  - Chọn sản phẩm candidate nào khi Discovery Mode đã có ≥1 candidate đạt `PRODUCT_SELECTED` (auto chọn theo tổng score cao nhất + tie-breaker).
+  - Chọn nguồn tham khảo video nào (TikTok / Douyin / AliExpress / Temu / YouTube — agent tự chọn theo availability + visual fit).
+  - Chọn clip candidate nào sau khi chấm Match Guard (nếu CONFIRMED — auto pick clip score cao nhất).
 - **PHẢI hỏi**:
   - Nếu agent không có quyền lấy product data trực tiếp từ TikTok Shop → báo limitation + xin user dán link.
+  - Discovery Mode hết 3 vòng search vẫn không có `PRODUCT_SELECTED` → trình shortlist + reject log.
+  - Tất cả candidates đều `PRODUCT_NEEDS_USER_REVIEW` (không có SELECTED rõ).
+  - Sản phẩm thuộc nhóm rủi ro (trục 6 risk = 1) nhưng có tín hiệu tiềm năng — hỏi user có muốn làm tiếp với soft tone không.
   - Nếu Match Guard ra `MATCH_NEEDS_REVIEW` → trình clip cho user.
-  - Nếu 3 vòng retry vẫn `MISMATCH_REJECT` → trình shortlist.
+  - Nếu 3 vòng retry video vẫn `MISMATCH_REJECT` → trình shortlist clip.
   - Nếu Product Card có ≥2 field unknown trong (price/commission/sales) → báo cho user biết, hỏi xem có muốn tiếp tục hay dán thêm dữ liệu.
+  - Publish thật (publish vẫn ngoài scope `/chay`).
 
 ---
 
@@ -652,6 +728,9 @@ Bắt buộc chạy trước khi báo "hoàn thành":
 [ ] (Product-First Lane only) Product Card có đủ 6 field? Field unknown ghi "unknown", không bịa giá/hoa hồng/số bán?
 [ ] (Product-First Lane only) GUARD 8 Product Match: 5/5 tiêu chí PASS = MATCH_CONFIRMED? Có bảng "Card | Clip | Đạt?" trong report?
 [ ] (Product-First Lane only) Affiliate link trong Card khớp đúng sản phẩm trong clip (không bait-and-switch A→B)?
+[ ] (Discovery Mode only) Product Selection Scoring đã chấm đủ 6 trục? Decision PRODUCT_SELECTED / PRODUCT_NEEDS_USER_REVIEW / PRODUCT_REJECTED rõ ràng?
+[ ] (Discovery Mode only) Không bịa link/product/giá/hoa hồng? Nếu không có quyền lấy data TikTok Shop trực tiếp → đã báo limitation rõ + xin user dán link?
+[ ] (Discovery Mode only) Tự chọn candidate khi ≥1 PRODUCT_SELECTED rõ — KHÔNG hỏi user lựa chọn nhỏ khi memory + scoring đủ rõ?
 ```
 
 ---
@@ -691,6 +770,15 @@ KHÔNG BAO GIỜ:
   × (Product-First Lane) Dùng clip sản phẩm A gắn affiliate sản phẩm B vì
     "cùng ngành" — đây là bait-and-switch, vi phạm GUARD 8 trục 5 (khác bản
     chất) + GUARD 7 R2
+  × (Discovery Mode) Bịa link TikTok Shop / bịa product name khi không lấy
+    được data thật — phải báo limitation + xin user dán link
+  × (Discovery Mode) Chọn sản phẩm thuộc nhóm rủi ro (y tế / mỹ phẩm chức
+    năng / brand lớn IP risk) mà không hỏi user — trục 6 (risk) thấp luôn
+    phải trình user
+  × (Discovery Mode) Bỏ qua PRODUCT SELECTION SCORING 6 trục, tự chọn
+    candidate theo cảm tính — phải chấm scoring + log decision
+  × (Discovery Mode) Hỏi user "chọn sản phẩm nào" khi ≥1 candidate đã đạt
+    PRODUCT_SELECTED rõ — vi phạm AUTO-DECISION POLICY Product-First
   × Coi Product-First Lane là replacement của Video-First — đây là LANE
     SONG SONG trong khung đa-lane, KHÔNG thay thế default MODE 1/2/3
 
@@ -755,6 +843,26 @@ Sau khi hoàn thành, báo cáo theo format:
 | commission_pct | ... / unknown |
 | sales_review_signal | ... / unknown |
 | why_worthwhile | (lý do gồm 5 điểm: vấn đề / ai mua / visual demo / hợp content-led / tiềm năng chuyển đổi) |
+
+### Product Selection Scoring (CHỈ Discovery Mode — `/chay product-first` không có link)
+| # | Trục | Score (0–3) | Ghi chú |
+|---|---|---|---|
+| 1 | Demo clarity | X | ... |
+| 2 | Affiliate potential | X | ... |
+| 3 | Visual appeal | X | ... |
+| 4 | Vietnam audience fit | X | ... |
+| 5 | Source/demo availability | X | ... |
+| 6 | Risk level | X | ... |
+| **Total** | | **XX / 18** | |
+
+**Decision Product Selection**: PRODUCT_SELECTED / PRODUCT_NEEDS_USER_REVIEW / PRODUCT_REJECTED
+
+### Product Discovery Retry log (CHỈ Discovery Mode nếu có retry)
+| Vòng | Keyword/lane | Candidate count | Top score | Decision | Action |
+|---|---|---|---|---|---|
+| 1 | (initial) | N | XX/18 | (decision) | accepted / retry vòng 2 / needs_user |
+| 2 | (keyword cải thiện) | ... | ... | ... | ... |
+| 3 | ... | ... | ... | ... | ... |
 
 ### GUARD 8 Product Match (CHỈ Product-First Lane)
 | Tiêu chí | Card | Clip | Đạt? |
