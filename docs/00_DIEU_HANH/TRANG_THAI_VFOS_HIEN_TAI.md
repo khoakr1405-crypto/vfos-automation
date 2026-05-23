@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-05-22 (Phần 22 — Pivot Product-First → Shopee-First Only v0, TikTok Shop defer)
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `9c7d595` (Phần 21 Auto Product Discovery v0). Phần 22 commit sẽ bump khi push
+> **Cập nhật lần cuối**: 2026-05-24 (Phần 23 — Shopee-First Post-Run Hardening v0, agent-ready boundaries)
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `6cc2459` (Facebook Page API integration — đã push). Phần 23 commit sẽ bump khi push
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -1114,6 +1114,63 @@ Vòng này sửa skill + docs để `/chay` tự quyết định + tự retry + 
 
 ---
 
+### ✅ Phần 23 — Shopee-First Post-Run Hardening v0 (agent-ready boundaries): ĐÃ CHỐT (2026-05-24)
+
+**Bối cảnh**: Sau khi yt_011 chạy end-to-end thành công Shopee-First (commit `791564f`), lộ ra 2 gap về artifact:
+1. `shopee_product_card.json` ban đầu **không persist trên disk** — chỉ tồn tại trong chat. Phải fix sau ở commit `791564f` (gap-fix round).
+2. `script_ai_v1_extended.json` còn `quality_status: "fail"` **stale** sau khi operator trim 2 block (b2, b4) — không có metadata mô tả việc trim, gây hiểu nhầm script final vẫn là FAIL chưa xử lý.
+
+**Mục tiêu Phần 23**: biến 2 bài học đó thành rule cố định trong SKILL, thêm publish-plan metadata layer, và đặt boundary để sau tách 4 sub-agent dễ.
+
+**Phạm vi cài đặt (KHÔNG sửa code pipeline, KHÔNG chạy video mới, KHÔNG publish, KHÔNG sửa artifact yt_011)**:
+
+- `.claude/skills/chay/SKILL.md` — 4 rule mới + 1 section boundary:
+  - **Rule 1 — Shopee Product Card persist HARD GATE**: section `SHOPEE PRODUCT CARD` viết lại. Schema mở rộng từ "10 field" lên **24 field** (thêm audit trail: `video_id`, `lane`, `phase_ref`, `created_at`, `short_url_original`, `canonical_url`, `shopid`, `itemid`, `product_name_short`, `estimated_commission_vnd`, `data_source_notes`, `selection_scoring`, `decision`, `decision_note`). HARD GATE: file PHẢI tồn tại trên disk trước PF-STEP 3, có `data_source_notes` audit trail, `selection_scoring` bắt buộc cả khi user dán link sẵn. Verify persist checklist 6 mục.
+  - **Rule 2 — Shopee short link support**: section mới `SHOPEE SHORT LINK SUPPORT v0`. Short link `s.shopee.vn/<code>` là input HỢP LỆ. Pattern resolve: `curl -sILk` HTTP-level redirect (yt_011 reference: `s.shopee.vn/17RASU88W` → `shopee.vn/opaanlp/1820797160/55110800126`). Business fields lấy từ user paste vì SPA + internal API v4 = 403 anti-bot. KHÔNG fail vì user chỉ có short link.
+  - **Rule 3 — Operator trim policy**: insert vào STEP 6 (Script Writer) + update GUARD 1. Bắt buộc metadata block `operator_trim` với 9 field (`operator_trim_applied`, `original_quality_status`, `original_word_count`, `trimmed_blocks`, `post_trim_word_count`, `post_trim_reason`, `post_trim_quality_status`, `validator_rerun_status`, `final_used_for_voice_sync`). KHÔNG bịa `PASS` khi không có validator độc lập — dùng `accepted_after_operator_trim` + evidence thật. Operator trim CHỈ áp dụng cho vi phạm rõ ràng (over-claim, banned absolute, block over budget nhỏ), KHÔNG dùng "lách" GUARD 1.
+  - **Rule 4 — Facebook Reels + Shopee Publish Plan metadata**: insert STEP 12b vào WORKFLOW + section mới `FACEBOOK REELS + SHOPEE PUBLISH PLAN v0`. Persist `facebook_reels_publish_plan.json` với 15 field (`platform=facebook_reels`, `affiliate_platform=shopee`, `product_card_path`, `final_video_path`, `caption_draft`, `cta_text`, `shopee_affiliate_url`, `publish_status=not_published` HARD, `needs_user_review=true` HARD, `publish_blockers[]`, etc). KHÔNG auto-publish — luôn chuẩn bị metadata để operator manual.
+  - **AGENT-READY RESPONSIBILITY BOUNDARIES**: section mới định nghĩa 4 sub-agent tương lai + boundary rules. KHÔNG triển khai multi-agent code trong vòng này — chỉ là kỷ luật viết SKILL.
+- `docs/00_DIEU_HANH/TRANG_THAI_VFOS_HIEN_TAI.md` — Phần 23 (block này) + cập nhật Mục 7 + Mục 10.
+- `docs/00_DIEU_HANH/VFOS_SHORTFORM_FACTORY_BLUEPRINT_V0.md` — note Phần 23 hardening + agent-ready boundary reference.
+
+**4 sub-agent tương lai (chỉ định nghĩa boundary, KHÔNG implement vòng này)**:
+
+| Sub-agent | Responsibility | Output artifact |
+|---|---|---|
+| **Shopee Product Agent** | Resolve link, fetch metadata, Selection Scoring, persist Card | `shopee_product_card.json` |
+| **Demo Match Agent** | Tìm video/demo, GUARD 8 match scoring, retry candidate | match result + chosen video URL + GUARD 8 table |
+| **Script QC Agent** | Script Writer + validator + OPERATOR TRIM + GUARD 1 + GUARD 7 R1/R3/R5 script-layer | `script_ai_v1_extended.json` (+ optional `operator_trim` block) |
+| **Facebook Publish Plan Agent** | Draft caption + CTA, persist publish plan, **KHÔNG gọi Graph API** | `facebook_reels_publish_plan.json` |
+
+**Boundary rules HARD**:
+- Mỗi sub-agent CHỈ đọc/ghi artifact của mình + đọc artifact upstream. KHÔNG cross-write.
+- State sharing qua file JSON (`production/batch_001/<video_id>/`), không qua biến process / message bus toàn cục.
+- KHÔNG overlap (eg Demo Match Agent KHÔNG được sửa `shopee_product_card.json`).
+- GUARD 7 R5 chia 2: script-layer thuộc Script QC Agent, caption-layer thuộc Facebook Publish Plan Agent.
+
+**Triết lý — KHÔNG mở scope vòng này**:
+- KHÔNG sửa code pipeline (Script Writer / Voice Sync / BGM).
+- KHÔNG chạy video mới, KHÔNG chạy yt_012.
+- KHÔNG tìm sản phẩm Shopee mới, KHÔNG tìm video/demo mới.
+- KHÔNG publish thật lên Facebook Reels.
+- KHÔNG triển khai code 4 sub-agent — chỉ ghi boundary trong SKILL/docs.
+- KHÔNG sửa artifact yt_011 đã commit.
+- KHÔNG đụng `.env` / API key / token Facebook.
+- KHÔNG `git clean` / `reset` / `stash`.
+- KHÔNG mở scope TikTok Shop (vẫn defer từ Phần 22).
+
+**Threshold 75-85%**: Đạt cho v0 — 4 rule hardening rõ ràng, boundary 4 sub-agent đủ chi tiết để sau tách dễ, không phá scope. Sẵn sàng cho Phần 24 (user chọn strategy: Con 2 / yt_012 với hardening mới / split sub-agent thật / etc).
+
+**Giới hạn còn lại (KHÔNG mở scope vòng này)**:
+- Chưa có validator độc lập cho script (vẫn rely vào Script Writer self-report + Voice Sync downstream signal).
+- Chưa test rule mới end-to-end trên yt_012 — chỉ docs hardening.
+- Publish Plan caption draft template chưa định nghĩa pattern cụ thể cho từng ngách (vẫn ad-hoc).
+- 4 sub-agent boundaries là spec, chưa có agent file `.claude/agents/*.md` cho từng cái.
+
+**Trạng thái kỹ thuật**: chỉ touch `.md`, không động code, không cần typecheck/biome.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
@@ -1155,18 +1212,21 @@ Vòng này sửa skill + docs để `/chay` tự quyết định + tự retry + 
 >
 > **Bài học Source Profile từ yt_010**: YouTube Shorts source có nhiều overlay/brand lặt vặt (channel CTA throughout, branded products). Nếu tiếp tục: ưu tiên clean studio demo sources, hoặc build auto-detection bounding box để giảm manual repair iteration.
 >
+> **TRẠNG THÁI yt_011 (2026-05-23)**: **Shopee-First proof-of-concept end-to-end success**, commit `791564f` + gap-fix. Card + script + voice + BGM + preview tất cả đạt. Phần 23 hardening (2026-05-24) đã đưa 2 bài học (Card persist, operator trim metadata) thành rule cố định trong SKILL.
+>
+> **MỐC ĐÃ ĐẠT 2026-05-24**: 6 video qua pipeline (yt_005, yt_006, yt_007, yt_009, yt_010 Video-First + yt_011 Shopee-First). Phần 16 AUTO-SOURCE RETRY verified. Phần 22 Shopee-First Lane verified end-to-end. Phần 23 hardening đã rule-ize lessons learned + agent-ready boundaries cho 4 sub-agent tương lai.
+>
 > **Bước tiếp theo duy nhất: USER quyết định strategy tiếp theo.**
 >
-> Có 4 hướng khả thi (KHÔNG tự chọn — chờ user quyết):
+> Có 5 hướng khả thi (KHÔNG tự chọn — chờ user quyết):
 >
-> 1. **Nhân bản Con số 2 theo blueprint** — 5 video clean + AUTO-SOURCE RETRY verified là đủ bằng chứng pipeline ổn. Mở `docs/00_DIEU_HANH/VFOS_SHORTFORM_FACTORY_BLUEPRINT_V0.md` cho ngách thứ 2. Đây là path commercial progress (VFOS North Star).
-> 2. **Đổi default `OPENAI_MODEL=gpt-4o` trong `.env`** — pre-existing config debt. Cleanup nhỏ, operator không cần `--model gpt-4o` flag từng lần. Có thể làm trước Con 2 hoặc sau.
-> 3. **Test thêm yt_011** — nếu user muốn thêm bằng chứng. Nhưng 5 video clean + 1 retry success thường đủ; thêm video có thể là over-validation.
-> 4. **Test thử Shopee-First Lane v0 (Phần 20 + Phần 21 + Phần 22) trên 1 sản phẩm Shopee cụ thể** — 2 sub-path (TikTok Shop defer, KHÔNG test trong giai đoạn này):
->    - **4a** — `/chay shopee-first <link Shopee>` (user dán link Shopee cụ thể) → parse + Shopee Product Card 10 field + GUARD 8 Shopee Product Match end-to-end.
->    - **4b** — `/chay shopee-first` hoặc `/chay product-first` (auto discovery, Phần 21+22) → agent tự tìm candidate Shopee theo lane, chấm Shopee Product Selection Scoring, chọn auto nếu đạt threshold. **Lưu ý**: nếu môi trường runtime hiện tại không có quyền truy cập Shopee data → Discovery sẽ dừng ở limitation step và xin user dán link Shopee (expected behavior).
+> 1. **Nhân bản Con số 2 theo blueprint** — 5 video Video-First + 1 video Shopee-First là đủ bằng chứng pipeline ổn. Mở `docs/00_DIEU_HANH/VFOS_SHORTFORM_FACTORY_BLUEPRINT_V0.md` cho ngách thứ 2. Đây là path commercial progress (VFOS North Star).
+> 2. **Đổi default `OPENAI_MODEL=gpt-4o` trong `.env`** — pre-existing config debt. Cleanup nhỏ, operator không cần `--model gpt-4o` flag từng lần.
+> 3. **Test yt_012 Shopee-First với hardening Phần 23** — verify 4 rule mới (Card persist HARD GATE, short link support, operator trim metadata, publish plan) end-to-end trên 1 video mới.
+> 4. **Test thử Shopee-First Discovery Mode thật** — `/chay shopee-first` (no link) → agent tự tìm Shopee candidate theo lane. Phụ thuộc vào Shopee data accessibility hiện tại — có thể dừng ở limitation step.
+> 5. **Split 4 sub-agent thật** — tạo `.claude/agents/shopee-product-agent.md`, `demo-match-agent.md`, `script-qc-agent.md`, `facebook-publish-plan-agent.md` theo boundary đã định nghĩa ở Phần 23. Chỉ là spec — code multi-agent vẫn ngoài scope cho đến khi user duyệt.
 >
-> **KHÔNG tự chạy yt_011** mà không có user quyết định. **KHÔNG tự chạy Shopee-First Discovery thật** (sub-path 4b) mà không có user quyết định — Discovery Mode đã được khai báo capability ở Phần 21+22 nhưng vòng chạy thật là Phần 23 nếu user duyệt. **KHÔNG mở scope** sang publish, BGM ducking, watermark auto-detect, Con số 2 chưa được duyệt, **TikTok Shop chưa được duyệt mở lại**.
+> **KHÔNG tự chạy yt_012** mà không có user quyết định. **KHÔNG tự split 4 sub-agent** mà không có user duyệt — Phần 23 chỉ định nghĩa boundary trong SKILL/docs, chưa cấp permission code multi-agent. **KHÔNG mở scope** sang publish thật, BGM ducking, watermark auto-detect, Con số 2 chưa được duyệt, **TikTok Shop chưa được duyệt mở lại**.
 
 ### (Phần dưới giữ lại làm reference — yt_009 acceptance ban đầu đã đạt)
 
@@ -1254,9 +1314,9 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mốc tại thời điểm cập nhật trạng thái | `9c7d595` — Phần 21 (Auto Product Discovery v0). Phần 22 (Pivot Shopee-First Only, TikTok Shop defer) commit sẽ bump khi push. |
+| Commit mốc tại thời điểm cập nhật trạng thái | `6cc2459` — Facebook Page API integration (đã push). Phần 23 (Shopee-First Post-Run Hardening v0, agent-ready boundaries) commit sẽ bump khi push. |
 | Remote | `origin` (GitHub) |
-| Sync status | Phần 11–21 ĐÃ PUSH. Phần 22 ĐANG commit (chỉ docs/skill, không code, không binary, không chạy video/sản phẩm thật, không code scraper). Bước tiếp: user quyết định strategy 4 hướng (Con 2 / OPENAI_MODEL gpt-4o default / yt_011 Video-First / yt_011 Shopee-First test sub-path 4a hoặc 4b). |
+| Sync status | Phần 11–22 + yt_011 Shopee-First + Facebook API code ĐÃ PUSH (`6cc2459`). Phần 23 ĐANG commit (chỉ docs/skill, không code pipeline, không binary, không chạy video mới, không publish, không sửa artifact yt_011). Bước tiếp: user quyết định strategy 5 hướng (Con 2 / OPENAI_MODEL gpt-4o default / yt_012 với hardening / Shopee Discovery thật / split 4 sub-agent). |
 
 **Trạng thái artifacts production** (tính đến 2026-05-20):
 - `production/batch_001/yt_007/` (text artifacts): **ĐÃ commit** ở `df1609e` — scene_input, script v1/v2/v3, manifest BGM. Dùng làm reference cho vòng Voice Sync autonomy.

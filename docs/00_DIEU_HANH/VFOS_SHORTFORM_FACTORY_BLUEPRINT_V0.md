@@ -59,6 +59,26 @@ short-form video tiếng Việt có voice-over AI + BGM, sẵn sàng đăng Face
 
 Đây là 4 "knob" có thể thay để tạo ra con mới mà **không cần fork kiến trúc**:
 
+> **Note Phần 23 (2026-05-24)** — **Shopee-First Post-Run Hardening v0 (agent-ready boundaries)**:
+>
+> Sau khi yt_011 chạy Shopee-First end-to-end thành công (commit `791564f`), Phần 23 rule-ize 2 bài học artifact + thêm publish-plan layer + định nghĩa boundary 4 sub-agent tương lai.
+>
+> **4 rule mới trong SKILL `/chay`**:
+> 1. **Shopee Product Card persist HARD GATE** — file `shopee_product_card.json` PHẢI tồn tại trên disk trước PF-STEP 3. Schema mở rộng từ 10 lên 24 field (audit trail: `video_id`, `short_url_original`, `canonical_url`, `shopid`, `itemid`, `selection_scoring`, `decision`, `data_source_notes`, …).
+> 2. **Shopee short link support** — `s.shopee.vn/<code>` là input HỢP LỆ. Pattern resolve qua `curl -sILk` HTTP-level redirect (KHÔNG cần JS/SPA). Business fields lấy từ user paste vì SPA + internal API v4 = 403 anti-bot.
+> 3. **Operator trim policy** — nếu Script Writer FAIL nhưng operator trim tay, BẮT BUỘC metadata block `operator_trim` (9 field: original_quality_status, trimmed_blocks, post_trim_reason, post_trim_quality_status, validator_rerun_status, …). KHÔNG bịa PASS.
+> 4. **Facebook Reels + Shopee Publish Plan** — persist `facebook_reels_publish_plan.json` sau preview đạt. `publish_status=not_published` + `needs_user_review=true` HARD. KHÔNG auto-publish — luôn manual operator step.
+>
+> **Agent-ready boundaries (Phần 23)** — định nghĩa 4 sub-agent tương lai (KHÔNG implement code multi-agent vòng này, chỉ kỷ luật viết SKILL):
+> - **Shopee Product Agent** → `shopee_product_card.json`
+> - **Demo Match Agent** → match result + GUARD 8 table
+> - **Script QC Agent** → `script_ai_v1_extended.json` (+ optional `operator_trim`)
+> - **Facebook Publish Plan Agent** → `facebook_reels_publish_plan.json`
+>
+> Boundary HARD: mỗi agent CHỈ đọc/ghi artifact của mình. State sharing qua file JSON (không qua message bus toàn cục). KHÔNG cross-write.
+>
+> Chi tiết: `.claude/skills/chay/SKILL.md` sections "SHOPEE PRODUCT CARD — Schema mở rộng + PERSIST HARD GATE" + "SHOPEE SHORT LINK SUPPORT v0" + "OPERATOR TRIM POLICY" (STEP 6) + "FACEBOOK REELS + SHOPEE PUBLISH PLAN v0" + "AGENT-READY RESPONSIBILITY BOUNDARIES".
+
 > **Note Phần 20–22 (2026-05-22)** — **SUPERSEDED bởi Phần 22 pivot**:
 >
 > Phần 20+21 ban đầu mô tả "Product-First Lane" chung (Shopee + TikTok Shop song song). Phần 22 (2026-05-22) **pivot Product-First → Shopee-First Only v0**, **TikTok Shop defer** (future lane, không triển khai trong giai đoạn này).
