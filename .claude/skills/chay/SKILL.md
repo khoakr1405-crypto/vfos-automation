@@ -871,19 +871,20 @@ GUARD 8 — SHOPEE PRODUCT MATCH GUARD (CHỈ áp dụng Shopee-First Lane, TÁC
 |---|---|---|---|
 | 1 | `video_id` | `yt_NNN` | **bắt buộc** |
 | 2 | `created_at` | ISO 8601 timestamp | **bắt buộc** |
-| 3 | `phase_ref` | `"Phần 23 Publish Plan v0"` hoặc phần workflow đang chạy | **bắt buộc** |
+| 3 | `phase_ref` | `"Phần 23 Publish Plan v0"` / `"Round 2A Publish Plan Audit v0"` / phần workflow đang chạy | **bắt buộc** |
 | 4 | `platform` | Cố định `"facebook_reels"` | **bắt buộc** |
 | 5 | `affiliate_platform` | Cố định `"shopee"` (Shopee-First Lane) | **bắt buộc** |
-| 6 | `product_card_path` | Relative path đến `shopee_product_card.json` (eg `"production/batch_001/yt_011/shopee_product_card.json"`) | **bắt buộc** |
-| 7 | `final_video_path` | Relative path đến preview MP4 cuối (eg `"production/batch_001/yt_011/bgm_mix_v1/yt_011_voice_blocks_bgm_preview_vi.mp4"`) | **bắt buộc** |
-| 8 | `caption_draft` | Caption Facebook Reels gợi ý (soft tone, gắn link bio convention). Operator sửa tay trước publish. | **bắt buộc** |
-| 9 | `cta_text` | CTA cuối caption (eg `"Link ở phần mô tả nha"`) — phải soft, không banned absolute | **bắt buộc** |
-| 10 | `shopee_affiliate_url` | URL Shopee Affiliate đã wrap (có UTM source) | **bắt buộc** — nếu chưa có ghi `"needs_user_input"` |
-| 11 | `hashtags_suggested` | Mảng hashtag gợi ý cho VN audience (eg `["#dogiadung", "#dungcubep"]`) | **nếu có ích** |
-| 12 | `publish_status` | Cố định `"not_published"` ở giai đoạn `/chay` | **bắt buộc** |
-| 13 | `needs_user_review` | Cố định `true` — luôn cần operator duyệt trước publish | **bắt buộc** |
-| 14 | `publish_blockers` | Mảng các điều kiện chưa đạt (eg `["shopee_affiliate_url_pending"]`); rỗng nếu sẵn sàng | **bắt buộc** (có thể `[]`) |
-| 15 | `notes` | Ghi chú tự do cho operator (eg "Caption cần test 2 variants") | **nếu có ích** |
+| 6 | `lane` | Cố định `"shopee_first"` (Round 2A) | **bắt buộc** |
+| 7 | `product_card_path` | Relative path đến `shopee_product_card.json` (eg `"production/batch_001/yt_011/shopee_product_card.json"`) | **bắt buộc** |
+| 8 | `final_video_path` | Relative path đến preview MP4 cuối (eg `"production/batch_001/yt_011/bgm_mix_v1/yt_011_voice_blocks_bgm_preview_vi.mp4"`) | **bắt buộc** |
+| 9 | `caption_draft` | Caption Facebook Reels gợi ý (soft tone, gắn link bio convention). Operator sửa tay trước publish. | **bắt buộc** |
+| 10 | `cta_text` | CTA cuối caption (eg `"Link ở phần mô tả nha"`) — phải soft, không banned absolute | **bắt buộc** |
+| 11 | `shopee_affiliate_url` | URL Shopee Affiliate đã wrap (có UTM source) | **bắt buộc** — nếu chưa có ghi `"needs_user_input"` |
+| 12 | `hashtags` | Mảng hashtag gợi ý cho VN audience (eg `["#dogiadung", "#dungcubep", "#meovat"]`). Tên field `hashtags` (Round 2A chuẩn hoá, thay tên cũ `hashtags_suggested`). | **bắt buộc** — có thể mảng rỗng `[]` |
+| 13 | `publish_status` | Cố định `"not_published"` ở giai đoạn `/chay` | **bắt buộc** |
+| 14 | `needs_user_review` | Cố định `true` — luôn cần operator duyệt trước publish | **bắt buộc** |
+| 15 | `publish_blockers` | Mảng các điều kiện chưa đạt. **Round 2A default**: phải gồm tối thiểu `["user_review_required"]`; thêm `"shopee_affiliate_url_pending"` nếu chưa có URL. Mảng rỗng `[]` KHÔNG cho phép ở artifact `/chay` tạo ra (vì `needs_user_review=true` luôn imply `"user_review_required"`). | **bắt buộc** |
+| 16 | `notes` | Ghi chú tự do cho operator (eg "Caption cần test 2 variants") | **nếu có ích** |
 
 **HARD RULE — không auto-publish**:
 - Agent KHÔNG được gọi Facebook Graph API / Facebook Page API / bất kỳ endpoint publish nào trong scope `/chay`.
@@ -900,6 +901,62 @@ GUARD 8 — SHOPEE PRODUCT MATCH GUARD (CHỈ áp dụng Shopee-First Lane, TÁC
 - KHÔNG dùng "mua ngay", "săn sale", "click link bio mua liền".
 - KHÔNG chứa banned absolute (tốt nhất / rẻ nhất / chính hãng 100% / cam kết / đảm bảo / số 1 / duy nhất).
 - Có thể dùng pattern: "Mình thấy cái này tiện ghê — link ở phần mô tả nha."
+
+**Default `publish_blockers` policy**:
+- Khi `shopee_affiliate_url == "needs_user_input"` → `publish_blockers` PHẢI chứa `"shopee_affiliate_url_pending"`.
+- Khi `needs_user_review == true` (luôn luôn ở `/chay` output) → `publish_blockers` PHẢI chứa `"user_review_required"`.
+- Khi GUARD 8 đã `MATCH_CONFIRMED` nhưng publish plan vẫn cần operator duyệt caption → ghi thêm `"caption_review_required"`.
+- Mảng rỗng `[]` CHỈ được dùng khi tất cả gate đã pass + operator đã verify (ngoài scope `/chay` tạo ra).
+
+**Example caption draft (yt_011 fruit slicer reference, soft tone hợp lệ)**:
+```
+Mình thử cái dụng cụ thái + tẩy lõi trái cây này, ấn xuống một cái là táo
+ra mấy múi đều luôn — đỡ phải gọt từng miếng. Ai cần thì lát mình để link
+Shopee ở phần mô tả nha.
+
+#dogiadung #dungcubep #meovat
+```
+CTA hợp lệ:
+- `"Link mình để ở phần mô tả nha."`
+- `"Ai cần món này thì lát mình để link Shopee ở comment / mô tả."`
+
+CTA KHÔNG hợp lệ (vi phạm R3/R5):
+- `"Mua ngay link bio kẻo hết hàng!"`
+- `"Cam kết rẻ nhất Shopee — săn sale gấp!"`
+
+### Facebook package surface + safety (audit Round 2A — 2026-05-24)
+
+**Hiện trạng `packages/facebook/` (commit `6cc2459`)** — đây là tham chiếu để `/chay` biết phần publish có gì sẵn, KHÔNG phải hướng dẫn gọi:
+
+| File | Loại | Phạm vi an toàn |
+|---|---|---|
+| `src/meta-client.ts` | Generic Graph API client (GET-only) | An toàn — read-only, token never logged |
+| `src/test-page.ts` | `testPageConnection()` → `GET /{page_id}` | An toàn — read-only |
+| `src/post-page.ts` | `publishTextPost()` → `POST /{page_id}/feed` (text only) | ⚠️ **Real publish surface** — text post sẽ thật sự được đăng |
+| `scripts/test-connection.ts` (`pnpm facebook:test`) | Test đọc Page info | An toàn — không publish |
+| `scripts/test-post.ts` (`pnpm facebook:test-post`) | Đăng 1 bài text test | ⚠️ **KHÔNG có dry-run / confirm** — chạy là đăng |
+| `scripts/get-page-token.ts` (`pnpm facebook:get-page-token`) | Đổi User Token → Page Token | An toàn — read-only |
+| `.env.example` | Template, `FACEBOOK_PAGE_ID=` + `FACEBOOK_PAGE_ACCESS_TOKEN=` rỗng | An toàn — không có secret thật commit |
+
+**Reels upload code**: **CHƯA tồn tại**. `src/post-page.ts` chỉ làm text post. Việc upload video Reels là **future scope**, KHÔNG nằm trong `/chay`.
+
+**HARD RULE — `/chay` integration với Facebook package**:
+- `/chay` (mọi mode) **TUYỆT ĐỐI KHÔNG** gọi:
+  - `pnpm facebook:test-post` (sẽ đăng thật)
+  - `publishTextPost()` (sẽ đăng thật)
+  - bất kỳ endpoint `POST /{page_id}/feed` hoặc `/{page_id}/videos` nào
+  - Reels upload code (nếu sau này tồn tại) trong scope `/chay`
+- `/chay` **CHỈ** tạo metadata file `facebook_reels_publish_plan.json`. Việc đẩy thật là **operator manual step** ngoài skill.
+- `pnpm facebook:test` (read-only Page connection check) là **operator-only manual command** — `/chay` không tự chạy ngay cả khi safe, vì không cần thiết cho output pipeline.
+
+**Risk gap chưa fix (chuyển vào Phần 24 / future hardening — KHÔNG sửa code trong Round 2A)**:
+- `scripts/test-post.ts` thiếu `--dry-run` / `--confirm` flag → nếu user chạy nhầm `pnpm facebook:test-post` với `.env` có token thật sẽ đăng ngay. Khuyến nghị tương lai: thêm gate `META_MODE=mock` (đã có ở `.env.example`) → khi `META_MODE=mock` thì `publishTextPost` return mock result + log "DRY RUN — không publish thật". Code khuyến nghị (KHÔNG triển khai vòng này) đặt ngay đầu `publishTextPost`:
+  ```
+  if (process.env.META_MODE === "mock") {
+    return { success: true, postId: "mock_dry_run_" + Date.now() };
+  }
+  ```
+- `publishTextPost` export ra `index.ts` không guarded — bất kỳ code tương lai gọi đều đăng thật. Cùng `META_MODE=mock` gate sẽ fix luôn.
 
 ---
 
@@ -970,7 +1027,10 @@ Bắt buộc chạy trước khi báo "hoàn thành":
 [ ] (Shopee-First Lane only) GUARD 8 Shopee Product Match: 5/5 tiêu chí PASS = MATCH_CONFIRMED? Có bảng "Shopee Card | Clip | Đạt?" trong report?
 [ ] (Shopee-First Lane only) Shopee Affiliate link trong Card khớp đúng sản phẩm trong clip (không bait-and-switch A→B)?
 [ ] (Shopee-First Lane only) **Facebook Reels Publish Plan đã persist** tại `production/batch_001/<video_id>/facebook_reels_publish_plan.json`? `publish_status="not_published"` + `needs_user_review=true`? (Phần 23 hardening)
+[ ] (Shopee-First Lane only) Publish Plan `publish_blockers` có tối thiểu `"user_review_required"`? Có `"shopee_affiliate_url_pending"` nếu URL chưa wrap? (Round 2A 2026-05-24)
+[ ] (Shopee-First Lane only) Publish Plan schema dùng tên field chuẩn hoá `hashtags` (KHÔNG dùng tên cũ `hashtags_suggested`)? Có field `lane="shopee_first"`?
 [ ] (Shopee-First Lane only) Publish Plan caption draft soft tone (R5), không banned absolute (R3)?
+[ ] (Round 2A) `/chay` KHÔNG gọi `pnpm facebook:test-post` / `publishTextPost()` / bất kỳ endpoint `POST /{page_id}/feed` hoặc `/videos` nào? Publish luôn manual operator step?
 [ ] (Operator trim — nếu áp dụng) Script artifact có metadata `operator_trim` đầy đủ (original_quality_status, post_trim_reason, trimmed_blocks, post_trim_quality_status, validator_rerun_status, final_used_for_voice_sync)? KHÔNG bịa PASS khi không có validator độc lập?
 [ ] (Shopee Discovery Mode only) Shopee Product Selection Scoring đã chấm đủ 6 trục? Decision PRODUCT_SELECTED / PRODUCT_NEEDS_USER_REVIEW / PRODUCT_REJECTED rõ ràng?
 [ ] (Shopee Discovery Mode only) Không bịa link Shopee/product/giá/hoa hồng/sales/rating? Nếu không có quyền lấy data Shopee trực tiếp → đã báo limitation rõ + xin user dán link Shopee?
@@ -1051,6 +1111,15 @@ KHÔNG BAO GIỜ:
   × (Phần 23 PUBLISH PLAN) Tự gọi Facebook Graph API / Facebook Page API /
     bất kỳ endpoint publish nào trong scope `/chay` — publish luôn manual
     operator step
+  × (Round 2A 2026-05-24) Tự chạy `pnpm facebook:test-post` trong scope
+    `/chay` — script này KHÔNG có dry-run guard, chạy là đăng thật bài
+    text lên Facebook Page. Đây là operator-only manual command.
+  × (Round 2A 2026-05-24) Gọi `publishTextPost()` từ `@vfos/facebook` trong
+    scope `/chay` — function POST trực tiếp lên `/{page_id}/feed`, không
+    có META_MODE=mock gate hiện tại.
+  × (Round 2A 2026-05-24) Triển khai Reels upload code (`POST /{page_id}/videos`
+    upload phase) trong scope `/chay` — Reels upload là future scope, cần
+    user duyệt mở scope mới riêng.
   × (Phần 23 PUBLISH PLAN) Set `publish_status` khác `"not_published"` hoặc
     `needs_user_review` khác `true` trong artifact `/chay` tạo ra
   × (Phần 23 AGENT BOUNDARIES) Cross-write artifact của sub-agent khác —
@@ -1169,19 +1238,21 @@ Sau khi hoàn thành, báo cáo theo format:
 | validator_rerun_status | rerun_pass / rerun_fail / not_available |
 | final_used_for_voice_sync | true / false |
 
-### Facebook Reels Publish Plan (CHỈ Shopee-First Lane — Phần 23)
+### Facebook Reels Publish Plan (CHỈ Shopee-First Lane — Phần 23 + Round 2A chuẩn hoá)
 | Field | Giá trị |
 |---|---|
 | platform | facebook_reels |
 | affiliate_platform | shopee |
+| lane | shopee_first |
 | product_card_path | production/batch_001/<video_id>/shopee_product_card.json |
 | final_video_path | production/batch_001/<video_id>/bgm_mix_v1/<video_id>_voice_blocks_bgm_preview_vi.mp4 |
 | caption_draft | (caption gợi ý soft tone) |
-| cta_text | (eg "Link ở phần mô tả nha") |
-| shopee_affiliate_url | (URL hoặc "needs_user_input") |
+| cta_text | (eg "Link mình để ở phần mô tả nha") |
+| shopee_affiliate_url | (URL Shopee Affiliate đã wrap) hoặc "needs_user_input" |
+| hashtags | ["#dogiadung", "#dungcubep", "#meovat"] hoặc [] |
 | publish_status | not_published |
 | needs_user_review | true |
-| publish_blockers | [...] hoặc [] |
+| publish_blockers | ["user_review_required", ...] (luôn có ≥1 phần tử) |
 
 ### Self-review
 [Lỗi tự phát hiện và sửa / Giới hạn còn lại]

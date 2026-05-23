@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-05-24 (Phần 23 — Shopee-First Post-Run Hardening v0, agent-ready boundaries)
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `6cc2459` (Facebook Page API integration — đã push). Phần 23 commit sẽ bump khi push
+> **Cập nhật lần cuối**: 2026-05-24 (Round 2A — Facebook Reels Publish Plan Audit v0, schema chuẩn hoá + facebook package safety surface)
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `5e1e52d` (Phần 23 — Shopee-First Post-Run Hardening v0). Round 2A commit sẽ bump khi push
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -1171,6 +1171,80 @@ Vòng này sửa skill + docs để `/chay` tự quyết định + tự retry + 
 
 ---
 
+### ✅ Round 2A — Facebook Reels Publish Plan Audit v0: ĐÃ CHỐT (2026-05-24)
+
+**Bối cảnh**: Sau Phần 23 hardening đã chuẩn hoá rule tạo `facebook_reels_publish_plan.json`, vòng này audit kỹ phần Facebook Page API integration (commit `6cc2459`) để đảm bảo `/chay` không vô tình publish thật, đồng thời chuẩn hoá schema Publish Plan thêm 1 lớp.
+
+**Phạm vi (read-only audit + minor docs/skill standardization — KHÔNG sửa code Facebook, KHÔNG publish, KHÔNG động token)**:
+
+**Facebook package audit (commit `6cc2459`)**:
+
+| Item | Trạng thái | Risk |
+|---|---|---|
+| `src/meta-client.ts` (GET-only Graph client, token never logged) | ✅ Safe | — |
+| `src/test-page.ts` (`testPageConnection` — GET `/{page_id}`) | ✅ Safe | Read-only |
+| `src/post-page.ts` (`publishTextPost` — POST `/{page_id}/feed`) | ⚠️ **Real publish surface** | Text post sẽ thật sự đăng — chưa có `META_MODE=mock` gate |
+| `scripts/test-connection.ts` (`pnpm facebook:test`) | ✅ Safe | Read-only |
+| `scripts/test-post.ts` (`pnpm facebook:test-post`) | ⚠️ **Risk** | KHÔNG có dry-run / confirm — chạy là đăng thật |
+| `scripts/get-page-token.ts` (`pnpm facebook:get-page-token`) | ✅ Safe | Read-only User Token → Page Token |
+| `.env.example` | ✅ Safe | Template, `FACEBOOK_PAGE_ID=` + `FACEBOOK_PAGE_ACCESS_TOKEN=` rỗng, có warning "Never commit real tokens" |
+| Reels upload code (`POST /{page_id}/videos`) | ✅ N/A | **CHƯA tồn tại** — Reels upload là future scope |
+| `.gitignore` bảo vệ `.env` | ✅ Safe | `.env` + `.env.local` + `.env.*.local` đều ignored |
+
+**Risk gap cần fix sau (Round 2A KHÔNG sửa code — chuyển sang Phần 24 / future hardening)**:
+- `scripts/test-post.ts` thiếu dry-run flag.
+- `publishTextPost` không có `META_MODE=mock` gate (env var `META_MODE=mock` đã có ở `.env.example` nhưng package facebook chưa đọc).
+- Khuyến nghị: thêm gate đầu `publishTextPost` — `if (process.env.META_MODE === "mock") return mock`. Code khuyến nghị có ghi trong SKILL.md (KHÔNG triển khai vòng này).
+
+**Schema chuẩn hoá Publish Plan (Round 2A)**:
+- Thêm field `lane="shopee_first"` (rõ lane scope).
+- Rename `hashtags_suggested` → `hashtags` (chuẩn hơn).
+- `publish_blockers` HARD: luôn ≥1 phần tử (tối thiểu `"user_review_required"`); rỗng `[]` KHÔNG cho phép ở artifact `/chay` tạo ra (vì `needs_user_review=true` luôn imply blocker này).
+- `phase_ref` chấp nhận `"Round 2A Publish Plan Audit v0"` ngoài các phần cũ.
+- Schema giờ có 16 field (từ 15) — thêm `lane`.
+- Caption + CTA example cho yt_011 fruit slicer.
+
+**HARD RULE Round 2A bổ sung vào HARD CONSTRAINTS**:
+- `/chay` TUYỆT ĐỐI KHÔNG gọi `pnpm facebook:test-post`.
+- `/chay` TUYỆT ĐỐI KHÔNG gọi `publishTextPost()` hoặc bất kỳ endpoint `POST /{page_id}/feed` / `/{page_id}/videos`.
+- `/chay` TUYỆT ĐỐI KHÔNG triển khai Reels upload code trong scope hiện tại.
+
+**Phạm vi cài đặt (KHÔNG sửa code Facebook, KHÔNG publish thật, KHÔNG động `.env`/token)**:
+
+- `.claude/skills/chay/SKILL.md` — section `FACEBOOK REELS + SHOPEE PUBLISH PLAN v0` mở rộng:
+  - Schema thêm `lane` + rename `hashtags_suggested` → `hashtags`.
+  - Mới: subsection `Facebook package surface + safety` liệt kê 7 file + risk classification.
+  - Mới: default `publish_blockers` policy.
+  - Mới: example caption draft cho yt_011.
+  - HARD CONSTRAINTS thêm 3 rule mới (× facebook:test-post / × publishTextPost / × Reels upload code).
+  - SELF-REVIEW thêm 3 entries (blockers default / field rename / không gọi publish API).
+  - REPORT TEMPLATE bảng Publish Plan thêm row `lane` + `hashtags`.
+- `docs/00_DIEU_HANH/TRANG_THAI_VFOS_HIEN_TAI.md` — Round 2A block (block này) + cập nhật header date + Mục 10 commit pointer.
+
+**Triết lý — KHÔNG mở scope vòng này**:
+- KHÔNG sửa code `packages/facebook/`.
+- KHÔNG thêm `META_MODE=mock` gate vào `publishTextPost` (đề xuất, chưa triển khai).
+- KHÔNG chạy `pnpm facebook:test` ngay cả khi safe — không cần thiết cho audit doc.
+- KHÔNG chạy `pnpm facebook:test-post` (risk — chưa có dry-run).
+- KHÔNG động `.env` / token.
+- KHÔNG triển khai Reels upload code.
+- KHÔNG chạy video mới / yt_012.
+- KHÔNG publish thật.
+- KHÔNG mở Con số 2.
+- KHÔNG `git clean` / `reset` / `stash`.
+
+**Threshold 75-85%**: Đạt cho audit v0 — facebook package risk surface rõ ràng, schema Publish Plan chuẩn hoá xong, HARD CONSTRAINTS bảo vệ `/chay` không gọi publish nhầm. Risk gap (`test-post.ts` không dry-run) đã document, chuyển vào Phần 24 nếu user duyệt fix.
+
+**Giới hạn còn lại (chuyển sang Phần 24+ nếu user duyệt)**:
+- `META_MODE=mock` gate chưa triển khai trong `publishTextPost`.
+- `scripts/test-post.ts` chưa có `--dry-run` / `--confirm` flag.
+- Reels upload code chưa thiết kế (không cần thiết cho Round 2A — phải user duyệt mở scope mới riêng).
+- Caption draft template chỉ có 1 example yt_011 — chưa có pattern cho từng ngách (organizer, cleaning, gadget v.v.).
+
+**Trạng thái kỹ thuật**: chỉ touch `.md`, không động code, không cần typecheck/biome.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
@@ -1314,9 +1388,9 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mốc tại thời điểm cập nhật trạng thái | `6cc2459` — Facebook Page API integration (đã push). Phần 23 (Shopee-First Post-Run Hardening v0, agent-ready boundaries) commit sẽ bump khi push. |
+| Commit mốc tại thời điểm cập nhật trạng thái | `5e1e52d` — Phần 23 Shopee-First Post-Run Hardening v0 (đã push). Round 2A (Facebook Reels Publish Plan Audit v0) commit sẽ bump khi push. |
 | Remote | `origin` (GitHub) |
-| Sync status | Phần 11–22 + yt_011 Shopee-First + Facebook API code ĐÃ PUSH (`6cc2459`). Phần 23 ĐANG commit (chỉ docs/skill, không code pipeline, không binary, không chạy video mới, không publish, không sửa artifact yt_011). Bước tiếp: user quyết định strategy 5 hướng (Con 2 / OPENAI_MODEL gpt-4o default / yt_012 với hardening / Shopee Discovery thật / split 4 sub-agent). |
+| Sync status | Phần 11–23 + yt_011 Shopee-First + Facebook API code ĐÃ PUSH (`5e1e52d`). Round 2A ĐANG commit (chỉ docs/skill, không sửa code Facebook, không publish, không động token). Bước tiếp: user quyết định strategy 5 hướng (Con 2 / OPENAI_MODEL gpt-4o default / yt_012 với hardening / Shopee Discovery thật / split 4 sub-agent) + 1 risk-fix tùy chọn (Phần 24 — thêm `META_MODE=mock` gate vào `publishTextPost`). |
 
 **Trạng thái artifacts production** (tính đến 2026-05-20):
 - `production/batch_001/yt_007/` (text artifacts): **ĐÃ commit** ở `df1609e` — scene_input, script v1/v2/v3, manifest BGM. Dùng làm reference cho vòng Voice Sync autonomy.
