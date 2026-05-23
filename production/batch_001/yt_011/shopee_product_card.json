@@ -1,0 +1,45 @@
+{
+  "video_id": "yt_011",
+  "created_at": "2026-05-23T04:30:00.000Z",
+  "lane": "shopee_first",
+  "phase_ref": "Phần 22 Shopee-First Lane v0",
+
+  "shopee_product_url": "https://shopee.vn/opaanlp/1820797160/55110800126",
+  "short_url_original": "https://s.shopee.vn/17RASU88W",
+  "shopid": "1820797160",
+  "itemid": "55110800126",
+
+  "product_name": "Máy Thái, Dụng Cụ Tẩy Lõi Có Thể Tái Sử Dụng, Dụng Cụ Chia Trái Cây Nhà Bếp, Dụng Cụ Cắt Trái Cây, Dụng Cụ Tẩy Lõi, Dụng Cụ Cắt Trái Cây Bằng Thép Không Gỉ",
+  "product_name_short": "Dụng cụ thái + tẩy lõi + chia trái cây đa năng (thép không gỉ)",
+
+  "price_vnd": 95351,
+  "commission_pct": "4%",
+  "estimated_commission_vnd": 3814,
+  "sales_count": "unknown",
+  "rating": 0,
+  "review_count": 0,
+  "shop_name": "unknown",
+
+  "why_worthwhile": "Dụng cụ bếp đa năng inox dưới 100k — (a) giải quyết: thái + tẩy lõi + chia trái cây bằng 1 món thay vì 3, (b) ai mua: nội trợ, người làm bento/đồ ăn lành mạnh, người chuẩn bị fruit platter, (c) visual demo dễ hiểu: bổ một quả táo/lê/dứa trong 5-10s, kết quả before-after rõ, (d) hợp content-led affiliate: satisfying demo gadget bếp, không cần claim sức khoẻ, (e) tiềm năng chuyển đổi VN: dụng cụ bếp giá rẻ + đa năng phổ thông VN. CAVEAT: hoa hồng 4% thấp (~3,814 VNĐ/đơn) + chưa có rating/review/sales → cần volume cao để có doanh thu đáng kể, và script tone phải tránh dựa vào social proof (chia sẻ trải nghiệm cá nhân thôi).",
+
+  "data_confidence": "medium",
+  "data_source_notes": "URL/shopid/itemid verified qua HTTP redirect resolution của short link. product_name/price/commission user paste từ Shopee Affiliate dashboard (commission math 95351×0.04=3814 ✓ consistent). sales_count + shop_name unknown (user chưa paste). rating=0 + review_count=0 = listing chưa có review nào (new listing signal, không phải fail).",
+
+  "selection_scoring": {
+    "axes": [
+      { "id": 1, "name": "Demo clarity", "score": 3, "note": "Multi-tool inox push-down, nhìn 3s hiểu công dụng — bổ táo/lê là demo tự-explain." },
+      { "id": 2, "name": "Shopee affiliate potential", "score": 1, "note": "Hoa hồng 4% < threshold 5%; sales unknown; rating/review = 0 (no social proof); estimated commission 3,814 VNĐ/đơn thấp." },
+      { "id": 3, "name": "Visual appeal cho Facebook Reels", "score": 3, "note": "Satisfying clean-cut motion + before/after rõ; multi-function = nhiều shot variation." },
+      { "id": 4, "name": "Vietnam audience fit (Facebook Reels VN)", "score": 3, "note": "Dụng cụ bếp đa năng cho trái cây — phổ thông VN; audience nội trợ + người làm bento + ăn lành mạnh." },
+      { "id": 5, "name": "Source/demo availability", "score": 2, "note": "Multi-tool fruit corer/slicer rất phổ biến TikTok/Douyin/AliExpress; chấm 2 safe (chưa search exhaustive lúc lập card)." },
+      { "id": 6, "name": "Risk level", "score": 3, "note": "Đồ gia dụng inox phổ thông; không claim sức khoẻ; không brand A++ nhận biết; không thuộc y tế/mỹ phẩm/thuốc." }
+    ],
+    "total": 15,
+    "max": 18,
+    "threshold_pass": 13,
+    "threshold_min_risk_axis": 2
+  },
+
+  "decision": "PRODUCT_SELECTED",
+  "decision_note": "Đạt threshold ≥13/18 + không trục = 0 + trục 6 risk = 3 ≥ 2. CAVEAT: trục 2 affiliate potential = 1 (yếu). Selected cho proof-of-concept Path A, NOT winner product. Để verify Shopee-First Lane end-to-end + content fundamentals (Demo + Visual + VN fit + Risk all = 3) đủ mạnh."
+}

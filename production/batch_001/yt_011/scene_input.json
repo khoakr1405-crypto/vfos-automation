@@ -1,0 +1,53 @@
+{
+  "video_id": "yt_011",
+  "content_goal": "Gioi thieu dung cu cat trai cay inox dang push-down — cat tao thanh nhieu mui deu va bo loi trong mot lan an, tien dung trong bep gia dinh.",
+  "target_platform": "reels",
+  "duration_target_s": 32,
+  "tone": "chia se trai nghiem, nhe nhang, satisfying, khong quang cao tho",
+  "affiliate_angle": "Bo dung cu cat trai cay inox 2 size (8-mui + 12-mui), Shopee VN, hero product single SKU, gia mem.",
+  "cta_style": "soft — link bio neu moi nguoi muon xem, khong ep mua",
+  "scene_timeline": [
+    {
+      "window_start_s": 0,
+      "window_end_s": 4,
+      "scene_type": "HOOK",
+      "visual_summary": "2 dung cu cat trai cay inox dat tren mat ban go — mot cai size lon (8 lat) co tay cam den, mot cai nho hon (12 lat), frame mo dau gioi thieu san pham.",
+      "notes": "Frame 001-002. Visual sach — khong co brand text, khong co watermark, khong co QR/PII. GUARD 6 pre-scan PASS. Hook can keo ngay vao demo cong dung."
+    },
+    {
+      "window_start_s": 4,
+      "window_end_s": 9,
+      "scene_type": "KITCHEN",
+      "visual_summary": "Top-down view 2 dung cu inox tren mat go, lo ro 2 size khac nhau — minh hoa bo san pham 2 mon.",
+      "notes": "Frame 003. Gioi thieu bo 2 size — chua co thao tac, chi reveal."
+    },
+    {
+      "window_start_s": 9,
+      "window_end_s": 16,
+      "scene_type": "KITCHEN",
+      "visual_summary": "Tay nguoi an dung cu inox xuong qua trai tao do — tao tach thanh nhieu mui deu trong mot lan an, loi tao bi day ra giua. Mot trai tao nguyen va to mui dat ben canh.",
+      "notes": "Frame 004. Core action shot — an mot lan ra mui deu + bo loi. Day la moment chot kien nguoi xem hieu cong dung."
+    },
+    {
+      "window_start_s": 16,
+      "window_end_s": 22,
+      "scene_type": "KITCHEN",
+      "visual_summary": "Top-down close-up: hai tay an dung cu xuong qua trai tao, lat tao tach ra dan dan tu giua.",
+      "notes": "Frame 005. Demo close-up — duy tri rhythm action, cho viewer thoi gian ngam ket qua satisfying."
+    },
+    {
+      "window_start_s": 22,
+      "window_end_s": 28,
+      "scene_type": "KITCHEN",
+      "visual_summary": "Khung canh bep dep: dung cu inox dat ben canh tao da cat mui, dia thanh long do trang tri va mot it ca chua bi cat lat ben canh. Background bep trang sach nhe.",
+      "notes": "Frame 006. Output context — gay y dung cu nay dung duoc cho nhieu loai trai cay khac nhau. Background bep blurred, an toan GUARD 6."
+    },
+    {
+      "window_start_s": 28,
+      "window_end_s": 32,
+      "scene_type": "CTA",
+      "visual_summary": "Outro: 2 dung cu inox dat lai canh nhau voi 2 trai tao do phia sau — ket frame.",
+      "notes": "CTA-only block. Cap 7 tu HARD. VIET DUNG CTA NGAN: vi du 'Link bio cua minh nha' (5 tu) hoac 'Link o mo ta nha' (5 tu). KHONG mo ta canh, KHONG mo ta san pham, KHONG dung tu tuyet doi (khong noi tot nhat / re nhat / chinh hang / cam ket). Frame 007."
+    }
+  ]
+}
