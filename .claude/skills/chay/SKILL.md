@@ -932,9 +932,9 @@ CTA KHÔNG hợp lệ (vi phạm R3/R5):
 |---|---|---|
 | `src/meta-client.ts` | Generic Graph API client (GET-only) | An toàn — read-only, token never logged |
 | `src/test-page.ts` | `testPageConnection()` → `GET /{page_id}` | An toàn — read-only |
-| `src/post-page.ts` | `publishTextPost()` → `POST /{page_id}/feed` (text only) | ⚠️ **Real publish surface** — text post sẽ thật sự được đăng |
+| `src/post-page.ts` | `publishTextPost()` → `POST /{page_id}/feed` (text only) | ✅ **HARD GATE (Round 2B 2026-05-24)** — `META_MODE=mock` mặc định, KHÔNG gọi API thật trừ khi `META_MODE=live` |
 | `scripts/test-connection.ts` (`pnpm facebook:test`) | Test đọc Page info | An toàn — không publish |
-| `scripts/test-post.ts` (`pnpm facebook:test-post`) | Đăng 1 bài text test | ⚠️ **KHÔNG có dry-run / confirm** — chạy là đăng |
+| `scripts/test-post.ts` (`pnpm facebook:test-post`) | Đăng 1 bài text test | ✅ **HARD GATE (Round 2B 2026-05-24)** — mặc định mock, real publish cần ALL: `META_MODE=live` + `--confirm-publish` + page id + token |
 | `scripts/get-page-token.ts` (`pnpm facebook:get-page-token`) | Đổi User Token → Page Token | An toàn — read-only |
 | `.env.example` | Template, `FACEBOOK_PAGE_ID=` + `FACEBOOK_PAGE_ACCESS_TOKEN=` rỗng | An toàn — không có secret thật commit |
 
@@ -949,14 +949,20 @@ CTA KHÔNG hợp lệ (vi phạm R3/R5):
 - `/chay` **CHỈ** tạo metadata file `facebook_reels_publish_plan.json`. Việc đẩy thật là **operator manual step** ngoài skill.
 - `pnpm facebook:test` (read-only Page connection check) là **operator-only manual command** — `/chay` không tự chạy ngay cả khi safe, vì không cần thiết cho output pipeline.
 
-**Risk gap chưa fix (chuyển vào Phần 24 / future hardening — KHÔNG sửa code trong Round 2A)**:
-- `scripts/test-post.ts` thiếu `--dry-run` / `--confirm` flag → nếu user chạy nhầm `pnpm facebook:test-post` với `.env` có token thật sẽ đăng ngay. Khuyến nghị tương lai: thêm gate `META_MODE=mock` (đã có ở `.env.example`) → khi `META_MODE=mock` thì `publishTextPost` return mock result + log "DRY RUN — không publish thật". Code khuyến nghị (KHÔNG triển khai vòng này) đặt ngay đầu `publishTextPost`:
-  ```
-  if (process.env.META_MODE === "mock") {
-    return { success: true, postId: "mock_dry_run_" + Date.now() };
-  }
-  ```
-- `publishTextPost` export ra `index.ts` không guarded — bất kỳ code tương lai gọi đều đăng thật. Cùng `META_MODE=mock` gate sẽ fix luôn.
+**Risk gap đã fix (Round 2B 2026-05-24)**:
+- `publishTextPost()` giờ có HARD GATE đọc `META_MODE`:
+  - `META_MODE=mock` (default, bao gồm unset/empty/bất kỳ giá trị nào khác `live`) → return `{ success: true, postId: "mock_dry_run_<ts>", mode: "mock" }`. KHÔNG gọi Graph API.
+  - `META_MODE=live` → real publish, return `{ ..., mode: "live" }`.
+- `scripts/test-post.ts` giờ có thêm CLI gate. Real publish cần ĐỒNG THỜI 4 điều kiện:
+  1. `META_MODE=live` trong env.
+  2. CLI flag `--confirm-publish`.
+  3. `FACEBOOK_PAGE_ID` non-empty.
+  4. `FACEBOOK_PAGE_ACCESS_TOKEN` non-empty.
+  Thiếu bất kỳ điều kiện nào → fallback MOCK + log lý do.
+- Script luôn override `process.env.META_MODE = "mock"` trước khi gọi `publishTextPost` khi effective mode là mock — double guard.
+- Tokens vẫn KHÔNG bao giờ log full, chỉ mask 8 đầu + 4 cuối.
+
+Xem chi tiết: [packages/facebook/README.md](../../../packages/facebook/README.md).
 
 ---
 
@@ -1112,11 +1118,15 @@ KHÔNG BAO GIỜ:
     bất kỳ endpoint publish nào trong scope `/chay` — publish luôn manual
     operator step
   × (Round 2A 2026-05-24) Tự chạy `pnpm facebook:test-post` trong scope
-    `/chay` — script này KHÔNG có dry-run guard, chạy là đăng thật bài
-    text lên Facebook Page. Đây là operator-only manual command.
+    `/chay` — kể cả sau Round 2B có HARD GATE, đây vẫn là operator-only
+    manual command, KHÔNG dùng trong pipeline `/chay`.
   × (Round 2A 2026-05-24) Gọi `publishTextPost()` từ `@vfos/facebook` trong
-    scope `/chay` — function POST trực tiếp lên `/{page_id}/feed`, không
-    có META_MODE=mock gate hiện tại.
+    scope `/chay` — kể cả với `META_MODE=mock` (an toàn về API call), việc
+    publish/dry-run vẫn là operator concern, không phải pipeline concern.
+  × (Round 2B 2026-05-24) Đổi `META_MODE` sang `live` trong `.env` mà
+    không có operator review thủ công — mặc định LUÔN là `mock`.
+  × (Round 2B 2026-05-24) Pass `--confirm-publish` flag mà chưa có user
+    duyệt thủ công cho từng publish — flag này KHÔNG được set tự động.
   × (Round 2A 2026-05-24) Triển khai Reels upload code (`POST /{page_id}/videos`
     upload phase) trong scope `/chay` — Reels upload là future scope, cần
     user duyệt mở scope mới riêng.

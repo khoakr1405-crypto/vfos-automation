@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-05-24 (Round 2A — Facebook Reels Publish Plan Audit v0, schema chuẩn hoá + facebook package safety surface)
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `5e1e52d` (Phần 23 — Shopee-First Post-Run Hardening v0). Round 2A commit sẽ bump khi push
+> **Cập nhật lần cuối**: 2026-05-24 (Round 2B — Facebook Publish Safety Gate v0, META_MODE gate triển khai code thật)
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `e8019fe` (Round 2A — Facebook Reels Publish Plan Audit v0). Round 2B commit sẽ bump khi push
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -1245,6 +1245,61 @@ Vòng này sửa skill + docs để `/chay` tự quyết định + tự retry + 
 
 ---
 
+### ✅ Round 2B — Facebook Publish Safety Gate v0: ĐÃ CHỐT (2026-05-24)
+
+**Bối cảnh**: Round 2A audit đã document risk gap (publish_text_post không có META_MODE gate, test-post.ts không có dry-run). Round 2B fix gap đó bằng code thật, vẫn không publish thật, không động token.
+
+**Phạm vi (SỬA CODE `packages/facebook/`, không publish thật, không động token thật)**:
+
+**File đã sửa/tạo**:
+- `packages/facebook/src/post-page.ts` — thêm `resolvePublishMode()` + `publishTextPost()` HARD GATE đầu function. Khi `META_MODE` ≠ `"live"` (default), return mock result `{ success: true, postId: "mock_dry_run_<ts>", mode: "mock" }` **KHÔNG gọi Graph API**. Thêm field `mode: "mock" | "live"` vào `TextPostResult`. Tất cả return path live đều set `mode: "live"`.
+- `packages/facebook/src/index.ts` — re-export `resolvePublishMode` + `PublishMode` type.
+- `packages/facebook/scripts/test-post.ts` — rewrite. CLI flag parse (`--dry-run`, `--confirm-publish`). Effective mode = `live` CHỈ khi ALL: `META_MODE=live` + `--confirm-publish` + non-empty page id + non-empty token. Thiếu bất kỳ điều kiện → fallback mock + log lý do. Banner MOCK/LIVE rõ ràng. Override `process.env.META_MODE="mock"` trước khi gọi `publishTextPost` khi effective mock (double guard).
+- `packages/facebook/README.md` — **mới tạo**. Safe usage guide, surface table, 4 điều kiện live publish, integration với `/chay`, future scope.
+- `.env.example` — bổ sung doc cho `META_MODE` (mock=default, live=requires manual review). Note Facebook Page section trỏ sang README.
+
+**Test đã chạy (không publish thật)**:
+- `pnpm typecheck` (trong `packages/facebook/`) → ✅ pass, no TS errors.
+- `META_MODE=mock pnpm facebook:test-post` → ✅ effective mode = MOCK, mock postId returned, NO API call.
+- `META_MODE=live pnpm facebook:test-post` (không `--confirm-publish`) → ✅ "LIVE publish was requested but blocked by safety gate. Missing CLI flag: --confirm-publish. Falling back to MOCK MODE." Mock postId returned, NO API call.
+- KHÔNG chạy `META_MODE=live pnpm facebook:test-post -- --confirm-publish` (sẽ publish thật — out of scope vòng này).
+- KHÔNG chạy `pnpm facebook:test` (read-only API nhưng vẫn là Graph API call thật — không cần thiết cho audit).
+
+**Safety properties đảm bảo**:
+1. ✅ Default mode mặc định luôn là MOCK kể cả khi `META_MODE` env var unset hoặc empty.
+2. ✅ Code path live publish CHỈ active khi 4 điều kiện ALL true.
+3. ✅ Token KHÔNG bao giờ log full — chỉ mask 8 đầu + 4 cuối qua `maskToken()`.
+4. ✅ `publishTextPost()` exported nhưng không guarded ở caller — bây giờ guarded ở chính function, nên bất kỳ code tương lai gọi đều an toàn mặc định.
+5. ✅ TypeScript types ép caller phải handle `result.mode` để biết mock vs live.
+
+**Tài liệu cập nhật**:
+- `.claude/skills/chay/SKILL.md` — cập nhật bảng surface table (✅ HARD GATE thay vì ⚠️ RISK), rewrite "Risk gap" thành "Risk gap đã fix", thêm 2 HARD CONSTRAINT mới (× đổi META_MODE=live không có operator review, × pass --confirm-publish không có user duyệt thủ công).
+- `docs/00_DIEU_HANH/TRANG_THAI_VFOS_HIEN_TAI.md` — Round 2B block (block này) + cập nhật header date + Mục 10 commit pointer.
+
+**Triết lý — KHÔNG mở scope vòng này**:
+- KHÔNG publish thật.
+- KHÔNG upload video.
+- KHÔNG dùng `META_MODE=live` để chạy bất kỳ test nào.
+- KHÔNG sửa `.env` chứa secret (chỉ `.env.example` template).
+- KHÔNG commit token thật.
+- KHÔNG triển khai Reels upload code (vẫn là future scope, cần dedicated safety gate `META_REELS_MODE` riêng nếu thiết kế).
+- KHÔNG chạy video mới / yt_012.
+- KHÔNG mở Con số 2.
+- KHÔNG sửa Script Writer / Voice Sync / BGM code.
+- KHÔNG `git clean` / `reset` / `stash`.
+
+**Threshold 75-85%**: Đạt cho safety gate v0 — `publishTextPost` và `test-post.ts` cả 2 đều có HARD GATE, dry-run mặc định, không publish nhầm có thể xảy ra với invocation thông thường. Token never logged. README rõ ràng cho operator. Sẵn sàng cho Phần 24 nếu user muốn thiết kế Reels upload.
+
+**Giới hạn còn lại**:
+- Live publish path chưa được test end-to-end (vì cần `META_MODE=live` + `--confirm-publish` + token thật + chấp nhận đăng thật). Đây là design intent, không phải gap.
+- Reels upload code (`POST /{page_id}/videos`) chưa thiết kế — sẽ cần dedicated `META_REELS_MODE=mock` gate riêng khi triển khai.
+- Caption / hashtag template chỉ có 1 example yt_011 (Round 2A); chưa có pattern cho từng ngách.
+- Test post message cố định trong source code (`TEST_MESSAGE` const). Operator muốn custom message phải sửa source — chấp nhận cho v0 vì đây là test script, không phải production publish flow.
+
+**Trạng thái kỹ thuật**: SỬA code `packages/facebook/` (2 file source + 1 script + 1 README mới + .env.example), pnpm typecheck pass, 2 dry-run test pass + 1 negative-gate test pass.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
@@ -1388,9 +1443,9 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mốc tại thời điểm cập nhật trạng thái | `5e1e52d` — Phần 23 Shopee-First Post-Run Hardening v0 (đã push). Round 2A (Facebook Reels Publish Plan Audit v0) commit sẽ bump khi push. |
+| Commit mốc tại thời điểm cập nhật trạng thái | `e8019fe` — Round 2A Facebook Publish Plan Audit v0 (đã push). Round 2B (Facebook Publish Safety Gate v0 — code fix thật) commit sẽ bump khi push. |
 | Remote | `origin` (GitHub) |
-| Sync status | Phần 11–23 + yt_011 Shopee-First + Facebook API code ĐÃ PUSH (`5e1e52d`). Round 2A ĐANG commit (chỉ docs/skill, không sửa code Facebook, không publish, không động token). Bước tiếp: user quyết định strategy 5 hướng (Con 2 / OPENAI_MODEL gpt-4o default / yt_012 với hardening / Shopee Discovery thật / split 4 sub-agent) + 1 risk-fix tùy chọn (Phần 24 — thêm `META_MODE=mock` gate vào `publishTextPost`). |
+| Sync status | Phần 11–23 + Round 2A ĐÃ PUSH (`e8019fe`). Round 2B ĐANG commit (sửa code `packages/facebook/` thêm META_MODE gate + thêm README, không publish thật, không động token). Bước tiếp: user quyết định strategy 5 hướng (Con 2 / OPENAI_MODEL gpt-4o default / yt_012 với hardening / Shopee Discovery thật / split 4 sub-agent). Risk gap Facebook publish ĐÃ FIX ở Round 2B — không còn pending. |
 
 **Trạng thái artifacts production** (tính đến 2026-05-20):
 - `production/batch_001/yt_007/` (text artifacts): **ĐÃ commit** ở `df1609e` — scene_input, script v1/v2/v3, manifest BGM. Dùng làm reference cho vòng Voice Sync autonomy.

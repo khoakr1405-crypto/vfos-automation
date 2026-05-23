@@ -18,4 +18,10 @@
 
 export { createMetaClient, type MetaClient } from "./meta-client.js";
 export { testPageConnection, type PageInfo } from "./test-page.js";
-export { publishTextPost, type TextPostRequest, type TextPostResult } from "./post-page.js";
+export {
+  publishTextPost,
+  resolvePublishMode,
+  type TextPostRequest,
+  type TextPostResult,
+  type PublishMode,
+} from "./post-page.js";

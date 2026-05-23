@@ -4,7 +4,11 @@
  * Endpoint: POST /{page_id}/feed
  * Docs: https://developers.facebook.com/docs/pages-api/posts
  *
- * Security: tokens are NEVER logged.
+ * Security:
+ * - Tokens are NEVER logged.
+ * - HARD safety gate: `META_MODE=mock` (default) returns a mock result WITHOUT
+ *   calling the Graph API. Only `META_MODE=live` performs a real publish.
+ *   The default is mock so accidental invocation does not publish to a real Page.
  */
 
 export interface TextPostRequest {
@@ -12,23 +16,53 @@ export interface TextPostRequest {
   message: string;
 }
 
+export type PublishMode = "mock" | "live";
+
 export interface TextPostResult {
   success: boolean;
-  /** The ID of the created post (format: "pageId_postId") */
+  /** The ID of the created post (format: "pageId_postId" for live, "mock_dry_run_<ts>" for mock) */
   postId?: string;
   error?: string;
   diagnosis?: string;
+  /** Which mode the publish ran in. `"mock"` = no API call. `"live"` = real publish. */
+  mode: PublishMode;
+}
+
+/**
+ * Read META_MODE from env. Returns `"live"` only when explicitly set to `live`.
+ * Anything else (unset, empty, mock, anything else) returns `"mock"` (safe default).
+ */
+export function resolvePublishMode(): PublishMode {
+  const raw = (process.env["META_MODE"] ?? "").trim().toLowerCase();
+  return raw === "live" ? "live" : "mock";
 }
 
 /**
  * Publish a text-only post to the configured Facebook Page.
  * Uses the page access token from the client config.
+ *
+ * HARD GATE: respects `META_MODE` from the environment.
+ *   - `META_MODE=mock` (default, includes unset/empty/any non-"live" value):
+ *     returns a mock result with `mode: "mock"`. NO Graph API call is made.
+ *     `postId` will be `"mock_dry_run_<timestamp>"`.
+ *   - `META_MODE=live`: performs the real publish. Caller MUST also have
+ *     explicit operator confirmation (e.g. `--confirm-publish` in CLI scripts).
  */
 export async function publishTextPost(
   pageId: string,
   pageAccessToken: string,
   request: TextPostRequest
 ): Promise<TextPostResult> {
+  const mode = resolvePublishMode();
+
+  if (mode === "mock") {
+    return {
+      success: true,
+      postId: `mock_dry_run_${Date.now()}`,
+      mode: "mock",
+    };
+  }
+
   const url = `https://graph.facebook.com/v22.0/${pageId}/feed`;
 
   try {
@@ -56,18 +90,20 @@ export async function publishTextPost(
         success: false,
         error: `[${errorType}] ${errorMessage} (code: ${errorCode})`,
         diagnosis: diagnosePostError(errorCode, response.status),
+        mode: "live",
       };
     }
 
     const postId = body["id"];
     if (typeof postId === "string") {
-      return { success: true, postId };
+      return { success: true, postId, mode: "live" };
     }
 
     return {
       success: false,
       error: "Response OK nhưng không có post ID trong body",
       diagnosis: "Unexpected API response format. Kiểm tra lại quyền publish.",
+      mode: "live",
     };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);
@@ -78,6 +114,7 @@ export async function publishTextPost(
         "LỖI MẠNG — Không thể kết nối đến Meta API.\n" +
         "  → Kiểm tra kết nối internet\n" +
         "  → Kiểm tra firewall/proxy có chặn graph.facebook.com không",
+      mode: "live",
     };
   }
 }
