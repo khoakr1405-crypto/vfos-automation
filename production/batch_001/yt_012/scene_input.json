@@ -1,0 +1,53 @@
+{
+  "video_id": "yt_012",
+  "content_goal": "Gioi thieu Quat tich dien gap gon da nang co den LED — quat dã ngoai tien loi, co moc treo, dung luong pin lon, phu hop cho ban lam viec va di cam trai.",
+  "target_platform": "tiktok",
+  "duration_target_s": 18,
+  "tone": "chia se trai nghiem, thoai mai, tien ich, khong quang cao tho",
+  "affiliate_angle": "Quat da nang gap gon co den LED (Camping Fan), hero product single SKU, rat hot tren Shopee VN vao mua he, gia phai chang.",
+  "cta_style": "soft — gan link mo ta/bio, khong ep mua",
+  "scene_timeline": [
+    {
+      "window_start_s": 0,
+      "window_end_s": 3,
+      "scene_type": "HOOK",
+      "visual_summary": "Khung canh thien nhien dã ngoai nang nong, mot nguoi dang dung tay lau mo hoi met moi.",
+      "notes": "Mo dau tao pain point ve cai nong mua he."
+    },
+    {
+      "window_start_s": 3,
+      "window_end_s": 6,
+      "scene_type": "FILLER",
+      "visual_summary": "Quat camping mau xanh quan doi gon nhe duoc dat len ban va bat dau xoay em ai.",
+      "notes": "Reveal san pham thuc te bat mat."
+    },
+    {
+      "window_start_s": 6,
+      "window_end_s": 9,
+      "scene_type": "FILLER",
+      "visual_summary": "Canh nguoi dung keo moc treo an o phia sau va treo quat len tran leu cam trai.",
+      "notes": "Minh hoa tinh nang treo leu da nang."
+    },
+    {
+      "window_start_s": 9,
+      "window_end_s": 12,
+      "scene_type": "FILLER",
+      "visual_summary": "Anh sang tu vong den LED tich hop tren mat quat bung sang giup thap sang leu.",
+      "notes": "Minh hoa tinh nang den LED da dung."
+    },
+    {
+      "window_start_s": 12,
+      "window_end_s": 15,
+      "scene_type": "FILLER",
+      "visual_summary": "Nguoi dung thoai mai bam nut chinh toc do gio va nam thu gian trong leu cam trai mat me.",
+      "notes": "The hien loi ich thuc te cua gio mat lanh."
+    },
+    {
+      "window_start_s": 15,
+      "window_end_s": 18,
+      "scene_type": "CTA",
+      "visual_summary": "Man hinh hien thi thong tin dat hang mem mai va bieu tuong link gio hang cua shop.",
+      "notes": "Soft CTA dan nguoi xem ve link mua hang."
+    }
+  ]
+}

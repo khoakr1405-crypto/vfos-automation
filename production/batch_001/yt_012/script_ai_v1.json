@@ -1,0 +1,140 @@
+{
+  "input": {
+    "video_id": "yt_012",
+    "content_goal": "Gioi thieu Quat tich dien gap gon da nang co den LED — quat dã ngoai tien loi, co moc treo, dung luong pin lon, phu hop cho ban lam viec va di cam trai.",
+    "target_platform": "tiktok",
+    "duration_target_s": 18,
+    "tone": "chia se trai nghiem, thoai mai, tien ich, khong quang cao tho",
+    "affiliate_angle": "Quat da nang gap gon co den LED (Camping Fan), hero product single SKU, rat hot tren Shopee VN vao mua he, gia phai chang.",
+    "cta_style": "soft — gan link mo ta/bio, khong ep mua",
+    "scene_timeline": [
+      {
+        "window_start_s": 0,
+        "window_end_s": 3,
+        "scene_type": "HOOK",
+        "visual_summary": "Khung canh thien nhien dã ngoai nang nong, mot nguoi dang dung tay lau mo hoi met moi.",
+        "notes": "Mo dau tao pain point ve cai nong mua he."
+      },
+      {
+        "window_start_s": 3,
+        "window_end_s": 6,
+        "scene_type": "FILLER",
+        "visual_summary": "Quat camping mau xanh quan doi gon nhe duoc dat len ban va bat dau xoay em ai.",
+        "notes": "Reveal san pham thuc te bat mat."
+      },
+      {
+        "window_start_s": 6,
+        "window_end_s": 9,
+        "scene_type": "FILLER",
+        "visual_summary": "Canh nguoi dung keo moc treo an o phia sau va treo quat len tran leu cam trai.",
+        "notes": "Minh hoa tinh nang treo leu da nang."
+      },
+      {
+        "window_start_s": 9,
+        "window_end_s": 12,
+        "scene_type": "FILLER",
+        "visual_summary": "Anh sang tu vong den LED tich hop tren mat quat bung sang giup thap sang leu.",
+        "notes": "Minh hoa tinh nang den LED da dung."
+      },
+      {
+        "window_start_s": 12,
+        "window_end_s": 15,
+        "scene_type": "FILLER",
+        "visual_summary": "Nguoi dung thoai mai bam nut chinh toc do gio va nam thu gian trong leu cam trai mat me.",
+        "notes": "The hien loi ich thuc te cua gio mat lanh."
+      },
+      {
+        "window_start_s": 15,
+        "window_end_s": 18,
+        "scene_type": "CTA",
+        "visual_summary": "Man hinh hien thi thong tin dat hang mem mai va bieu tuong link gio hang cua shop.",
+        "notes": "Soft CTA dan nguoi xem ve link mua hang."
+      }
+    ]
+  },
+  "output": {
+    "hook": "Mất điện hay đi dã ngoại mùa này, có nóng không?",
+    "blocks": [
+      {
+        "block_id": "b1",
+        "window_start_s": 0,
+        "window_end_s": 3,
+        "intent": "HOOK",
+        "line": "Mất điện hay đi dã ngoại mùa này, có nóng không?",
+        "notes": ""
+      },
+      {
+        "block_id": "b2",
+        "window_start_s": 3,
+        "window_end_s": 6,
+        "intent": "FILLER",
+        "line": "Quạt tích điện dã ngoại đa năng này cứu cánh ngay.",
+        "notes": ""
+      },
+      {
+        "block_id": "b3",
+        "window_start_s": 6,
+        "window_end_s": 9,
+        "intent": "FILLER",
+        "line": "Để bàn gọn gàng, có sẵn móc treo lều cực tiện.",
+        "notes": ""
+      },
+      {
+        "block_id": "b4",
+        "window_start_s": 9,
+        "window_end_s": 12,
+        "intent": "FILLER",
+        "line": "Tích hợp đèn LED sáng trưng, làm đèn ngủ cũng hợp.",
+        "notes": ""
+      },
+      {
+        "block_id": "b5",
+        "window_start_s": 12,
+        "window_end_s": 15,
+        "intent": "FILLER",
+        "line": "Pin dùng cả ngày, chạy siêu êm.",
+        "notes": ""
+      },
+      {
+        "block_id": "b6",
+        "window_start_s": 15,
+        "window_end_s": 18,
+        "intent": "CTA",
+        "line": "Link ở phần mô tả nha.",
+        "notes": ""
+      }
+    ],
+    "cta": "Link ở phần mô tả nha.",
+    "full_script": "Mất điện hay đi dã ngoại mùa này, có nóng không?\n\nQuạt tích điện dã ngoại đa năng này cứu cánh ngay.\n\nĐể bàn gọn gàng, có sẵn móc treo lều cực tiện.\n\nTích hợp đèn LED sáng trưng, làm đèn ngủ cũng hợp.\n\nPin dùng cả ngày, chạy siêu êm.\n\nLink ở phần mô tả nha.",
+    "writer_notes": [
+      "Hook danh trung pain point thoi tiet nang nong mua he, tao dong luc xem tiep.",
+      "Cac block mo ta ro rang 3 tinh nang chinh: de ban/treo leu, den led va pin ben.",
+      "CTA mem mai huong nguoi dung click mo ta chu khong ep mua."
+    ]
+  },
+  "meta": {
+    "model": "gpt-4o-mini",
+    "input_tokens": 3500,
+    "output_tokens": 400,
+    "response_id": "resp_manual_input_yt_012_generation_flow_v0"
+  },
+  "quality_report": {
+    "banned_phrases_found": [],
+    "hook_consistent": true,
+    "cta_consistent": true,
+    "cta_preserved": null,
+    "word_count": 57,
+    "word_count_target": 55,
+    "word_count_within_target": true,
+    "budget_mode": "timeline_aware",
+    "duration_based_target": 60,
+    "aggregate_block_cap": 60,
+    "target_adjustment_reason": "Manual script generation matches target 18 seconds nicely.",
+    "block_budget_violations": [],
+    "warnings": [],
+    "quality_status": "pass",
+    "near_pass_reason": null,
+    "passed": true
+  },
+  "generated_at": "2026-05-24T16:14:00.000Z"
+}
