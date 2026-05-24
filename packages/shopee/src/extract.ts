@@ -108,16 +108,30 @@ export function emptyCandidate(sourcePage: string, notes: string): ShopeeProduct
   };
 }
 
+/** Path Shopee uses for affiliate deep-links that open the mobile app, e.g.
+ *  `/opaanlp/<shopid>/<itemid>`. Returned by `s.shopee.vn` short URLs when
+ *  `__mobile__=1` is in the query. */
+const OPAANLP_PATH_RE = /^\/opaanlp\/\d+\/\d+\/?$/;
+
 /**
  * Validate a candidate Shopee affiliate URL (typically `long_link` from
- * /api/v3/offer/product/list response).
+ * /api/v3/offer/product/list response, or the canonical URL a `s.shopee.vn`
+ * short link resolves to).
+ *
+ * Two accepted path shapes:
+ *   - `/universal-link/...` (long-form affiliate link)
+ *   - `/opaanlp/<shopid>/<itemid>` (mobile deep-link resolved from short URL)
  *
  * VERIFIED requires ALL of:
  *   - hostname `shopee.vn` (or `*.shopee.vn`)
- *   - path starts with `/universal-link/`
+ *   - path matches one of the two shapes above
  *   - has `gads_t_sig` query param (commission tracking signature)
  *   - `utm_medium=affiliates`
- *   - `utm_source` matches `an_<digits>` (affiliate id marker)
+ *   - affiliate id marker present:
+ *       - `/universal-link/` → requires `utm_source=an_<digits>`
+ *       - `/opaanlp/`        → accepts either `utm_source=an_<digits>` OR
+ *                              `mmp_pid=an_<digits>` (Shopee's mobile flow
+ *                              sometimes drops utm_source but keeps mmp_pid)
  *
  * Anything missing → NEEDS_USER_REVIEW with diagnostic notes (operator can
  * still use the URL if they trust it; the agent must surface the gap).
@@ -142,22 +156,38 @@ export function validateShopeeAffiliateLink(
   const checks: string[] = [];
   const isShopeeHost = url.hostname === "shopee.vn" || url.hostname.endsWith(".shopee.vn");
   const isUniversalLink = url.pathname.startsWith("/universal-link/");
+  const isOpaanlpLink = OPAANLP_PATH_RE.test(url.pathname);
   const hasGadsSig = url.searchParams.has("gads_t_sig");
   const utmMedium = url.searchParams.get("utm_medium") ?? "";
   const utmSource = url.searchParams.get("utm_source") ?? "";
+  const mmpPid = url.searchParams.get("mmp_pid") ?? "";
   const isAffiliatesMedium = utmMedium === "affiliates";
-  const hasAffiliateSource = /^an_\d+$/.test(utmSource);
+  const hasAffiliateUtm = /^an_\d+$/.test(utmSource);
+  const hasAffiliateMmp = /^an_\d+$/.test(mmpPid);
 
   if (!isShopeeHost) checks.push(`host=${url.hostname} (expected shopee.vn)`);
-  if (!isUniversalLink) checks.push(`path=${url.pathname} (expected /universal-link/...)`);
+  if (!isUniversalLink && !isOpaanlpLink) {
+    checks.push(`path=${url.pathname} (expected /universal-link/... or /opaanlp/<shopid>/<itemid>)`);
+  }
   if (!hasGadsSig) checks.push("missing gads_t_sig");
   if (!isAffiliatesMedium) checks.push(`utm_medium=${utmMedium || "(none)"} (expected affiliates)`);
-  if (!hasAffiliateSource) checks.push(`utm_source=${utmSource || "(none)"} (expected an_<id>)`);
+
+  if (isOpaanlpLink && !isUniversalLink) {
+    if (!hasAffiliateUtm && !hasAffiliateMmp) {
+      checks.push(
+        `utm_source=${utmSource || "(none)"} mmp_pid=${mmpPid || "(none)"} (expected at least one as an_<id>)`,
+      );
+    }
+  } else if (!hasAffiliateUtm) {
+    checks.push(`utm_source=${utmSource || "(none)"} (expected an_<id>)`);
+  }
 
   if (checks.length === 0) {
+    const pathKind = isOpaanlpLink ? "opaanlp deep-link" : "universal-link";
+    const idMarker = hasAffiliateUtm ? "utm_source=an_<id>" : "mmp_pid=an_<id>";
     return {
       status: "VERIFIED_FROM_LONG_LINK",
-      notes: "universal-link path, gads_t_sig present, utm_medium=affiliates, utm_source=an_<id>",
+      notes: `${pathKind} path, gads_t_sig present, utm_medium=affiliates, ${idMarker}`,
     };
   }
 
