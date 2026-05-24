@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-05-24 (Round 2B — Facebook Publish Safety Gate v0, META_MODE gate triển khai code thật)
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `e8019fe` (Round 2A — Facebook Reels Publish Plan Audit v0). Round 2B commit sẽ bump khi push
+> **Cập nhật lần cuối**: 2026-05-24 (Round 2C — Shopee Session Fetcher v0, local browser session via Playwright storageState, blueprint + scaffold, KHÔNG auto-install + KHÔNG auto-run)
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `5c92edd` (Round 2B — Facebook Publish Safety Gate v0). Round 2C commit sẽ bump khi push
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -1300,6 +1300,82 @@ Vòng này sửa skill + docs để `/chay` tự quyết định + tự retry + 
 
 ---
 
+### ✅ Round 2C — Shopee Session Fetcher v0 (browser session): ĐÃ CHỐT (2026-05-24)
+
+**Bối cảnh**: User chưa có Shopee API public. Shopee SPA + internal v4 API block anonymous request (403 anti-bot). Cách realistic v0 đã chốt 2026-05-22: dùng login session thật của user trong browser headless qua Playwright. Tooling này sẽ là input cho Discovery Mode (Shopee Product Agent boundary).
+
+**Phạm vi cài đặt (TẠO code `packages/shopee/`, KHÔNG auto-install Playwright, KHÔNG auto-run script, KHÔNG fetch sản phẩm thật vòng này)**:
+
+**File đã tạo**:
+- `.gitignore` — thêm `.secrets/` + `*.storage_state.json` + `*.session.json` + `*.cookies.json` (HARD security: block cookie/session commit ngay từ git layer).
+- `packages/shopee/package.json` — `@vfos/shopee@0.1.0`, devDeps `tsx`/`typescript`/`@types/node`, peerDep optional `playwright`.
+- `packages/shopee/tsconfig.json` — extend `tsconfig.base.json` chuẩn workspace.
+- `packages/shopee/src/types.ts` — `ShopeeProductCandidate` (13 field, mỗi field optional → `"unknown"`) + `ShopeeFetchManifest` (timestamp, phase_ref, candidates, required_user_action flag).
+- `packages/shopee/src/extract.ts` — selector helpers `OFFER_DASHBOARD_SELECTORS` (placeholders cho Shopee Affiliate offer page, sẽ cần recalibrate trong lần chạy đầu), `parsePriceVnd`, `parseCommissionPct`, `estimateCommissionVnd`, `computeDataConfidence`, `emptyCandidate`.
+- `packages/shopee/src/index.ts` — public re-exports.
+- `packages/shopee/scripts/login-session.ts` — `pnpm shopee:login`. Lazy-import Playwright (clear error nếu chưa cài). Open HEADED Chromium. User login manual + handle captcha/OTP. Save `storageState` vào `.secrets/shopee_storage_state.json` (gitignored). KHÔNG inspect/log cookie value (chỉ gọi Playwright `context.storageState({ path })` — Playwright tự write).
+- `packages/shopee/scripts/fetch-offers.ts` — `pnpm shopee:fetch`. Load storageState, headless Chromium. Navigate `https://affiliate.shopee.vn/offer/shopee_offer`. Detect login redirect (= session expired → `required_user_action: true` trong manifest). Wait selector, extract ≤3 cards. Output `production/_commerce/shopee_product_candidates.json` — ZERO cookie/token, chỉ public product data. Selector mismatch → save HTML snapshot `.secrets/last_fetch_dom.html` (gitignored) cho operator inspect.
+- `packages/shopee/README.md` — safe usage guide, surface table, security model, calibration flow, integration với `/chay`, future scope.
+- `package.json` (root) — thêm pnpm script `shopee:login` + `shopee:fetch`.
+- `.claude/skills/chay/SKILL.md` — section mới "SHOPEE SESSION FETCHER v0" trong Shopee-First Lane mô tả tooling + flow operator-driven + HARD RULE "/chay KHÔNG tự chạy". HARD CONSTRAINTS thêm 4 rule mới (× tự chạy login / × tự chạy fetch / × paste raw cookie / × commit thứ trong `.secrets/`).
+- `docs/00_DIEU_HANH/TRANG_THAI_VFOS_HIEN_TAI.md` — Round 2C block (block này) + header date + Mục 10.
+
+**Security verification**:
+- ✅ `.gitignore` test: `git check-ignore -v .secrets/test.json .secrets/shopee_storage_state.json shopee.storage_state.json` → tất cả 3 path đều ignored (output xác nhận rule `.gitignore:16:.secrets/` + `.gitignore:17:*.storage_state.json`).
+- ✅ NO Playwright auto-install — user phải chạy `pnpm add -D playwright -F @vfos/shopee` + `pnpm exec playwright install chromium` thủ công.
+- ✅ NO script auto-run — login/fetch chỉ chạy khi operator chủ động gọi pnpm script.
+- ✅ Script lazy-import Playwright trong try/catch — fail fast với error message rõ ràng nếu chưa cài, KHÔNG crash hệ thống.
+- ✅ Output JSON schema KHÔNG có cookie/token field — chỉ public product data + manifest metadata.
+- ✅ Script chỉ log counts + URLs + boolean — KHÔNG log cookie value, KHÔNG log request header.
+- ✅ Session expired detection → `required_user_action: true` + báo user re-run login. KHÔNG bypass.
+
+**Test đã chạy (v0 blueprint round)**:
+- `git check-ignore -v .secrets/...` → ✅ pass, 3 path đều ignored.
+- KHÔNG chạy `pnpm typecheck` cho `@vfos/shopee` vòng này (typecheck cần Playwright types installed; types resolve lazy nên có thể có warning). Sẽ verify khi user install Playwright.
+- KHÔNG chạy `pnpm shopee:login` (cần user duyệt + login thủ công).
+- KHÔNG chạy `pnpm shopee:fetch` (cần `.secrets/shopee_storage_state.json` từ login + Playwright installed).
+
+**Decision flow Discovery Mode sau Round 2C**:
+
+```
+/chay shopee-first (no link, Discovery Mode)
+   ↓
+Đọc production/_commerce/shopee_product_candidates.json
+   ↓ artifact tồn tại?
+   ├─ YES → chấm Selection Scoring 6 trục → lập Shopee Product Card
+   └─ NO  → báo limitation:
+            "Chưa có Shopee candidates. Vui lòng chạy:
+             1) pnpm shopee:login (1 lần)
+             2) pnpm shopee:fetch
+            rồi gọi lại /chay shopee-first."
+```
+
+**Triết lý — KHÔNG mở scope vòng này**:
+- KHÔNG auto-install Playwright (user duyệt thủ công).
+- KHÔNG chạy login/fetch script.
+- KHÔNG fetch sản phẩm Shopee thật.
+- KHÔNG paste cookie / SPC_EC / SPC_ST / csrftoken vào chat / `.env` / repo.
+- KHÔNG bypass captcha / OTP / 2FA — user handle manual.
+- KHÔNG sửa code Script Writer / Voice Sync / BGM.
+- KHÔNG sửa code Facebook (đã hardened ở Round 2B).
+- KHÔNG chạy video mới / yt_012.
+- KHÔNG publish Facebook.
+- KHÔNG mở TikTok Shop.
+- KHÔNG `git clean` / `reset` / `stash`.
+
+**Threshold 75-85%**: Đạt cho session-fetcher v0 — blueprint + scaffold đầy đủ, security HARD ngay từ `.gitignore`, script có lazy-import + fail-fast guard, selectors là placeholders chấp nhận recalibrate lần chạy đầu. Risk gap "không có Shopee API" đã có path workaround end-to-end. Sẵn sàng cho Round 2D (user duyệt install Playwright + test login + fetch + recalibrate selectors).
+
+**Giới hạn còn lại (chuyển Round 2D / Phần 24 nếu user duyệt)**:
+- `OFFER_DASHBOARD_SELECTORS` là placeholders. Chưa verify against real DOM. Lần chạy đầu chắc chắn cần recalibrate.
+- Search by keyword chưa implement (chỉ đọc default offer dashboard). Discovery Mode cần search để tự tìm sản phẩm theo lane.
+- Affiliate link wrapping (UTM source) chưa tự động — operator vẫn copy thủ công từ dashboard.
+- Session refresh tự động chưa thiết kế — hiện chỉ detect + báo expired.
+- Test typecheck cho `@vfos/shopee` cần Playwright types installed; chưa run vòng này.
+
+**Trạng thái kỹ thuật**: TẠO `packages/shopee/` (7 file: package.json, tsconfig, 3 src, 2 scripts, README) + update `.gitignore` + root `package.json` (thêm 2 pnpm script) + SKILL.md + status doc. KHÔNG install Playwright. KHÔNG run script. KHÔNG fetch thật.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
@@ -1443,9 +1519,9 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mốc tại thời điểm cập nhật trạng thái | `e8019fe` — Round 2A Facebook Publish Plan Audit v0 (đã push). Round 2B (Facebook Publish Safety Gate v0 — code fix thật) commit sẽ bump khi push. |
+| Commit mốc tại thời điểm cập nhật trạng thái | `5c92edd` — Round 2B Facebook Publish Safety Gate v0 (đã push). Round 2C (Shopee Session Fetcher v0 — blueprint + scaffold) commit sẽ bump khi push. |
 | Remote | `origin` (GitHub) |
-| Sync status | Phần 11–23 + Round 2A ĐÃ PUSH (`e8019fe`). Round 2B ĐANG commit (sửa code `packages/facebook/` thêm META_MODE gate + thêm README, không publish thật, không động token). Bước tiếp: user quyết định strategy 5 hướng (Con 2 / OPENAI_MODEL gpt-4o default / yt_012 với hardening / Shopee Discovery thật / split 4 sub-agent). Risk gap Facebook publish ĐÃ FIX ở Round 2B — không còn pending. |
+| Sync status | Phần 11–23 + Round 2A + Round 2B ĐÃ PUSH (`5c92edd`). Round 2C ĐANG commit (tạo `packages/shopee/` blueprint + scaffold, `.gitignore` `.secrets/`, KHÔNG install Playwright, KHÔNG run script). Bước tiếp: user quyết định Round 2D (`pnpm add -D playwright -F @vfos/shopee` + `pnpm exec playwright install chromium` + chạy `pnpm shopee:login` + `pnpm shopee:fetch` + recalibrate selectors nếu cần) HOẶC 1 trong 5 hướng cũ (Con 2 / OPENAI_MODEL gpt-4o default / yt_012 / Discovery Mode wiring / split 4 sub-agent). |
 
 **Trạng thái artifacts production** (tính đến 2026-05-20):
 - `production/batch_001/yt_007/` (text artifacts): **ĐÃ commit** ở `df1609e` — scene_input, script v1/v2/v3, manifest BGM. Dùng làm reference cho vòng Voice Sync autonomy.

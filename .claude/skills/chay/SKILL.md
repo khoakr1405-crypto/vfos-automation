@@ -277,6 +277,31 @@ Nếu `video_id` chưa được cấp trước PF-STEP 2 (eg lane bắt đầu t
 
 Nếu bất kỳ check fail → **không** chuyển sang PF-STEP 3.
 
+### SHOPEE SESSION FETCHER v0 (Round 2C 2026-05-24) — Tooling cho Discovery Mode
+
+> **Agent boundary**: thuộc trách nhiệm **Shopee Product Agent**. Tooling: package `@vfos/shopee`.
+
+Khi user không có Shopee API public, Shopee Product Agent có thể dùng local browser session để fetch product candidates từ Shopee Affiliate dashboard. Đây là input cho Discovery Mode khi user gọi `/chay shopee-first` không kèm link.
+
+**Flow operator-driven (KHÔNG auto trong `/chay`)**:
+
+1. Operator chạy `pnpm shopee:login` 1 lần (mở headed browser, login Shopee Affiliate thủ công, hoàn thành captcha/2FA/OTP nếu có). Session lưu vào `.secrets/shopee_storage_state.json` (gitignored).
+2. Operator chạy `pnpm shopee:fetch` (headless, load session, scrape ≤3 cards). Xuất `production/_commerce/shopee_product_candidates.json` — ZERO cookie/token, chỉ public product data.
+3. `/chay shopee-first` (Discovery Mode) đọc `shopee_product_candidates.json` làm input candidate list cho Selection Scoring 6 trục.
+
+**HARD RULE — `/chay` KHÔNG tự chạy session fetcher**:
+- `/chay` TUYỆT ĐỐI KHÔNG tự chạy `pnpm shopee:login` (cần user login + captcha thủ công).
+- `/chay` TUYỆT ĐỐI KHÔNG tự chạy `pnpm shopee:fetch` (cần user duyệt launch browser).
+- `/chay` CHỈ đọc artifact `production/_commerce/shopee_product_candidates.json` nếu tồn tại; nếu không có → báo limitation + xin user chạy `pnpm shopee:login` + `pnpm shopee:fetch` thủ công.
+
+**Security HARD**:
+- `.secrets/` đã gitignored (cookie/session/storageState/HTML debug snapshot — không bao giờ commit).
+- Artifact JSON `shopee_product_candidates.json` ZERO cookie/token.
+- Script KHÔNG log cookie value, chỉ counts + URLs.
+- Nếu session expire → script báo `required_user_action: true` + bảo user re-run login. KHÔNG bypass.
+
+Xem chi tiết: [packages/shopee/README.md](../../../packages/shopee/README.md).
+
 ### SHOPEE SHORT LINK SUPPORT v0 (Phần 23) — Input hợp lệ
 
 > **Agent boundary**: thuộc trách nhiệm **Shopee Product Agent**. Logic resolve link không được duplicate ở Demo Match Agent hay nơi khác — chỉ Product Agent biết cách parse URL Shopee.
@@ -1127,6 +1152,18 @@ KHÔNG BAO GIỜ:
     không có operator review thủ công — mặc định LUÔN là `mock`.
   × (Round 2B 2026-05-24) Pass `--confirm-publish` flag mà chưa có user
     duyệt thủ công cho từng publish — flag này KHÔNG được set tự động.
+  × (Round 2C 2026-05-24) Tự chạy `pnpm shopee:login` trong scope `/chay` —
+    script này mở headed browser + cần user login + captcha thủ công.
+    Đây là operator-only manual command.
+  × (Round 2C 2026-05-24) Tự chạy `pnpm shopee:fetch` trong scope `/chay` —
+    script này dùng local browser session ở `.secrets/`, cần user duyệt
+    launch browser. `/chay` CHỈ đọc artifact đã có, không tự fetch.
+  × (Round 2C 2026-05-24) Paste raw cookie / SPC_EC / SPC_ST / csrftoken /
+    storage state vào chat / `.env` / docs / artifact — session CHỈ ở
+    `.secrets/` (gitignored).
+  × (Round 2C 2026-05-24) Commit bất kỳ thứ gì trong `.secrets/` — đã
+    gitignored, nhưng phải verify mỗi commit không có file `.storage_state.json`
+    / `.session.json` / `.cookies.json` / DOM snapshot HTML.
   × (Round 2A 2026-05-24) Triển khai Reels upload code (`POST /{page_id}/videos`
     upload phase) trong scope `/chay` — Reels upload là future scope, cần
     user duyệt mở scope mới riêng.

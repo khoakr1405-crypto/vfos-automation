@@ -10,6 +10,14 @@
 *.key
 *.pem
 
+# Browser session storage / cookies / tokens (Shopee Session Fetcher v0)
+# NEVER commit anything in .secrets/ — contains cookies, storageState, captcha
+# screenshots, debug HTML snapshots with auth state, etc.
+.secrets/
+*.storage_state.json
+*.session.json
+*.cookies.json
+
 # Dependencies
 node_modules/
 .pnpm-store/

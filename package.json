@@ -20,7 +20,9 @@
     "script:generate": "tsx packages/script-writer/scripts/generate.ts",
     "facebook:test": "tsx packages/facebook/scripts/test-connection.ts",
     "facebook:test-post": "tsx packages/facebook/scripts/test-post.ts",
-    "facebook:get-page-token": "tsx packages/facebook/scripts/get-page-token.ts"
+    "facebook:get-page-token": "tsx packages/facebook/scripts/get-page-token.ts",
+    "shopee:login": "tsx packages/shopee/scripts/login-session.ts",
+    "shopee:fetch": "tsx packages/shopee/scripts/fetch-offers.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
