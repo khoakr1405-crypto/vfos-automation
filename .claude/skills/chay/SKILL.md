@@ -933,6 +933,19 @@ GUARD 8 — SHOPEE PRODUCT MATCH GUARD (CHỈ áp dụng Shopee-First Lane, TÁC
 - Khi GUARD 8 đã `MATCH_CONFIRMED` nhưng publish plan vẫn cần operator duyệt caption → ghi thêm `"caption_review_required"`.
 - Mảng rỗng `[]` CHỈ được dùng khi tất cả gate đã pass + operator đã verify (ngoài scope `/chay` tạo ra).
 
+**Round 3C — Shopee affiliate link verification (2026-05-24)**:
+
+Shopee Cookie Fetcher giờ trả về thêm 3 field cho mỗi candidate trong `shopee_product_candidates.json`:
+- `shopee_affiliate_url`: URL thật để publish (nếu validated), hoặc `"unknown"`.
+- `affiliate_link_status`: enum — `VERIFIED_FROM_LONG_LINK` | `GENERATED_BY_CUSTOM_LINK` | `NEEDS_CUSTOM_LINK` | `NEEDS_USER_REVIEW` | `FAILED`.
+- `affiliate_link_notes`: lý do (validator output).
+
+Quy tắc `VERIFIED_FROM_LONG_LINK`: `long_link` từ `/api/v3/offer/product/list` phải có ĐỦ: host `shopee.vn`, path `/universal-link/...`, query `gads_t_sig=...`, `utm_medium=affiliates`, `utm_source=an_<digits>`. Khớp đủ → link đã đủ tracking hoa hồng, dùng trực tiếp làm `shopee_affiliate_url`. Validator: [packages/shopee/src/extract.ts:validateShopeeAffiliateLink](packages/shopee/src/extract.ts).
+
+**Publish Plan Agent mapping**:
+- `affiliate_link_status ∈ {VERIFIED_FROM_LONG_LINK, GENERATED_BY_CUSTOM_LINK}` → copy thẳng `shopee_affiliate_url` vào field 11 của publish plan; KHÔNG ghi `"shopee_affiliate_url_pending"` vào `publish_blockers`.
+- `affiliate_link_status ∈ {NEEDS_CUSTOM_LINK, NEEDS_USER_REVIEW, FAILED}` → ghi `shopee_affiliate_url = "needs_user_input"` (field 11) VÀ thêm `"shopee_affiliate_url_pending"` vào `publish_blockers`; quote `affiliate_link_notes` vào field `notes` cho operator.
+
 **Example caption draft (yt_011 fruit slicer reference, soft tone hợp lệ)**:
 ```
 Mình thử cái dụng cụ thái + tẩy lõi trái cây này, ấn xuống một cái là táo

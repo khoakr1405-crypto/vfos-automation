@@ -27,7 +27,7 @@
 
 import { resolve, dirname } from "node:path";
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
-import { emptyCandidate } from "../src/extract.js";
+import { emptyCandidate, validateShopeeAffiliateLink } from "../src/extract.js";
 import { redactSecrets, redactError, isSecretFree } from "../src/secret-redaction.js";
 import type { ShopeeProductCandidate } from "../src/types.js";
 
@@ -178,6 +178,18 @@ function mapItem(item: Record<string, unknown>): ShopeeProductCandidate {
   const productLink = getString(item, "product_link");
   if (productLink) c.shopee_product_url = productLink;
   if (longLink) c.affiliate_long_link = longLink;
+
+  // Affiliate link verification (Round 3C)
+  const linkCheck = validateShopeeAffiliateLink(longLink ?? null);
+  c.affiliate_link_status = linkCheck.status;
+  c.affiliate_link_notes = linkCheck.notes;
+  if (linkCheck.status === "VERIFIED_FROM_LONG_LINK" && longLink) {
+    c.shopee_affiliate_url = longLink;
+  } else if (linkCheck.status === "NEEDS_USER_REVIEW" && longLink) {
+    // Operator may still choose to use it manually after review.
+    c.shopee_affiliate_url = longLink;
+  }
+  // FAILED / NEEDS_CUSTOM_LINK → shopee_affiliate_url stays "unknown".
 
   // IDs
   const itemid = getString(item, "item_id") ?? getString(batch, "itemid");

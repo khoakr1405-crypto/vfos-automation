@@ -10,6 +10,27 @@
 
 export type DataConfidence = "high" | "medium" | "low";
 
+/**
+ * Status of the affiliate URL attached to a Shopee product candidate.
+ *
+ * - VERIFIED_FROM_LONG_LINK: long_link from /api/v3/offer/product/list passed
+ *   validateShopeeAffiliateLink() — has /universal-link/ path, gads_t_sig,
+ *   utm_medium=affiliates, utm_source=an_<affiliate_id>. Use as-is.
+ * - GENERATED_BY_CUSTOM_LINK: link generated via Shopee Custom Link endpoint
+ *   (not yet implemented as of Round 3C — long_link covers the v0 case).
+ * - NEEDS_CUSTOM_LINK: long_link missing or partial; would need Custom Link
+ *   endpoint to wrap.
+ * - NEEDS_USER_REVIEW: link present but validation flagged ambiguity (e.g.
+ *   non-universal-link path, missing utm). Operator must manually verify.
+ * - FAILED: extraction failed entirely; no usable URL.
+ */
+export type AffiliateLinkStatus =
+  | "VERIFIED_FROM_LONG_LINK"
+  | "GENERATED_BY_CUSTOM_LINK"
+  | "NEEDS_CUSTOM_LINK"
+  | "NEEDS_USER_REVIEW"
+  | "FAILED";
+
 export interface ShopeeProductCandidate {
   /** Canonical Shopee VN URL (eg https://shopee.vn/<slug>/<shopid>/<itemid>) */
   shopee_product_url: string | "unknown";
@@ -51,6 +72,18 @@ export interface ShopeeProductCandidate {
   period_start?: string;
   /** Campaign period end (ISO or unix timestamp) */
   period_end?: string;
+
+  // ─── Affiliate link verification (Round 3C, 2026-05-24) ───────────────────
+  /**
+   * The affiliate URL to actually publish in Facebook/TikTok caption.
+   * Equals `affiliate_long_link` when `affiliate_link_status === VERIFIED_FROM_LONG_LINK`.
+   * "unknown" when no usable link could be derived.
+   */
+  shopee_affiliate_url: string | "unknown";
+  /** Provenance + validation outcome for `shopee_affiliate_url`. */
+  affiliate_link_status: AffiliateLinkStatus;
+  /** Why the link landed in this status (which checks passed / failed). */
+  affiliate_link_notes: string;
 }
 
 export interface ShopeeFetchManifest {

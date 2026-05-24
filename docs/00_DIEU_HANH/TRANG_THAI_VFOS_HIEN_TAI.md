@@ -1376,6 +1376,39 @@ Vòng này sửa skill + docs để `/chay` tự quyết định + tự retry + 
 
 ---
 
+### ✅ Round 3A — Shopee Cookie Fetcher (HTTP, no Playwright) + product-item endpoint discovery: ĐÃ CHỐT (2026-05-24)
+
+**Mục tiêu**: thay thế approach Playwright (bị Shopee block) bằng HTTP fetch với cookie từ DevTools. Khám phá endpoint product-item-level thật (không phải campaign-level) qua HAR analysis.
+
+**Đã làm**:
+- `packages/shopee/scripts/analyze-har.ts` — HAR analyzer phân loại endpoint (`product_discovery_endpoint`, `dashboard_product_rank_endpoint`, `user_profile_endpoint`, `telemetry_endpoint`, …), redact secret markers + mask numeric IDs / hex tokens / UUIDs.
+- `packages/shopee/scripts/probe-product-offer.ts` — HTTP probe confirm `/offer/product_offer` là SPA shell.
+- `packages/shopee/scripts/inspect-product-item.ts` — dump first item từ HAR response (đã redact) để biết schema thật.
+- `packages/shopee/scripts/fetch-products-cookie.ts` — gọi `GET https://affiliate.shopee.vn/api/v3/offer/product/list?list_type=0&sort_type=1&page_offset=0&page_limit=20&client_type=1`, map item → `ShopeeProductCandidate`. Price divisor 100000 (5 implied decimals). Output `production/_commerce/shopee_product_candidates.json` với 0 cookie/token.
+- `package.json` thêm `shopee:fetch-products`.
+
+**Commits**: `96eb5b1` (probe), `dc2de8d` (fetch-products + inspect helper).
+
+**Live test**: HTTP 403 (cookie 13h stale). Cookie refresh = operator step ngoài skill.
+
+---
+
+### ✅ Round 3C — Shopee Affiliate Link Verification v0: ĐÃ CHỐT (2026-05-24)
+
+**Mục tiêu**: thêm bước verify/tạo affiliate link vào Shopee Product Card flow. Round 3A đã cho thấy `long_link` từ `/api/v3/offer/product/list` đã chứa đủ tracking hoa hồng (universal-link path + `gads_t_sig` + `utm_medium=affiliates` + `utm_source=an_<affid>`) — Round 3C wire kiểm chứng đó thành validator + schema enum, KHÔNG cần Custom Link endpoint cho v0.
+
+**Đã làm**:
+- `packages/shopee/src/types.ts` — thêm `AffiliateLinkStatus` enum (5 giá trị: `VERIFIED_FROM_LONG_LINK | GENERATED_BY_CUSTOM_LINK | NEEDS_CUSTOM_LINK | NEEDS_USER_REVIEW | FAILED`) + 3 field mới trên `ShopeeProductCandidate`: `shopee_affiliate_url`, `affiliate_link_status`, `affiliate_link_notes`.
+- `packages/shopee/src/extract.ts` — `validateShopeeAffiliateLink(link)` check 5 điều kiện (host `shopee.vn`, path `/universal-link/`, `gads_t_sig`, `utm_medium=affiliates`, `utm_source=an_<digits>`); `emptyCandidate()` default 3 field mới (`"unknown" / FAILED / "no link extracted"`).
+- `packages/shopee/scripts/fetch-products-cookie.ts` — `mapItem()` gọi validator, set `shopee_affiliate_url = long_link` nếu `VERIFIED_FROM_LONG_LINK`, copy `affiliate_link_notes`.
+- `.claude/skills/chay/SKILL.md` — thêm box "Round 3C — Shopee affiliate link verification" mô tả 3 field mới + Publish Plan Agent mapping (status verified/generated → field 11 trực tiếp, no blocker; status needs/failed → `"needs_user_input"` + thêm `"shopee_affiliate_url_pending"` vào `publish_blockers`).
+
+**Test**: 9 fixture case validator (1 VERIFIED + 5 NEEDS_USER_REVIEW variants + 3 FAILED) — 9/9 pass. Typecheck file mới sạch (errors còn lại trong `analyze-har.ts` / `fetch-offers-cookie.ts` / `secret-redaction.ts` là pre-existing, không chạm Round 3C).
+
+**Không làm**: chạy video, publish Facebook, fetch Custom Link endpoint, commit HAR/cookie/session.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
