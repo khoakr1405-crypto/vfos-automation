@@ -15,24 +15,48 @@
  * If any new keys are discovered, add them here.
  */
 const SECRET_MARKERS = [
+  // Shopee authentication / session
   "SPC_EC",
   "SPC_ST",
   "SPC_U",
   "SPC_T_ID",
   "SPC_R_T_ID",
   "SPC_T_IV",
+  "SPC_R_T_IV",
   "SPC_SI",
   "SPC_SC_TK",
   "SPC_SC_UD",
+  "SPC_SC_SA_TK",
+  "SPC_SC_SA_UD",
+  "SPC_SC_OFFLINE_TOKEN",
+  "SPC_SC_MAIN_SHOP_SA_UD",
+  "SPC_SC_SESSION",
   "SPC_STK",
   "SPC_CDS",
   "SPC_CDS_CHAT",
+  "SPC_F",
+  "SPC_CLIENTID",
   "csrftoken",
   "shopee_webUnique_ccd",
   "ds",
   "REC_T_ID",
+  "REC7iLP4Q",
+  "_sapid",
+  "SC_SSO",
+  "SC_SSO_U",
   "AMP_TOKEN",
   "shopee_token",
+  // 3rd-party tracking session ids that ride along in the cookie header
+  "_ga",
+  "_ga_4GPP1ZXG63",
+  "_gcl_au",
+  "_fbp",
+  "_hjSession",
+  "_hjSessionUser",
+  "_hjSession_868286",
+  "_hjSessionUser_868286",
+  "_med",
+  "_QPWSDCXHZQA",
 ] as const;
 
 /**
@@ -132,10 +156,23 @@ export function isSecretFree(input: string): boolean {
 /**
  * Wrap an Error's message through redaction.
  * Returns a new Error with redacted message + same stack.
+ *
+ * Special-case: `Headers.append` / `TypeError: ... invalid header value`
+ * errors thrown by undici/fetch echo back the ENTIRE invalid header value
+ * (including the raw cookie). Even with redactSecrets the noise is huge
+ * and any unknown key would leak — so we collapse the message to a
+ * generic, safe one and never include the offending value.
  */
 export function redactError(err: unknown): Error {
   if (err instanceof Error) {
-    const safe = new Error(redactSecrets(err.message));
+    const rawMsg = err.message;
+    const isInvalidHeader =
+      /Headers\.(append|set)/i.test(rawMsg) ||
+      /invalid header (value|name)/i.test(rawMsg);
+    const safeMsg = isInvalidHeader
+      ? "invalid header value (likely cookie sanitization issue — value not logged)"
+      : redactSecrets(rawMsg);
+    const safe = new Error(safeMsg);
     safe.stack = err.stack ? redactSecrets(err.stack) : undefined;
     return safe;
   }

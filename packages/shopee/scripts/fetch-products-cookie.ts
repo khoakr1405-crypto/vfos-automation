@@ -46,8 +46,28 @@ const OUTPUT_PATH = resolve(
 
 const PRODUCT_LIST_URL = "https://affiliate.shopee.vn/api/v3/offer/product/list";
 const REFERER_URL = "https://affiliate.shopee.vn/offer/product_offer";
-const PAGE_LIMIT = 20;
+const DEFAULT_PAGE_LIMIT = 20;
+const MAX_PAGE_LIMIT = 50;
 const PHASE_REF = "Shopee Cookie Fetcher v0 (product-item) — 2026-05-24";
+
+/**
+ * Parse --limit=N CLI arg. Round 3D introduced this so operator can run
+ * a low-limit smoke test (limit=5) before risking throttle at limit=20.
+ * Clamps to [1, MAX_PAGE_LIMIT]. Falls back to DEFAULT_PAGE_LIMIT on
+ * absent/invalid input — never crashes the run.
+ */
+function parsePageLimit(argv: string[]): number {
+  for (const arg of argv) {
+    const m = arg.match(/^--limit=(\d+)$/);
+    if (m?.[1]) {
+      const n = parseInt(m[1], 10);
+      if (Number.isFinite(n) && n > 0) {
+        return Math.min(n, MAX_PAGE_LIMIT);
+      }
+    }
+  }
+  return DEFAULT_PAGE_LIMIT;
+}
 
 // Shopee returns prices as integer × 100000. e.g. 17556000000 = 175,560 VND.
 const PRICE_DIVISOR = 100000;
@@ -85,13 +105,46 @@ function loadCookieFile(): string {
     console.error("   See packages/shopee/README.md for setup.");
     process.exit(1);
   }
-  const raw = readFileSync(COOKIE_PATH, "utf-8").trim();
-  if (raw.length === 0 || !raw.includes("=")) {
+  const raw = readFileSync(COOKIE_PATH, "utf-8");
+
+  // Sanitize: cookie file may contain CRLF + multiple "Cookie:" headers
+  // (e.g. user pasted multiple DevTools request blobs). Collapse to one
+  // single-line "k=v; k=v" string by:
+  //   1) split on any line break
+  //   2) strip leading "Cookie:" / "cookie:" prefix on each line
+  //   3) trim + drop empty lines
+  //   4) join with "; " (the cookie pair separator)
+  //   5) strip any remaining control chars (CR, LF, NUL, TAB) — these
+  //      WILL crash Headers.append with "invalid header value"
+  const merged = raw
+    .split(/\r?\n/)
+    .map((line) => line.replace(/^\s*cookie\s*:\s*/i, "").trim())
+    .filter((line) => line.length > 0)
+    .join("; ")
+    .replace(/[\r\n\t\0]/g, "");
+
+  if (merged.length === 0 || !merged.includes("=")) {
     console.error(`❌ Cookie file invalid (empty or no key=value): ${COOKIE_PATH}`);
     process.exit(1);
   }
-  safeLog(`📁 Cookie loaded (length: ${raw.length} chars)`);
-  return raw;
+  // De-dup: if the user pasted the same cookie blob twice, the joined
+  // string contains duplicate keys — undici still accepts that but it
+  // doubles the header weight. Keep first occurrence per key.
+  const seen = new Set<string>();
+  const dedup: string[] = [];
+  for (const pair of merged.split(";")) {
+    const trimmed = pair.trim();
+    const eq = trimmed.indexOf("=");
+    if (eq <= 0) continue;
+    const key = trimmed.slice(0, eq);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    dedup.push(trimmed);
+  }
+  const sanitized = dedup.join("; ");
+
+  safeLog(`📁 Cookie loaded (raw ${raw.length} → sanitized ${sanitized.length} chars, ${seen.size} keys)`);
+  return sanitized;
 }
 
 function extractCsrfToken(cookieStr: string): string {
@@ -102,22 +155,34 @@ async function fetchProductList(
   cookieStr: string,
   csrfToken: string,
   pageOffset: number,
+  pageLimit: number,
 ): Promise<{ status: number; body: string; contentType: string }> {
   const url = new URL(PRODUCT_LIST_URL);
   url.searchParams.set("list_type", "0");
   url.searchParams.set("sort_type", "1");
   url.searchParams.set("page_offset", String(pageOffset));
-  url.searchParams.set("page_limit", String(PAGE_LIMIT));
+  url.searchParams.set("page_limit", String(pageLimit));
   url.searchParams.set("client_type", "1");
 
   const headers: Record<string, string> = {
     Cookie: cookieStr,
     "User-Agent":
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
     Accept: "application/json, text/plain, */*",
     "Accept-Language": "vi-VN,vi;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Accept-Encoding": "gzip, deflate, br, zstd",
     Referer: REFERER_URL,
     Origin: "https://affiliate.shopee.vn",
+    // Browser fingerprint headers — Shopee anti-scrape rejects requests
+    // missing these (HTTP 403 with error 90309999 on rapid retries even
+    // when cookie is valid).
+    "sec-ch-ua": '"Chromium";v="146", "Not-A.Brand";v="24", "Google Chrome";v="146"',
+    "sec-ch-ua-mobile": "?0",
+    "sec-ch-ua-platform": '"Windows"',
+    "sec-fetch-dest": "empty",
+    "sec-fetch-mode": "cors",
+    "sec-fetch-site": "same-origin",
+    "x-requested-with": "XMLHttpRequest",
   };
   if (csrfToken) headers["X-CSRFToken"] = csrfToken;
 
@@ -274,7 +339,7 @@ interface ParsedList {
   error: string | null;
 }
 
-function parseProductList(body: string): ParsedList {
+function parseProductList(body: string, pageLimit: number): ParsedList {
   let json: Record<string, unknown>;
   try {
     json = JSON.parse(body);
@@ -305,8 +370,8 @@ function parseProductList(body: string): ParsedList {
 
   const totalCount = typeof data["total_count"] === "number" ? data["total_count"] : 0;
   const pageOffset = typeof data["page_offset"] === "number" ? data["page_offset"] : 0;
-  const pageLimit = typeof data["page_limit"] === "number" ? data["page_limit"] : PAGE_LIMIT;
-  const hasMore = pageOffset + pageLimit < totalCount;
+  const respPageLimit = typeof data["page_limit"] === "number" ? data["page_limit"] : pageLimit;
+  const hasMore = pageOffset + respPageLimit < totalCount;
 
   const list = data["list"];
   if (!Array.isArray(list)) {
@@ -338,9 +403,12 @@ async function main(): Promise<void> {
   console.log("└──────────────────────────────────────────────────────────────┘");
   console.log();
 
+  const pageLimit = parsePageLimit(process.argv.slice(2));
+
   const cookieStr = loadCookieFile();
   const csrfToken = extractCsrfToken(cookieStr);
   safeLog(`   csrftoken present: ${csrfToken ? "yes" : "no"}`);
+  safeLog(`   page_limit: ${pageLimit}${pageLimit === DEFAULT_PAGE_LIMIT ? " (default)" : " (CLI override)"}`);
   console.log();
 
   let candidates: ShopeeProductCandidate[] = [];
@@ -355,12 +423,13 @@ async function main(): Promise<void> {
   console.log();
 
   try {
-    const { status, body, contentType } = await fetchProductList(cookieStr, csrfToken, 0);
+    const { status, body, contentType } = await fetchProductList(cookieStr, csrfToken, 0, pageLimit);
     safeLog(`   Status: ${status}    Content-Type: ${contentType}    Body length: ${body.length}`);
 
     if (status === 401 || status === 403) {
       requiredUserAction = true;
-      fetchNotes = `HTTP ${status} — cookie expired or invalid. Refresh .secrets/shopee_cookie.txt.`;
+      const bodyPreview = body.length > 0 ? redactSecrets(body.slice(0, 256)) : "(empty body)";
+      fetchNotes = `HTTP ${status} — cookie expired or invalid. Refresh .secrets/shopee_cookie.txt. Body: ${bodyPreview}`;
       safeLog(`   ⚠️  ${fetchNotes}`);
     } else if (status === 301 || status === 302) {
       requiredUserAction = true;
@@ -374,7 +443,7 @@ async function main(): Promise<void> {
       fetchNotes = `Server error HTTP ${status}. Retry later.`;
       safeLog(`   ⚠️  ${fetchNotes}`);
     } else if (status === 200 && (contentType.includes("json") || body.trimStart().startsWith("{"))) {
-      const result = parseProductList(body);
+      const result = parseProductList(body, pageLimit);
       totalCount = result.totalCount;
       hasMore = result.hasMore;
       if (result.error) {
@@ -440,7 +509,20 @@ async function main(): Promise<void> {
   if (!existsSync(dirname(OUTPUT_PATH))) {
     mkdirSync(dirname(OUTPUT_PATH), { recursive: true });
   }
-  writeFileSync(OUTPUT_PATH, `${outputJson}\n`, "utf-8");
+  // Never overwrite a good result with an empty/error result. Shopee
+  // throttles affiliate API (error 90309999 on rapid retries) — a 403 from
+  // a follow-up call would otherwise clobber the 20 products we just got.
+  // The error log file keeps the latest failure visible without losing data.
+  let overwrote = true;
+  if (candidates.length === 0 && existsSync(OUTPUT_PATH)) {
+    const errorLogPath = OUTPUT_PATH.replace(/\.json$/, ".last_error.json");
+    writeFileSync(errorLogPath, `${outputJson}\n`, "utf-8");
+    overwrote = false;
+    console.log(`  ℹ️  Kept existing ${OUTPUT_PATH} (had data). Error logged: ${errorLogPath}`);
+  } else {
+    writeFileSync(OUTPUT_PATH, `${outputJson}\n`, "utf-8");
+  }
+  void overwrote;
 
   console.log();
   console.log("═══════════════════════════════════════════════════════════════");
