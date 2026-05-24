@@ -1,0 +1,89 @@
+{
+  "source": "shopee_product_card_v0",
+  "created_at": "2026-05-25T00:00:00.000Z",
+  "phase_ref": "PF-STEP 2 Shopee Product Selection — user-approved card (2026-05-25)",
+  "schema_version": "0.1.0",
+  "slug": "mini_fan_t10",
+  "decision": "PRODUCT_SELECTED",
+  "score_total": 15,
+  "score_max": 18,
+  "scoring": {
+    "demo_clarity": 3,
+    "shopee_affiliate_potential": 3,
+    "visual_appeal": 2,
+    "vietnam_audience_fit": 3,
+    "source_demo_availability": 2,
+    "risk_level": 2,
+    "scoring_notes": "Pass threshold (>=13 AND risk>=2). risk=2 because product_name gốc chứa claim 'Siêu Mát' + 'Pin Khủng' — phải rewrite caption neutral."
+  },
+  "product": {
+    "shopee_product_url": "https://shopee.vn/opaanlp/1632480189/42874449161",
+    "short_url_original": "https://s.shopee.vn/2g8EvlWeji",
+    "canonical_url": "https://shopee.vn/opaanlp/1632480189/42874449161",
+    "shopid": "1632480189",
+    "itemid": "42874449161",
+    "product_name": "Quạt Cầm Tay Mini T10 Siêu Mát, Với 3 Tốc Độ Gió Làm Giá Đỡ Điện Thoại Lại Pin Khủng Có Thể Sạc Nhiều Màu Sắc",
+    "product_name_short": "Quạt cầm tay mini T10 3 tốc độ gió, kiêm giá đỡ điện thoại, pin sạc",
+    "category": "đồ gia dụng / quạt mini / gadget mùa nóng",
+    "price_vnd": 39000,
+    "commission_breakdown": {
+      "xtra_pct": "25%",
+      "xtra_vnd": 9750,
+      "shopee_pct": "4%",
+      "shopee_vnd": 1560,
+      "channel": "Kênh Mạng xã hội"
+    },
+    "commission_pct_total_displayed": "29%",
+    "estimated_commission_vnd": 11310,
+    "sales_count": "20000+",
+    "rating": 4.7,
+    "review_count": "unknown",
+    "shop_name": "unknown"
+  },
+  "affiliate": {
+    "shopee_affiliate_url": "https://s.shopee.vn/2g8EvlWeji",
+    "affiliate_owner_id": "an_17376660568",
+    "affiliate_link_status": "VERIFIED_FROM_LONG_LINK",
+    "utm_campaign": "id_p9hkCAr7pv",
+    "utm_content": "reviewnhaban-mayquatdanang---",
+    "validator_commit": "dedfd52"
+  },
+  "data_confidence": "medium",
+  "data_source_notes": "Product name/price/sales/rating/commission từ user_screenshot_verified (Shopee Affiliate dashboard). Affiliate tracking từ HTTP redirect chain (no cookie). Commission math 25%+4%=29%=11310đ verified internally. review_count + shop_name chưa thu được.",
+  "caption_safety": {
+    "avoid_claims": [
+      "siêu mát / lạnh như điều hòa / mát như AC",
+      "pin khủng / pin trâu (không có spec mAh)",
+      "thay thế điều hòa / không cần máy lạnh",
+      "tốt nhất / số 1 thị trường",
+      "health claims (chống say nắng, tốt sức khỏe)",
+      "so sánh trực tiếp brand cụ thể",
+      "hàng chính hãng (nếu shop chưa chứng nhận)"
+    ],
+    "safe_observable_facts": [
+      "3 tốc độ gió",
+      "gập làm giá đỡ điện thoại",
+      "cầm tay / để bàn / móc balo",
+      "giá 39k",
+      "nhiều màu sắc",
+      "4.7 sao, 20k+ đã bán (Shopee data)"
+    ]
+  },
+  "next_step": {
+    "recommended": "PF-STEP 3 source video discovery",
+    "search_keywords": {
+      "douyin": ["便携小风扇 T10", "迷你手持风扇 三档"],
+      "tiktok": ["mini fan T10", "quạt mini T10", "handheld fan phone stand"],
+      "youtube_shorts": ["mini fan unboxing", "usb rechargeable fan demo"],
+      "shopee_live": ["replays của shop bán item này (1632480189)"]
+    },
+    "demo_filter_criteria": [
+      "15-60s vertical 9:16",
+      "có cảnh test gió rõ (giấy bay / tóc bay)",
+      "có cảnh đổi 3 tốc độ",
+      "có cảnh gập làm phone stand",
+      "không watermark TikTok creator khác hoặc xin permission"
+    ],
+    "do_not_run_now": ["video pipeline", "yt_012 creation", "facebook publish"]
+  }
+}
