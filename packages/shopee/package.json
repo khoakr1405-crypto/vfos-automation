@@ -10,16 +10,20 @@
       "import": "./src/index.ts"
     }
   },
-  "files": ["dist", "src"],
+  "files": [
+    "dist",
+    "src"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "shopee:login": "tsx scripts/login-session.ts",
-    "shopee:fetch": "tsx scripts/fetch-offers.ts"
+    "shopee:fetch": "tsx scripts/fetch-offers.ts",
+    "shopee:fetch-cookie": "tsx scripts/fetch-offers-cookie.ts"
   },
-  "dependencies": {},
   "devDependencies": {
     "@types/node": "^22.10.5",
+    "playwright": "^1.60.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3"
   },

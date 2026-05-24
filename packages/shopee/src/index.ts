@@ -31,3 +31,9 @@ export {
   emptyCandidate,
   OFFER_DASHBOARD_SELECTORS,
 } from "./extract.js";
+
+export {
+  redactSecrets,
+  redactError,
+  isSecretFree,
+} from "./secret-redaction.js";
