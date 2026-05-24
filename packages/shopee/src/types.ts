@@ -37,6 +37,20 @@ export interface ShopeeProductCandidate {
   data_confidence: DataConfidence;
   /** Free text describing extraction method, selector used, or fail reason */
   extraction_notes: string;
+
+  // ─── Campaign-level fields (optional, from Shopee Affiliate offer API) ────
+  /** Offer/campaign image URL */
+  offer_image?: string;
+  /** Full affiliate tracking link */
+  affiliate_long_link?: string;
+  /** Campaign ID from Shopee Affiliate */
+  campaign_id?: string;
+  /** Offer type (eg "shopee_offer", "shop_offer") */
+  offer_type?: string;
+  /** Campaign period start (ISO or unix timestamp) */
+  period_start?: string;
+  /** Campaign period end (ISO or unix timestamp) */
+  period_end?: string;
 }
 
 export interface ShopeeFetchManifest {

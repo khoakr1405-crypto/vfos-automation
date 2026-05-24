@@ -1,9 +1,12 @@
 #!/usr/bin/env tsx
 /**
- * VFOS Shopee Cookie Fetcher v0 — HTTP-based product candidate extraction
+ * VFOS Shopee Cookie Fetcher v0 — HTTP-based campaign offer extraction
  *
- * This script replaces the Playwright-based approach (which Shopee detects)
- * with plain HTTP requests using raw cookies from a local file.
+ * Uses the REAL Shopee Affiliate API endpoint discovered from HAR analysis:
+ *   GET https://affiliate.shopee.vn/api/v3/offer/campaign/list
+ *
+ * This replaces the Playwright-based approach (which Shopee detects) with
+ * plain HTTP requests using raw cookies from a local file.
  *
  * Usage:
  *   pnpm shopee:fetch-cookie
@@ -16,11 +19,10 @@
  * What this does:
  *   1. Reads `.secrets/shopee_cookie.txt` (local-only, gitignored).
  *   2. Validates file exists + cookie appears non-empty (NEVER prints content).
- *   3. Sends HTTP GET to Shopee Affiliate offer API endpoints.
- *   4. If API returns product data → parses into candidates.
- *   5. If API returns HTML shell / captcha / 403 → reports blocker clearly.
- *   6. Writes `production/_commerce/shopee_product_candidates.json`
- *      (ZERO cookies/tokens — only public product data).
+ *   3. Sends HTTP GET to real Shopee Affiliate campaign offer API.
+ *   4. Parses data.list[] into campaign-level candidates.
+ *   5. Writes `production/_commerce/shopee_product_candidates.json`
+ *      (ZERO cookies/tokens — only public offer data).
  *
  * Security:
  *   - Cookie read from file only — NEVER from CLI args, env vars, or prompt.
@@ -32,17 +34,9 @@
 
 import { resolve, dirname } from "node:path";
 import { existsSync, readFileSync, mkdirSync, writeFileSync } from "node:fs";
-import {
-  parsePriceVnd,
-  parseCommissionPct,
-  estimateCommissionVnd,
-  computeDataConfidence,
-  emptyCandidate,
-} from "../src/extract.js";
+import { emptyCandidate } from "../src/extract.js";
 import { redactSecrets, redactError, isSecretFree } from "../src/secret-redaction.js";
-import type {
-  ShopeeProductCandidate,
-} from "../src/types.js";
+import type { ShopeeProductCandidate } from "../src/types.js";
 
 // ─── Paths ───────────────────────────────────────────────────────────────────
 
@@ -60,48 +54,17 @@ const OUTPUT_PATH = resolve(
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const OFFER_PAGE_URL = "https://affiliate.shopee.vn/offer/shopee_offer";
-const MAX_CANDIDATES = 10;
 const PHASE_REF = "Shopee Cookie Fetcher v0 — 2026-05-24";
 
 /**
- * Known Shopee Affiliate API endpoints (discovered from SPA network traffic).
- * We try these in order. If one works, we use its response.
+ * Real Shopee Affiliate API endpoint — discovered from HAR network analysis.
+ *
+ * GET /api/v3/offer/campaign/list
+ * Query params: sort_type, page_offset, page_limit, keyword
+ * Response: { code, msg, data: { list[], page_offset, page_limit, has_more, total_count } }
  */
-const API_ENDPOINTS = [
-  // Shopee Affiliate offer list API (XHR from SPA)
-  {
-    name: "affiliate_offer_list",
-    url: "https://affiliate.shopee.vn/api/v3/offer/shopee_offer/list",
-    method: "POST" as const,
-    body: JSON.stringify({
-      page: 1,
-      page_size: MAX_CANDIDATES,
-      sort_type: 1,
-      keyword: "",
-    }),
-    contentType: "application/json",
-  },
-  // Alternative: older V2 API
-  {
-    name: "affiliate_offer_list_v2",
-    url: "https://affiliate.shopee.vn/api/v2/offer/shopee_offer/list",
-    method: "POST" as const,
-    body: JSON.stringify({
-      page: 1,
-      page_size: MAX_CANDIDATES,
-      sort_type: 1,
-    }),
-    contentType: "application/json",
-  },
-  // Fallback: GET the offer page itself (will return HTML)
-  {
-    name: "affiliate_offer_page_html",
-    url: OFFER_PAGE_URL,
-    method: "GET" as const,
-    body: undefined,
-    contentType: undefined,
-  },
-] as const;
+const CAMPAIGN_LIST_URL = "https://affiliate.shopee.vn/api/v3/offer/campaign/list";
+const PAGE_LIMIT = 20;
 
 // ─── Output Schema ───────────────────────────────────────────────────────────
 
@@ -116,6 +79,8 @@ interface CookieFetchOutput {
   contains_cookie: false;
   endpoint_used: string;
   required_user_action: boolean;
+  total_count?: number;
+  has_more?: boolean;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -165,7 +130,6 @@ function loadCookieFile(): string {
     process.exit(1);
   }
 
-  // Basic sanity: cookie should contain at least one key=value pair
   if (!raw.includes("=")) {
     console.error("❌ Cookie file có vẻ không hợp lệ (không chứa key=value pair).");
     console.error("   → Kiểm tra lại nội dung file.");
@@ -175,12 +139,8 @@ function loadCookieFile(): string {
   // Log only metadata — NEVER the cookie itself
   safeLog(`📁 Cookie file loaded: ${COOKIE_PATH}`);
   safeLog(`   Length: ${raw.length} chars`);
-  safeLog(
-    `   Contains SPC_EC: ${raw.includes("SPC_EC") ? "yes" : "no"}`,
-  );
-  safeLog(
-    `   Contains csrftoken: ${raw.includes("csrftoken") ? "yes" : "no"}`,
-  );
+  safeLog(`   Contains SPC_EC: ${raw.includes("SPC_EC") ? "yes" : "no"}`);
+  safeLog(`   Contains csrftoken: ${raw.includes("csrftoken") ? "yes" : "no"}`);
 
   return raw;
 }
@@ -195,15 +155,20 @@ function extractCsrfToken(cookieStr: string): string {
 }
 
 /**
- * Make an HTTP request with the cookie.
+ * Make an HTTP GET request to the campaign list API with cookie auth.
  * Returns { status, body, contentType }.
  * NEVER logs headers or cookie values.
  */
-async function fetchWithCookie(
-  endpoint: (typeof API_ENDPOINTS)[number],
+async function fetchCampaignList(
   cookieStr: string,
   csrfToken: string,
 ): Promise<{ status: number; body: string; contentType: string }> {
+  const url = new URL(CAMPAIGN_LIST_URL);
+  url.searchParams.set("sort_type", "1");
+  url.searchParams.set("page_offset", "0");
+  url.searchParams.set("page_limit", String(PAGE_LIMIT));
+  url.searchParams.set("keyword", "");
+
   const headers: Record<string, string> = {
     Cookie: cookieStr,
     "User-Agent":
@@ -218,213 +183,186 @@ async function fetchWithCookie(
     headers["X-CSRFToken"] = csrfToken;
   }
 
-  if (endpoint.contentType) {
-    headers["Content-Type"] = endpoint.contentType;
-  }
-
   // Log endpoint (NO headers, NO cookie)
-  safeLog(`   → ${endpoint.method} ${endpoint.url}`);
+  safeLog(`   → GET ${url.toString()}`);
 
-  const fetchOptions: RequestInit = {
-    method: endpoint.method,
+  const response = await fetch(url.toString(), {
+    method: "GET",
     headers,
-    redirect: "manual", // Don't follow redirects — detect login wall
-  };
+    redirect: "manual",
+  });
 
-  if (endpoint.body) {
-    fetchOptions.body = endpoint.body;
-  }
-
-  const response = await fetch(endpoint.url, fetchOptions);
   const body = await response.text();
   const contentType = response.headers.get("content-type") ?? "";
 
-  return {
-    status: response.status,
-    body,
-    contentType,
-  };
+  return { status: response.status, body, contentType };
 }
 
 /**
- * Try to parse JSON API response into product candidates.
- * Returns array of candidates (may be empty).
+ * Convert a unix timestamp (seconds) to ISO string, or return "unknown".
  */
-function parseApiResponse(body: string, endpointName: string): ShopeeProductCandidate[] {
-  const candidates: ShopeeProductCandidate[] = [];
+function unixToIso(ts: unknown): string | undefined {
+  if (typeof ts === "number" && ts > 0) {
+    return new Date(ts * 1000).toISOString();
+  }
+  return undefined;
+}
 
+/**
+ * Parse the campaign list API response into ShopeeProductCandidate[].
+ *
+ * Response shape:
+ *   { code, msg, data: { list[], page_offset, page_limit, has_more, total_count } }
+ *
+ * data.list[] fields:
+ *   offer_name, offer_image, offer_type, campaign_id, campaign_link,
+ *   period_start_time, period_end_time, commission_rate, long_link,
+ *   collection_commission_info, trace
+ */
+function parseCampaignList(
+  body: string,
+): {
+  candidates: ShopeeProductCandidate[];
+  totalCount: number;
+  hasMore: boolean;
+  error: string | null;
+} {
   let json: Record<string, unknown>;
   try {
     json = JSON.parse(body);
   } catch {
-    return candidates; // Not JSON — caller handles
+    return { candidates: [], totalCount: 0, hasMore: false, error: "Response is not valid JSON" };
   }
 
-  // Shopee API typically wraps data in { code, data: { list: [...] } }
-  // or { error, data: { offers: [...] } }
-  const code = json["code"] ?? json["error"] ?? json["err_code"];
-  if (code !== undefined && code !== 0 && code !== "0") {
-    safeLog(`   ⚠️  API returned error code: ${code}`);
-    const msg = json["message"] ?? json["msg"] ?? json["error_msg"];
-    if (msg) safeLog(`   ⚠️  Message: ${redactSecrets(String(msg))}`);
-    return candidates;
+  // Check API status code
+  const code = json["code"];
+  if (code !== 0 && code !== "0" && code !== undefined) {
+    const msg = json["msg"] ?? json["message"] ?? "";
+    return {
+      candidates: [],
+      totalCount: 0,
+      hasMore: false,
+      error: `API error code=${code}, msg=${redactSecrets(String(msg))}`,
+    };
   }
 
-  // Navigate to the list of items
   const data = json["data"] as Record<string, unknown> | undefined;
-  if (!data) return candidates;
-
-  // Try common shapes: data.list, data.offers, data.items, data.products
-  const listKeys = ["list", "offers", "items", "products", "offer_list"];
-  let items: unknown[] | null = null;
-  for (const key of listKeys) {
-    if (Array.isArray(data[key])) {
-      items = data[key] as unknown[];
-      safeLog(`   📦 Found ${items.length} items at data.${key}`);
-      break;
-    }
+  if (!data) {
+    return {
+      candidates: [],
+      totalCount: 0,
+      hasMore: false,
+      error: `No 'data' field in response. Top keys: ${Object.keys(json).join(", ")}`,
+    };
   }
 
-  if (!items || items.length === 0) {
-    // Maybe data itself is an array
-    if (Array.isArray(data)) {
-      items = data;
-      safeLog(`   📦 Found ${items.length} items at data (array)`);
-    } else {
-      safeLog("   ⚠️  Could not locate items array in API response");
-      safeLog(`   Available keys in data: ${Object.keys(data).join(", ")}`);
-      return candidates;
-    }
+  const totalCount = typeof data["total_count"] === "number" ? data["total_count"] : 0;
+  const hasMore = data["has_more"] === true;
+
+  const list = data["list"];
+  if (!Array.isArray(list) || list.length === 0) {
+    return {
+      candidates: [],
+      totalCount,
+      hasMore,
+      error: list === undefined
+        ? `No 'list' field in data. Available keys: ${Object.keys(data).join(", ")}`
+        : "data.list is empty",
+    };
   }
 
-  // Parse each item
-  for (let i = 0; i < Math.min(items.length, MAX_CANDIDATES); i++) {
-    const item = items[i] as Record<string, unknown> | undefined;
+  safeLog(`   📦 Found ${list.length} campaigns (total_count=${totalCount}, has_more=${hasMore})`);
+
+  const candidates: ShopeeProductCandidate[] = [];
+
+  for (const item of list) {
     if (!item || typeof item !== "object") continue;
+    const rec = item as Record<string, unknown>;
 
-    const c = emptyCandidate(OFFER_PAGE_URL, `API response from ${endpointName}`);
+    const c = emptyCandidate(OFFER_PAGE_URL, "campaign-level Shopee Affiliate offer, not product item detail");
 
-    // Product URL
-    const itemId = item["item_id"] ?? item["itemid"] ?? item["product_id"];
-    const shopId = item["shop_id"] ?? item["shopid"];
-    if (itemId && shopId) {
-      c.shopee_product_url = `https://shopee.vn/product/${shopId}/${itemId}`;
-    } else if (typeof item["product_link"] === "string") {
-      c.shopee_product_url = item["product_link"];
-    } else if (typeof item["item_link"] === "string") {
-      c.shopee_product_url = item["item_link"];
+    // offer_name → product_name
+    if (typeof rec["offer_name"] === "string" && rec["offer_name"]) {
+      c.product_name = (rec["offer_name"] as string).trim();
     }
 
-    // Short URL
-    if (typeof item["short_link"] === "string" && item["short_link"]) {
-      c.short_url = item["short_link"];
+    // campaign_link → shopee_product_url
+    if (typeof rec["campaign_link"] === "string" && rec["campaign_link"]) {
+      c.shopee_product_url = rec["campaign_link"] as string;
     }
 
-    // Product name
-    const name =
-      item["product_name"] ??
-      item["item_name"] ??
-      item["name"] ??
-      item["title"];
-    if (typeof name === "string" && name.trim()) {
-      c.product_name = name.trim();
-    }
+    // short_url stays unknown (not available at campaign level)
 
-    // Price
-    const rawPrice =
-      item["price"] ??
-      item["item_price"] ??
-      item["product_price"] ??
-      item["price_min"];
-    if (typeof rawPrice === "number") {
-      // Shopee API often returns price in cents (x100000)
-      c.price_vnd = rawPrice > 1_000_000_000 ? Math.round(rawPrice / 100000) : rawPrice;
-    } else if (typeof rawPrice === "string") {
-      c.price_vnd = parsePriceVnd(rawPrice);
-    }
-
-    // Commission
-    const rawComm =
-      item["commission_rate"] ??
-      item["commission_pct"] ??
-      item["commission"] ??
-      item["com_rate"];
-    if (typeof rawComm === "number") {
-      // API may return 0.04 for 4%, or 4 for 4%
-      const pct = rawComm < 1 ? rawComm * 100 : rawComm;
-      c.commission_pct = `${pct}%`;
-    } else if (typeof rawComm === "string") {
-      c.commission_pct = parseCommissionPct(rawComm);
-    }
-
-    c.estimated_commission_vnd = estimateCommissionVnd(c.price_vnd, c.commission_pct);
-
-    // Sales count
-    const sales =
-      item["sold"] ??
-      item["sales"] ??
-      item["historical_sold"] ??
-      item["sold_count"];
-    if (sales !== undefined && sales !== null) {
-      c.sales_count = String(sales);
-    }
-
-    // Rating
-    const rating =
-      item["rating_star"] ??
-      item["item_rating"] ??
-      item["rating"];
-    if (typeof rating === "number" && rating >= 0 && rating <= 5) {
-      c.rating = Math.round(rating * 100) / 100;
-    } else if (typeof rating === "object" && rating !== null) {
-      // Sometimes rating is nested: { rating_star: 4.8, ... }
-      const star = (rating as Record<string, unknown>)["rating_star"];
-      if (typeof star === "number" && star >= 0 && star <= 5) {
-        c.rating = Math.round(star * 100) / 100;
+    // commission_rate → commission_pct
+    const commRate = rec["commission_rate"];
+    if (typeof commRate === "number") {
+      // API may return 0.04 for 4%, or 4 for 4%, or 400 for 4%
+      let pct: number;
+      if (commRate > 100) {
+        // Likely basis points or permyriad (e.g. 400 = 4%)
+        pct = commRate / 100;
+      } else if (commRate <= 1) {
+        // Decimal fraction (e.g. 0.04 = 4%)
+        pct = commRate * 100;
+      } else {
+        // Already percent (e.g. 4 = 4%)
+        pct = commRate;
       }
+      c.commission_pct = `${Math.round(pct * 100) / 100}%`;
+    } else if (typeof commRate === "string" && commRate) {
+      // Try to parse "4%" style
+      const m = commRate.match(/(\d+(?:[.,]\d+)?)\s*%?/);
+      if (m) c.commission_pct = `${m[1]?.replace(",", ".")}%`;
     }
 
-    // Review count
-    const reviews =
-      item["cmt_count"] ??
-      item["review_count"] ??
-      item["comment_count"];
-    if (typeof reviews === "number" && reviews >= 0) {
-      c.review_count = reviews;
+    // price_vnd = unknown (campaign level, not product)
+    // estimated_commission_vnd = unknown (no price)
+    // sales_count = unknown
+    // rating = unknown
+    // review_count = unknown
+    // shop_name = unknown
+
+    // Campaign-specific optional fields
+    if (typeof rec["offer_image"] === "string" && rec["offer_image"]) {
+      c.offer_image = rec["offer_image"] as string;
     }
 
-    // Shop name
-    const shop =
-      item["shop_name"] ??
-      item["seller_name"];
-    if (typeof shop === "string" && shop.trim()) {
-      c.shop_name = shop.trim();
+    if (typeof rec["long_link"] === "string" && rec["long_link"]) {
+      c.affiliate_long_link = rec["long_link"] as string;
     }
 
-    c.data_confidence = computeDataConfidence(c);
-    const unknownCount = [
-      c.product_name,
-      c.price_vnd,
-      c.commission_pct,
-      c.sales_count,
-      c.rating,
-      c.review_count,
-      c.shop_name,
-    ].filter((v) => v === "unknown").length;
-    c.extraction_notes = `API extraction (${endpointName}); ${unknownCount}/7 fields unknown`;
+    if (rec["campaign_id"] !== undefined && rec["campaign_id"] !== null) {
+      c.campaign_id = String(rec["campaign_id"]);
+    }
+
+    if (typeof rec["offer_type"] === "string") {
+      c.offer_type = rec["offer_type"] as string;
+    } else if (typeof rec["offer_type"] === "number") {
+      c.offer_type = String(rec["offer_type"]);
+    }
+
+    c.period_start = unixToIso(rec["period_start_time"]);
+    c.period_end = unixToIso(rec["period_end_time"]);
+
+    // Confidence: campaign-level data with offer_name + campaign_link + commission = medium
+    // We don't have price/sales/rating/review/shop, so computeDataConfidence would say "low"
+    // But campaign data IS valid and useful, so override to "medium"
+    c.data_confidence = (c.product_name !== "unknown" && c.commission_pct !== "unknown")
+      ? "medium"
+      : "low";
 
     candidates.push(c);
   }
 
-  return candidates;
+  return { candidates, totalCount, hasMore, error: null };
 }
 
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 async function main(): Promise<void> {
-  console.log("┌────────────────────────────────────────────────────┐");
-  console.log("│  VFOS Shopee — Cookie Fetcher v0 (NO Playwright)  │");
-  console.log("└────────────────────────────────────────────────────┘");
+  console.log("┌──────────────────────────────────────────────────────────┐");
+  console.log("│  VFOS Shopee — Cookie Fetcher v0 (Real Campaign API)    │");
+  console.log("└──────────────────────────────────────────────────────────┘");
   console.log();
 
   // 1. Load cookie
@@ -433,116 +371,91 @@ async function main(): Promise<void> {
   safeLog(`   Has csrftoken for X-CSRFToken header: ${csrfToken ? "yes" : "no"}`);
   console.log();
 
-  // 2. Try API endpoints
+  // 2. Fetch campaign list from real API
   let candidates: ShopeeProductCandidate[] = [];
   let endpointUsed = "none";
   let requiredUserAction = false;
   let fetchNotes = "";
+  let totalCount = 0;
+  let hasMore = false;
 
-  safeLog("🔎 Trying Shopee Affiliate API endpoints...");
+  safeLog("🔎 Calling Shopee Affiliate Campaign List API...");
+  safeLog(`   Endpoint: GET /api/v3/offer/campaign/list`);
   console.log();
 
-  for (const endpoint of API_ENDPOINTS) {
-    safeLog(`📡 Endpoint: ${endpoint.name}`);
-    try {
-      const { status, body, contentType } = await fetchWithCookie(
-        endpoint,
-        cookieStr,
-        csrfToken,
-      );
-      safeLog(`   Status: ${status}`);
-      safeLog(`   Content-Type: ${contentType}`);
-      safeLog(`   Body length: ${body.length} chars`);
+  try {
+    const { status, body, contentType } = await fetchCampaignList(cookieStr, csrfToken);
 
-      // Check for auth failures
-      if (status === 401 || status === 403) {
-        safeLog("   ⚠️  Auth failed (401/403) — cookie expired or invalid.");
-        requiredUserAction = true;
-        fetchNotes = `Endpoint ${endpoint.name}: HTTP ${status} — cookie expired or invalid. User must refresh cookie.`;
-        continue;
-      }
+    safeLog(`   Status: ${status}`);
+    safeLog(`   Content-Type: ${contentType}`);
+    safeLog(`   Body length: ${body.length} chars`);
 
-      if (status === 302 || status === 301) {
-        safeLog("   ⚠️  Redirect detected — likely login wall.");
-        requiredUserAction = true;
-        fetchNotes = `Endpoint ${endpoint.name}: HTTP ${status} redirect — session expired.`;
-        continue;
-      }
-
-      if (status === 429) {
-        safeLog("   ⚠️  Rate limited (429) — STOPPING to avoid ban.");
-        requiredUserAction = true;
-        fetchNotes = `Rate limited (429). Wait and retry later. Do NOT spam.`;
-        break; // Don't try more endpoints
-      }
-
-      if (status >= 500) {
-        safeLog(`   ⚠️  Server error (${status}) — try next endpoint.`);
-        fetchNotes = `Endpoint ${endpoint.name}: HTTP ${status} server error.`;
-        continue;
-      }
-
-      // Check if response is JSON vs HTML
+    // Auth failure checks
+    if (status === 401 || status === 403) {
+      safeLog("   ⚠️  Auth failed (401/403) — cookie expired or invalid.");
+      requiredUserAction = true;
+      fetchNotes = `HTTP ${status} — cookie expired or invalid. Refresh cookie in .secrets/shopee_cookie.txt.`;
+    } else if (status === 302 || status === 301) {
+      safeLog("   ⚠️  Redirect detected — likely login wall.");
+      requiredUserAction = true;
+      fetchNotes = `HTTP ${status} redirect — session expired. Refresh cookie.`;
+    } else if (status === 429) {
+      safeLog("   ⚠️  Rate limited (429) — STOPPING. Do NOT spam.");
+      requiredUserAction = true;
+      fetchNotes = "Rate limited (429). Wait and retry later.";
+    } else if (status >= 500) {
+      safeLog(`   ⚠️  Server error (${status}).`);
+      fetchNotes = `Server error HTTP ${status}. Try again later.`;
+    } else if (status === 200) {
+      // Parse response
       if (contentType.includes("json") || body.trimStart().startsWith("{")) {
-        // Parse JSON response
-        const parsed = parseApiResponse(body, endpoint.name);
-        if (parsed.length > 0) {
-          candidates = parsed;
-          endpointUsed = endpoint.name;
-          fetchNotes = `Successfully extracted ${parsed.length} candidates from ${endpoint.name}.`;
-          safeLog(`   ✅ Extracted ${parsed.length} candidates!`);
-          break; // Got data — stop
-        } else {
-          safeLog("   ⚠️  JSON response but no candidates extracted.");
-          // Log structure for debugging (safe — no cookies in API response body)
-          try {
-            const jsonPreview = JSON.parse(body);
-            const topKeys = Object.keys(jsonPreview).slice(0, 10);
-            safeLog(`   Top-level keys: ${topKeys.join(", ")}`);
-          } catch {
-            // ignore parse errors for preview
-          }
-          fetchNotes = `Endpoint ${endpoint.name}: JSON response but could not locate product list. Structure may differ from expected schema.`;
+        const result = parseCampaignList(body);
+        totalCount = result.totalCount;
+        hasMore = result.hasMore;
+
+        if (result.error) {
+          safeLog(`   ⚠️  Parse issue: ${result.error}`);
+          fetchNotes = result.error;
+        }
+
+        if (result.candidates.length > 0) {
+          candidates = result.candidates;
+          endpointUsed = "api/v3/offer/campaign/list";
+          fetchNotes = `Successfully extracted ${candidates.length} campaign offers (total_count=${totalCount}, has_more=${hasMore}).`;
+          safeLog(`   ✅ Extracted ${candidates.length} campaign offers!`);
+        } else if (!result.error) {
+          fetchNotes = "API returned OK but no campaigns in list.";
         }
       } else if (contentType.includes("html") || body.trimStart().startsWith("<")) {
-        // HTML response — could be SPA shell or login page
-        const isLoginPage =
-          body.includes("/login") ||
-          body.includes("đăng nhập") ||
-          body.includes("sign in");
-        const isCaptcha =
-          body.includes("captcha") || body.includes("CAPTCHA");
-
-        if (isLoginPage) {
-          safeLog("   ⚠️  HTML login page returned — session expired.");
+        const isLogin = body.includes("/login") || body.includes("đăng nhập");
+        const isCaptcha = body.includes("captcha") || body.includes("CAPTCHA");
+        if (isCaptcha) {
           requiredUserAction = true;
-          fetchNotes = `Endpoint ${endpoint.name}: HTML login page — cookie invalid or expired.`;
-        } else if (isCaptcha) {
-          safeLog("   ⚠️  Captcha page returned — STOPPING. Will NOT bypass.");
+          fetchNotes = "Captcha detected. Cannot bypass. Refresh session manually.";
+          safeLog("   ⚠️  Captcha detected — STOPPING.");
+        } else if (isLogin) {
           requiredUserAction = true;
-          fetchNotes = `Endpoint ${endpoint.name}: Captcha detected — cannot bypass. User must refresh session.`;
-          break;
+          fetchNotes = "Login page returned. Cookie invalid or expired.";
+          safeLog("   ⚠️  Login page — session expired.");
         } else {
-          safeLog("   ℹ️  HTML response (SPA shell). This endpoint serves rendered page, not API data.");
-          fetchNotes = `Endpoint ${endpoint.name}: Returns HTML SPA shell. Need to find XHR API endpoint from network traffic.`;
+          fetchNotes = "HTML response instead of JSON. Endpoint may have changed.";
+          safeLog("   ⚠️  Unexpected HTML response.");
         }
-      } else {
-        safeLog(`   ℹ️  Unexpected content type: ${contentType}`);
-        fetchNotes = `Endpoint ${endpoint.name}: Unexpected content type ${contentType}.`;
       }
-    } catch (err: unknown) {
-      const safeErr = redactError(err);
-      safeError(`   ❌ Fetch error: ${safeErr.message}`);
-      fetchNotes = `Endpoint ${endpoint.name}: Fetch error — ${safeErr.message}`;
+    } else {
+      fetchNotes = `Unexpected HTTP ${status}.`;
+      safeLog(`   ⚠️  Unexpected status: ${status}`);
     }
-
-    console.log();
+  } catch (err: unknown) {
+    const safeErr = redactError(err);
+    safeError(`   ❌ Fetch error: ${safeErr.message}`);
+    fetchNotes = `Fetch error: ${safeErr.message}`;
   }
 
   // 3. Build output
   const overallConfidence: "high" | "medium" | "low" =
     candidates.length >= 3
-      ? "high"
+      ? "medium"   // campaign-level = medium at best (no product detail)
       : candidates.length >= 1
         ? "medium"
         : "low";
@@ -554,10 +467,12 @@ async function main(): Promise<void> {
     data_confidence: overallConfidence,
     candidate_count: candidates.length,
     candidates,
-    fetch_notes: fetchNotes || "No endpoint returned usable data.",
+    fetch_notes: fetchNotes || "No data returned.",
     contains_cookie: false,
     endpoint_used: endpointUsed,
     required_user_action: requiredUserAction,
+    total_count: totalCount,
+    has_more: hasMore,
   };
 
   // 4. Security gate: verify output JSON has NO secrets
@@ -583,19 +498,26 @@ async function main(): Promise<void> {
   console.log(`  Output:             ${OUTPUT_PATH}`);
   console.log(`  Endpoint used:      ${endpointUsed}`);
   console.log(`  Candidates found:   ${candidates.length}`);
+  console.log(`  Total on server:    ${totalCount}`);
+  console.log(`  Has more pages:     ${hasMore}`);
   console.log(`  Data confidence:    ${overallConfidence}`);
   console.log(`  User action needed: ${requiredUserAction}`);
   console.log(`  Notes:              ${fetchNotes}`);
   console.log();
 
   if (candidates.length > 0) {
-    console.log("  📦 Candidates:");
+    console.log("  📦 Campaign Offers:");
     for (let i = 0; i < candidates.length; i++) {
       const c = candidates[i]!;
       console.log(`    [${i + 1}] ${c.product_name}`);
-      console.log(`        Price: ${c.price_vnd}, Commission: ${c.commission_pct}`);
+      console.log(`        Commission: ${c.commission_pct}`);
+      console.log(`        Campaign link: ${c.shopee_product_url}`);
+      if (c.campaign_id) console.log(`        Campaign ID: ${c.campaign_id}`);
+      if (c.offer_type) console.log(`        Offer type: ${c.offer_type}`);
+      if (c.period_start && c.period_end) {
+        console.log(`        Period: ${c.period_start} → ${c.period_end}`);
+      }
       console.log(`        Confidence: ${c.data_confidence}`);
-      console.log(`        URL: ${c.shopee_product_url}`);
     }
     console.log();
   }
