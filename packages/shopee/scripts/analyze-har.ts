@@ -15,14 +15,20 @@ import { resolve } from "node:path";
 import { existsSync, readFileSync } from "node:fs";
 import { redactSecrets } from "../src/secret-redaction.js";
 
-const HAR_PATH = resolve(
-  import.meta.dirname ?? ".",
-  "..",
-  "..",
-  "..",
-  ".secrets",
-  "shopee_product_offer.har",
-);
+const HAR_PATH = (() => {
+  const cliArg = process.argv[2];
+  if (cliArg && cliArg.length > 0) {
+    return resolve(cliArg);
+  }
+  return resolve(
+    import.meta.dirname ?? ".",
+    "..",
+    "..",
+    "..",
+    ".secrets",
+    "shopee_product_offer.har",
+  );
+})();
 
 interface HarHeader {
   name: string;
@@ -123,6 +129,7 @@ const PRODUCT_ITEM_MARKERS = [
  */
 type EndpointClassification =
   | "campaign_level_offer_endpoint"
+  | "product_discovery_endpoint"
   | "dashboard_product_rank_endpoint"
   | "dashboard_kpi_endpoint"
   | "user_profile_endpoint"
@@ -148,6 +155,17 @@ function classifyEndpoint(
     return {
       classification: "campaign_level_offer_endpoint",
       note: "Already implemented in fetch-offers-cookie.ts. Returns category-level offers (Fashion, Health, etc), not product-item detail.",
+    };
+  }
+
+  // Product discovery — item-level affiliate offer feed
+  // GET /api/v3/offer/product/list — implemented in fetch-products-cookie.ts.
+  // Returns 20+ product items with itemid, shopid, name, price, sales, rating,
+  // commission rate, long_link (affiliate URL with UTM).
+  if (url.includes("/api/v3/offer/product/list")) {
+    return {
+      classification: "product_discovery_endpoint",
+      note: "Product-item-level affiliate offer feed. Implemented in fetch-products-cookie.ts. Each item has itemid, shopid, name, price_min/max, historical_sold, item_rating, commission_rate, long_link.",
     };
   }
 
@@ -445,6 +463,7 @@ async function main(): Promise<void> {
   console.log(`📌 Summary:`);
   console.log(`   Total endpoints scanned: ${candidates.length}`);
   console.log(`   campaign_level_offer_endpoint:    ${candidates.filter((c) => c.classification === "campaign_level_offer_endpoint").length}  (already implemented)`);
+  console.log(`   product_discovery_endpoint:       ${candidates.filter((c) => c.classification === "product_discovery_endpoint").length}  (already implemented)`);
   console.log(`   dashboard_product_rank_endpoint:  ${candidates.filter((c) => c.classification === "dashboard_product_rank_endpoint").length}  (NOT product discovery)`);
   console.log(`   dashboard_kpi_endpoint:           ${candidates.filter((c) => c.classification === "dashboard_kpi_endpoint").length}  (user own metrics)`);
   console.log(`   user_profile_endpoint:            ${candidates.filter((c) => c.classification === "user_profile_endpoint").length}`);
