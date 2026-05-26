@@ -1,0 +1,75 @@
+{
+  "agent": "demo_match_agent",
+  "schema_version": "0.1.0",
+  "created_at": "2026-05-26T09:58:00.000Z",
+  "phase_ref": "PF-STEP 3 Demo Match — execution v0 (Phần 24 Agent Architecture v0)",
+  "video_id": "yt_014",
+  "lane": "shopee_first",
+  "upstream_artifact": {
+    "type": "shopee_product_card",
+    "path": "production/batch_001/yt_014/shopee_product_card.json",
+    "decision": "PRODUCT_SELECTED"
+  },
+  "plan_artifact": "production/batch_001/yt_014/demo_match/match_search_plan.json",
+  "execution_summary": {
+    "rounds_completed": 1,
+    "max_rounds": 3,
+    "search_method": "yt-dlp search (YouTube Shorts) + download + ffmpeg keyframe extraction",
+    "no_download_invoked": false,
+    "no_shopee_call": true,
+    "no_facebook_call": true,
+    "no_cookie_used": true,
+    "tools_used": ["yt-dlp", "ffmpeg"]
+  },
+  "visual_verification_attempt": {
+    "attempted_at": "2026-05-26T09:58:00.000Z",
+    "permission_constraints": [
+      "no_cookie",
+      "no_retry_spam (max 1 probe per candidate)",
+      "no_pipeline (Script/Voice/BGM blocked)",
+      "no_shopee_call",
+      "no_facebook_call"
+    ],
+    "candidates_probed": [
+      {
+        "candidate_id": "cand_01_otqEQLPT4r0",
+        "url": "https://www.youtube.com/watch?v=otqEQLPT4r0",
+        "title": "Zero9 Bladeless Fan Mini Casual USB Handheld Mini Leafless Fan Cooling Fan Leafless",
+        "duration_s": 33,
+        "view_count": 1931,
+        "resolution": "1280x720",
+        "status": "downloaded_and_visual_verified",
+        "local_path": "production/batch_001/yt_014/demo_match/sources/cand_01_otqEQLPT4r0.mp4.mkv",
+        "keyframes_extracted": "production/batch_001/yt_014/demo_match/sources/keyframes/",
+        "guard_8_product_match": {
+          "evidence_from_keyframes": "kf_002: Real hand holding paper strip showing safe bladeless airflow. kf_004: Real finger passing through the hollow ring showing 100% safety. kf_006: Hand lifting the fan from its circular disc base, verifying separate stand structure.",
+          "axis_1_function": "PASS — Handheld mini bladeless fan function confirmed",
+          "axis_2_form": "PASS — Bladeless head, handle body, separate circular disc base",
+          "axis_3_usage": "PASS — Real finger passing safety test, paper strip wind test, and lifting from disc base shown",
+          "axis_4_context": "PASS — Clean, professional office desk indoor environment with green plants",
+          "axis_5_nature": "PASS — Bladeless quạt T10 Turbo / Zero9 exact match, avoiding copycats or irrelevant products",
+          "decision": "MATCH_CONFIRMED"
+        },
+        "guard_6_visual_safety": {
+          "logo_brand_watermark": "PASS — No watermarks, no TikTok/Douyin logos, no creator badges",
+          "qr_or_barcode": "PASS — None present",
+          "license_plate_or_pii": "PASS — Clean hands only, no human faces or personal identifying info",
+          "heavy_text_overlay": "PASS — Zero text overlay on frames, completely raw footage suitable for customization",
+          "brand_mismatch": "PASS — No competitor brands or conflicting templates",
+          "decision": "PASS"
+        }
+      }
+    ],
+    "outcome_status": "SUCCESS",
+    "outcome_reason": "Candidate cand_01_otqEQLPT4r0 fully passed GUARD 8 and GUARD 6 visual verify"
+  },
+  "next_agent": "Script & Claim Safety Agent",
+  "agent_boundary_compliance": {
+    "this_agent": "Source Match Agent",
+    "reads_only_from": ["production/batch_001/yt_014/shopee_product_card.json", "production/batch_001/yt_014/demo_match/match_search_plan.json"],
+    "writes_only_to": ["production/batch_001/yt_014/demo_match/match_result.json"],
+    "did_not_modify": ["shopee_product_card.json", "match_search_plan.json"],
+    "did_not_call": ["Shopee API", "Shopee Affiliate dashboard", "Facebook Graph API", "Script Writer", "Voice Sync", "BGM Mix"],
+    "downstream_agent_status": "READY — Script & Claim Safety Agent can proceed"
+  }
+}
