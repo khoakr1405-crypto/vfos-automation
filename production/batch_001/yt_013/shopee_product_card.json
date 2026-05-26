@@ -1,0 +1,115 @@
+{
+  "video_id": "yt_013",
+  "lane": "shopee_first",
+  "phase_ref": "Phần 23 Schema Mở Rộng + Phần 24 Agent Architecture v0 — copy từ _commerce/selected_products/mini_fan_t10_shopee_product_card.json, gán video_id=yt_013 (2026-05-26)",
+  "created_at": "2026-05-26T00:00:00.000Z",
+  "schema_version": "0.2.0",
+  "slug": "mini_fan_t10",
+  "shopee_product_url": "https://shopee.vn/opaanlp/1632480189/42874449161",
+  "short_url_original": "https://s.shopee.vn/2g8EvlWeji",
+  "canonical_url": "https://shopee.vn/opaanlp/1632480189/42874449161",
+  "shopid": "1632480189",
+  "itemid": "42874449161",
+  "product_name": "Quạt Cầm Tay Mini T10 Siêu Mát, Với 3 Tốc Độ Gió Làm Giá Đỡ Điện Thoại Lại Pin Khủng Có Thể Sạc Nhiều Màu Sắc",
+  "product_name_short": "Quạt cầm tay mini T10 3 tốc độ gió, kiêm giá đỡ điện thoại, pin sạc",
+  "category": "đồ gia dụng / quạt mini / gadget mùa nóng",
+  "price_vnd": 39000,
+  "commission_pct": "29%",
+  "commission_breakdown": {
+    "xtra_pct": "25%",
+    "xtra_vnd": 9750,
+    "shopee_pct": "4%",
+    "shopee_vnd": 1560,
+    "channel": "Kênh Mạng xã hội"
+  },
+  "estimated_commission_vnd": 11310,
+  "sales_count": "20000+",
+  "rating": 4.7,
+  "review_count": "unknown",
+  "shop_name": "unknown",
+  "why_worthwhile": {
+    "problem_solved": "Mùa nóng cầm tay làm việc / di chuyển / đợi bus — nhu cầu phổ thông không cần điều hòa.",
+    "buyer_persona": "Sinh viên, dân văn phòng, mẹ bỉm, du khách — đối tượng Facebook Reels VN rộng, độ tuổi 16–40.",
+    "visual_demo_clarity": "Bật quạt thấy gió ngay (giấy bay / tóc bay), gập 1 bước thành phone stand — visual self-explanatory trong 3s.",
+    "content_led_fit": "Có hook tự nhiên (test 3 tốc độ), có pivot mềm (gập làm stand → review angle 'tiện'). Không cần claim mạnh.",
+    "vietnam_reels_potential": "Sản phẩm phổ thông VN, 20k+ đã bán, 4.7★, giá 39k đủ thấp để chuyển đổi nhanh. Mùa nóng = seasonal peak."
+  },
+  "data_confidence": "medium",
+  "data_source_notes": "Product name/price/sales/rating/commission từ user_screenshot_verified (Shopee Affiliate dashboard, 2026-05-25). Affiliate tracking validate qua HTTP redirect chain — no cookie/no token (Round 3C validator commit dedfd52). Commission math 25%+4%=29%=11310đ verified internally. review_count + shop_name chưa thu được từ Affiliate dashboard view hiện tại. ≥1 field unknown trong (price/comm/sales/rating/review/shop) → data_confidence=medium.",
+  "selection_scoring": {
+    "axes": [
+      {"id": 1, "name": "demo_clarity", "score": 3, "note": "Visual gió + gập stand tự nhìn 3s hiểu — strong."},
+      {"id": 2, "name": "shopee_affiliate_potential", "score": 3, "note": "29% tổng (Xtra 25% + Shopee 4%) trên giá 39k → ~11.310đ/đơn. 20k+ sales đã bán → demand verified."},
+      {"id": 3, "name": "visual_appeal_for_facebook_reels", "score": 2, "note": "Gadget mùa nóng, có 'before/after' (nóng → mát), nhưng không quá satisfying như cleaning gadget."},
+      {"id": 4, "name": "vietnam_audience_fit_facebook_reels", "score": 3, "note": "39k = giá 'lỡ tay' — dễ chuyển đổi VN. Mùa nóng = peak. Đối tượng rộng."},
+      {"id": 5, "name": "source_demo_availability", "score": 2, "note": "Có nhiều mini-fan demo trên Douyin/TikTok TQ, nhưng chính xác form factor T10 + phone-stand fold cần search kỹ. Có thể phải tự quay."},
+      {"id": 6, "name": "risk_level", "score": 2, "note": "Risk=2 vì product_name gốc chứa 'Siêu Mát' + 'Pin Khủng' — phải REWRITE caption neutral. KHÔNG claim 'thay điều hòa' / 'lạnh như AC' / 'pin trâu mAh' (không có spec mAh chính thức)."}
+    ],
+    "total": 15,
+    "max": 18,
+    "threshold_pass": 13,
+    "threshold_min_risk_axis": 2
+  },
+  "decision": "PRODUCT_SELECTED",
+  "decision_note": "Total 15/18 ≥ threshold 13 AND risk axis=2 ≥ 2 → PASS. Caveat: caption phải REWRITE để né các claim trong caption_safety.avoid_claims (R3 banned absolute + R5 soft tone). Demo Match Agent phải tìm clip thật form factor T10 (handheld 3-speed phone-stand), KHÔNG dùng clip camping fan có LED hoặc tower fan (vi phạm GUARD 8 trục 5 = MISMATCH_REJECT).",
+  "affiliate": {
+    "shopee_affiliate_url": "https://s.shopee.vn/2g8EvlWeji",
+    "affiliate_owner_id": "an_17376660568",
+    "affiliate_link_status": "VERIFIED_FROM_LONG_LINK",
+    "utm_campaign": "id_p9hkCAr7pv",
+    "utm_content": "reviewnhaban-mayquatdanang---",
+    "validator_commit": "dedfd52"
+  },
+  "caption_safety": {
+    "avoid_claims": [
+      "siêu mát / lạnh như điều hòa / mát như AC",
+      "pin khủng / pin trâu (không có spec mAh)",
+      "thay thế điều hòa / không cần máy lạnh",
+      "tốt nhất / số 1 thị trường",
+      "health claims (chống say nắng, tốt sức khỏe)",
+      "so sánh trực tiếp brand cụ thể",
+      "hàng chính hãng (nếu shop chưa chứng nhận)"
+    ],
+    "safe_observable_facts": [
+      "3 tốc độ gió",
+      "gập làm giá đỡ điện thoại",
+      "cầm tay / để bàn / móc balo",
+      "giá 39k",
+      "nhiều màu sắc",
+      "4.7 sao, 20k+ đã bán (Shopee data)"
+    ]
+  },
+  "next_step": {
+    "agent": "demo_match_agent",
+    "recommended": "PF-STEP 3 source video discovery (xem production/batch_001/yt_013/demo_match/match_search_plan.json)",
+    "search_keywords": {
+      "douyin_zh": ["便携小风扇 T10", "迷你手持风扇 三档"],
+      "tiktok_vn": ["mini fan T10", "quạt mini T10", "handheld fan phone stand"],
+      "youtube_shorts": ["mini fan unboxing", "usb rechargeable fan demo"],
+      "shopee_live": ["replays của shop bán item này (1632480189)"]
+    },
+    "demo_filter_criteria": [
+      "15-60s vertical 9:16",
+      "có cảnh test gió rõ (giấy bay / tóc bay)",
+      "có cảnh đổi 3 tốc độ",
+      "có cảnh gập làm phone stand",
+      "không watermark TikTok creator khác hoặc xin permission"
+    ],
+    "do_not_run_now": ["video pipeline (yt-dlp)", "Script Writer", "Voice Sync", "BGM Mix", "yt_013 video creation", "facebook publish"]
+  },
+  "lineage": {
+    "source_card_path": "production/_commerce/selected_products/mini_fan_t10_shopee_product_card.json",
+    "source_card_created_at": "2026-05-25T00:00:00.000Z",
+    "augmented_at": "2026-05-26T00:00:00.000Z",
+    "augmented_changes": [
+      "Assign video_id=yt_013",
+      "Add lane=shopee_first (top-level field)",
+      "Add why_worthwhile object (Phần 23 schema field 19)",
+      "Restructure scoring to selection_scoring.axes[] (Phần 23 schema field 22)",
+      "Promote product.* fields to top-level (price/comm/sales/rating/review/shop)",
+      "Add decision_note (Phần 23 schema field 24)",
+      "Add commission_pct top-level = '29%' derived from breakdown"
+    ],
+    "sot_path_status": "pre-migration — Phần 24 spec sẽ chuyển sang production/_runs/<run_id>/shopee/shopee_product_card.json khi pipeline code migrate (v1 roadmap)"
+  }
+}

@@ -1,0 +1,136 @@
+{
+  "agent": "demo_match_agent",
+  "schema_version": "0.1.0",
+  "created_at": "2026-05-26T00:00:00.000Z",
+  "phase_ref": "PF-STEP 3 Demo Match — search plan v0 (Phần 24 Agent Architecture v0, pre-search defer)",
+  "video_id": "yt_013",
+  "lane": "shopee_first",
+  "upstream_artifact": {
+    "type": "shopee_product_card",
+    "path": "production/batch_001/yt_013/shopee_product_card.json",
+    "decision_required": "PRODUCT_SELECTED",
+    "decision_actual": "PRODUCT_SELECTED",
+    "gate_status": "OK"
+  },
+  "product_target": {
+    "shopid": "1632480189",
+    "itemid": "42874449161",
+    "product_name_short": "Quạt cầm tay mini T10 3 tốc độ gió, kiêm giá đỡ điện thoại, pin sạc",
+    "category": "đồ gia dụng / quạt mini / gadget mùa nóng",
+    "affiliate_url": "https://s.shopee.vn/2g8EvlWeji",
+    "affiliate_link_status": "VERIFIED_FROM_LONG_LINK"
+  },
+  "search_strategy": {
+    "platforms_in_scope": [
+      "tiktok_vn",
+      "youtube_shorts",
+      "douyin_china",
+      "shopee_live_replay"
+    ],
+    "platforms_out_of_scope_v0": [
+      "facebook_reels (target publish, không phải source)",
+      "instagram (chưa nằm trong scope VFOS)",
+      "douyin direct fetch (cần cookie/anti-bot — defer)"
+    ],
+    "keywords": {
+      "douyin_zh": ["便携小风扇 T10", "迷你手持风扇 三档", "手持风扇 手机支架"],
+      "tiktok_vn": ["mini fan T10", "quạt mini T10", "quạt cầm tay phone stand", "handheld fan phone stand"],
+      "youtube_shorts": ["mini fan unboxing T10", "usb rechargeable fan demo", "mini handheld fan phone stand"],
+      "shopee_live": ["replays của shop 1632480189 nếu Shopee dashboard có lưu"]
+    },
+    "priority_order": ["douyin_zh", "tiktok_vn", "youtube_shorts", "shopee_live"]
+  },
+  "demo_filter_criteria": [
+    "duration_15_60s",
+    "orientation_9_16_vertical",
+    "wind_test_visible (giấy bay / tóc bay / nến tắt)",
+    "3_speed_toggle_visible",
+    "phone_stand_fold_visible",
+    "no_other_creator_watermark OR permission_obtained",
+    "indoor_or_neutral_context (không camping, không LED, không outdoor adventure)"
+  ],
+  "guard_8_expected_acceptance_template": {
+    "axis_1_function": "handheld mini fan, 3 speeds, USB rechargeable",
+    "axis_2_form": "T10 form factor — handheld portable, foldable phone-stand handle",
+    "axis_3_usage": "press button to cycle 3 speeds; fold handle 90° to stand phone",
+    "axis_4_context": "indoor, desk, handheld, balo strap — NOT camping/lều/outdoor adventure",
+    "axis_5_nature": "handheld rechargeable mini fan + phone-stand combo. KHÔNG chấp nhận: camping fan có LED, tower fan, ceiling fan, neck fan band, USB desk fan đứng cố định."
+  },
+  "guard_8_evaluation_table": {
+    "candidates": [],
+    "schema_per_candidate": {
+      "candidate_id": "string (eg cand_001_tiktok_<id>)",
+      "source_url": "string",
+      "platform": "tiktok_vn | youtube_shorts | douyin_zh | shopee_live",
+      "duration_s": "number",
+      "orientation": "portrait_9_16 | landscape | square",
+      "thumbnail_evidence_url": "string (KHÔNG download video — chỉ URL/thumbnail)",
+      "axes_score": {
+        "axis_1_function": "PASS | WARN | FAIL",
+        "axis_2_form": "PASS | WARN | FAIL",
+        "axis_3_usage": "PASS | WARN | FAIL",
+        "axis_4_context": "PASS | WARN | FAIL",
+        "axis_5_nature": "PASS | FAIL (binary — bait-and-switch trigger)"
+      },
+      "decision": "MATCH_CONFIRMED (5 PASS) | MATCH_NEEDS_REVIEW (4 PASS + 1 WARN) | MISMATCH_REJECT (≥2 fail OR axis_5 fail)",
+      "evidence_notes": "string",
+      "guard_6_visual_safety_prescan": {
+        "logo_brand_watermark": "none | detected (location)",
+        "qr_or_barcode": "none | detected",
+        "license_plate_or_pii": "none | detected"
+      }
+    },
+    "note": "Empty — chưa có clip nào được search. Defer search per user prompt 2026-05-26."
+  },
+  "candidate_pool": {
+    "shortlist_confirmed": [],
+    "needs_review": [],
+    "rejected": [],
+    "note": "Empty — search chưa kích hoạt. AUTO-SOURCE RETRY POLICY 3 vòng sẽ áp dụng khi search bắt đầu."
+  },
+  "retry_log": {
+    "rounds": [],
+    "schema_per_round": {
+      "round_n": "1 | 2 | 3",
+      "keywords_used": "array<string>",
+      "platforms_searched": "array<string>",
+      "candidates_found": "number",
+      "candidates_passed_guard_8": "number",
+      "reject_reason_summary": "string",
+      "keyword_adjustment_for_next_round": "string"
+    },
+    "policy_ref": "MODE 3 AUTO-SOURCE RETRY POLICY in SKILL.md"
+  },
+  "anti_bait_and_switch_rules": [
+    "Affiliate URL trỏ về itemid=42874449161 (Quạt mini T10 handheld phone-stand)",
+    "Clip demo PHẢI là chính form factor T10 — handheld + 3 speed + foldable phone stand",
+    "Vi phạm trục 5 (bản chất) = MISMATCH_REJECT immediate, KHÔNG cần xét trục khác",
+    "Đặc biệt cấm: dùng camping fan có LED (yt_012 hiện tại) cho affiliate T10 = bait-and-switch + GUARD 7 R2 violation"
+  ],
+  "do_not_run_now": [
+    "video pipeline (yt-dlp download)",
+    "Script Writer",
+    "Voice Sync",
+    "BGM Mix",
+    "Facebook publish",
+    "Douyin live fetch (cần anti-bot bypass)",
+    "Shopee Affiliate dashboard fetch (cần cookie)"
+  ],
+  "agent_boundary_contract": {
+    "this_agent": "Demo Match Agent (Phần 24 Architecture v0)",
+    "reads_only": ["production/batch_001/yt_013/shopee_product_card.json"],
+    "writes_only": ["production/batch_001/yt_013/demo_match/*.json"],
+    "does_not_modify": ["shopee_product_card.json", "script_ai_v1*.json (sẽ thuộc Script QC)", "facebook_reels_publish_plan.json (sẽ thuộc Publish Plan)"],
+    "downstream_agent": "Script QC Agent — BLOCKED until match_result.json có ≥1 MATCH_CONFIRMED"
+  },
+  "next_step": {
+    "owner": "user_or_operator (search live, không phải /chay tự chạy trong vòng này)",
+    "action_required": [
+      "Search clip theo keywords + filter (operator-led hoặc /chay vòng sau khi user mở scope WebSearch/WebFetch)",
+      "Fill candidate_pool.shortlist_confirmed với ≥1 candidate đạt GUARD 8 MATCH_CONFIRMED",
+      "Persist kết quả thành match_result.json (file mới, không overwrite plan này)"
+    ],
+    "exit_criteria_to_unblock_script_qc": "≥1 candidate có axes_score đủ 5/5 PASS → decision=MATCH_CONFIRMED → unblock Script QC Agent vào scene_input.json"
+  },
+  "sot_path_note": "Pre-migration path: production/batch_001/yt_013/demo_match/. Phần 24 spec sẽ chuyển sang production/_runs/<run_id>/demo_match/match_search_plan.json khi pipeline code migrate (v1 roadmap)."
+}
