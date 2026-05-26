@@ -510,6 +510,20 @@ Khi `status = DONE_WAITING_USER_REVIEW` báo thêm:
 - `ERR_SOURCE_DOWNLOAD_FAILED` — yt-dlp / download fail
 - `ERR_SHOPEE_THROTTLED` — Shopee API rate limit / 403
 
+**COMMERCE — CDP Targeted Click (Round 26B)**:
+- `ERR_CDP_BROWSER_NOT_FOUND` — CDP connect fail sau 3 retry tại 127.0.0.1:9222
+- `ERR_CDP_TARGET_TAB_NOT_FOUND` — không tìm thấy tab `affiliate.shopee.vn/offer/product_offer`
+- `ERR_LINK_BUTTON_NOT_FOUND` — không tìm thấy "Lấy link" button qua selector strategy
+- `ERR_AMBIGUOUS_LINK_BUTTON` — nhiều button match, không scope được product card
+- `ERR_MODAL_UNRECOGNIZED` — modal hiện ra nhưng không có URL Shopee
+- `ERR_DUPLICATE_PRODUCT_LINK` — entry đã có trong registry (SKIPPED_DUPLICATE)
+
+**COMMERCE — Link Registry (Round 26B)**:
+- `ERR_LINK_REGISTRY_LOCK_TIMEOUT` — không acquire lock trong timeout
+- `ERR_LINK_REGISTRY_STALE_LOCK` — lock cũ hơn `stale_lock_ms`
+- `ERR_LINK_REGISTRY_WRITE_FAILED` — atomic rename / JSON sanity fail
+- `ERR_LINK_REGISTRY_MISSING` — registry path không tồn tại khi cần read
+
 ### L. Self-Apply checklist (Controller chạy trước khi báo kết quả)
 
 ```
@@ -775,6 +789,263 @@ Khi user không có Shopee API public, Shopee Product Agent có thể dùng loca
 - Nếu session expire → script báo `required_user_action: true` + bảo user re-run login. KHÔNG bypass.
 
 Xem chi tiết: [packages/shopee/README.md](../../../packages/shopee/README.md).
+
+### SHOPEE CDP TARGETED-CLICK LINK EXTRACTION v0 (Round 26B — 2026-05-26) — **PRIMARY FLOW**
+
+> **Agent boundary**: thuộc trách nhiệm **Shopee Product Agent (Commerce Product Agent)**. Đây là flow **CHÍNH** để lấy Shopee Affiliate link từ Round 26B trở đi. Mọi flow khác (`pnpm shopee:login` storage_state, HAR endpoint discovery, cookie fetcher, Shopee Open API GraphQL) đã chuyển sang **DEPRECATED / FALLBACK**.
+
+**Lý do chọn CDP làm primary**:
+- Không cần password / OTP / lưu cookie / storage state / HAR
+- User tự login thủ công 1 lần trên Cốc Cốc/Chrome thật (đời sống session = đời sống browser)
+- Agent attach Playwright qua CDP (`chromium.connectOverCDP`) vào browser đang chạy
+- Tận dụng captcha + 2FA + anti-bot bypass tự nhiên (session sống)
+- Verified: đã extract được short link thật từ modal `input.value` (Round 25/26 thực nghiệm)
+
+**Operator pre-requisite** (một lần):
+1. Mở Cốc Cốc/Chrome với `--remote-debugging-port=9222` (Cốc Cốc default đã enable port `9222` qua flag riêng).
+2. Login Shopee Affiliate thủ công.
+3. Mở tab `https://affiliate.shopee.vn/offer/product_offer` và để đó.
+
+**Agent flow (BROWSER_CDP_TARGETED_CLICK)**:
+```
+1. Connect CDP localhost 127.0.0.1:9222 (max 3 retry).
+2. Find tab: url.includes("affiliate.shopee.vn/offer/product_offer").
+3. Read shopee_link_registry.json (load existing entries).
+4. Scan DOM product cards (text/aria/scoped lookup — NO random CSS class dependency).
+5. For each candidate product card:
+   a. Check registry (shopid+itemid > canonical > short_link > name).
+   b. Skip if duplicate (status=SKIPPED_DUPLICATE, reason=ERR_DUPLICATE_PRODUCT_LINK).
+   c. Click "Lấy link" button INSIDE that card scope.
+   d. Wait for modal (~3s).
+   e. Extract URL from modal input.value (or scoped DOM text fallback).
+   f. Close modal (Escape).
+6. Resolve short link (HTTP HEAD redirect) → canonical URL.
+7. validateShopeeAffiliateLink(canonical) → check owner == expected_affiliate_owner_id.
+8. Upsert into registry via upsertEntry() under lock + atomic write.
+9. Stop when target_count reached or max_clicks_per_batch hit.
+```
+
+**Default tuning**:
+- `target_count = 2` (số sản phẩm MỚI cần lấy mỗi lần)
+- `max_clicks_per_batch = 5` (cap số click tối đa kể cả gặp duplicate)
+- `expected_affiliate_owner_id = "an_17376660568"` (operator's affiliate id)
+
+**Flow comparison (sau Round 26B)**:
+
+| Flow | Status | Khi nào dùng |
+|---|---|---|
+| `BROWSER_CDP_TARGETED_CLICK` | **PRIMARY** | Default cho Commerce Product Agent từ Round 26B |
+| `pnpm shopee:login` (storage_state) | **DEPRECATED / FALLBACK** | Chỉ dùng khi user explicit cho phép + CDP không khả dụng |
+| HAR endpoint discovery | **DEPRECATED** | Round 3A artifact, không còn dùng làm primary |
+| Cookie fetcher (`fetch-products-cookie.ts`) | **FALLBACK** | Giữ làm reference + Round 3C validator vẫn dùng được |
+| Shopee Open API GraphQL | **NOT_AVAILABLE** | Chưa được cấp AppID/API key |
+| `load-picks.ts` (operator manual paste) | **REUSABLE** | Khi user dán link sẵn — bypass scrape hoàn toàn |
+
+**KHÔNG xoá code flow cũ trong Round 26B** — chỉ đánh dấu DEPRECATED. Xoá là round riêng sau khi CDP flow đã được commit ổn định + chạy thật ≥3 lần thành công.
+
+### SHOPEE LINK REGISTRY v0 (Round 26B) — Global Dedupe + Atomic Write
+
+> **Agent boundary**: Shopee Product Agent. Module code: [packages/shopee/src/link-registry.ts](../../../packages/shopee/src/link-registry.ts). Tests: [packages/shopee/tests/link-registry.test.ts](../../../packages/shopee/tests/link-registry.test.ts).
+
+**Mục tiêu**: chống lấy trùng cùng sản phẩm/link. Mỗi short link extract được phải dedup theo registry global trước khi click + sau khi resolve.
+
+**Path chính (global)**:
+```
+production/_commerce/shopee_link_registry.json
+```
+
+**Path scoped tương lai** (nếu cần per-video):
+```
+production/batch_001/<video_id>/commerce/shopee_link_registry.json
+```
+
+Mặc định Round 26B dùng **global registry** ở `_commerce/`.
+
+**Schema bắt buộc** (`schema_version: "0.1.0"`):
+```json
+{
+  "schema_version": "0.1.0",
+  "updated_at": "ISO 8601",
+  "expected_affiliate_owner_id": "an_17376660568",
+  "entries": [
+    {
+      "product_name": "...",
+      "shopid": "1820797160" | null,
+      "itemid": "55110800126" | null,
+      "short_link": "https://s.shopee.vn/..." | null,
+      "canonical_url": "https://shopee.vn/opaanlp/.../...?gads_t_sig=..." | null,
+      "affiliate_owner_id": "an_17376660568" | null,
+      "affiliate_link_status": "VERIFIED_FROM_LONG_LINK" | "NEEDS_USER_REVIEW" | ...,
+      "source": "cdp_browser_targeted_click",
+      "first_seen_at": "ISO 8601",
+      "last_seen_at": "ISO 8601",
+      "times_seen": 1,
+      "notes": "..."
+    }
+  ],
+  "rejected": [
+    {
+      "short_link": "...",
+      "canonical_url": "...",
+      "reason_code": "ERR_AFFILIATE_OWNER_MISMATCH" | ...,
+      "seen_at": "ISO 8601",
+      "notes": "..."
+    }
+  ]
+}
+```
+
+**Dedup key resolution (HARD priority order)**:
+1. `shopid + itemid` (strongest signal — Shopee's own unique ID)
+2. `canonical_url` normalized (host + pathname, drop query — gads_t_sig signature varies per request)
+3. `short_link` (exact match)
+4. Normalized `product_name` (fallback only when no ID/URL available)
+
+**Pre-click check** (Commerce Product Agent flow):
+1. Đọc DOM danh sách sản phẩm.
+2. Nếu card có shopid/itemid/canonical → check registry trước khi click.
+3. Skip nếu đã tồn tại → `status=SKIPPED_DUPLICATE`, `reason_code=ERR_DUPLICATE_PRODUCT_LINK`.
+4. Nếu card không có id rõ → có thể click candidate, **sau khi resolve** check lại registry. Match sau resolve → mark duplicate, không dùng làm candidate mới.
+
+**Owner validation** (sau khi resolve canonical URL):
+- Match `expected_affiliate_owner_id` (eg `an_17376660568`) qua `utm_source=an_<id>` hoặc `mmp_pid=an_<id>` → upsert vào `entries`.
+- Mismatch → `appendRejected` với `reason_code=ERR_AFFILIATE_OWNER_MISMATCH`. KHÔNG ghi vào `entries`.
+- `validateShopeeAffiliateLink()` fail → `appendRejected` với reason rõ.
+
+### REGISTRY CONCURRENCY SAFETY (Round 26B HARD)
+
+`shopee_link_registry.json` là global registry dùng chung nhiều lane/run/video. Mọi update PHẢI tuân thủ:
+
+**1. File locking**:
+- Trước ghi: acquire lock file `production/_commerce/shopee_link_registry.json.lock` qua `writeFileSync(..., { flag: "wx" })` (atomic exclusive create).
+- Nếu lock đang tồn tại → poll mỗi `lock_retry_ms` (default 100ms), tối đa `lock_timeout_ms` (default 5000ms).
+- Hết timeout → throw `LinkRegistryError("ERR_LINK_REGISTRY_LOCK_TIMEOUT")`.
+
+**2. Stale lock detection**:
+- Nếu lock cũ hơn `stale_lock_ms` (default 60000ms = 60s) → throw `LinkRegistryError("ERR_LINK_REGISTRY_STALE_LOCK")`.
+- **KHÔNG tự xoá stale lock** — owner process có thể vẫn đang chạy. Operator phải inspect + remove manually.
+
+**3. Read-after-lock**:
+- Sau khi acquire lock, **đọc lại registry mới nhất từ disk**. KHÔNG dùng snapshot đã đọc trước lock.
+
+**4. Merge-safe update**:
+- Gọi `findExistingEntry(registry, candidate)` theo priority dedup.
+- Match → update `last_seen_at` + `times_seen++`, KHÔNG ghi đè entry cũ.
+- Miss → append entry mới.
+- KHÔNG bao giờ replace toàn bộ `entries[]` bằng dữ liệu stale.
+
+**5. Atomic write**:
+- Ghi ra `<registry>.tmp.<pid>.<timestamp>` cùng directory.
+- Sanity-check JSON parse trước rename.
+- `renameSync(tmp, registry)` — atomic trên POSIX + Windows NTFS.
+- Fail → cleanup tmp + throw `ERR_LINK_REGISTRY_WRITE_FAILED`.
+
+**6. Release lock**:
+- LUÔN release trong `finally{}` — không leak.
+- Best-effort `unlinkSync` (không throw từ release).
+
+**Reason codes**:
+- `ERR_LINK_REGISTRY_LOCK_TIMEOUT` — không acquire được trong timeout
+- `ERR_LINK_REGISTRY_STALE_LOCK` — lock cũ hơn threshold
+- `ERR_LINK_REGISTRY_WRITE_FAILED` — atomic rename / JSON sanity fail
+- `ERR_LINK_REGISTRY_MISSING` — registry path không tồn tại khi cần read
+
+**HARD RULE**: code script extract chỉ được promote vào primary flow khi đã wire vào `upsertEntry()` / `appendRejected()` module này. Không có lock + atomic write thì KHÔNG promote registry write code.
+
+### CDP CONNECTION FAILURE POLICY (Round 26B)
+
+CDP flow phụ thuộc browser user đang mở remote debugging tại `127.0.0.1:9222`.
+
+| Scenario | Status | reason_code | next_step_short |
+|---|---|---|---|
+| Connect fail sau 3 retry | `FAIL` | `ERR_CDP_BROWSER_NOT_FOUND` | "Open Cốc Cốc/Chrome with --remote-debugging-port=9222 and open Shopee Affiliate Product Offer page." |
+| Connect OK nhưng không tìm thấy tab `affiliate.shopee.vn/offer/product_offer` | `FAIL` | `ERR_CDP_TARGET_TAB_NOT_FOUND` | "Open https://affiliate.shopee.vn/offer/product_offer in the logged-in browser." |
+| Tab tồn tại nhưng login wall / captcha | `SUSPENDED` | `ERR_AUTH_REQUIRED` | "User must login manually in the browser, then rerun." |
+
+**KHÔNG fallback tự động sang**:
+- Nhập password / OTP
+- `shopee:login` / storage_state
+- Cookie fetcher
+- HAR flow
+- Shopee private API
+
+Operator phải quyết định fallback nào (nếu có) — agent **không tự**.
+
+### SELECTOR RESILIENCE for Targeted Click (Round 26B)
+
+Shopee Affiliate Dashboard DOM có thể đổi class name thường xuyên. Script **KHÔNG** được phụ thuộc hoàn toàn vào dynamic CSS class.
+
+**Selector strategy (HARD priority order khi tìm "Lấy link" button)**:
+
+1. **Text exact**: `button` với `textContent.trim() === "Lấy link"` hoặc `"Get link"`.
+2. **Accessibility**: `role="button"` + `aria-label` chứa "Lấy link".
+3. **Product-card scoped search**: xác định product card container (qua `product_name` text hoặc card layout marker như "Tỉ lệ hoa hồng"), chỉ tìm button **bên trong card đó**. KHÔNG click button ngoài card.
+4. **Stable attributes**: `data-testid` / `data-*` nếu có và ổn định qua nhiều version.
+5. **Controlled fallback CSS selector**: chỉ dùng nếu đã document rõ trong code comment. KHÔNG dùng random class/hash selector làm primary. KHÔNG click theo tọa độ (x, y) trừ khi user explicit approve.
+
+**Failure**:
+
+| Scenario | Status | reason_code |
+|---|---|---|
+| Không tìm thấy button sau mọi strategy | `FAIL` | `ERR_LINK_BUTTON_NOT_FOUND` |
+| Tìm thấy nhiều button không map được product card | `FAIL` | `ERR_AMBIGUOUS_LINK_BUTTON` |
+| Modal hiện ra nhưng không có URL Shopee nào trong DOM | `SUSPENDED` | `ERR_MODAL_UNRECOGNIZED` |
+
+**Cấm**:
+- Random click bừa
+- Click setting / account / security / logout / payment / publish / post / send button
+- Auto nhập password / OTP
+- Click popup lạ không rõ ý nghĩa
+
+### TARGETED CLICK POLICY (Round 26B — HARD)
+
+**Allowed**:
+- Attach CDP vào `127.0.0.1:9222`
+- Chỉ thao tác trên tab `affiliate.shopee.vn/offer/product_offer`
+- Scroll product list (limited)
+- Read DOM product cards
+- Click button "Lấy link" theo selector strategy trên (text/aria/card-scoped)
+- Copy/extract link từ modal `input.value` hoặc scoped DOM text
+- Close modal (Escape key)
+- Resolve / validate link qua `validateShopeeAffiliateLink()`
+- Write registry qua `upsertEntry()` / `appendRejected()`
+
+**Forbidden**:
+- Random click bất kỳ element nào không nằm trong card target
+- Click setting / account / security / logout / payment / publish / post button
+- Tự nhập password / OTP
+- Lưu Gmail/Shopee password vào `.env`
+- Log cookie / session / header / token (kể cả masked > 12 char)
+- Batch quá `max_clicks_per_batch = 5` sản phẩm/lần
+- Click popup lạ không rõ ý nghĩa
+- Gọi Facebook API
+- Publish
+
+**Login/OTP gặp phải**:
+- `status = SUSPENDED` (nếu modal login overlay) hoặc `FAIL` (nếu URL chuyển sang login wall)
+- `reason_code = ERR_AUTH_REQUIRED`
+- User tự login thủ công trong browser — agent không nhập credential.
+
+### SHOPEE EXTRACTION REASON CODES (Round 26B canonical enum)
+
+Bổ sung vào Section K (Auto-Run Controller Reason Codes):
+
+**COMMERCE (Shopee CDP)**:
+- `ERR_CDP_BROWSER_NOT_FOUND` — CDP connect fail sau 3 retry
+- `ERR_CDP_TARGET_TAB_NOT_FOUND` — connect OK nhưng tab `affiliate.shopee.vn/offer/product_offer` không có
+- `ERR_LINK_BUTTON_NOT_FOUND` — selector strategy không tìm thấy "Lấy link" button
+- `ERR_AMBIGUOUS_LINK_BUTTON` — nhiều button match nhưng không scope được vào product card
+- `ERR_MODAL_UNRECOGNIZED` — modal hiện ra nhưng không có URL Shopee trong DOM
+- `ERR_DUPLICATE_PRODUCT_LINK` — entry đã tồn tại trong registry (status `SKIPPED_DUPLICATE`)
+- `ERR_AFFILIATE_OWNER_MISMATCH` — canonical URL `utm_source` / `mmp_pid` không match `expected_affiliate_owner_id`
+
+**COMMERCE (Registry)**:
+- `ERR_LINK_REGISTRY_LOCK_TIMEOUT` — không acquire lock trong timeout
+- `ERR_LINK_REGISTRY_STALE_LOCK` — lock cũ hơn `stale_lock_ms`
+- `ERR_LINK_REGISTRY_WRITE_FAILED` — atomic rename / JSON sanity fail
+- `ERR_LINK_REGISTRY_MISSING` — registry path không tồn tại khi cần read
+
+(Đã có từ Round 25 nhưng tái sử dụng trong CDP scope: `ERR_AUTH_REQUIRED`.)
 
 ### SHOPEE SHORT LINK SUPPORT v0 (Phần 23) — Input hợp lệ
 
@@ -1486,7 +1757,7 @@ Xem chi tiết: [packages/facebook/README.md](../../../packages/facebook/README.
 
 | Sub-agent (tương lai) | Responsibility | SKILL.md sections | Input | Output artifact |
 |---|---|---|---|---|
-| **Shopee Product Agent** | Resolve link, fetch metadata Shopee, scoring 6 trục, persist Card | `SHOPEE PRODUCT CARD` + `SHOPEE SHORT LINK SUPPORT` + `SHOPEE PRODUCT DISCOVERY MODE` + `SHOPEE PRODUCT SELECTION SCORING` + GUARD 8 trục 1–5 input data | URL Shopee / short link / lane keyword | `shopee_product_card.json` |
+| **Shopee Product Agent (Commerce Product Agent)** | Resolve link, fetch metadata Shopee, scoring 6 trục, persist Card. **Round 26B primary**: `BROWSER_CDP_TARGETED_CLICK` flow + global link registry dedupe + lock/atomic write. | `SHOPEE CDP TARGETED-CLICK LINK EXTRACTION v0` + `SHOPEE LINK REGISTRY v0` + `REGISTRY CONCURRENCY SAFETY` + `CDP CONNECTION FAILURE POLICY` + `SELECTOR RESILIENCE` + `TARGETED CLICK POLICY` + `SHOPEE PRODUCT CARD` + `SHOPEE SHORT LINK SUPPORT` + `SHOPEE PRODUCT DISCOVERY MODE` + `SHOPEE PRODUCT SELECTION SCORING` + GUARD 8 trục 1–5 input data | URL Shopee / short link / lane keyword / CDP browser session | `shopee_product_card.json` + `production/_commerce/shopee_link_registry.json` |
 | **Demo Match Agent** | Tìm video/demo tương đồng, chấm GUARD 8 product match, retry candidate | `NGUỒN VIDEO/DEMO THAM KHẢO` + PF-STEP 3–4 + GUARD 8 (5 trục match) + AUTO-SOURCE RETRY POLICY | `shopee_product_card.json` | Match result + chosen video URL + GUARD 8 table |
 | **Script QC Agent** | Run Script Writer, validator, OPERATOR TRIM POLICY, GUARD 1 + GUARD 7 R1/R3/R5 enforce | STEP 6 + STEP 7 + OPERATOR TRIM POLICY + GUARD 1 + GUARD 7 (R1/R3/R5 phần script layer) | `scene_input.json` | `script_ai_v1_extended.json` + (nếu cần) `operator_trim` metadata block |
 | **Facebook Publish Plan Agent** | Lập publish plan metadata, draft caption + CTA, KHÔNG gọi Graph API | STEP 12b + `FACEBOOK REELS + SHOPEE PUBLISH PLAN v0` + GUARD 7 R5 (caption soft tone) | Preview MP4 + Card + GUARD 8 result | `facebook_reels_publish_plan.json` |
@@ -1585,6 +1856,18 @@ Bắt buộc chạy trước khi báo "hoàn thành":
 [ ] (Round 25B Precedence) Command precedence đúng thứ tự: --reset > rerender > --force-retry > plan/status > normal?
 [ ] (Round 25B Precedence) --force-retry trên video DONE → ERR_FINAL_VIDEO_EXISTS_NO_RERENDER (KHÔNG tự rerender)?
 [ ] (Round 25B Rerender) Rerender explicit tạo version mới (v2_3 / v3 / run_id mới) + KHÔNG xoá final cũ? Update publish_plan chỉ sau QC PASS?
+[ ] (Round 26B CDP) BROWSER_CDP_TARGETED_CLICK là primary flow Shopee link extraction? Flow cũ chỉ DEPRECATED/FALLBACK?
+[ ] (Round 26B CDP) Connect CDP retry max 3 lần + ERR_CDP_BROWSER_NOT_FOUND nếu fail? Không tự nhập password/OTP?
+[ ] (Round 26B CDP) Chỉ thao tác tab `affiliate.shopee.vn/offer/product_offer`? Tab không có → ERR_CDP_TARGET_TAB_NOT_FOUND?
+[ ] (Round 26B Selector) Selector chiến lược ưu tiên text/aria/card-scoped > stable data-* > controlled CSS fallback? KHÔNG random class hash?
+[ ] (Round 26B Selector) Button không tìm thấy → ERR_LINK_BUTTON_NOT_FOUND? Nhiều button không scope được → ERR_AMBIGUOUS_LINK_BUTTON?
+[ ] (Round 26B Click Policy) Không click setting/account/security/logout/payment/publish/post? Không random click? max_clicks_per_batch ≤ 5?
+[ ] (Round 26B Registry) Mọi write registry qua `upsertEntry()` / `appendRejected()` (lock + atomic write)? Không write trực tiếp?
+[ ] (Round 26B Registry) Lock acquire/release đúng pattern (try/finally)? Read AFTER lock? Merge per-entry không replace bulk?
+[ ] (Round 26B Registry) Stale lock → ERR_LINK_REGISTRY_STALE_LOCK báo operator, KHÔNG tự xoá?
+[ ] (Round 26B Dedup) Dedup priority shopid+itemid > canonical > short_link > normalized name? Pre-click check + post-resolve recheck?
+[ ] (Round 26B Owner) Validate `expected_affiliate_owner_id` = an_17376660568 trên `utm_source`/`mmp_pid`? Mismatch → appendRejected, không vào entries?
+[ ] (Round 26B Audit) Không xoá flow cũ trong vòng này? Không commit hàng loạt untracked script chưa audit?
 ```
 
 ---
@@ -1758,6 +2041,53 @@ KHÔNG BAO GIỜ:
     hoặc `/chay <id> --force-retry` — thiếu chữ rõ "rerender" /
     "render lại" / "tạo lại final" / `final-reels-render` / `--reset`
     → ERR_RERENDER_REQUIRES_EXPLICIT_COMMAND.
+  × (Round 26B CDP) Dùng flow nào khác CDP làm primary cho Shopee
+    link extraction — `BROWSER_CDP_TARGETED_CLICK` là PRIMARY duy nhất.
+    Flow cũ (`shopee:login` storage_state / HAR / cookie fetcher /
+    Open API) chỉ là DEPRECATED / FALLBACK, cần user explicit cho phép.
+  × (Round 26B CDP) Random click bất kỳ element nào ngoài product
+    card target — phải scope vào card chứa product_name. Vi phạm =
+    ERR_AMBIGUOUS_LINK_BUTTON hoặc cấm hoàn toàn.
+  × (Round 26B CDP) Click setting / account / security / logout /
+    payment / publish / post / send button — chỉ click "Lấy link"
+    button trong scope card hợp lệ.
+  × (Round 26B CDP) Tự nhập password / OTP / Gmail credential khi
+    gặp login wall — status=SUSPENDED, reason=ERR_AUTH_REQUIRED,
+    user tự login thủ công trong browser.
+  × (Round 26B CDP) Lưu Gmail/Shopee password vào `.env` / chat /
+    artifact / docs.
+  × (Round 26B CDP) Log cookie / session / SPC_EC / SPC_ST /
+    csrftoken / Cookie: / Set-Cookie / auth header / API key
+    (kể cả masked đầy đủ > 12 char).
+  × (Round 26B CDP) Click quá `max_clicks_per_batch = 5` sản phẩm
+    trong 1 lần chạy — phải dừng kể cả khi gặp nhiều duplicate.
+  × (Round 26B CDP) Fallback tự động sang shopee:login / cookie
+    fetcher / HAR / Shopee private API khi CDP fail —
+    ERR_CDP_BROWSER_NOT_FOUND / ERR_CDP_TARGET_TAB_NOT_FOUND báo
+    operator, agent KHÔNG tự fallback.
+  × (Round 26B Registry) Ghi registry KHÔNG qua module
+    `link-registry.ts` (lock + atomic write) — write trực tiếp
+    JSON là forbidden, race condition.
+  × (Round 26B Registry) Đọc registry trước khi acquire lock rồi
+    dùng snapshot đó để ghi sau — phải đọc lại AFTER lock.
+  × (Round 26B Registry) Replace toàn bộ `entries[]` bằng dữ liệu
+    stale — chỉ append / merge per-entry. Match dedup → update
+    `times_seen++` + `last_seen_at`, không ghi đè entry cũ.
+  × (Round 26B Registry) Tự xoá stale lock file — owner process
+    có thể vẫn chạy. ERR_LINK_REGISTRY_STALE_LOCK → operator
+    inspect + remove manually.
+  × (Round 26B Selector) Dùng random CSS class / hash selector làm
+    primary lookup — Shopee đổi class thường xuyên. Phải ưu tiên
+    text/aria/card-scoped strategy.
+  × (Round 26B Selector) Click theo tọa độ (x, y) trừ khi user
+    explicit approve cho task cụ thể.
+  × (Round 26B Audit) Xoá hàng loạt code flow cũ (shopee:login,
+    fetch-offers-cookie, HAR scripts) trong Round 26B — chỉ đánh
+    dấu DEPRECATED / FALLBACK trong docs/skill. Xoá là round
+    riêng sau khi CDP flow chạy thật ≥3 lần ổn định.
+  × (Round 26B Audit) Commit hàng loạt untracked scripts mà chưa
+    audit từng file (safety / hardcoded secret / random click /
+    selector dependency).
 
 CHỈ LÀM TRONG SCOPE:
   ✓ 1 video mỗi lần /chay

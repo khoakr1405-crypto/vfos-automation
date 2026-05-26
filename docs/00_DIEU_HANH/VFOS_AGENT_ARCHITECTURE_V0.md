@@ -47,12 +47,21 @@ Document này chốt **biên giới giữa các agent** để 3 điều:
 
 5 agent — 4 đã spec ở Phần 23 (SKILL.md) + 1 thêm trong v0 (Git & Artifact Agent).
 
-### 3.1 Shopee Product Agent
-- **Responsibility**: Resolve link/short link Shopee, fetch metadata (giá / hoa hồng / sales / rating khi có quyền), persist Shopee Product Card đầy đủ 24 field, chấm 6-trục Product Selection Scoring, validate affiliate link (xem Round 3C).
-- **Input**: URL Shopee canonical / `s.shopee.vn/...` short link / lane keyword (Discovery Mode).
-- **Output artifact**: `shopee_product_card.json`.
+### 3.1 Shopee Product Agent (Commerce Product Agent)
+- **Responsibility**: Resolve link/short link Shopee, fetch metadata (giá / hoa hồng / sales / rating khi có quyền), persist Shopee Product Card đầy đủ 24 field, chấm 6-trục Product Selection Scoring, validate affiliate link (xem Round 3C). **Round 26B (2026-05-26)**: lấy link Shopee Affiliate qua `BROWSER_CDP_TARGETED_CLICK` flow (primary) + duy trì global dedupe registry với lock + atomic write.
+- **Input**: URL Shopee canonical / `s.shopee.vn/...` short link / lane keyword (Discovery Mode) / CDP browser session (Cốc Cốc/Chrome user đang chạy với `--remote-debugging-port=9222`).
+- **Output artifact**: `shopee_product_card.json` + `production/_commerce/shopee_link_registry.json` (global dedupe registry, schema v0.1.0 — Round 26B).
 - **HARD GATE**: Card phải PERSIST trên disk trước khi pipeline sang Demo Match (Phần 23).
 - **KHÔNG bịa**: giá / hoa hồng / sales / rating / review / shop_name — unknown ghi `"unknown"`, `data_confidence` phản ánh trung thực.
+- **Round 26B HARD rules**:
+  - `BROWSER_CDP_TARGETED_CLICK` là **PRIMARY** flow. Flow cũ (`shopee:login` storage_state / HAR / cookie fetcher / Shopee Open API) → **DEPRECATED / FALLBACK** — cần user explicit cho phép.
+  - Mọi write registry phải qua `upsertEntry()` / `appendRejected()` (module [packages/shopee/src/link-registry.ts](../../packages/shopee/src/link-registry.ts)) với file lock + atomic rename + read-after-lock + merge-safe update.
+  - Dedup key priority: `shopid+itemid` > `canonical_url` normalized > `short_link` > normalized `product_name`.
+  - Selector strategy: text/aria > product-card scoped > stable data-* > controlled CSS fallback. **KHÔNG** random class hash / tọa độ click.
+  - CDP connect fail → `ERR_CDP_BROWSER_NOT_FOUND` (max 3 retry). KHÔNG tự fallback sang shopee:login / private API.
+  - Target tab missing → `ERR_CDP_TARGET_TAB_NOT_FOUND`. Login wall → `SUSPENDED` + `ERR_AUTH_REQUIRED` (user tự login).
+  - `max_clicks_per_batch = 5`. KHÔNG click setting/account/security/logout/payment/publish.
+  - Owner validation: canonical URL `utm_source` / `mmp_pid` phải khớp `expected_affiliate_owner_id` (eg `an_17376660568`). Mismatch → `appendRejected`, không vào `entries`.
 
 ### 3.2 Demo Match Agent
 - **Responsibility**: Tìm video/demo tương đồng từ TikTok / Douyin / AliExpress / Temu / YouTube, chấm GUARD 8 Product Match (5 trục), retry candidate theo AUTO-SOURCE RETRY POLICY (max 3 vòng).

@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-05-26 (Round 25B — /chay Auto-Run Controller Hardening Patch: Path Migration Compatibility + Resume Timeout Semantics + Command Precedence / No Rerender Override)
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `f0965f9` (Round 25 Auto-Run Controller v0; sẽ bump hash khi commit Round 25B)
+> **Cập nhật lần cuối**: 2026-05-26 (Round 26B — Commerce Product Agent CDP Link Extraction PRIMARY + global link registry với lock + atomic write; 8 POC scripts kept untracked)
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `754b4df` (Round 25B Auto-Run Controller hardening; sẽ bump hash khi commit Round 26B)
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -1490,7 +1490,60 @@ Vòng này sửa skill + docs để `/chay` tự quyết định + tự retry + 
 
 **Không làm**: chạy yt_014, render, publish, gọi Shopee/Facebook/OpenAI, dùng cookie/token, sửa code pipeline, commit media/binary, động `production/batch_001/yt_014/final_reels_v2/*.mp4`, động untracked scripts. Chỉ cập nhật docs/skill.
 
-**Commit**: `docs: harden chay auto-run controller edge cases` (sẽ bump hash khi push).
+**Commit**: `docs: harden chay auto-run controller edge cases` (`754b4df`).
+
+---
+
+### ✅ Round 26B — Commerce Product Agent CDP Link Extraction + Dedupe Registry Hardening: ĐÃ CHỐT (2026-05-26)
+
+**Mục tiêu**: chốt CDP attach vào browser user đang dùng (Cốc Cốc/Chrome `127.0.0.1:9222`) thành **PRIMARY** flow lấy Shopee Affiliate link cho Commerce Product Agent. Thêm global dedupe registry + concurrency safety + CDP failure policy + selector resilience. Audit 8 untracked Shopee POC scripts.
+
+**Đã làm**:
+
+- **Module mới**: [packages/shopee/src/link-registry.ts](packages/shopee/src/link-registry.ts) — global dedupe registry với:
+  - Schema `v0.1.0` (entries + rejected + expected_affiliate_owner_id)
+  - **Concurrency safety HARD**: file lock (`writeFileSync wx` flag atomic create) + bounded retry (default 5000ms timeout / 100ms poll) + stale lock detect (default 60s, KHÔNG tự xoá) + read-after-lock + merge-safe update + atomic rename `.tmp.<pid>.<ts>` → final path
+  - **Dedup priority**: `shopid+itemid` > `canonical_url` normalized > `short_link` > normalized `product_name`
+  - Public API: `upsertEntry()` / `appendRejected()` / `isDuplicate()` / `findExistingEntry()` / `LinkRegistryError` (typed reason_code)
+- **Tests**: [packages/shopee/tests/link-registry.test.ts](packages/shopee/tests/link-registry.test.ts) — **14/14 pass** (cover dedup priority, lock timeout, stale lock, concurrent serialization, lock cleanup on success/fail, atomic write).
+- **Export**: thêm vào [packages/shopee/src/index.ts](packages/shopee/src/index.ts) + `"test": "tsx --test tests/*.test.ts"` script trong [packages/shopee/package.json](packages/shopee/package.json).
+- **SKILL.md update** [.claude/skills/chay/SKILL.md](.claude/skills/chay/SKILL.md):
+  - Section mới **SHOPEE CDP TARGETED-CLICK LINK EXTRACTION v0** — `BROWSER_CDP_TARGETED_CLICK` flow chính + operator pre-req + agent flow 9 bước + tuning defaults (`target_count=2`, `max_clicks_per_batch=5`).
+  - Section mới **SHOPEE LINK REGISTRY v0** — schema chính + dedup priority + pre-click check + post-resolve recheck + owner validation.
+  - Section mới **REGISTRY CONCURRENCY SAFETY** — 6 rule HARD (lock, stale detect, read-after-lock, merge-safe, atomic write, release in finally).
+  - Section mới **CDP CONNECTION FAILURE POLICY** — bảng 3 scenario (browser not found / target tab missing / login wall) với reason_code rõ + KHÔNG fallback tự động.
+  - Section mới **SELECTOR RESILIENCE for Targeted Click** — priority text exact > aria > product-card scoped > stable data-* > controlled CSS fallback. KHÔNG random class hash / tọa độ click.
+  - Section mới **TARGETED CLICK POLICY** — allowed/forbidden + login/OTP handling.
+  - Section K Auto-Run Controller reason codes mở rộng: 6 code CDP (`ERR_CDP_BROWSER_NOT_FOUND`, `ERR_CDP_TARGET_TAB_NOT_FOUND`, `ERR_LINK_BUTTON_NOT_FOUND`, `ERR_AMBIGUOUS_LINK_BUTTON`, `ERR_MODAL_UNRECOGNIZED`, `ERR_DUPLICATE_PRODUCT_LINK`) + 4 code registry (`ERR_LINK_REGISTRY_LOCK_TIMEOUT`, `ERR_LINK_REGISTRY_STALE_LOCK`, `ERR_LINK_REGISTRY_WRITE_FAILED`, `ERR_LINK_REGISTRY_MISSING`).
+  - **AGENT-READY RESPONSIBILITY BOUNDARIES** Shopee Product Agent row update: CDP flow là PRIMARY + global registry là output artifact.
+  - HARD CONSTRAINTS Round 26B: 16 bullet × cấm (random click, click setting/account/payment, auto password/OTP, log cookie/token, batch >5, tự fallback sang shopee:login, write registry ngoài module, đọc registry trước lock, replace bulk entries, tự xoá stale lock, random CSS class primary, click tọa độ, xoá flow cũ, commit hàng loạt untracked).
+  - SELF-REVIEW CHECKLIST cuối skill: +12 mục Round 26B.
+- **Architecture doc update** [docs/00_DIEU_HANH/VFOS_AGENT_ARCHITECTURE_V0.md](docs/00_DIEU_HANH/VFOS_AGENT_ARCHITECTURE_V0.md):
+  - Mục 3.1 Shopee Product Agent rename → "Shopee Product Agent (Commerce Product Agent)" + bổ sung Round 26B capability: CDP primary, registry artifact, 8 HARD rule (CDP retry 3, selector strategy, max_clicks_per_batch=5, owner validation, KHÔNG fallback tự động…).
+- **Audit report mới** [docs/00_DIEU_HANH/ROUND_26B_SHOPEE_CDP_LINK_EXTRACTION_AUDIT.md](docs/00_DIEU_HANH/ROUND_26B_SHOPEE_CDP_LINK_EXTRACTION_AUDIT.md) — audit 8 untracked Shopee scripts + 4 `_commerce` JSON artifacts + flow lifecycle decision matrix + security scan rationale + next step (Round 27 candidate scope).
+- **TRANG_THAI** (file này): Round 26B entry + header + Git status bump.
+
+**Audit quyết định** (8 POC scripts):
+- `click-and-extract-links.ts`, `resolve-and-validate.ts`, `fetch-coccoc.ts`, `extract-active-coccoc.ts`, `extract-offers-coccoc.ts`, `extract-offers-active.ts`, `get-one-link.ts`: **scratch/POC, KEEP UNTRACKED** — đều hardcode targets, không có dedupe/lock/CLI args/CDP failure handling/selector resilience đầy đủ theo Round 26B spec. Round sau refactor thành 1 production CLI wire vào `link-registry.ts`.
+- `load-picks.ts`: **reusable** nhưng không thuộc CDP scope, giữ untracked (có thể commit round riêng).
+- 4 JSON artifacts trong `production/_commerce/`: KHÔNG commit (regenerable output mỗi lần chạy).
+
+**Flow lifecycle**:
+- `BROWSER_CDP_TARGETED_CLICK` → **PRIMARY** (Round 26B)
+- `shopee:login` / `shopee:fetch` (storage_state + Playwright headless) → **DEPRECATED / FALLBACK**
+- `fetch-products-cookie.ts` (cookie fetcher Round 3A/3C) → **FALLBACK** (validator Round 3C vẫn dùng được)
+- HAR endpoint discovery → **DEPRECATED**
+- Shopee Open API GraphQL → **NOT_AVAILABLE** (chưa được cấp AppID/key)
+- `load-picks.ts` (operator manual paste) → **REUSABLE** (bypass scrape hoàn toàn)
+- **KHÔNG xoá** code flow cũ trong Round 26B — chỉ đánh dấu DEPRECATED/FALLBACK. Xoá là round riêng sau CDP chạy thật ≥3 lần ổn định.
+
+**Verify**:
+- Tests: `npx tsx --test packages/shopee/tests/link-registry.test.ts` → 14/14 pass (610ms total).
+- Typecheck: `tsc -p packages/shopee/tsconfig.json --noEmit` → clean cho link-registry + index.
+
+**Không làm**: chạy video, publish, gọi Facebook API, dùng Shopee private API/HAR/storage_state, nhập password/OTP, commit secret/media, xoá flow cũ, add hàng loạt untracked scripts, mở yt_015, random click, retry vô hạn, chạy CDP thật trong scope audit này.
+
+**Commit**: `feat: add shopee link registry + cdp extraction docs` (sẽ bump hash khi push).
 
 ---
 
@@ -1642,9 +1695,9 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mốc tại thời điểm cập nhật trạng thái | `f0965f9` (Round 25 Auto-Run Controller v0; sẽ bump hash khi push Round 25B) |
+| Commit mốc tại thời điểm cập nhật trạng thái | `754b4df` (Round 25B Auto-Run Controller hardening; sẽ bump hash khi push Round 26B) |
 | Remote | `origin` (GitHub) |
-| Sync status | Phần 11–24 + Round 2A/2B/2C + Round 3A/3C + Round 25 ĐÃ PUSH. Round 25B (Auto-Run Controller hardening) docs/skill update — sẽ commit + push trong vòng này. |
+| Sync status | Phần 11–24 + Round 2A/2B/2C + Round 3A/3C + Round 25 + Round 25B ĐÃ PUSH. Round 26B (Commerce CDP + link registry) — sẽ commit + push trong vòng này. |
 
 **Trạng thái artifacts production** (tính đến 2026-05-20):
 - `production/batch_001/yt_007/` (text artifacts): **ĐÃ commit** ở `df1609e` — scene_input, script v1/v2/v3, manifest BGM. Dùng làm reference cho vòng Voice Sync autonomy.

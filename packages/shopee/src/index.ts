@@ -37,3 +37,19 @@ export {
   redactError,
   isSecretFree,
 } from "./secret-redaction.js";
+
+export {
+  LinkRegistryError,
+  upsertEntry,
+  appendRejected,
+  isDuplicate,
+  findExistingEntry,
+} from "./link-registry.js";
+export type {
+  LinkRegistry,
+  LinkRegistryConfig,
+  LinkRegistryEntry,
+  LinkRegistryRejected,
+  LinkRegistryReasonCode,
+  UpsertResult,
+} from "./link-registry.js";
