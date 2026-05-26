@@ -51,8 +51,8 @@
       "window_start_s": 18,
       "window_end_s": 26,
       "intent": "FILLER",
-      "subtitle": "Nhẹ nhàng, để bàn gọn gàng, siêu tiện lợi. 💻",
-      "overlay_text": "Gọn nhẹ!",
+      "subtitle": "Nhỏ gọn, để bàn nhìn khá tiện.",
+      "overlay_text": "ĐỂ BÀN GỌN GHÊ",
       "claim_safety_check": {
         "status": "PASS",
         "details": "Verified safe by Subtitle QC."
