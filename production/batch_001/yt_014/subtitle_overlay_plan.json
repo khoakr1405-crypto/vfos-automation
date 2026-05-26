@@ -1,27 +1,25 @@
 {
   "video_id": "yt_014",
   "product_name": "Quạt Không Cánh Mini T10 Turbo USB",
+  "openai_generated": true,
+  "model": "gpt-4o-mini",
+  "generated_at": "2026-05-26T10:21:25.533Z",
   "style_profile": {
     "tone": "vui vẻ, hài hước, bá đạo nhẹ, bắt trend, cực kỳ viral",
     "word_limit_per_block": 12,
-    "claim_safety_guideline": "Tuyệt đối không dùng claim quá đà, chỉ dùng observable facts và các từ ngữ mô tả thiết kế khách quan."
+    "claim_safety_guideline": "Không dùng claim quá đà, chỉ dùng observable facts và các từ ngữ mô tả thiết kế khách quan."
   },
-  "overlay_blocks": [
+  "selected_variants": [
     {
       "block_id": "b1",
       "window_start_s": 0,
       "window_end_s": 3,
       "intent": "HOOK",
-      "subtitle": "Ủa quạt gì mà không thấy cánh? 😳",
-      "overlay_text": "ỦA QUẠT GÌ KHÔNG CÁNH?",
-      "viral_keywords": [
-        "quạt không cánh",
-        "món lạ Shopee",
-        "gadget mini"
-      ],
+      "subtitle": "Quạt không cánh, trông như từ tương lai! 😳",
+      "overlay_text": "Thiết kế độc lạ",
       "claim_safety_check": {
         "status": "PASS",
-        "details": "Observable physical fact (design has no exposed blades), zero safety claim."
+        "details": "Verified safe by Subtitle QC."
       }
     },
     {
@@ -29,15 +27,11 @@
       "window_start_s": 3,
       "window_end_s": 10,
       "intent": "FILLER",
-      "subtitle": "Test bằng giấy cho khỏi nói điêu 💨",
-      "overlay_text": "TEST GIÓ THỰC TẾ",
-      "viral_keywords": [
-        "test bằng giấy",
-        "mùa nóng"
-      ],
+      "subtitle": "Gió mát rượi khi thử bằng giấy mỏng. 💨",
+      "overlay_text": "Test bằng giấy!",
       "claim_safety_check": {
         "status": "PASS",
-        "details": "Observable visual airflow test, no wind speed level claim."
+        "details": "Verified safe by Subtitle QC."
       }
     },
     {
@@ -47,13 +41,9 @@
       "intent": "FILLER",
       "subtitle": "Không lộ cánh — nhìn hơi ảo nha",
       "overlay_text": "CÁNH QUẠT KHÔNG LỘ",
-      "viral_keywords": [
-        "không lộ cánh",
-        "gadget mini"
-      ],
       "claim_safety_check": {
         "status": "PASS",
-        "details": "Observable physical design comparison, no absolute safety claim."
+        "details": "Verified safe by Stricter Subtitle QC. Manual safety selected as optimal."
       }
     },
     {
@@ -61,16 +51,11 @@
       "window_start_s": 18,
       "window_end_s": 26,
       "intent": "FILLER",
-      "subtitle": "Để bàn gọn, góc học tập nhìn xịn hơn",
-      "overlay_text": "ĐỂ BÀN GỌN GÀNG",
-      "viral_keywords": [
-        "để bàn",
-        "góc học tập",
-        "dân văn phòng"
-      ],
+      "subtitle": "Nhẹ nhàng, để bàn gọn gàng, siêu tiện lợi. 💻",
+      "overlay_text": "Gọn nhẹ!",
       "claim_safety_check": {
         "status": "PASS",
-        "details": "Observable table stand feature, zero performance claim."
+        "details": "Verified safe by Subtitle QC."
       }
     },
     {
@@ -78,16 +63,167 @@
       "window_start_s": 26,
       "window_end_s": 33,
       "intent": "CTA",
-      "subtitle": "Dưới 40k mà có trò hay phết 👀",
-      "overlay_text": "QUẠT ĐỘC LẠ DƯỚI 40K",
-      "viral_keywords": [
-        "dưới 40k",
-        "món lạ Shopee"
-      ],
+      "subtitle": "Quạt không cánh giá dưới 40k, quá hời! 👀",
+      "overlay_text": "Chỉ 40k!",
       "claim_safety_check": {
         "status": "PASS",
-        "details": "Observable price fact (<40k), soft referral style, no spam sales."
+        "details": "Verified safe by Subtitle QC."
       }
+    }
+  ],
+  "rejected_variants": [
+    {
+      "block_id": "b3",
+      "subtitle": "Thử thách tay luồn qua vòng gió, không lo bị kẹt!",
+      "overlay_text": "Không lo bị kẹt",
+      "claim_safety_status": "FAIL",
+      "claim_safety_reason": "Chứa từ cấm: \"không lo bị kẹt\" (safety claim quá mạnh, gần với cam kết an toàn, vi phạm claim safety)"
+    },
+    {
+      "block_id": "b3",
+      "subtitle": "Lạ mà quen, không sợ bị kẹt tay!",
+      "overlay_text": "Không sợ bị kẹt tay",
+      "claim_safety_status": "FAIL",
+      "claim_safety_reason": "Chứa từ cấm: \"không sợ bị kẹt tay\" (safety claim quá mạnh, rủi ro thương hiệu, vi phạm claim safety)"
+    },
+    {
+      "block_id": "b3",
+      "subtitle": "Vòng gió siêu an toàn, thử luôn thôi!",
+      "overlay_text": "Siêu an toàn",
+      "claim_safety_status": "FAIL",
+      "claim_safety_reason": "Chứa từ cấm: \"siêu an toàn\" (vi phạm claim safety nguyên tắc VFOS)"
+    }
+  ],
+  "all_variants": [
+    {
+      "block_id": "b1",
+      "window_start_s": 0,
+      "window_end_s": 3,
+      "intent": "HOOK",
+      "variants": [
+        {
+          "subtitle": "Quạt không cánh, phong cách lạ lẫm.",
+          "overlay_text": "Quạt độc đáo!",
+          "claim_safety_status": "PASS",
+          "claim_safety_reason": ""
+        },
+        {
+          "subtitle": "Không cánh nhưng gió vẫn mát!",
+          "overlay_text": "Gió từ đâu ra?",
+          "claim_safety_status": "PASS",
+          "claim_safety_reason": ""
+        },
+        {
+          "subtitle": "Thiết kế quạt không cánh, ai cũng mê.",
+          "overlay_text": "Cực chất!",
+          "claim_safety_status": "PASS",
+          "claim_safety_reason": ""
+        }
+      ]
+    },
+    {
+      "block_id": "b2",
+      "window_start_s": 3,
+      "window_end_s": 10,
+      "intent": "FILLER",
+      "variants": [
+        {
+          "subtitle": "Gió mát rượi khi thử bằng giấy mỏng.",
+          "overlay_text": "Test bằng giấy!",
+          "claim_safety_status": "PASS",
+          "claim_safety_reason": ""
+        },
+        {
+          "subtitle": "Chỉ cần tờ giấy, gió đến liền.",
+          "overlay_text": "Mát lạnh ngay!",
+          "claim_safety_status": "PASS",
+          "claim_safety_reason": ""
+        },
+        {
+          "subtitle": "Thử gió bằng giấy, không thể tin nổi!",
+          "overlay_text": "Gió mát thật!",
+          "claim_safety_status": "PASS",
+          "claim_safety_reason": ""
+        }
+      ]
+    },
+    {
+      "block_id": "b3",
+      "window_start_s": 10,
+      "window_end_s": 18,
+      "intent": "FILLER",
+      "variants": [
+        {
+          "subtitle": "Luồn tay qua gió, cánh quạt không lộ.",
+          "overlay_text": "Không giống ai!",
+          "claim_safety_status": "PASS",
+          "claim_safety_reason": ""
+        },
+        {
+          "subtitle": "Không thấy cánh quạt, chỉ thấy gió!",
+          "overlay_text": "Chất lừ!",
+          "claim_safety_status": "PASS",
+          "claim_safety_reason": ""
+        },
+        {
+          "subtitle": "Trải nghiệm gió, không cần cánh.",
+          "overlay_text": "Gió êm ái!",
+          "claim_safety_status": "PASS",
+          "claim_safety_reason": ""
+        }
+      ]
+    },
+    {
+      "block_id": "b4",
+      "window_start_s": 18,
+      "window_end_s": 26,
+      "intent": "FILLER",
+      "variants": [
+        {
+          "subtitle": "Nhẹ nhàng, để bàn gọn gàng, siêu tiện lợi.",
+          "overlay_text": "Gọn nhẹ!",
+          "claim_safety_status": "PASS",
+          "claim_safety_reason": ""
+        },
+        {
+          "subtitle": "Làm giá điện thoại, không gian học lý tưởng.",
+          "overlay_text": "Góc học tập!",
+          "claim_safety_status": "PASS",
+          "claim_safety_reason": ""
+        },
+        {
+          "subtitle": "Quạt vừa gọn vừa đa năng, cho dân văn phòng.",
+          "overlay_text": "Gadget mini!",
+          "claim_safety_status": "PASS",
+          "claim_safety_reason": ""
+        }
+      ]
+    },
+    {
+      "block_id": "b5",
+      "window_start_s": 26,
+      "window_end_s": 33,
+      "intent": "CTA",
+      "variants": [
+        {
+          "subtitle": "Quạt không cánh giá dưới 40k, quá hời!",
+          "overlay_text": "Chỉ 40k!",
+          "claim_safety_status": "PASS",
+          "claim_safety_reason": ""
+        },
+        {
+          "subtitle": "Mua ngay quạt không cánh, dưới 40k thôi!",
+          "overlay_text": "Ghé link bio!",
+          "claim_safety_status": "PASS",
+          "claim_safety_reason": ""
+        },
+        {
+          "subtitle": "Đừng bỏ lỡ, quạt chỉ dưới 40k!",
+          "overlay_text": "Món lạ Shopee!",
+          "claim_safety_status": "PASS",
+          "claim_safety_reason": ""
+        }
+      ]
     }
   ]
 }
