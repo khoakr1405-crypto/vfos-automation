@@ -992,13 +992,26 @@ Xem chi tiết: [packages/shopee/README.md](../../../packages/shopee/README.md).
 6. Resolve short link (HTTP HEAD redirect) → canonical URL.
 7. validateShopeeAffiliateLink(canonical) → check owner == expected_affiliate_owner_id.
 8. Upsert into registry via upsertEntry() under lock + atomic write.
-9. Stop when target_count reached or max_clicks_per_batch hit.
+9. **DỪNG ngay** khi đạt `target_count` (default 1) HOẶC `max_clicks_per_batch` (safety ceiling 5) HOẶC hết visible products. Không click thêm sau khi đạt target.
 ```
 
-**Default tuning**:
-- `target_count = 2` (số sản phẩm MỚI cần lấy mỗi lần)
-- `max_clicks_per_batch = 5` (cap số click tối đa kể cả gặp duplicate)
+**Default tuning (Round 26 update — single-link default)**:
+- **`target_count = 1`** (default) — agent chỉ lấy **1 link sản phẩm MỚI hợp lệ** mỗi lần, KHÔNG mặc định lấy nhiều. Sau khi extract + resolve + validate owner pass + upsert registry → **DỪNG extraction ngay**, không click thêm.
+- `max_clicks_per_batch = 5` — **safety ceiling**, KHÔNG phải mục tiêu. Chỉ chạm khi gặp duplicate liên tiếp và phải thử sản phẩm kế tiếp.
 - `expected_affiliate_owner_id = "an_17376660568"` (operator's affiliate id)
+
+**Batch mode (CHỈ khi user yêu cầu rõ)**:
+- Trigger phrases (Vietnamese): `"lấy 3 link"`, `"lấy 5 sản phẩm"`, `"tìm nhiều sản phẩm để so sánh"`, hoặc số cụ thể `"lấy N link"` / `"lấy N sản phẩm"`.
+- CLI explicit: `pnpm shopee:extract-links-cdp --target-count=3 --max-clicks=5`.
+- KHÔNG bao giờ tự lấy nhiều khi user không yêu cầu — vi phạm = spam click anti-pattern.
+
+**Stop conditions (post-extraction)**:
+| Condition | Behavior |
+|---|---|
+| Lấy đủ `target_count` link mới hợp lệ | **DỪNG ngay**, không click thêm |
+| Đạt `max_clicks_per_batch = 5` (do liên tiếp gặp duplicate) | DỪNG + báo `status=SUSPENDED` + reason `"reached max_clicks_per_batch without target_count"` |
+| Hết visible products trong DOM | DỪNG + báo `status=SUSPENDED` + reason `"exhausted visible products"` |
+| Lấy được 1 link mới hợp lệ + `target_count=1` (default) | DỪNG + nếu Discovery Mode → tạo Product Card + chấm scoring; PRODUCT_SELECTED → có thể khởi tạo video_id tiếp theo + chuyển Source Match Agent |
 
 **Flow comparison (sau Round 26B)**:
 
@@ -2051,6 +2064,8 @@ Bắt buộc chạy trước khi báo "hoàn thành":
 [ ] (Round 26 Audit) Code helper promoted KHÔNG còn hardcode `yt_014` / `production/batch_001/yt_014/` / `yt_014_final_reels`? Reusable helper nhận `video_id` / `run_id` / `input_path` / `output_path` dynamic?
 [ ] (Round 26 Audit) Scratch/deprecated/unsafe files giữ untracked + ghi audit + KHÔNG xóa bằng rm/del?
 [ ] (Round 26 Agent Boundary) KHÔNG tạo agent thứ 6 cho Audio & Assembly / Subtitle / Browser Click? Vẫn 5 agent Phần 24?
+[ ] (Round 26 single-link default) CDP extraction default `target_count=1`? DỪNG ngay sau 1 link mới hợp lệ + validate + upsert registry?
+[ ] (Round 26 single-link default) Batch mode CHỈ khi user yêu cầu rõ ("lấy N link" / "lấy N sản phẩm" / "tìm nhiều để so sánh") hoặc CLI `--target-count=N`? KHÔNG spam click khi user không yêu cầu?
 ```
 
 ---
@@ -2244,6 +2259,20 @@ KHÔNG BAO GIỜ:
     (kể cả masked đầy đủ > 12 char).
   × (Round 26B CDP) Click quá `max_clicks_per_batch = 5` sản phẩm
     trong 1 lần chạy — phải dừng kể cả khi gặp nhiều duplicate.
+  × (Round 26 default single-link) Lấy >1 link khi user không yêu cầu
+    rõ batch mode. Default `target_count = 1` — sau khi extract +
+    validate + upsert registry 1 link mới hợp lệ → DỪNG ngay,
+    không click thêm. Batch mode CHỈ khi user gõ "lấy 3 link" /
+    "lấy 5 sản phẩm" / "tìm nhiều sản phẩm để so sánh" hoặc CLI
+    `--target-count=N` explicit.
+  × (Round 26 default single-link) Coi `max_clicks_per_batch = 5`
+    như mục tiêu — đây là **safety ceiling**, không phải target.
+    Mục tiêu là `target_count` (default 1).
+  × (Round 26 default single-link) Tạo nhiều Product Card / scoring
+    candidate hàng loạt khi mục tiêu là làm 1 video. 1 link mới
+    hợp lệ → 1 Product Card → 1 scoring → nếu PRODUCT_SELECTED
+    → 1 video_id mới + chuyển Source Match Agent. Không spam
+    candidates parallel.
   × (Round 26B CDP) Fallback tự động sang shopee:login / cookie
     fetcher / HAR / Shopee private API khi CDP fail —
     ERR_CDP_BROWSER_NOT_FOUND / ERR_CDP_TARGET_TAB_NOT_FOUND báo

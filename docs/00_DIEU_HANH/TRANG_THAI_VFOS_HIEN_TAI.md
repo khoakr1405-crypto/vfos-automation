@@ -1618,7 +1618,9 @@ Vòng này sửa skill + docs để `/chay` tự quyết định + tự retry + 
 
 **Không làm**: chạy yt_014 lại, render video, mở yt_015, publish, gọi Facebook/Shopee/OpenAI API, dùng cookie/token, nhập password/OTP, commit media binary, commit 11 untracked scripts, add `production/batch_001/yt_014/demo_match/sources/` hoặc `production/_commerce/*.json`, xóa scratch/deprecated file bằng rm/del, promote helper còn hardcode `yt_014`, hardcode micro-gap ẩn trong logic, tạo agent thứ 6.
 
-**Commit**: `docs: promote yt_014 successful patterns to shared pipeline` (sẽ bump hash khi push).
+**Commit**: `docs: promote yt_014 successful patterns to shared pipeline` (`8bef9fc`).
+
+**Patch 2026-05-27 (post Round 26)**: cập nhật CDP extraction default → `target_count = 1` (single-link default). User explicit không muốn lấy 3–5 link mỗi lần khi không cần. Batch mode CHỈ activate khi user yêu cầu rõ ("lấy N link" / "lấy N sản phẩm" / "tìm nhiều để so sánh") hoặc CLI `--target-count=N`. `max_clicks_per_batch = 5` là **safety ceiling**, KHÔNG phải mục tiêu. Workflow nhắm: 1 link mới hợp lệ → 1 Product Card → 1 scoring → PRODUCT_SELECTED → 1 video_id mới + Source Match Agent. Cập nhật SKILL.md (Default tuning + Batch mode + Stop conditions + 3 HARD CONSTRAINTS + 2 SELF-REVIEW) + VFOS_AGENT_ARCHITECTURE_V0.md (mục 3.1 Shopee Product Agent). Commit: `docs: shopee cdp default to single-link extraction`.
 
 ---
 

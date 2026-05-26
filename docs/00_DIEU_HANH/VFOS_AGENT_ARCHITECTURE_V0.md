@@ -60,7 +60,8 @@ Document này chốt **biên giới giữa các agent** để 3 điều:
   - Selector strategy: text/aria > product-card scoped > stable data-* > controlled CSS fallback. **KHÔNG** random class hash / tọa độ click.
   - CDP connect fail → `ERR_CDP_BROWSER_NOT_FOUND` (max 3 retry). KHÔNG tự fallback sang shopee:login / private API.
   - Target tab missing → `ERR_CDP_TARGET_TAB_NOT_FOUND`. Login wall → `SUSPENDED` + `ERR_AUTH_REQUIRED` (user tự login).
-  - `max_clicks_per_batch = 5`. KHÔNG click setting/account/security/logout/payment/publish.
+  - **`target_count = 1` default (Round 26 single-link policy)** — agent chỉ lấy 1 link mới hợp lệ mỗi lần, DỪNG ngay sau validate + upsert registry. Batch mode chỉ khi user yêu cầu rõ ("lấy N link" / "lấy N sản phẩm" / "tìm nhiều để so sánh") hoặc CLI `--target-count=N`.
+  - `max_clicks_per_batch = 5` là **safety ceiling**, KHÔNG phải mục tiêu — chỉ chạm khi gặp duplicate liên tiếp. KHÔNG click setting/account/security/logout/payment/publish.
   - Owner validation: canonical URL `utm_source` / `mmp_pid` phải khớp `expected_affiliate_owner_id` (eg `an_17376660568`). Mismatch → `appendRejected`, không vào `entries`.
 
 ### 3.2 Demo Match Agent
