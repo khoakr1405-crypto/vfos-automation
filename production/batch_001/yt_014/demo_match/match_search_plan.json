@@ -1,0 +1,27 @@
+{
+  "video_id": "yt_014",
+  "status": "INITIALIZED",
+  "search_keywords": [
+    "quạt không cánh mini T10",
+    "quạt không cánh cầm tay",
+    "bladeless mini fan T10",
+    "quạt tích điện không cánh mini"
+  ],
+  "guard_8_acceptance_table": {
+    "specs_match": "Must match a bladeless neck/handheld fan with T10 body shape and turbine style air inlet",
+    "visual_hook": "Must clearly demonstrate the bladeless feature (e.g. passing a finger/hair/tissue through the airflow ring safely)",
+    "no_misleading_claims": "Cannot claim therapeutic or medical benefits, no false battery life claims (must state realistic 2-4h)"
+  },
+  "guard_6_visual_safety_criteria": {
+    "brand_safety": "No competitor logos, no watermarks, no TikTok/Douyin logos in output frames",
+    "resolution": "Minimum 1080p, portrait format (9:16) preferred or center-cropped to 9:16"
+  },
+  "anti_bait_and_switch_rules": {
+    "rule_1": "The video MUST show the exact bladeless quạt T10 being sold in the affiliate link",
+    "rule_2": "Do NOT show high-end Dyson fans or larger desk fans to represent this 38k VND mini fan"
+  },
+  "mitigation_history": {
+    "prior_failure": "yt_013 source failure (ERR_SOURCE_NOT_FOUND) for standard T10 fan with blades",
+    "rule": "Do NOT reuse any of the rejected video sources from yt_013 unless it is explicitly verified to be the new T10 Turbo product (the old yt_013 used standard T10 with blades)."
+  }
+}

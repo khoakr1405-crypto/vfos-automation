@@ -1,0 +1,27 @@
+{
+  "video_id": "yt_014",
+  "product_name": "Quạt Không Cánh Mini T10 Turbo USB",
+  "price_vnd": 38620,
+  "sales_count": "1k+",
+  "commission_pct": "32%",
+  "estimated_commission_vnd": 12358,
+  "shopee_affiliate_url": "https://s.shopee.vn/9fI1rVFybA",
+  "affiliate_owner_id": "an_17376660568",
+  "affiliate_link_status": "VERIFIED_FROM_LONG_LINK",
+  "score_total": "17/18",
+  "decision": "PRODUCT_SELECTED",
+  "data_source_notes": "Commerce Product Agent browser targeted-click flow on Cốc Cốc debug window connected via CDP (port 9222)",
+  "scoring_breakdown": {
+    "demo_clarity": 3,
+    "affiliate_potential": 3,
+    "visual_appeal": 3,
+    "vietnam_audience_fit": 3,
+    "source_availability": 2,
+    "risk_level": 3
+  },
+  "backup_product": {
+    "product_name": "Quạt Cầm Tay Mini T10 Siêu Mát",
+    "shopee_affiliate_url": "https://s.shopee.vn/7Aagsu5Lqz",
+    "prior_history": "yt_013 source failure / ERR_SOURCE_NOT_FOUND"
+  }
+}
