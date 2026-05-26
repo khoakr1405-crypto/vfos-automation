@@ -1,0 +1,93 @@
+{
+  "video_id": "yt_014",
+  "product_name": "Quạt Không Cánh Mini T10 Turbo USB",
+  "style_profile": {
+    "tone": "vui vẻ, hài hước, bá đạo nhẹ, bắt trend, cực kỳ viral",
+    "word_limit_per_block": 12,
+    "claim_safety_guideline": "Tuyệt đối không dùng claim quá đà, chỉ dùng observable facts và các từ ngữ mô tả thiết kế khách quan."
+  },
+  "overlay_blocks": [
+    {
+      "block_id": "b1",
+      "window_start_s": 0,
+      "window_end_s": 3,
+      "intent": "HOOK",
+      "subtitle": "Ủa quạt gì mà không thấy cánh? 😳",
+      "overlay_text": "ỦA QUẠT GÌ KHÔNG CÁNH?",
+      "viral_keywords": [
+        "quạt không cánh",
+        "món lạ Shopee",
+        "gadget mini"
+      ],
+      "claim_safety_check": {
+        "status": "PASS",
+        "details": "Observable physical fact (design has no exposed blades), zero safety claim."
+      }
+    },
+    {
+      "block_id": "b2",
+      "window_start_s": 3,
+      "window_end_s": 10,
+      "intent": "FILLER",
+      "subtitle": "Test bằng giấy cho khỏi nói điêu 💨",
+      "overlay_text": "TEST GIÓ THỰC TẾ",
+      "viral_keywords": [
+        "test bằng giấy",
+        "mùa nóng"
+      ],
+      "claim_safety_check": {
+        "status": "PASS",
+        "details": "Observable visual airflow test, no wind speed level claim."
+      }
+    },
+    {
+      "block_id": "b3",
+      "window_start_s": 10,
+      "window_end_s": 18,
+      "intent": "FILLER",
+      "subtitle": "Không lộ cánh — nhìn hơi ảo nha",
+      "overlay_text": "CÁNH QUẠT KHÔNG LỘ",
+      "viral_keywords": [
+        "không lộ cánh",
+        "gadget mini"
+      ],
+      "claim_safety_check": {
+        "status": "PASS",
+        "details": "Observable physical design comparison, no absolute safety claim."
+      }
+    },
+    {
+      "block_id": "b4",
+      "window_start_s": 18,
+      "window_end_s": 26,
+      "intent": "FILLER",
+      "subtitle": "Để bàn gọn, góc học tập nhìn xịn hơn",
+      "overlay_text": "ĐỂ BÀN GỌN GÀNG",
+      "viral_keywords": [
+        "để bàn",
+        "góc học tập",
+        "dân văn phòng"
+      ],
+      "claim_safety_check": {
+        "status": "PASS",
+        "details": "Observable table stand feature, zero performance claim."
+      }
+    },
+    {
+      "block_id": "b5",
+      "window_start_s": 26,
+      "window_end_s": 33,
+      "intent": "CTA",
+      "subtitle": "Dưới 40k mà có trò hay phết 👀",
+      "overlay_text": "QUẠT ĐỘC LẠ DƯỚI 40K",
+      "viral_keywords": [
+        "dưới 40k",
+        "món lạ Shopee"
+      ],
+      "claim_safety_check": {
+        "status": "PASS",
+        "details": "Observable price fact (<40k), soft referral style, no spam sales."
+      }
+    }
+  ]
+}
