@@ -431,6 +431,176 @@ Nếu controller phát hiện rerender command nhưng KHÔNG có rerender keywor
 }
 ```
 
+**OpenAI Subtitle Workflow expanded (Round 26 — verified trên yt_014 quạt không cánh T10)**:
+
+Reference banned phrases blocklist (synced với yt_014 generate-subtitles.ts implementation — agent PHẢI scan cả lowercase substring match):
+
+```
+an toàn tuyệt đối
+không bao giờ kẹt tóc
+không sợ bị kẹt tay
+không lo bị kẹt
+không sợ bị kẹt
+không kẹt
+siêu an toàn
+an toàn khi dùng
+an toàn cho trẻ
+mát như điều hòa
+siêu mạnh nhất
+pin trâu cả ngày
+tốt nhất
+rẻ nhất
+chính hãng 100%
+cam kết
+đảm bảo
+số 1
+duy nhất
+thay thế điều hòa
+thay thế quạt lớn
+trị bệnh / làm đẹp / sức khỏe (nếu không có bằng chứng)
+```
+
+Reference viral keyword whitelist VN context (đã verified trên yt_014):
+```
+quạt không cánh, dưới 40k, test bằng giấy, không lộ cánh,
+để bàn, góc học tập, dân văn phòng, mùa nóng,
+gadget mini, món lạ Shopee, test thực tế
+```
+
+**`subtitle_overlay_plan.json` schema mở rộng (Round 26 verified pattern)** — agent PHẢI persist:
+```json
+{
+  "video_id": "<yt_NNN>",
+  "product_name": "...",
+  "openai_generated": true | false,
+  "model": "<eg gpt-4o-mini>",
+  "generated_at": "<ISO 8601>",
+  "style_profile": {
+    "tone": "vui vẻ, hài hước, bá đạo nhẹ, bắt trend, viral",
+    "word_limit_per_block": 12,
+    "claim_safety_guideline": "Chỉ dùng observable facts và mô tả thiết kế khách quan."
+  },
+  "selected_variants": [
+    {
+      "block_id": "b1",
+      "window_start_s": 0,
+      "window_end_s": 3,
+      "intent": "HOOK | KITCHEN | FILLER | TRANSITION | CTA | OFF_TOPIC",
+      "subtitle": "...",
+      "overlay_text": "...",
+      "claim_safety_check": {
+        "status": "PASS | FAIL",
+        "details": "..."
+      }
+    }
+  ],
+  "rejected_variants": [
+    {
+      "block_id": "b3",
+      "subtitle": "...",
+      "overlay_text": "...",
+      "claim_safety_status": "FAIL",
+      "claim_safety_reason": "Chứa từ cấm: 'mát như điều hòa'"
+    }
+  ],
+  "all_variants": [ /* full record của mọi variant generated cho audit */ ]
+}
+```
+
+**Fallback safe template policy (Round 26 verified yt_014 b3)**:
+- Nếu MỌI variant cho 1 block đều REJECT → KHÔNG được "force-pass" bằng cách hạ standard hoặc thêm "có thể" / "mình thấy" để né.
+- Phải dùng **fallback safe template manual** đã pre-approved (observable facts) cho block đó, ghi rõ `claim_safety_check.details = "Manual safety fallback — N variants rejected."`.
+- Ví dụ yt_014 b3 (intent FILLER, sản phẩm quạt không cánh): variant 3/3 reject → fallback `"Không lộ cánh — nhìn hơi ảo nha"` + overlay `"CÁNH QUẠT KHÔNG LỘ"` (observable design facts only).
+- **KHÔNG được ghi `"0 rejected"` khi thực tế có reject** — phải log đúng số `rejected_variants.length`.
+
+### I2. Audio & Assembly Agent — Final Reels Render Pattern v0 (Round 26 — verified yt_014)
+
+> **Áp dụng cho**: Audio & Assembly Agent (Voice/BGM/Render pipeline). Bổ sung STEP 11 + STEP 12 trong WORKFLOW chính.
+
+**Mục tiêu**: chuẩn hoá final render 9:16 cho Facebook Reels. Bài học từ yt_014: source 16:9 (1280×720 hoặc tương đương) → MUST center-crop vertical, KHÔNG blurred padding làm layout chính.
+
+**HARD rule cho Reels output**:
+
+1. **Target resolution**: `1080×1920` (9:16 vertical, fill toàn màn hình).
+2. **KHÔNG dùng blurred padding** làm layout chính nếu output là Reels — video ngang nhỏ nằm giữa với 2 dải blur trên/dưới = anti-pattern. User scroll Reels không zoom được, sản phẩm hiển thị quá nhỏ trên điện thoại.
+3. **Center-crop / reframe**: từ source 16:9, crop vertical slice ở giữa.
+   - Công thức cho source `1280×720`: `crop=405:720:437:0` (width = 720×9/16 = 405, x offset = (1280-405)/2 = 437), rồi `scale=1080:1920`.
+   - Source resolution khác → tính lại width/x offset theo cùng ratio. Helper PHẢI nhận `source_width`, `source_height` qua args/config, KHÔNG hardcode `1280×720`.
+4. **Sản phẩm / tay / demo phải rõ trong vùng nhìn chính**: trước khi crop, kiểm visual subject có nằm trong dải `(source_width - crop_width) / 2` đến `(source_width + crop_width) / 2` không. Nếu subject lệch sang một bên → cần offset x crop khác (KHÔNG mặc định center) — đây là decision point operator.
+
+**Decision matrix Reels final render**:
+
+| Source ratio | Subject position | Action |
+|---|---|---|
+| 9:16 portrait native | center | Scale up 1080×1920, KHÔNG crop |
+| 9:16 portrait native | off-center | Pad blurred OK (cùng aspect) hoặc reposition |
+| 16:9 landscape | center | **Center-crop vertical (DEFAULT yt_014 pattern)** |
+| 16:9 landscape | off-center subject (eg sản phẩm góc trái) | Offset x crop — operator decide |
+| 1:1 square | center | Pad blurred top+bottom HOẶC scale-and-crop |
+| Other ratios | — | Operator review |
+
+**QC bắt buộc sau render** (verified yt_014 final_reels_v2):
+- `width=1080`, `height=1920` (probe qua ffprobe).
+- `duration_video ≈ duration_audio` (chênh ≤ 0.5s).
+- `max_volume ≤ -1 dBFS` (no clipping).
+- 2 streams (1 video H264, 1 audio AAC).
+- Audio chính là Voice + BGM mix đã pass STEP 11 — KHÔNG re-encode audio nếu không cần.
+
+**Output path policy** (tương thích Phần 24 SoT migration):
+- Pre-migration: `production/batch_001/<video_id>/final_reels_v<N>/<video_id>_final_reels_v<N>.mp4`
+- Post-migration (Phần 24 v1+): `production/_runs/<run_id>/preview/<run_id>_final_reels_v<N>.mp4`
+- Versioning: nếu render lại (sau Round 25B `rerender`), tạo `v2`, `v3`, hoặc `v2_2`/`v2_3`. **KHÔNG xoá** version cũ — giữ làm history (Round 25B No Rerender Rule rerender behavior).
+
+### I3. Overlay / Subtitle Timing Anti-Overlap Rule v0 (Round 26 — verified yt_014 b3/b4 fix)
+
+> **Áp dụng cho**: Audio & Assembly Agent + Script & Claim Safety Agent. Áp dụng khi render burn-in subtitle + overlay text vào final MP4 qua ffmpeg `drawtext` filtergraph.
+
+**Bài học yt_014**: 2 block kế tiếp với `block_A.window_end_s == block_B.window_start_s` (eg `b3.end = 18.0, b4.start = 18.0`) → ffmpeg `enable='between(t, start, end)'` có thể render đè frame ngay tại mốc transition, gây artefact dạng `"ĐỂ BÀN40K GHÊ"` (text 2 block merge vào nhau 1 frame). Đây là **failure mode đã thực sự xảy ra** trên yt_014 lần render đầu, fix bằng micro-gap.
+
+**HARD rule timing**:
+
+1. **Layout zones (verified yt_014)** — không che vùng action chính:
+   - **Overlay text** (highlight viral keyword, uppercase, vàng): top zone, `y ≈ 450` trên frame 1080×1920 (cách top ~24%).
+   - **Subtitle** (full sentence, white, regular): bottom zone, `y ≈ 1450` trên frame 1080×1920 (cách bottom ~24%).
+   - **Action zone** (sản phẩm + tay + demo): center `y ∈ [600, 1350]` — TUYỆT ĐỐI không drawtext vào vùng này.
+
+2. **Micro-gap anti-overlap** (HARD):
+   - Nếu `block_A.window_end_s == block_B.window_start_s` → giảm `block_A.end` đi `MICRO_GAP_SECONDS` trước khi build `enable=` filter.
+   - **Default `MICRO_GAP_SECONDS = 0.05`** (50 ms — đủ tránh frame overlap ở 30/60fps, không cảm nhận được).
+   - Range hợp lệ: `[0.03, 0.08]`.
+
+3. **Constant/config requirement (HARD — hardening Round 26)**:
+   - Nếu viết helper xử lý timing subtitle/overlay, micro-gap PHẢI là:
+     - **Hằng số ở đầu file** với tên rõ: `const DEFAULT_SUBTITLE_MICRO_GAP_SECONDS = 0.05;`
+     - HOẶC tham số function/CLI: `--micro-gap 0.05` / `microGapSeconds: number`.
+   - **TUYỆT ĐỐI KHÔNG** hardcode `0.05` / `0.03` / `0.08` ẩn rải rác trong logic nhiều nơi.
+   - Đổi micro-gap → đổi ở **một điểm duy nhất** (constant top-of-file hoặc config/argument).
+
+4. **Subtitle text vs Overlay text**:
+   - **Overlay** thường ngắn (≤ 5 từ, viral keyword highlight) — có thể uppercase.
+   - **Subtitle** dài hơn (full sentence ≤ 12 từ) — keep case tự nhiên.
+   - 2 cái có thể có timing khác nhau trong cùng 1 block — overlay thường kết thúc sớm hơn subtitle (ví dụ b4 yt_014: overlay end -= 0.05 còn subtitle giữ nguyên end).
+
+5. **FFmpeg filtergraph anti-overlap pattern**:
+   ```
+   // Build filter chain per block, mỗi block 2 drawtext (overlay + subtitle):
+   const overlayEnd = nextBlockStart === currentBlockEnd
+       ? currentBlockEnd - MICRO_GAP_SECONDS
+       : currentBlockEnd;
+   const subtitleEnd = nextBlockStart === currentBlockEnd
+       ? currentBlockEnd - MICRO_GAP_SECONDS
+       : currentBlockEnd;
+   ```
+
+**QC bắt buộc**:
+- Visual review: scrub timeline tại MỌI block transition mốc (eg t=3, 10, 18, 26, ...). Nếu thấy frame nào có text của 2 block đè nhau → micro-gap chưa đủ, tăng `MICRO_GAP_SECONDS` lên 0.08 hoặc fix scene_input duration.
+- Log filtergraph trong report `final_render_report.json` (nếu có) để dễ debug lại sau.
+
+**Forbidden**:
+- KHÔNG hardcode magic number `0.05` rải rác trong filter build logic. Vi phạm = code rejection trong code review.
+- KHÔNG dùng overlay text che vùng action center (`y ∈ [600, 1350]`) trên frame 1080×1920.
+- KHÔNG để subtitle/overlay vượt ra ngoài safe zone của Reels UI (Facebook Reels có UI overlay phía dưới và phía trên — phải để text trong vùng `y ∈ [200, 1700]` để không bị che).
+
 ### J. Report Format ngắn (Auto-Run Controller default output)
 
 Mỗi lần `/chay` chạy xong CHỈ báo ngắn (8 field core + 3 path field Round 25B):
@@ -1759,9 +1929,11 @@ Xem chi tiết: [packages/facebook/README.md](../../../packages/facebook/README.
 |---|---|---|---|---|
 | **Shopee Product Agent (Commerce Product Agent)** | Resolve link, fetch metadata Shopee, scoring 6 trục, persist Card. **Round 26B primary**: `BROWSER_CDP_TARGETED_CLICK` flow + global link registry dedupe + lock/atomic write. | `SHOPEE CDP TARGETED-CLICK LINK EXTRACTION v0` + `SHOPEE LINK REGISTRY v0` + `REGISTRY CONCURRENCY SAFETY` + `CDP CONNECTION FAILURE POLICY` + `SELECTOR RESILIENCE` + `TARGETED CLICK POLICY` + `SHOPEE PRODUCT CARD` + `SHOPEE SHORT LINK SUPPORT` + `SHOPEE PRODUCT DISCOVERY MODE` + `SHOPEE PRODUCT SELECTION SCORING` + GUARD 8 trục 1–5 input data | URL Shopee / short link / lane keyword / CDP browser session | `shopee_product_card.json` + `production/_commerce/shopee_link_registry.json` |
 | **Demo Match Agent** | Tìm video/demo tương đồng, chấm GUARD 8 product match, retry candidate | `NGUỒN VIDEO/DEMO THAM KHẢO` + PF-STEP 3–4 + GUARD 8 (5 trục match) + AUTO-SOURCE RETRY POLICY | `shopee_product_card.json` | Match result + chosen video URL + GUARD 8 table |
-| **Script QC Agent** | Run Script Writer, validator, OPERATOR TRIM POLICY, GUARD 1 + GUARD 7 R1/R3/R5 enforce | STEP 6 + STEP 7 + OPERATOR TRIM POLICY + GUARD 1 + GUARD 7 (R1/R3/R5 phần script layer) | `scene_input.json` | `script_ai_v1_extended.json` + (nếu cần) `operator_trim` metadata block |
+| **Script QC Agent (alias Script & Claim Safety Agent)** | Run Script Writer, validator, OPERATOR TRIM POLICY, GUARD 1 + GUARD 7 R1/R3/R5 enforce. **Round 26**: OpenAI viral subtitle rewrite + claim-safe blocklist scan + fallback safe template + persist `subtitle_overlay_plan.json` (schema expanded). | STEP 6 + STEP 7 + OPERATOR TRIM POLICY + GUARD 1 + GUARD 7 (R1/R3/R5 phần script layer) + Section I/I3 (Auto-Run Controller — subtitle workflow + timing anti-overlap) | `scene_input.json` + (Round 26) `script_ai_v1_extended.json` + product card | `script_ai_v1_extended.json` + `subtitle_overlay_plan.json` (Round 26) + (nếu cần) `operator_trim` metadata block |
 | **Facebook Publish Plan Agent** | Lập publish plan metadata, draft caption + CTA, KHÔNG gọi Graph API | STEP 12b + `FACEBOOK REELS + SHOPEE PUBLISH PLAN v0` + GUARD 7 R5 (caption soft tone) | Preview MP4 + Card + GUARD 8 result | `facebook_reels_publish_plan.json` |
 | **Git & Artifact Agent** (Phần 24) | Stage / commit / push code + docs + manifest + JSON artifact. Cập nhật `TRANG_THAI_VFOS_HIEN_TAI.md`. **CHỈ chạy khi prompt cho phép rõ ràng.** | `HARD CONSTRAINTS` (Phần 24 commit rule) + Mục 6 `VFOS_AGENT_ARCHITECTURE_V0.md` | Working tree state + commit chỉ thị từ prompt | Commit (+ optional push) + updated state doc |
+
+> **Audio & Assembly là pipeline step, KHÔNG phải agent thứ 6** (Round 26 clarification). Voice Sync + BGM Mix + Final Reels Render (STEP 9–11 + Section I2 Final Reels Render Pattern + I3 Overlay Timing Anti-Overlap) hiện thuộc monolithic `/chay` — tương lai có thể split thành agent file riêng nhưng KHÔNG thuộc scope hardening hiện tại. Auto-Run Controller Section C Locked State Matrix dùng tên `"Audio & Assembly Agent"` làm **next_agent label** cho deterministic routing, không phải agent file thực.
 
 **Boundary rules (HARD)**:
 - Mỗi sub-agent **chỉ đọc/ghi artifact của mình + đọc artifact upstream**. KHÔNG cross-write.
@@ -1868,6 +2040,17 @@ Bắt buộc chạy trước khi báo "hoàn thành":
 [ ] (Round 26B Dedup) Dedup priority shopid+itemid > canonical > short_link > normalized name? Pre-click check + post-resolve recheck?
 [ ] (Round 26B Owner) Validate `expected_affiliate_owner_id` = an_17376660568 trên `utm_source`/`mmp_pid`? Mismatch → appendRejected, không vào entries?
 [ ] (Round 26B Audit) Không xoá flow cũ trong vòng này? Không commit hàng loạt untracked script chưa audit?
+[ ] (Round 26 Final Render) Reels output 1080×1920 center-crop, KHÔNG blurred padding làm layout chính khi source 16:9?
+[ ] (Round 26 Final Render) Helper render KHÔNG hardcode `crop=405:720:437:0` cho mọi source — nhận `source_width/height` qua args?
+[ ] (Round 26 Layout Zones) Subtitle y≈1450 (bottom), Overlay y≈450 (top), action zone y∈[600,1350] KHÔNG drawtext? Text trong safe zone y∈[200,1700]?
+[ ] (Round 26 Overlay Timing) 2 block kế tiếp end==start có áp micro-gap (default 0.05s)? Range hợp lệ [0.03, 0.08]?
+[ ] (Round 26 Overlay Timing HARDENING) Micro-gap là constant top-of-file / config / CLI arg — KHÔNG hardcode 0.05 ẩn rải rác trong logic?
+[ ] (Round 26 OpenAI Subtitle) `subtitle_overlay_plan.json` đủ field (selected_variants, rejected_variants, all_variants, style_profile, model, generated_at)?
+[ ] (Round 26 OpenAI Subtitle) Fallback safe template manual khi mọi variant reject — ghi rõ "Manual safety fallback" trong details, KHÔNG bịa PASS?
+[ ] (Round 26 OpenAI Subtitle) `rejected_variants.length` log đúng số thật — KHÔNG ghi "0 rejected" khi có reject?
+[ ] (Round 26 Audit) Code helper promoted KHÔNG còn hardcode `yt_014` / `production/batch_001/yt_014/` / `yt_014_final_reels`? Reusable helper nhận `video_id` / `run_id` / `input_path` / `output_path` dynamic?
+[ ] (Round 26 Audit) Scratch/deprecated/unsafe files giữ untracked + ghi audit + KHÔNG xóa bằng rm/del?
+[ ] (Round 26 Agent Boundary) KHÔNG tạo agent thứ 6 cho Audio & Assembly / Subtitle / Browser Click? Vẫn 5 agent Phần 24?
 ```
 
 ---
@@ -2088,6 +2271,61 @@ KHÔNG BAO GIỜ:
   × (Round 26B Audit) Commit hàng loạt untracked scripts mà chưa
     audit từng file (safety / hardcoded secret / random click /
     selector dependency).
+  × (Round 26 Final Render) Dùng blurred padding làm layout chính
+    cho Reels khi source là 16:9 — phải center-crop 1080×1920.
+    Blurred padding chỉ chấp nhận khi source aspect đã gần 9:16
+    hoặc operator explicit chọn cho lý do đặc biệt.
+  × (Round 26 Final Render) Hardcode `crop=405:720:437:0` magic
+    number cho mọi source — helper PHẢI nhận `source_width` /
+    `source_height` qua args/config và tính lại offset theo ratio.
+  × (Round 26 Final Render) Drawtext subtitle/overlay vào vùng
+    action center `y ∈ [600, 1350]` trên frame 1080×1920 — che
+    sản phẩm/tay/demo. Phải dùng layout zones: overlay y≈450 (top),
+    subtitle y≈1450 (bottom).
+  × (Round 26 Final Render) Render text vượt safe zone Reels UI
+    (`y ∈ [200, 1700]`) — Facebook Reels có UI overlay top+bottom
+    có thể che text.
+  × (Round 26 Overlay Timing) Để 2 block kế tiếp có
+    `block_A.end == block_B.start` mà KHÔNG áp micro-gap —
+    sẽ render artefact dạng "ĐỂ BÀN40K GHÊ" (text merge 2 block
+    cùng 1 frame). yt_014 b3/b4 đã chứng minh failure mode này.
+  × (Round 26 Overlay Timing — HARD hardening) Hardcode magic
+    number `0.05` / `0.03` / `0.08` ẩn rải rác trong logic timing.
+    Micro-gap PHẢI là constant top-of-file
+    `const DEFAULT_SUBTITLE_MICRO_GAP_SECONDS = 0.05` HOẶC
+    tham số function/CLI `--micro-gap 0.05`. Đổi giá trị → đổi
+    ở MỘT điểm duy nhất.
+  × (Round 26 OpenAI Subtitle) Bịa fallback safe template khi thực
+    tế tất cả variant reject — phải dùng pre-approved manual
+    template (observable facts) cho block đó, ghi rõ
+    `"Manual safety fallback — N variants rejected."` trong
+    `claim_safety_check.details`.
+  × (Round 26 OpenAI Subtitle) Ghi `"0 rejected"` khi thực tế có
+    variant bị reject — phải log đúng `rejected_variants.length`.
+    Vi phạm Section I (đã có Round 25 nhưng Round 26 hardening
+    nhắc lại do yt_014 verified pattern).
+  × (Round 26 OpenAI Subtitle) Hợp thức hóa variant rủi ro bằng
+    cách thêm "có thể" / "mình thấy" để né blocklist — loophole,
+    vi phạm GUARD 7 R3 + Section I.
+  × (Round 26 OpenAI Subtitle) Persist `subtitle_overlay_plan.json`
+    thiếu field bắt buộc (`selected_variants`, `rejected_variants`,
+    `all_variants`, `style_profile`, `model`, `generated_at`) —
+    schema mở rộng đã chốt ở Section I (verified yt_014).
+  × (Round 26 Audit Hardening) Promote code helper còn hardcode
+    `production/batch_001/yt_014/`, `yt_014`, `yt014`,
+    `yt_014_final_reels`, `download-and-verify-yt014` —
+    reusable helper PHẢI nhận input động qua `video_id` /
+    `run_id` / `input_path` / `output_path` / config object /
+    CLI args. Helper KHÔNG đạt → keep untracked.
+  × (Round 26 Audit Hardening) Xóa file untracked bằng
+    `rm` / `del` / `remove` / `delete` mà chưa có operator
+    explicit approval. Scratch/deprecated/unsafe files chỉ
+    được ghi audit + giữ untracked. Round cleanup riêng do
+    operator quyết định.
+  × (Round 26 Agent Boundary) Tạo agent thứ 6 cho Audio & Assembly
+    hoặc cho Subtitle / Browser Click — KHÔNG có agent mới trong
+    Round 26. 5 agent của Phần 24 + 1 alias (Script & Claim Safety
+    = Script QC) là chốt. Audio & Assembly là pipeline step.
 
 CHỈ LÀM TRONG SCOPE:
   ✓ 1 video mỗi lần /chay

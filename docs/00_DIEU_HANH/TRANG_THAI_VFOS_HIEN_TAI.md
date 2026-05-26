@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-05-26 (Round 26B — Commerce Product Agent CDP Link Extraction PRIMARY + global link registry với lock + atomic write; 8 POC scripts kept untracked)
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `754b4df` (Round 25B Auto-Run Controller hardening; sẽ bump hash khi commit Round 26B)
+> **Cập nhật lần cuối**: 2026-05-27 (Round 26 — promote yt_014 successful patterns vào hệ thống chung: Final Reels Render 9:16, Overlay Anti-Overlap Rule, OpenAI Viral Subtitle Workflow expanded. Output A docs-only, 0 code helper promoted.)
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `9a581f1` (Round 26B Shopee link registry + CDP docs; sẽ bump hash khi commit Round 26)
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -1543,7 +1543,82 @@ Vòng này sửa skill + docs để `/chay` tự quyết định + tự retry + 
 
 **Không làm**: chạy video, publish, gọi Facebook API, dùng Shopee private API/HAR/storage_state, nhập password/OTP, commit secret/media, xoá flow cũ, add hàng loạt untracked scripts, mở yt_015, random click, retry vô hạn, chạy CDP thật trong scope audit này.
 
-**Commit**: `feat: add shopee link registry + cdp extraction docs` (sẽ bump hash khi push).
+**Commit**: `feat: add shopee link registry + cdp extraction docs` (`9a581f1`).
+
+---
+
+### ✅ Round 26 — Promote yt_014 Successful Patterns to Shared Pipeline: ĐÃ CHỐT (2026-05-27)
+
+**Mục tiêu**: chuẩn hoá các pattern đã chứng minh thành công ở yt_014 Shopee-First pilot thành **rule trong SKILL.md** để yt_015+ reuse không phải re-derive. **Output A docs-only** — không promote code helper trong round này (11/11 untracked scripts đều hardcode `yt_014`, vi phạm Round 26 Hardening mục IV.4).
+
+**Đã làm**:
+
+- **SKILL.md update** [.claude/skills/chay/SKILL.md](.claude/skills/chay/SKILL.md):
+  - **Section I expanded — OpenAI Viral Subtitle Workflow** (Script & Claim Safety Agent):
+    - Blocklist 16 banned phrases (synced với yt_014 generate-subtitles.ts implementation): `an toàn tuyệt đối`, `không bao giờ kẹt tóc`, `không sợ bị kẹt tay`, `mát như điều hòa`, `siêu mạnh nhất`, `pin trâu cả ngày`, `tốt nhất`, `thay thế điều hòa`, claim sức khỏe/làm đẹp/y tế không bằng chứng, etc.
+    - Viral keyword whitelist VN context (11 từ): `quạt không cánh`, `dưới 40k`, `test bằng giấy`, `góc học tập`, `dân văn phòng`, `mùa nóng`, `gadget mini`, `món lạ Shopee`, etc.
+    - **`subtitle_overlay_plan.json` schema mở rộng** (verified yt_014 pattern): `selected_variants`, `rejected_variants`, `all_variants`, `style_profile`, `model`, `generated_at`, `claim_safety_check.status/details` per block.
+    - **Fallback safe template policy**: khi mọi variant cho 1 block reject → dùng pre-approved manual template (observable facts), ghi rõ `"Manual safety fallback — N variants rejected."`. KHÔNG bịa PASS, KHÔNG hợp thức hóa variant rủi ro bằng "có thể"/"mình thấy".
+  - **Section I2 mới — Audio & Assembly Agent — Final Reels Render Pattern v0**:
+    - Target `1080×1920` (9:16 fill).
+    - KHÔNG dùng blurred padding làm layout chính nếu source 16:9 — phải center-crop vertical.
+    - Công thức center-crop cho source `1280×720`: `crop=405:720:437:0` → `scale=1080:1920`. Helper PHẢI nhận `source_width/height` qua args/config, KHÔNG hardcode.
+    - Decision matrix theo source ratio (portrait/landscape/square/other).
+    - QC bắt buộc: width/height target, duration ≤0.5s lệch, max_volume ≤-1 dBFS, 2 streams (H264+AAC).
+    - Output path policy (pre-migration batch_001 vs post-migration `_runs/<run_id>/preview/`).
+    - Versioning rule: rerender KHÔNG xoá final cũ, tạo `v2`, `v3`, `v2_2`, `v2_3`...
+  - **Section I3 mới — Overlay/Subtitle Timing Anti-Overlap Rule v0**:
+    - **Failure mode đã verified yt_014**: `b3.end == b4.start = 18.0` → ffmpeg `enable='between(t, start, end)'` render đè frame, gây artefact `"ĐỂ BÀN40K GHÊ"` (text 2 block merge cùng 1 frame).
+    - **Layout zones** (frame 1080×1920): overlay `y≈450` (top), subtitle `y≈1450` (bottom), action zone `y∈[600,1350]` TUYỆT ĐỐI không drawtext, Reels UI safe zone `y∈[200,1700]`.
+    - **Micro-gap default 0.05s** (range hợp lệ [0.03, 0.08]) tại block transitions `block_A.end == block_B.start`.
+    - **HARD hardening**: micro-gap PHẢI là constant top-of-file `const DEFAULT_SUBTITLE_MICRO_GAP_SECONDS = 0.05` HOẶC CLI arg `--micro-gap 0.05`. TUYỆT ĐỐI KHÔNG hardcode `0.05`/`0.03`/`0.08` ẩn rải rác trong logic.
+    - Filtergraph pattern + QC scrub timeline tại MỌI block transition mốc.
+  - **AGENT-READY RESPONSIBILITY BOUNDARIES table** Round 26 update:
+    - Script QC Agent (alias **Script & Claim Safety Agent**) row: bổ sung Round 26 capability (OpenAI viral subtitle rewrite + claim-safe blocklist scan + fallback safe template + persist `subtitle_overlay_plan.json` schema mở rộng) + output artifact `subtitle_overlay_plan.json`.
+    - Note dưới table: **Audio & Assembly là pipeline step, KHÔNG phải agent thứ 6**. Tên `"Audio & Assembly Agent"` trong Auto-Run Controller Section C là next_agent label cho routing, không phải agent file thực.
+  - **HARD CONSTRAINTS Round 26**: 11 bullet × cấm (blurred padding cho 16:9 Reels, hardcode `crop=405:720:437:0` cho mọi source, drawtext vào action zone, render text ngoài Reels safe zone, không áp micro-gap 2 block kế tiếp, hardcode magic 0.05 ẩn, bịa fallback PASS, ghi "0 rejected" giả, hợp thức bằng "có thể"/"mình thấy", persist plan thiếu field, promote helper còn hardcode yt_014, xóa scratch bằng rm/del không approval, tạo agent thứ 6).
+  - **SELF-REVIEW CHECKLIST cuối skill**: +12 mục Round 26.
+
+- **Architecture doc update** [docs/00_DIEU_HANH/VFOS_AGENT_ARCHITECTURE_V0.md](docs/00_DIEU_HANH/VFOS_AGENT_ARCHITECTURE_V0.md):
+  - Mục 3.3 Script QC Agent → "Script QC Agent (alias **Script & Claim Safety Agent** sau Round 25)": bổ sung Round 26 capability + 4 HARD rule (rejected_variants log đúng, fallback safe template manual, banned phrases blocklist synced SKILL.md, subtitle ≤12 từ / overlay ≤5 từ).
+  - **Mục 3.4b mới** — "Audio & Assembly (pipeline step, KHÔNG phải agent thứ 6)": clarify Voice Sync + BGM Mix + Final Reels Render là STEP 9–11 monolithic `/chay`, tương lai có thể split nhưng KHÔNG thuộc scope hiện tại. Ghi 3 Round 26 pattern đã chốt: Final Reels Render 9:16, Overlay Timing Anti-Overlap (micro-gap), Layout zones.
+
+- **Audit report mới** [docs/00_DIEU_HANH/ROUND_26_YT014_PATTERN_PROMOTION_AUDIT.md](docs/00_DIEU_HANH/ROUND_26_YT014_PATTERN_PROMOTION_AUDIT.md):
+  - Audit 3 untracked scripts mới (chưa cover Round 26B): `final-render.ts`, `generate-subtitles.ts` (script-writer), `generate-subtitles.ts` (shopee, wrong package).
+  - Tổng kết 11 untracked files (3 Round 26 + 8 Round 26B): 0/11 đủ tiêu chuẩn promote.
+  - Pattern promoted table (A-F): A/B/C/D promoted, E/F đã có sẵn từ Phần 23/Round 26B.
+  - Hardcoded path verification + micro-gap constant/config verification.
+  - Scratch/deprecated/unsafe handling table (22 untracked files) + recommendation cho operator có thể tự xoá thủ công.
+  - Next step Round 27 candidate scope (5 task refactor).
+  - Self-audit checklist 20/20 pass.
+
+- **TRANG_THAI** (file này): Round 26 entry + header + Git status bump.
+
+**Audit quyết định** (3 file Round 26):
+
+| File | Verdict | Lý do |
+|---|---|---|
+| `packages/script-writer/scripts/final-render.ts` | **scratch yt_014-specific — keep untracked** | Default `--video-id yt_014`, hardcode `production/batch_001` path, magic `crop=405:720:437:0` cho source 1280×720, hardcode `b4 - 0.05` cho block transition, magic `y=450`/`y=1450` layout. Round 27 refactor: nhận source dimensions + micro-gap + layout y qua args. |
+| `packages/script-writer/scripts/generate-subtitles.ts` | **scratch yt_014-specific — keep untracked** | Hardcode `production/batch_001/yt_014` path + `video_id: 'yt_014'` + `b3` fallback string. Pattern logic (BANNED_PHRASES + VIRAL_KEYWORDS + runSubtitleQC + fallback) đã promote vào SKILL Section I expanded. Round 27 refactor: tách blocklist ra module, expose pure function. |
+| `packages/shopee/scripts/generate-subtitles.ts` | **scratch yt_014 + WRONG PACKAGE — keep untracked** | Duplicate gần như identical với script-writer version nhưng đặt nhầm package. Subtitle workflow thuộc Script & Claim Safety Agent (`packages/script-writer/`), KHÔNG thuộc Shopee Product Agent. Round 27 sẽ xoá. |
+
+**Pattern promoted vào hệ thống chung**:
+- ✅ A. Final Reels Render 9:16 center-crop → Section I2
+- ✅ B. Overlay/Subtitle Timing Anti-Overlap + Layout zones + micro-gap constant → Section I3
+- ✅ C. OpenAI Viral Subtitle Workflow expanded (blocklist + viral keyword + schema + fallback safe template) → Section I
+- ✅ D. Claim Safety blocklist → Section I + GUARD 7 R3 cross-ref
+- ✅ E. Publish Plan pattern (đã có Phần 23, Round 26 verify đủ)
+- ✅ F. Shopee Commerce targeted-click (đã có Round 26B, Round 26 verify đủ)
+
+**Quan hệ với Phần 24 + Round 25/25B/26B**:
+- KHÔNG tạo agent mới (vẫn 5 agent Phần 24 + 1 alias Script & Claim Safety).
+- KHÔNG migrate artifact `production/batch_001/yt_014/` (vẫn pre-migration, Phần 24 spec migration là round riêng).
+- Auto-Run Controller (Round 25/25B) — Audio & Assembly Agent label trong Section C tham chiếu Section I2/I3 mới cho rule render.
+- Shopee Product Agent CDP flow (Round 26B) độc lập — không bị Round 26 đụng vào.
+
+**Không làm**: chạy yt_014 lại, render video, mở yt_015, publish, gọi Facebook/Shopee/OpenAI API, dùng cookie/token, nhập password/OTP, commit media binary, commit 11 untracked scripts, add `production/batch_001/yt_014/demo_match/sources/` hoặc `production/_commerce/*.json`, xóa scratch/deprecated file bằng rm/del, promote helper còn hardcode `yt_014`, hardcode micro-gap ẩn trong logic, tạo agent thứ 6.
+
+**Commit**: `docs: promote yt_014 successful patterns to shared pipeline` (sẽ bump hash khi push).
 
 ---
 
@@ -1695,9 +1770,9 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mốc tại thời điểm cập nhật trạng thái | `754b4df` (Round 25B Auto-Run Controller hardening; sẽ bump hash khi push Round 26B) |
+| Commit mốc tại thời điểm cập nhật trạng thái | `9a581f1` (Round 26B Shopee link registry + CDP docs; sẽ bump hash khi push Round 26) |
 | Remote | `origin` (GitHub) |
-| Sync status | Phần 11–24 + Round 2A/2B/2C + Round 3A/3C + Round 25 + Round 25B ĐÃ PUSH. Round 26B (Commerce CDP + link registry) — sẽ commit + push trong vòng này. |
+| Sync status | Phần 11–24 + Round 2A/2B/2C + Round 3A/3C + Round 25 + Round 25B + Round 26B ĐÃ PUSH. Round 26 (yt_014 patterns promoted to docs/skill) — sẽ commit + push trong vòng này. |
 
 **Trạng thái artifacts production** (tính đến 2026-05-20):
 - `production/batch_001/yt_007/` (text artifacts): **ĐÃ commit** ở `df1609e` — scene_input, script v1/v2/v3, manifest BGM. Dùng làm reference cho vòng Voice Sync autonomy.

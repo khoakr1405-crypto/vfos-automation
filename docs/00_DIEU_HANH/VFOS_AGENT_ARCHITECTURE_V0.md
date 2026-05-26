@@ -70,17 +70,30 @@ Document này chốt **biên giới giữa các agent** để 3 điều:
 - **KHÔNG cross-write**: KHÔNG sửa `shopee_product_card.json`. Nếu cần thêm Shopee data → trả về Shopee Product Agent.
 - **KHÔNG bait-and-switch**: clip sản phẩm A + affiliate link sản phẩm B = vi phạm trục 5 GUARD 8 + GUARD 7 R2.
 
-### 3.3 Script QC Agent
-- **Responsibility**: Chạy AI Script Writer (`packages/script-writer/`), validator, OPERATOR TRIM POLICY (Phần 23), enforce GUARD 1 + GUARD 7 R1/R3/R5 ở script layer.
-- **Input**: `scene_input.json` (từ scene detection) + lane/context metadata.
-- **Output artifact**: `script_ai_v1_extended.json` (+ optional `operator_trim` metadata block khi operator phải sửa tay).
+### 3.3 Script QC Agent (alias **Script & Claim Safety Agent** sau Round 25)
+- **Responsibility**: Chạy AI Script Writer (`packages/script-writer/`), validator, OPERATOR TRIM POLICY (Phần 23), enforce GUARD 1 + GUARD 7 R1/R3/R5 ở script layer. **Round 26**: OpenAI viral subtitle rewrite workflow (verified trên yt_014 quạt không cánh) + claim-safe blocklist scan + fallback safe template + persist `subtitle_overlay_plan.json` (schema mở rộng: `selected_variants`, `rejected_variants`, `all_variants`, `style_profile`).
+- **Input**: `scene_input.json` (từ scene detection) + lane/context metadata + (Round 26) `script_ai_v1_extended.json` + Shopee Product Card.
+- **Output artifact**: `script_ai_v1_extended.json` (+ optional `operator_trim` metadata block khi operator phải sửa tay) + (Round 26) `subtitle_overlay_plan.json`.
 - **KHÔNG**: Không viết caption Facebook — caption là việc của Facebook Publish Plan Agent.
+- **Round 26 HARD rules**:
+  - OpenAI subtitle workflow phải log đúng `rejected_variants.length` — KHÔNG bịa "0 rejected".
+  - Mọi variant reject cho 1 block → dùng pre-approved manual fallback template (observable facts), ghi `"Manual safety fallback — N variants rejected."` trong `claim_safety_check.details`. KHÔNG hợp thức hóa variant rủi ro.
+  - Banned phrases blocklist (synced với SKILL.md Section I): `an toàn tuyệt đối`, `không bao giờ kẹt tóc`, `mát như điều hòa`, `siêu mạnh nhất`, `pin trâu cả ngày`, `tốt nhất`, `thay thế điều hòa`, claim sức khỏe/làm đẹp/y tế không bằng chứng.
+  - Subtitle ≤ 12 từ. Overlay ≤ 5 từ.
 
 ### 3.4 Facebook Publish Plan Agent
 - **Responsibility**: Lập publish plan metadata cho Facebook Reels (caption draft, hashtags, CTA, schedule), enforce GUARD 7 R5 ở caption layer + GUARD 7 R2 product match check.
 - **Input**: Preview MP4 path + `shopee_product_card.json` + GUARD 8 result.
 - **Output artifact**: `facebook_reels_publish_plan.json` với `publish_status="not_published"` + `needs_user_review=true`.
 - **TUYỆT ĐỐI KHÔNG**: gọi Graph API / `POST /{page_id}/feed` / `POST /{page_id}/videos` / `pnpm facebook:test-post` / `publishTextPost()` — publish luôn là manual operator step (Round 2A/2B).
+
+### 3.4b Audio & Assembly (pipeline step, KHÔNG phải agent thứ 6 — Round 26 clarification)
+Voice Sync (ElevenLabs TTS) + BGM Mix + Final Reels Render (STEP 9–11 trong WORKFLOW chính + `SKILL.md` Section I2 Final Reels Render Pattern + I3 Overlay Timing Anti-Overlap Rule) hiện thuộc monolithic `/chay`. Tương lai (roadmap v3+) có thể split thành agent file riêng nhưng **KHÔNG thuộc scope hardening hiện tại**. Auto-Run Controller Section C Locked State Matrix (Round 25) dùng tên `"Audio & Assembly Agent"` làm **next_agent label** cho deterministic routing — đây là pipeline step label, không phải agent file.
+
+**Round 26 patterns đã chốt (verified yt_014 quạt không cánh T10)**:
+- **Final Reels Render 9:16**: source 16:9 → center-crop 1080×1920 (`crop=405:720:437:0` cho source 1280×720; helper PHẢI nhận `source_width/height` dynamic). KHÔNG dùng blurred padding làm layout chính.
+- **Overlay/Subtitle Timing Anti-Overlap**: micro-gap default 0.05s (range [0.03, 0.08]) tại block transitions `block_A.end == block_B.start`. Constant top-of-file `DEFAULT_SUBTITLE_MICRO_GAP_SECONDS = 0.05` HOẶC CLI arg — KHÔNG hardcode magic number ẩn trong logic.
+- **Layout zones (1080×1920)**: overlay `y≈450` (top), subtitle `y≈1450` (bottom), action zone `y∈[600,1350]` (sản phẩm/tay/demo — TUYỆT ĐỐI không drawtext), Reels UI safe zone `y∈[200,1700]`.
 
 ### 3.5 Git & Artifact Agent (mới trong v0)
 - **Responsibility**: Stage / commit / push code + docs + manifest + JSON artifact. Cập nhật `docs/00_DIEU_HANH/TRANG_THAI_VFOS_HIEN_TAI.md` sau mỗi vòng lớn.
