@@ -1,0 +1,128 @@
+{
+  "input": {
+    "video_id": "yt_014",
+    "content_goal": "Gioi thieu Quat Khong Canh Mini T10 Turbo — san pham quat cam tay khong canh mini thoi thuong, thiet ke an toan tranh bi kep tay hoac ket toc, phu hop cho tre em va cac ban tre lam viec.",
+    "target_platform": "tiktok",
+    "duration_target_s": 33,
+    "tone": "chia se trai nghiem, thoai mai, tien ich, khong quang cao tho",
+    "affiliate_angle": "Quat Khong Canh Mini T10 Turbo thoi trang, thiet ke tranh kep tay hoac ket toc, gio mat nhe em ai, co de de ban, gia re duoi 40k.",
+    "cta_style": "soft — gan link mo ta/bio, khong ep mua",
+    "scene_timeline": [
+      {
+        "window_start_s": 0,
+        "window_end_s": 3,
+        "scene_type": "HOOK",
+        "visual_summary": "Ba chiec quat cam tay khong canh nhieu mau sac noi bat dang dat tren ban canh chau cay xanh mat.",
+        "notes": "Gay chu y bang thiet ke doc la khong canh. Viet ngan gon duoi 8 tu! KHONG dung emoji! KHONG dung cum tu cam nhu 'tuyet voi', 'cho moi nha'."
+      },
+      {
+        "window_start_s": 3,
+        "window_end_s": 10,
+        "scene_type": "FILLER",
+        "visual_summary": "Tay nguoi dung cam mot dai giay dat truoc mieng quat dang chay, giay bay manh de show luc gio tot.",
+        "notes": "Gio thay ro khi thu bang to giay. Viet duoi 18 tu! KHONG dung claim tuyet doi nhu 'tuyet doi 100%', 'khong bao gio', 'gio sieu manh nhat', 'pin trau', 'mat nhu dieu hoa'."
+      },
+      {
+        "window_start_s": 10,
+        "window_end_s": 18,
+        "scene_type": "FILLER",
+        "visual_summary": "Nguoi dung luon ca ngon tay qua vong tron quat ma khong co bat ky nguy hiem nao, chung minh an toan 100%.",
+        "notes": "Thiet ke khong lo canh quat, giup han che kep tay hoac ket toc, dac biet phu hop khi hoc bai hoac cho nha co tre nho. Viet duoi 20 tu! KHONG dung tu cam."
+      },
+      {
+        "window_start_s": 18,
+        "window_end_s": 26,
+        "scene_type": "FILLER",
+        "visual_summary": "Nguoi dung nhe nhang nhac quat khoi de tron de ban tien loi.",
+        "notes": "Nhin kha gon, co de de ban gon gang va lam gia do dien thoai tien loi. Viet duoi 20 tu! KHONG dung tu cam."
+      },
+      {
+        "window_start_s": 26,
+        "window_end_s": 33,
+        "scene_type": "CTA",
+        "visual_summary": "Hien thi thong tin gan link affiliate va bieu tuong gio hang shop.",
+        "notes": "Keu goi hanh dong nhe nhang. Nhac nhe gia hap dan duoi 40k. Viet duoi 16 tu! TUYET DOI KHONG dung tu cam 'cho moi nha', 'mua ngay', 'dung bo lo'."
+      }
+    ]
+  },
+  "output": {
+    "hook": "Quạt không cánh, thiết kế độc lạ.",
+    "blocks": [
+      {
+        "block_id": "b1",
+        "window_start_s": 0,
+        "window_end_s": 3,
+        "intent": "HOOK",
+        "line": "Quạt không cánh, thiết kế độc lạ.",
+        "notes": ""
+      },
+      {
+        "block_id": "b2",
+        "window_start_s": 3,
+        "window_end_s": 10,
+        "intent": "FILLER",
+        "line": "Gió mát rõ khi thử bằng tờ giấy mỏng. Nhìn khá gọn và thích hợp đặt bàn.",
+        "notes": "Touch-up: ensure claim safety and block budget <= 18 words."
+      },
+      {
+        "block_id": "b3",
+        "window_start_s": 10,
+        "window_end_s": 18,
+        "intent": "FILLER",
+        "line": "Thử luồn tay qua vòng gió, phần cánh quạt không lộ ra ngoài như các dòng mini thông thường.",
+        "notes": "Claim Safety Correction: Use natural, observable fact without absolute safety claims."
+      },
+      {
+        "block_id": "b4",
+        "window_start_s": 18,
+        "window_end_s": 26,
+        "intent": "FILLER",
+        "line": "Dễ nhấc, để bàn gọn gàng, làm giá điện thoại. Rất phù hợp với không gian học và làm việc.",
+        "notes": "Touch-up: ensure claim safety and block budget <= 20 words."
+      },
+      {
+        "block_id": "b5",
+        "window_start_s": 26,
+        "window_end_s": 33,
+        "intent": "CTA",
+        "line": "Một chiếc quạt không cánh giá chỉ dưới 40k, ghé link ở bio nha.",
+        "notes": ""
+      }
+    ],
+    "cta": "Một chiếc quạt không cánh giá chỉ dưới 40k, ghé link ở bio nha.",
+    "full_script": "Quạt không cánh, thiết kế độc lạ.\n\nGió mát rõ khi thử bằng tờ giấy mỏng. Nhìn khá gọn và thích hợp đặt bàn.\n\nThử luồn tay qua vòng gió, phần cánh quạt không lộ ra ngoài như các dòng mini thông thường.\n\nDễ nhấc, để bàn gọn gàng, làm giá điện thoại. Rất phù hợp với không gian học và làm việc.\n\nMột chiếc quạt không cánh giá chỉ dưới 40k, ghé link ở bio nha.",
+    "writer_notes": [
+      "Optimized b2 for claim safety (observable facts) and 15 words count constraint.",
+      "Corrected b3 to be strictly claim-safe (only observable facts of finger through hollow ring, commenting on hidden blades, 19 words count).",
+      "Optimized b4 for context-aware description and 20 words limit.",
+      "CTA block is kept direct, soft, showing realistic under-40k pricing."
+    ]
+  },
+  "meta": {
+    "model": "gpt-4o-2024-08-06",
+    "input_tokens": 4958,
+    "output_tokens": 469,
+    "response_id": "resp_0d277726eb488e4c006a156ffb053081988ac06a765ddc9670"
+  },
+  "quality_report": {
+    "banned_phrases_found": [],
+    "hook_consistent": true,
+    "cta_consistent": true,
+    "cta_preserved": true,
+    "word_count": 74,
+    "word_count_target": 73,
+    "word_count_within_target": true,
+    "budget_mode": "timeline_aware",
+    "duration_based_target": 92,
+    "aggregate_block_cap": 82,
+    "target_adjustment_reason": "duration-based target 92 vượt 90% aggregate cap 82; reconciled to 73 (≤cap-9 từ buffer)",
+    "block_budget_violations": [],
+    "warnings": [
+      "[BUDGET_RECONCILED] duration-based target 92 vượt 90% aggregate cap 82; reconciled to 73 (≤cap-9 từ buffer)"
+    ],
+    "quality_status": "pass",
+    "near_pass_reason": null,
+    "passed": true
+  },
+  "generated_at": "2026-05-26T10:07:00.000Z"
+}
