@@ -1004,9 +1004,11 @@ Xem chi tiết: [packages/facebook/README.md](../../../packages/facebook/README.
 
 ---
 
-## AGENT-READY RESPONSIBILITY BOUNDARIES (Phần 23)
+## AGENT-READY RESPONSIBILITY BOUNDARIES (Phần 23 + Phần 24 Architecture v0)
 
-> **Mục đích**: skill `/chay` hiện chạy như monolithic agent. Phần 23 thêm boundary rõ ràng để **tương lai** có thể tách thành 4 sub-agent độc lập **không phải rewire** logic. KHÔNG triển khai code multi-agent trong vòng này — chỉ làm rõ responsibility trong SKILL/docs.
+> **Mục đích**: skill `/chay` hiện chạy như monolithic agent. Phần 23 đã thêm boundary cho 4 sub-agent. **Phần 24 (Agent Architecture v0, 2026-05-26)** chốt thêm **agent thứ 5 — Git & Artifact Agent** + **artifact source-of-truth mới `production/_runs/<run_id>/`**. KHÔNG triển khai code multi-agent trong vòng này — chỉ làm rõ responsibility trong SKILL/docs.
+>
+> **Spec đầy đủ**: `docs/00_DIEU_HANH/VFOS_AGENT_ARCHITECTURE_V0.md`. SKILL.md tóm tắt + bind ràng buộc trực tiếp vào `/chay`.
 
 | Sub-agent (tương lai) | Responsibility | SKILL.md sections | Input | Output artifact |
 |---|---|---|---|---|
@@ -1014,14 +1016,17 @@ Xem chi tiết: [packages/facebook/README.md](../../../packages/facebook/README.
 | **Demo Match Agent** | Tìm video/demo tương đồng, chấm GUARD 8 product match, retry candidate | `NGUỒN VIDEO/DEMO THAM KHẢO` + PF-STEP 3–4 + GUARD 8 (5 trục match) + AUTO-SOURCE RETRY POLICY | `shopee_product_card.json` | Match result + chosen video URL + GUARD 8 table |
 | **Script QC Agent** | Run Script Writer, validator, OPERATOR TRIM POLICY, GUARD 1 + GUARD 7 R1/R3/R5 enforce | STEP 6 + STEP 7 + OPERATOR TRIM POLICY + GUARD 1 + GUARD 7 (R1/R3/R5 phần script layer) | `scene_input.json` | `script_ai_v1_extended.json` + (nếu cần) `operator_trim` metadata block |
 | **Facebook Publish Plan Agent** | Lập publish plan metadata, draft caption + CTA, KHÔNG gọi Graph API | STEP 12b + `FACEBOOK REELS + SHOPEE PUBLISH PLAN v0` + GUARD 7 R5 (caption soft tone) | Preview MP4 + Card + GUARD 8 result | `facebook_reels_publish_plan.json` |
+| **Git & Artifact Agent** (Phần 24) | Stage / commit / push code + docs + manifest + JSON artifact. Cập nhật `TRANG_THAI_VFOS_HIEN_TAI.md`. **CHỈ chạy khi prompt cho phép rõ ràng.** | `HARD CONSTRAINTS` (Phần 24 commit rule) + Mục 6 `VFOS_AGENT_ARCHITECTURE_V0.md` | Working tree state + commit chỉ thị từ prompt | Commit (+ optional push) + updated state doc |
 
 **Boundary rules (HARD)**:
 - Mỗi sub-agent **chỉ đọc/ghi artifact của mình + đọc artifact upstream**. KHÔNG cross-write.
-- **State sharing qua file** (JSON artifact trong `production/batch_001/<video_id>/`), KHÔNG qua biến process / message bus toàn cục — tương thích với `.claude/rules/design.md`.
+- **State sharing qua file artifact** (JSON), KHÔNG qua biến process / message bus toàn cục — tương thích `.claude/rules/design.md`.
+- **Artifact source of truth** (Phần 24): **`production/_runs/<run_id>/...`** cho mọi run mới sau khi pipeline migrate. Trước migration: `production/batch_001/<video_id>/...` vẫn dùng tạm. Report `/chay` phải ghi rõ SoT path thực tế đang ghi.
 - KHÔNG có overlap responsibility:
-  - Resolve Shopee link CHỈ Shopee Product Agent làm. Demo Match Agent đọc `shopee_product_card.json`, không gọi lại Shopee.
+  - Resolve Shopee link CHỈ Shopee Product Agent. Demo Match Agent đọc `shopee_product_card.json`, không gọi lại Shopee.
   - Script writer + validator CHỈ Script QC Agent. Facebook Publish Plan Agent đọc script + preview, không sửa script.
   - Caption draft CHỈ Facebook Publish Plan Agent. Script QC Agent KHÔNG viết caption.
+  - **Commit/push CHỈ Git & Artifact Agent.** 4 agent kia KHÔNG được tự gọi `git commit` / `git push` từ flow của mình.
 - Các Guard chéo:
   - GUARD 6 Visual Safety: chạy ở STEP 4 + STEP 11 — không thuộc 1 sub-agent cụ thể (pipeline-level guard).
   - GUARD 7 R2 product match: enforce ở Publish layer — Facebook Publish Plan Agent verify `product_card_path` khớp `final_video_path` trước khi mark ready.
@@ -1029,9 +1034,17 @@ Xem chi tiết: [packages/facebook/README.md](../../../packages/facebook/README.
   - GUARD 7 R5 caption-layer: thuộc Facebook Publish Plan Agent.
   - GUARD 8: input data field từ Shopee Product Agent (5 trục về sản phẩm Card), match scoring từ Demo Match Agent (5 trục match với clip).
 
-**Decision boundary** (sau Phần 23):
+**Git & Artifact Agent — Khi nào được commit/push** (Phần 24):
+- **CHỈ** khi prompt user chứa chỉ thị rõ: `"commit"`, `"push"`, `"commit + push"`, `"commit và push"`, `"commit với message ..."`, `"đẩy lên git"`, hoặc `"tạo PR"`.
+- Nếu prompt có commit message cụ thể → dùng đúng message đó, không tự đặt lại.
+- Nếu prompt KHÔNG nhắc commit/push → tuyệt đối KHÔNG tự commit cuối turn "vì đã xong việc".
+- Trước commit: chạy `git status` + `git diff --cached --stat`, verify không có binary (`.mp4`/`.mp3`/`.wav`) hay `.secrets/` lẫn trong staging.
+- Sau commit: cập nhật commit hash vào mục 10 `TRANG_THAI_VFOS_HIEN_TAI.md`.
+
+**Decision boundary** (sau Phần 23 + Phần 24):
 - KHÔNG implement multi-agent code trong vòng này.
-- KHÔNG tạo `.claude/agents/<name>.md` cho 4 sub-agent kia trong vòng này.
+- KHÔNG tạo `.claude/agents/<name>.md` cho 5 sub-agent trong vòng này.
+- KHÔNG migrate artifact `production/batch_001/<video_id>/` hiện có sang `production/_runs/<run_id>/` — pipeline code chưa sửa, migrate sớm sẽ orphan.
 - Skill `/chay` vẫn chạy monolithic. Boundary chỉ là **kỷ luật viết SKILL** sao cho khi tách ra dễ.
 
 ---
@@ -1185,6 +1198,24 @@ KHÔNG BAO GIỜ:
   × (Phần 23 AGENT BOUNDARIES) Cross-write artifact của sub-agent khác —
     eg Demo Match Agent KHÔNG được sửa `shopee_product_card.json`, Facebook
     Publish Plan Agent KHÔNG được sửa `script_ai_v1_extended.json`
+  × (Phần 24 AGENT ARCHITECTURE v0) Tự `git commit` / `git push` khi prompt
+    user KHÔNG nhắc commit/push. Cuối turn không có chỉ thị commit →
+    KHÔNG commit "vì đã xong việc". CHỈ Git & Artifact Agent commit, và
+    CHỈ khi prompt cho phép rõ ràng (xem spec
+    `docs/00_DIEU_HANH/VFOS_AGENT_ARCHITECTURE_V0.md` mục 6).
+  × (Phần 24) Đổi commit message do user đưa — phải dùng đúng message,
+    không tự "polish" hoặc thêm prefix.
+  × (Phần 24) 4 sub-agent kia (Shopee Product / Demo Match / Script QC /
+    Facebook Publish Plan) tự gọi `git commit` / `git push` từ flow của
+    mình — commit/push CHỈ là việc của Git & Artifact Agent.
+  × (Phần 24 SoT) Migrate artifact đang nằm trong `production/batch_001/
+    <video_id>/` sang `production/_runs/<run_id>/` khi pipeline code chưa
+    được sửa — migrate sớm sẽ orphan reference. Đợi vòng v1 migration
+    user duyệt.
+  × (Phần 24 SoT) Bỏ qua việc ghi rõ SoT path thực tế trong report khi
+    `/chay` thật sự chạy — phải ghi "SoT path: `production/batch_001/
+    <video_id>/` (pre-migration, Phần 24 spec sẽ chuyển `production/
+    _runs/<run_id>/`)" để tracking minh bạch.
 
 CHỈ LÀM TRONG SCOPE:
   ✓ 1 video mỗi lần /chay
@@ -1339,9 +1370,10 @@ Sau khi hoàn thành, báo cáo theo format:
 
 ## THAM CHIẾU
 
-- Pipeline code: `packages/script-writer/`, `packages/voice/`
+- Pipeline code: `packages/script-writer/`, `packages/voice/`, `packages/shopee/`, `packages/facebook/`
 - BGM source mặc định: `production/batch_001/yt_005/bgm/yt_005_bgm_v2_candidate_b.mp3`
 - Voice resolver: `packages/voice/src/voice-presets.ts` (single brand voice, không còn multi-preset)
 - Schema types: `packages/script-writer/src/types.ts`
 - Blueprint nhân bản: `docs/00_DIEU_HANH/VFOS_SHORTFORM_FACTORY_BLUEPRINT_V0.md`
+- **Agent Architecture v0**: `docs/00_DIEU_HANH/VFOS_AGENT_ARCHITECTURE_V0.md` (5 agent boundary + Git Agent commit rule + `production/_runs/<run_id>/` SoT)
 - Project memory: `docs/00_DIEU_HANH/TRANG_THAI_VFOS_HIEN_TAI.md`

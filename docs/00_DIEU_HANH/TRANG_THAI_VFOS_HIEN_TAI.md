@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-05-24 (Round 2C — Shopee Session Fetcher v0, local browser session via Playwright storageState, blueprint + scaffold, KHÔNG auto-install + KHÔNG auto-run)
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `5c92edd` (Round 2B — Facebook Publish Safety Gate v0). Round 2C commit sẽ bump khi push
+> **Cập nhật lần cuối**: 2026-05-26 (Phần 24 — VFOS Agent Architecture v0: spec 5 agent + Git & Artifact Agent commit-only-when-prompted + artifact SoT `production/_runs/<run_id>/`)
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `8bcdebb` (mới nhất pre-Phần-24). Phần 24 commit `docs: define vfos agent architecture v0` sẽ bump khi push.
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -1409,6 +1409,27 @@ Vòng này sửa skill + docs để `/chay` tự quyết định + tự retry + 
 
 ---
 
+### ✅ Phần 24 — VFOS Agent Architecture v0 (spec): ĐÃ CHỐT (2026-05-26)
+
+**Mục tiêu**: chuẩn hoá boundary giữa các agent của VFOS Short-form Factory để khi tách multi-agent thật không phải rewire. KHÔNG triển khai code multi-agent trong vòng này — chỉ spec + boundary + Git rule + SoT path.
+
+**Đã làm**:
+- `docs/00_DIEU_HANH/VFOS_AGENT_ARCHITECTURE_V0.md` — spec đầy đủ (11 mục):
+  - Danh sách **5 agent**: 4 đã spec ở Phần 23 (Shopee Product / Demo Match / Script QC / Facebook Publish Plan) + **Git & Artifact Agent (mới)**.
+  - **Artifact source-of-truth mới**: `production/_runs/<run_id>/...` cho mọi run mới sau khi pipeline migrate. Layout subdirectory: `inputs/`, `shopee/`, `demo_match/`, `script/`, `voice/`, `bgm/`, `preview/`, `publish/`, `reports/`. Migration là spec, **chưa thực thi** trong vòng này.
+  - **Git & Artifact Agent HARD rule**: chỉ commit/push khi prompt user cho phép rõ ràng (chứa "commit"/"push"/"commit + push"/"commit với message ..."/"đẩy lên git"/"tạo PR"). KHÔNG tự commit cuối turn "vì đã xong việc". KHÔNG đổi commit message user đưa. Verify staging không lẫn binary / `.secrets/` trước commit.
+  - **Boundary chéo Guard**: GUARD 6 = pipeline-level; GUARD 7 R1/R3/R5 = Script QC; R5 caption-layer + R2 product match = Publish Plan; GUARD 8 input = Shopee Product, match scoring = Demo Match.
+  - **Decision boundary**: KHÔNG implement multi-agent code, KHÔNG tạo `.claude/agents/<name>.md` cho 5 sub-agent, KHÔNG migrate artifact cũ sang `_runs/`, KHÔNG sửa pipeline code.
+  - **Roadmap v0–v6**: v0 (spec) → v1 (pipeline migrate ghi vào `_runs/`) → v2..v5 (tách 4 sub-agent) → v6 (tách Git Agent).
+- `.claude/skills/chay/SKILL.md` — cập nhật section "AGENT-READY RESPONSIBILITY BOUNDARIES" thêm row Git & Artifact Agent + ràng buộc SoT `production/_runs/<run_id>/`; thêm HARD CONSTRAINTS Phần 24 (3 nhóm: commit-only-when-prompted, không đổi commit message, không tự migrate artifact); thêm link `VFOS_AGENT_ARCHITECTURE_V0.md` vào THAM CHIẾU.
+- `docs/00_DIEU_HANH/TRANG_THAI_VFOS_HIEN_TAI.md` — file này, ghi Phần 24 + cập nhật mục 7 (bước tiếp theo) + mục 10 (Git status).
+
+**Không làm**: chạy video, gọi Shopee/Facebook, dùng cookie/token, sửa code pipeline, mở Con số 2, tạo agent file thật, migrate artifact đã có sang `_runs/`.
+
+**Commit**: `docs: define vfos agent architecture v0` (sẽ bump hash khi push).
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
@@ -1454,17 +1475,20 @@ Vòng này sửa skill + docs để `/chay` tự quyết định + tự retry + 
 >
 > **MỐC ĐÃ ĐẠT 2026-05-24**: 6 video qua pipeline (yt_005, yt_006, yt_007, yt_009, yt_010 Video-First + yt_011 Shopee-First). Phần 16 AUTO-SOURCE RETRY verified. Phần 22 Shopee-First Lane verified end-to-end. Phần 23 hardening đã rule-ize lessons learned + agent-ready boundaries cho 4 sub-agent tương lai.
 >
+> **MỐC ĐÃ ĐẠT 2026-05-26 (Phần 24)**: Agent Architecture v0 spec đã chốt — 5 agent boundary (4 cũ + Git & Artifact Agent), artifact SoT path `production/_runs/<run_id>/`, Git Agent commit-only-when-prompted rule. Spec đầy đủ ở `docs/00_DIEU_HANH/VFOS_AGENT_ARCHITECTURE_V0.md`. KHÔNG có code multi-agent, KHÔNG migrate artifact cũ.
+>
 > **Bước tiếp theo duy nhất: USER quyết định strategy tiếp theo.**
 >
-> Có 5 hướng khả thi (KHÔNG tự chọn — chờ user quyết):
+> Có 6 hướng khả thi (KHÔNG tự chọn — chờ user quyết):
 >
-> 1. **Nhân bản Con số 2 theo blueprint** — 5 video Video-First + 1 video Shopee-First là đủ bằng chứng pipeline ổn. Mở `docs/00_DIEU_HANH/VFOS_SHORTFORM_FACTORY_BLUEPRINT_V0.md` cho ngách thứ 2. Đây là path commercial progress (VFOS North Star).
-> 2. **Đổi default `OPENAI_MODEL=gpt-4o` trong `.env`** — pre-existing config debt. Cleanup nhỏ, operator không cần `--model gpt-4o` flag từng lần.
-> 3. **Test yt_012 Shopee-First với hardening Phần 23** — verify 4 rule mới (Card persist HARD GATE, short link support, operator trim metadata, publish plan) end-to-end trên 1 video mới.
-> 4. **Test thử Shopee-First Discovery Mode thật** — `/chay shopee-first` (no link) → agent tự tìm Shopee candidate theo lane. Phụ thuộc vào Shopee data accessibility hiện tại — có thể dừng ở limitation step.
-> 5. **Split 4 sub-agent thật** — tạo `.claude/agents/shopee-product-agent.md`, `demo-match-agent.md`, `script-qc-agent.md`, `facebook-publish-plan-agent.md` theo boundary đã định nghĩa ở Phần 23. Chỉ là spec — code multi-agent vẫn ngoài scope cho đến khi user duyệt.
+> 1. **Architecture v1 — pipeline migrate ghi artifact sang `production/_runs/<run_id>/`** — bước thực thi đầu tiên của roadmap Phần 24. Vẫn monolithic `/chay`, chỉ đổi path đích + bổ sung `<run_id>` generator. Yêu cầu sửa code `packages/script-writer/`, `packages/voice/`, `packages/shopee/`, `packages/facebook/`. Test bằng 1 vòng `/chay` thực sự.
+> 2. **Nhân bản Con số 2 theo blueprint** — 5 video Video-First + 1 video Shopee-First là đủ bằng chứng pipeline ổn. Mở `docs/00_DIEU_HANH/VFOS_SHORTFORM_FACTORY_BLUEPRINT_V0.md` cho ngách thứ 2. Đây là path commercial progress (VFOS North Star).
+> 3. **Đổi default `OPENAI_MODEL=gpt-4o` trong `.env`** — pre-existing config debt. Cleanup nhỏ, operator không cần `--model gpt-4o` flag từng lần.
+> 4. **Test yt_012 Shopee-First với hardening Phần 23** — verify 4 rule mới (Card persist HARD GATE, short link support, operator trim metadata, publish plan) end-to-end trên 1 video mới.
+> 5. **Test thử Shopee-First Discovery Mode thật** — `/chay shopee-first` (no link) → agent tự tìm Shopee candidate theo lane. Phụ thuộc vào Shopee data accessibility hiện tại — có thể dừng ở limitation step.
+> 6. **Split 5 sub-agent thật (Phần 24 roadmap v2–v6)** — tạo `.claude/agents/shopee-product-agent.md`, `demo-match-agent.md`, `script-qc-agent.md`, `facebook-publish-plan-agent.md`, `git-artifact-agent.md` theo boundary v0. Spec đã có — bước này là implement adapter từ `/chay` monolithic sang multi-agent.
 >
-> **KHÔNG tự chạy yt_012** mà không có user quyết định. **KHÔNG tự split 4 sub-agent** mà không có user duyệt — Phần 23 chỉ định nghĩa boundary trong SKILL/docs, chưa cấp permission code multi-agent. **KHÔNG mở scope** sang publish thật, BGM ducking, watermark auto-detect, Con số 2 chưa được duyệt, **TikTok Shop chưa được duyệt mở lại**.
+> **KHÔNG tự chạy yt_012** mà không có user quyết định. **KHÔNG tự split 5 sub-agent** mà không có user duyệt — Phần 24 chỉ định nghĩa boundary trong SKILL/docs, chưa cấp permission code multi-agent. **KHÔNG tự migrate artifact** `production/batch_001/<video_id>/` sang `production/_runs/<run_id>/` — pipeline code chưa migrate, làm sớm sẽ orphan. **KHÔNG mở scope** sang publish thật, BGM ducking, watermark auto-detect, Con số 2 chưa được duyệt, **TikTok Shop chưa được duyệt mở lại**.
 
 ### (Phần dưới giữ lại làm reference — yt_009 acceptance ban đầu đã đạt)
 
@@ -1552,9 +1576,9 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mốc tại thời điểm cập nhật trạng thái | `5c92edd` — Round 2B Facebook Publish Safety Gate v0 (đã push). Round 2C (Shopee Session Fetcher v0 — blueprint + scaffold) commit sẽ bump khi push. |
+| Commit mốc tại thời điểm cập nhật trạng thái | `8bcdebb` (pre-Phần-24). Phần 24 commit `docs: define vfos agent architecture v0` sẽ bump hash khi push. |
 | Remote | `origin` (GitHub) |
-| Sync status | Phần 11–23 + Round 2A + Round 2B ĐÃ PUSH (`5c92edd`). Round 2C ĐANG commit (tạo `packages/shopee/` blueprint + scaffold, `.gitignore` `.secrets/`, KHÔNG install Playwright, KHÔNG run script). Bước tiếp: user quyết định Round 2D (`pnpm add -D playwright -F @vfos/shopee` + `pnpm exec playwright install chromium` + chạy `pnpm shopee:login` + `pnpm shopee:fetch` + recalibrate selectors nếu cần) HOẶC 1 trong 5 hướng cũ (Con 2 / OPENAI_MODEL gpt-4o default / yt_012 / Discovery Mode wiring / split 4 sub-agent). |
+| Sync status | Phần 11–23 + Round 2A/2B/2C + Round 3A/3C ĐÃ PUSH. Phần 24 (Agent Architecture v0 spec) ĐANG commit (chỉ docs + SKILL.md, KHÔNG đụng code pipeline, KHÔNG migrate artifact, KHÔNG tạo agent file thật). Bước tiếp: user quyết định 1 trong 6 hướng ở mục 7. |
 
 **Trạng thái artifacts production** (tính đến 2026-05-20):
 - `production/batch_001/yt_007/` (text artifacts): **ĐÃ commit** ở `df1609e` — scene_input, script v1/v2/v3, manifest BGM. Dùng làm reference cho vòng Voice Sync autonomy.
