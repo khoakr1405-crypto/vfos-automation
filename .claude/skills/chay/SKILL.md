@@ -222,6 +222,136 @@ Controller KHÔNG được báo "thiếu artifact" ngay. Phải phân biệt inp
    → `next_step_short = "Provide Shopee link using /chay shopee <url> or set active_video_id."`
    → **KHÔNG hỏi A/B/C**.
 
+### G2. Path Resolution / Migration Compatibility (Round 25B hardening)
+
+> **Lý do**: Phần 24 chốt SoT mới `production/_runs/<run_id>/` nhưng pipeline code chưa migrate. yt_005..yt_014 vẫn nằm ở `production/batch_001/<video_id>/`. Controller phải đọc cả 2 vùng, không được chỉ scan `batch_001`.
+
+Orchestrator hỗ trợ ĐỒNG THỜI 2 vùng artifact:
+
+1. **New Source of Truth namespace**: `production/_runs/<run_id>/`
+2. **Legacy compatibility namespace**: `production/batch_001/<video_id>/`
+
+Khi user nhập một trong:
+- `/chay`
+- `/chay <video_id>`
+- `/chay status`
+- `/chay <video_id> status`
+- `/chay plan`
+- `/chay <video_id> plan`
+
+Controller PHẢI:
+
+**A. Scan cả 2 vùng**:
+- `production/_runs/<run_id>/`
+- `production/batch_001/yt_*/`
+
+KHÔNG được chỉ scan `batch_001`.
+
+**B. Run registry / run_manifest ưu tiên**:
+Nếu có run registry hoặc `run_manifest` trong `production/_runs/` → ưu tiên đọc state/report trong `_runs` trước.
+
+**C. Fallback**:
+Nếu không có `_runs` tương ứng → fallback đọc `production/batch_001/<video_id>/`.
+
+**D. Cùng video_id ở cả 2 nơi**:
+- `_runs` là SoT ưu tiên.
+- `batch_001` chỉ là compatibility fallback hoặc media/output slot.
+- KHÔNG merge mù quáng artifact từ 2 nơi nếu conflict.
+
+**E. Conflict detection (HARD)**:
+Nếu `_runs` state và `batch_001` artifact conflict (ví dụ `_runs` ghi FAILED nhưng `batch_001` có publish_plan SUCCESS):
+- `status = FAIL`
+- `reason_code = ERR_STATE_CONFLICT`
+- `action_taken = none`
+- Báo rõ path nào conflict.
+- **KHÔNG hỏi user A/B/C**.
+
+**F. Report luôn ghi rõ namespace mode**:
+- `state_source_path`: path đọc state (eg `production/_runs/yt_014_20260526_141600/reports/latest.json` hoặc `production/batch_001/yt_014/facebook_reels_publish_plan.json`)
+- `artifact_source_path`: path artifact upstream (Card, script, voice manifest…)
+- `namespace_mode`: `runs_sot` | `batch_legacy` | `mixed_conflict`
+
+Trạng thái namespace_mode:
+
+| Mode | Khi nào |
+|---|---|
+| `runs_sot` | Đọc thành công từ `_runs/<run_id>/` |
+| `batch_legacy` | `_runs` không có entry tương ứng → fallback `batch_001/<video_id>/` |
+| `mixed_conflict` | Cả 2 nơi cùng có nhưng conflict → kèm `ERR_STATE_CONFLICT` |
+
+### G3. Resume Timeout Semantics (Round 25B hardening)
+
+> **Lý do**: Section C bảng "SUSPENDED" đã nói timeout 30 phút, nhưng chưa rõ `/chay resume` xử lý sao khi state đã quá hạn. Patch này khoá semantics: **resume KHÔNG có quyền vượt timeout**.
+
+Khi user gọi `/chay resume` hoặc `/chay <video_id> resume`, Controller PHẢI:
+
+1. **Tìm waiting_state gần nhất** (theo Locked State Matrix priority — `waiting_state.json` trong `_runs/<run_id>/` hoặc `batch_001/<video_id>/`).
+
+2. **Kiểm timeout** theo thứ tự field:
+   - `expires_at` (ISO 8601) nếu có
+   - `timeout_minutes` nếu có (relative to `created_at`)
+   - `created_at` + default timeout = **30 phút**
+
+3. **Còn hạn** (`now < expires_at`):
+   - Resume đúng `blocking_agent` hoặc `next_agent` đã ghi trong waiting_state.
+   - `action_taken = resumed <agent>`.
+
+4. **Quá hạn** (`now >= expires_at`):
+   - **KHÔNG** resume.
+   - **KHÔNG** tự reset.
+   - **KHÔNG** tự force-retry.
+   - `status = FAIL`
+   - `reason_code = ERR_RESUME_EXPIRED_STATE` (nếu chưa được chuyển FAILED_TIMEOUT) hoặc `ERR_SYS_EXIT_GATE_TIMEOUT` (nếu state đã transition sang FAILED_TIMEOUT trước đó)
+   - `action_taken = none`
+   - `next_step_short = "Use /chay <video_id> --reset or explicit --force-retry after reviewing stale state."`
+
+**Run đã FAILED_TIMEOUT** (waiting_state đã transition):
+- `/chay <video_id> resume` PHẢI **từ chối khôi phục** → trả `ERR_SYS_EXIT_GATE_TIMEOUT`.
+- Chỉ `/chay <video_id> --reset` mới tạo run/state mới (Section G — Cold Start path / new run_id).
+- `--force-retry` chỉ được dùng nếu blocker đã được operator xử lý rõ (eg cookie refresh, API key set lại) và **KHÔNG** unlock một timeout state đã chết — vẫn cần `--reset` trước nếu muốn restart từ đầu.
+
+### G4. Command Precedence / No Rerender Override Rule (Round 25B hardening)
+
+> **Lý do**: Section E (No Rerender Rule) và Section A (`--force-retry` / `--reset` / `rerender`) cần thứ tự ưu tiên rõ ràng để không loophole: ví dụ user gõ `--force-retry` cho video đã DONE → không được tự rerender.
+
+**Thứ tự ưu tiên lệnh (cao → thấp)**:
+
+| Rank | Lệnh | Quyền |
+|---|---|---|
+| 1 | `/chay <video_id> --reset` | Explicit reset — tạo run/state mới, KHÔNG xoá artifact cũ. Bypass mọi lock. |
+| 2 | `/chay <video_id> rerender` / `/chay <video_id> final-reels-render` / task có chữ "rerender" / "render lại" / "tạo lại final" | Explicit rerender — bypass No Rerender Rule. |
+| 3 | `/chay <video_id> --force-retry` | Explicit force retry — chỉ retry agent FAILED. KHÔNG bypass No Rerender. |
+| 4 | `/chay plan` / `/chay status` / `/chay <video_id> plan` / `/chay <video_id> status` | Read-only — không chạy agent, không sửa state. |
+| 5 | `/chay` / `/chay <video_id>` | Normal auto-run — phụ thuộc Locked State Matrix. |
+
+**No Rerender Rule mặc định** (đã có ở Section E, nhắc lại):
+- `final_video_path` tồn tại + `facebook_reels_publish_plan.json` trỏ đúng final video → normal `/chay` (rank 5) KHÔNG được render lại → `status = DONE_WAITING_USER_REVIEW`.
+
+**`--force-retry` KHÔNG tự động bypass No Rerender (HARD)**:
+- `--force-retry` chỉ retry agent đang ở trạng thái FAILED trong run hiện tại.
+- Nếu video đã `DONE_WAITING_USER_REVIEW` (final + publish_plan trỏ đúng), `--force-retry` PHẢI báo:
+  - `status = FAIL`
+  - `reason_code = ERR_FINAL_VIDEO_EXISTS_NO_RERENDER`
+  - `action_taken = none`
+  - `next_step_short = "Use explicit rerender or --reset if operator wants a new final video."`
+
+**Chỉ các lệnh sau mới bypass No Rerender**:
+- `/chay <video_id> rerender`
+- `/chay <video_id> final-reels-render`
+- `/chay <video_id> --reset` (qua đường tạo run mới)
+- Prompt explicit yêu cầu render lại bằng chữ rõ ("rerender", "render lại", "tạo lại final")
+
+Nếu controller phát hiện rerender command nhưng KHÔNG có rerender keyword + KHÔNG có `--reset`:
+- `status = FAIL`
+- `reason_code = ERR_RERENDER_REQUIRES_EXPLICIT_COMMAND`
+- `next_step_short = "Send /chay <video_id> rerender or /chay <video_id> --reset to override."`
+
+**Rerender behavior (HARD)**:
+1. **KHÔNG xoá final cũ** — final_reels_v1, final_reels_v2 giữ nguyên trên disk làm history.
+2. **Tạo version mới**: `v2_3`, `v3`, hoặc `run_id` mới (nếu chạy qua `_runs/`).
+3. **Update `publish_plan`** CHỈ sau khi QC PASS.
+4. **Nếu QC FAIL** → giữ `publish_plan` trỏ về bản final cũ đang pass. KHÔNG mất publish-ready state.
+
 ### H. Permission Boundary mặc định (Auto-Run Controller scope)
 
 **Allowed**:
@@ -303,17 +433,37 @@ Controller KHÔNG được báo "thiếu artifact" ngay. Phải phân biệt inp
 
 ### J. Report Format ngắn (Auto-Run Controller default output)
 
-Mỗi lần `/chay` chạy xong CHỈ báo ngắn (8 field):
+Mỗi lần `/chay` chạy xong CHỈ báo ngắn (8 field core + 3 path field Round 25B):
 
 ```
-1. detected_video_id        : yt_NNN
-2. detected_next_agent      : <agent name | none>
-3. action_taken             : ran <agent> | none | reported_only | resumed | committed | stopped
-4. status                   : SUCCESS | FAIL | SUSPENDED | DONE | DONE_WAITING_USER_REVIEW
-5. reason_code              : <code | null>
-6. output_artifacts         : [paths…]
-7. next_step_short          : <one line>
-8. git_status_summary       : clean | <N modified, M untracked>
+1.  detected_video_id        : yt_NNN
+2.  state_source_path        : <path đọc state — eg production/_runs/<run_id>/reports/latest.json>
+3.  artifact_source_path     : <path artifact upstream — eg production/batch_001/<video_id>/>
+4.  namespace_mode           : runs_sot | batch_legacy | mixed_conflict
+5.  detected_next_agent      : <agent name | none>
+6.  action_taken             : ran <agent> | none | reported_only | resumed | committed | stopped
+7.  status                   : SUCCESS | FAIL | SUSPENDED | DONE | DONE_WAITING_USER_REVIEW
+8.  reason_code              : <code | null>
+9.  output_artifacts         : [paths…]
+10. next_step_short          : <one line>
+11. git_status_summary       : clean | <N modified, M untracked>
+```
+
+**Ví dụ `/chay yt_014 plan`** (post-Round 25B):
+
+```
+detected_video_id        : yt_014
+state_source_path        : production/batch_001/yt_014/facebook_reels_publish_plan.json
+artifact_source_path     : production/batch_001/yt_014/
+namespace_mode           : batch_legacy
+detected_next_agent      : none
+action_taken             : none
+status                   : DONE_WAITING_USER_REVIEW
+reason_code              : null
+output_artifacts         : [production/batch_001/yt_014/final_reels_v1/yt_014_final_reels_v1.mp4,
+                           production/batch_001/yt_014/facebook_reels_publish_plan.json]
+next_step_short          : User review/manual publish.
+git_status_summary       : clean
 ```
 
 KHÔNG báo cáo dài trừ khi:
@@ -336,10 +486,13 @@ Khi `status = DONE_WAITING_USER_REVIEW` báo thêm:
 - `ERR_COLD_START_INPUT_MISSING` — không URL, không keyword, không active video
 - `ERR_NEXT_AGENT_MISSING` — latest SUCCESS nhưng contract thiếu `next_agent` + artifact matrix không suy ra được
 - `ERR_PREVIOUS_RUN_FAILED_LOCKED` — agent FAILED ở run hiện tại, cần `--force-retry` / `--reset`
-- `ERR_SYS_EXIT_GATE_TIMEOUT` — `waiting_state` quá 30 phút hoặc timeout_policy
+- `ERR_SYS_EXIT_GATE_TIMEOUT` — `waiting_state` quá 30 phút hoặc timeout_policy (state đã transition FAILED_TIMEOUT)
+- `ERR_RESUME_EXPIRED_STATE` — resume gọi vào waiting_state đã quá hạn nhưng chưa transition FAILED_TIMEOUT (Round 25B)
 - `ERR_RETRY_BUDGET_EXHAUSTED` — `retry_count` vượt `max_retry`
 - `ERR_OPENAI_API_KEY_MISSING` — script/subtitle workflow cần key nhưng `OPENAI_API_KEY` không set
 - `ERR_USER_APPROVAL_REQUIRED` — `MATCH_NEEDS_REVIEW` / publish review pending
+- `ERR_STATE_CONFLICT` — `_runs` state và `batch_001` artifact mâu thuẫn (Round 25B path resolution)
+- `ERR_RERENDER_REQUIRES_EXPLICIT_COMMAND` — rerender intent phát hiện nhưng thiếu lệnh explicit `rerender` / `final-reels-render` / `--reset` (Round 25B)
 
 **SCRIPT**:
 - `ERR_SCR_MAJOR_TIMING_OVERFLOW` — block budget overflow >2 từ ở CTA hoặc Voice Sync MAJOR sau remediation
@@ -363,12 +516,19 @@ Khi `status = DONE_WAITING_USER_REVIEW` báo thêm:
 [ ] Đã parse args theo Command Aliases (Section A)? Args không match → ERR_AMBIGUOUS_NEXT_STEP?
 [ ] Nếu /chay không args → đã xác định active_video_id (Section B) hoặc FAIL?
 [ ] Đã đọc state theo Locked State Matrix (Section C) theo đúng thứ tự ưu tiên?
+[ ] Đã scan CẢ production/_runs/ và production/batch_001/ (Section G2)? Conflict → ERR_STATE_CONFLICT, không hỏi A/B/C?
+[ ] Đã ghi state_source_path + artifact_source_path + namespace_mode trong report (Section J)?
+[ ] Nếu /chay resume → đã kiểm timeout (Section G3)? Quá hạn → ERR_RESUME_EXPIRED_STATE / ERR_SYS_EXIT_GATE_TIMEOUT, không tự reset?
+[ ] Command precedence (Section G4) — --reset > rerender > --force-retry > plan/status > normal — có đúng thứ tự?
+[ ] --force-retry trên video DONE_WAITING_USER_REVIEW → ERR_FINAL_VIDEO_EXISTS_NO_RERENDER, KHÔNG tự rerender?
+[ ] Rerender intent thiếu lệnh explicit → ERR_RERENDER_REQUIRES_EXPLICIT_COMMAND?
+[ ] Nếu rerender → tạo version mới (v2_3 / v3 / run_id mới), KHÔNG xoá final cũ?
 [ ] Nếu FAILED ở run hiện tại → đã chặn bằng ERR_PREVIOUS_RUN_FAILED_LOCKED (Section F)?
 [ ] Nếu final video + publish_plan tồn tại → đã trả DONE_WAITING_USER_REVIEW (Section E), KHÔNG rerender?
 [ ] Nếu cold start không input → ERR_COLD_START_INPUT_MISSING (Section G), KHÔNG hỏi A/B/C?
 [ ] Action_taken không vi phạm Permission Boundary (Section H)?
 [ ] Nếu chạy Script & Claim Safety Agent → đã apply blocklist (Section I), log rejected_count thật?
-[ ] Report 8 field ngắn (Section J) — không báo dài khi không cần?
+[ ] Report 11 field ngắn (Section J — 8 core + 3 path) — không báo dài khi không cần?
 [ ] reason_code (nếu có) thuộc canonical enum (Section K)?
 [ ] Commit CHỈ khi /chay commit hoặc prompt rõ (Phần 24 mục 6) — KHÔNG tự commit "vì đã xong"?
 ```
@@ -1418,6 +1578,13 @@ Bắt buộc chạy trước khi báo "hoàn thành":
 [ ] (Round 25 Subtitle) Variants generated/rejected log đúng số thật? Selected variant pass blocklist Section I (banned absolute, medical claim, misleading)?
 [ ] (Round 25 Report Format) Report ngắn 8 field khi SUCCESS/DONE? Báo dài chỉ khi FAIL/SUSPENDED/security/user yêu cầu chi tiết?
 [ ] (Round 25 Reason Codes) reason_code thuộc canonical enum (Section K)? Không tự bịa code mới?
+[ ] (Round 25B Path) Đã scan CẢ production/_runs/ và production/batch_001/?
+[ ] (Round 25B Path) Nếu _runs và batch_001 conflict → ERR_STATE_CONFLICT (không hỏi A/B/C, không merge mù)?
+[ ] (Round 25B Resume) Resume timeout từ chối run stale với ERR_RESUME_EXPIRED_STATE / ERR_SYS_EXIT_GATE_TIMEOUT?
+[ ] (Round 25B Resume) /chay <video_id> resume bị chặn nếu FAILED_TIMEOUT — chỉ --reset mới tạo run mới?
+[ ] (Round 25B Precedence) Command precedence đúng thứ tự: --reset > rerender > --force-retry > plan/status > normal?
+[ ] (Round 25B Precedence) --force-retry trên video DONE → ERR_FINAL_VIDEO_EXISTS_NO_RERENDER (KHÔNG tự rerender)?
+[ ] (Round 25B Rerender) Rerender explicit tạo version mới (v2_3 / v3 / run_id mới) + KHÔNG xoá final cũ? Update publish_plan chỉ sau QC PASS?
 ```
 
 ---
@@ -1567,6 +1734,30 @@ KHÔNG BAO GIỜ:
     artifact trong `production/_runs/<run_id>/` hoặc
     `production/batch_001/<video_id>/` — phải phân biệt input
     (URL Shopee / keyword / không có gì) rồi trả reason_code đúng.
+  × (Round 25B Path resolution) Chỉ scan `production/batch_001/` mà
+    bỏ qua `production/_runs/<run_id>/` — phải scan CẢ 2 vùng, ưu
+    tiên `_runs` làm SoT khi có. Conflict giữa 2 vùng → ERR_STATE_CONFLICT,
+    KHÔNG merge mù quáng.
+  × (Round 25B Path resolution) Bỏ ghi `state_source_path` /
+    `artifact_source_path` / `namespace_mode` trong report — bắt buộc
+    có 3 field để tracking minh bạch giai đoạn migration.
+  × (Round 25B Resume) Resume một waiting_state đã quá timeout —
+    `/chay resume` PHẢI từ chối với ERR_RESUME_EXPIRED_STATE hoặc
+    ERR_SYS_EXIT_GATE_TIMEOUT. KHÔNG tự reset, KHÔNG tự force-retry
+    để "cứu" state chết.
+  × (Round 25B Resume) Resume run đã FAILED_TIMEOUT — chỉ `--reset`
+    mới tạo run/state mới. `--force-retry` không unlock timeout state.
+  × (Round 25B Command precedence) `--force-retry` bypass No Rerender
+    Rule trên video DONE_WAITING_USER_REVIEW — PHẢI trả
+    ERR_FINAL_VIDEO_EXISTS_NO_RERENDER. Chỉ `rerender` / `final-reels-render`
+    / `--reset` / prompt explicit mới bypass.
+  × (Round 25B Rerender) Xoá final cũ khi rerender — phải giữ history
+    (v1, v2, v2_3, v3…). Update `publish_plan` CHỈ sau QC PASS;
+    QC FAIL → giữ `publish_plan` trỏ về bản final cũ đang pass.
+  × (Round 25B Rerender) Rerender ngầm khi user chỉ gõ `/chay <id>`
+    hoặc `/chay <id> --force-retry` — thiếu chữ rõ "rerender" /
+    "render lại" / "tạo lại final" / `final-reels-render` / `--reset`
+    → ERR_RERENDER_REQUIRES_EXPLICIT_COMMAND.
 
 CHỈ LÀM TRONG SCOPE:
   ✓ 1 video mỗi lần /chay

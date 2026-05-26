@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-05-26 (Round 25 — /chay Auto-Run Controller v0 + Deterministic Routing Hardening: 15 command aliases, Locked State Matrix, Infinite Loop Prevention, Cold Start Logic, No Rerender Rule, OpenAI Viral Content Style Policy)
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `d2f3cad` (mới nhất pre-Round-25, sẽ bump khi commit Round 25)
+> **Cập nhật lần cuối**: 2026-05-26 (Round 25B — /chay Auto-Run Controller Hardening Patch: Path Migration Compatibility + Resume Timeout Semantics + Command Precedence / No Rerender Override)
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `f0965f9` (Round 25 Auto-Run Controller v0; sẽ bump hash khi commit Round 25B)
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -1458,7 +1458,39 @@ Vòng này sửa skill + docs để `/chay` tự quyết định + tự retry + 
 
 **Không làm**: chạy yt_014 audio/render lại, rerender final video, publish, gọi Shopee/Facebook, dùng cookie/token, gọi OpenAI API, sửa code pipeline, commit media binary, động `production/batch_001/yt_014/final_reels_v2/*.mp4`. Chỉ cập nhật docs/skill.
 
-**Commit**: `docs: add chay auto-run controller v0` (sẽ bump hash khi push).
+**Commit**: `docs: add chay auto-run controller v0` (`f0965f9`).
+
+---
+
+### ✅ Round 25B — /chay Auto-Run Controller Hardening Patch: ĐÃ CHỐT (2026-05-26)
+
+**Mục tiêu**: vá 3 edge case còn thiếu của Auto-Run Controller v0 (Round 25) — không mở rộng scope.
+
+**Đã làm** — chèn 3 section mới (G2/G3/G4) vào Auto-Run Controller v0 trong [.claude/skills/chay/SKILL.md](.claude/skills/chay/SKILL.md):
+
+- **Section G2 — Path Resolution / Migration Compatibility**: Controller hỗ trợ ĐỒNG THỜI 2 vùng artifact (`production/_runs/<run_id>/` SoT mới Phần 24 vs `production/batch_001/<video_id>/` legacy). Scan cả 2 vùng cho `/chay`, `/chay <video_id>`, `/chay status`, `/chay plan` và các variant. `_runs` ưu tiên SoT, `batch_001` fallback. Conflict → `ERR_STATE_CONFLICT` + báo path conflict rõ (KHÔNG hỏi A/B/C, KHÔNG merge mù). Report bắt buộc có 3 field mới: `state_source_path`, `artifact_source_path`, `namespace_mode` (`runs_sot` | `batch_legacy` | `mixed_conflict`).
+
+- **Section G3 — Resume Timeout Semantics**: `/chay resume` và `/chay <video_id> resume` PHẢI kiểm timeout theo `expires_at` → `timeout_minutes` → `created_at + 30 phút default`. Quá hạn → `ERR_RESUME_EXPIRED_STATE` (chưa transition) hoặc `ERR_SYS_EXIT_GATE_TIMEOUT` (đã transition FAILED_TIMEOUT). KHÔNG tự reset, KHÔNG tự force-retry để "cứu" state chết. Run đã FAILED_TIMEOUT → chỉ `/chay <video_id> --reset` mới tạo run mới; `--force-retry` không unlock timeout state.
+
+- **Section G4 — Command Precedence / No Rerender Override Rule**: Thứ tự ưu tiên lệnh (cao → thấp) — `--reset` > `rerender`/`final-reels-render`/explicit rerender keyword > `--force-retry` > plan/status > normal `/chay`. `--force-retry` KHÔNG tự bypass No Rerender Rule — trên video `DONE_WAITING_USER_REVIEW` thì `--force-retry` PHẢI báo `ERR_FINAL_VIDEO_EXISTS_NO_RERENDER`. Rerender intent thiếu lệnh explicit → `ERR_RERENDER_REQUIRES_EXPLICIT_COMMAND`. Rerender behavior HARD: (1) KHÔNG xoá final cũ, (2) tạo version mới (v2_3 / v3 / run_id mới), (3) update `publish_plan` chỉ sau QC PASS, (4) QC FAIL → giữ `publish_plan` trỏ final cũ đang pass.
+
+- **Section J Report Format**: tăng từ 8 field lên 11 field (8 core + 3 path field G2). Thêm ví dụ output cho `/chay yt_014 plan` post-Round-25B (`state_source_path = production/batch_001/yt_014/facebook_reels_publish_plan.json`, `namespace_mode = batch_legacy`, `status = DONE_WAITING_USER_REVIEW`).
+
+- **Section K Reason Codes**: thêm 4 code mới — `ERR_STATE_CONFLICT` (Path Resolution), `ERR_RESUME_EXPIRED_STATE` (Resume Timeout), `ERR_RERENDER_REQUIRES_EXPLICIT_COMMAND` (Command Precedence), `ERR_FINAL_VIDEO_EXISTS_NO_RERENDER` (đã có trong Round 25, nay clarify use case).
+
+- **Section L Self-Apply checklist**: bổ sung 8 mục Round 25B (scan cả 2 vùng, ghi 3 path field, kiểm timeout, command precedence, --force-retry không tự rerender, rerender intent → explicit command, rerender giữ history + version mới).
+
+- **HARD CONSTRAINTS**: thêm 7 bullet Round 25B (cấm chỉ scan batch_001, cấm bỏ 3 path field, cấm resume timeout state, cấm resume FAILED_TIMEOUT, cấm --force-retry bypass No Rerender, cấm xoá final cũ khi rerender, cấm rerender ngầm thiếu chữ rõ).
+
+- **SELF-REVIEW CHECKLIST cuối skill**: bổ sung 7 mục Round 25B kiểm path scan, conflict, resume timeout, FAILED_TIMEOUT block, command precedence, --force-retry chặn rerender, rerender version mới + giữ history.
+
+**Quan hệ với Round 25 & Phần 24**: Round 25B là **patch hardening** — không thay đổi 12 section A–L cốt lõi của Auto-Run Controller v0, chỉ chèn G2/G3/G4 và mở rộng J/K/L/HARD/SELF-REVIEW. Phù hợp Phần 24 SoT `production/_runs/<run_id>/` (G2 chính là cầu nối migration). Git & Artifact Agent rule giữ nguyên — Round 25B không thay đổi commit policy.
+
+**Verify trên yt_014**: artifact hiện ở `production/batch_001/yt_014/`, không có `_runs/` entry → Controller phải trả `namespace_mode=batch_legacy`, `state_source_path=production/batch_001/yt_014/facebook_reels_publish_plan.json`. `/chay yt_014 --force-retry` (sau Round 25B) PHẢI bị chặn bằng `ERR_FINAL_VIDEO_EXISTS_NO_RERENDER` vì final + publish_plan đã DONE_WAITING_USER_REVIEW. `/chay yt_014 rerender` mới được phép bypass.
+
+**Không làm**: chạy yt_014, render, publish, gọi Shopee/Facebook/OpenAI, dùng cookie/token, sửa code pipeline, commit media/binary, động `production/batch_001/yt_014/final_reels_v2/*.mp4`, động untracked scripts. Chỉ cập nhật docs/skill.
+
+**Commit**: `docs: harden chay auto-run controller edge cases` (sẽ bump hash khi push).
 
 ---
 
@@ -1610,9 +1642,9 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mốc tại thời điểm cập nhật trạng thái | `d2f3cad` (mới nhất pre-Round-25; sẽ bump hash khi push Round 25) |
+| Commit mốc tại thời điểm cập nhật trạng thái | `f0965f9` (Round 25 Auto-Run Controller v0; sẽ bump hash khi push Round 25B) |
 | Remote | `origin` (GitHub) |
-| Sync status | Phần 11–24 + Round 2A/2B/2C + Round 3A/3C ĐÃ PUSH. Round 25 (Auto-Run Controller v0) docs/skill update — sẽ commit + push trong vòng này. |
+| Sync status | Phần 11–24 + Round 2A/2B/2C + Round 3A/3C + Round 25 ĐÃ PUSH. Round 25B (Auto-Run Controller hardening) docs/skill update — sẽ commit + push trong vòng này. |
 
 **Trạng thái artifacts production** (tính đến 2026-05-20):
 - `production/batch_001/yt_007/` (text artifacts): **ĐÃ commit** ở `df1609e` — scene_input, script v1/v2/v3, manifest BGM. Dùng làm reference cho vòng Voice Sync autonomy.
