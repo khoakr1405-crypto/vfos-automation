@@ -95,6 +95,177 @@
       "conclusion": "yt-dlp tool KHÔNG bị lỗi. KHÔNG phải bug version. KHÔNG phải missed flag. Vấn đề là TikTok platform-level — anonymous request không được serve video stream cho 2 candidate trên (cand C có thể là image-post-with-music, cand A có thể bị anti-bot gate)."
     },
     "retry_policy_applied": "Vòng metadata-only: 3/3 (đã commit d0a5fac). Vòng visual-verify thật: 3 method × cand C + 1 method × cand A + YouTube sanity = 5 method total. KHÔNG retry TikTok no-cookie nữa per user constraint 2026-05-26 + per HARD RULE 'KHÔNG retry spam'.",
+    "youtube_fallback_attempt": {
+      "attempted_at": "2026-05-26T00:00:00.000Z",
+      "scope_opened_by_user": "yt_013 youtube-fallback-demo-search (user prompt 2026-05-26 — mở scope YouTube/Shorts search + download visual verify, KHÔNG đổi sản phẩm, không cookie)",
+      "keywords_searched": [
+        "T10 mini fan phone stand real demo",
+        "T10 mini fan unboxing review",
+        "handheld fan T10 phone holder",
+        "T10 portable mini fan real test",
+        "quạt mini T10 review thực tế",
+        "quạt cầm tay T10 giá đỡ điện thoại"
+      ],
+      "candidates_found_via_websearch": 4,
+      "candidates_metadata_verified": [
+        {
+          "id": "oAwJEJ9Muz4",
+          "url": "https://www.youtube.com/shorts/oAwJEJ9Muz4",
+          "uploader": "Teacher Kevin PH",
+          "title": "T10 Portable and Rechargeable Mini Fan | #shopeetagtowin #ShopeeTagToWin",
+          "duration_s": 31,
+          "view_count": 357,
+          "resolution": "1080x1920",
+          "orientation": "portrait_9_16",
+          "passes_metadata_filter": true,
+          "status": "downloaded_and_visual_verified"
+        },
+        {
+          "id": "x-I1r5N3KPc",
+          "url": "https://www.youtube.com/shorts/x-I1r5N3KPc",
+          "status": "VIDEO_UNAVAILABLE — yt-dlp ERROR"
+        },
+        {
+          "id": "X4snifJ_7Hg",
+          "url": "https://www.youtube.com/shorts/X4snifJ_7Hg",
+          "uploader": "Technical Madnawat",
+          "title": "Best Portable Mini Fan With Phone Holder | #short",
+          "duration_s": 59,
+          "view_count": 815,
+          "resolution": "1080x1920",
+          "orientation": "portrait_9_16",
+          "passes_metadata_filter": true,
+          "status": "downloaded_and_visual_verified"
+        },
+        {
+          "id": "EoWHV-FBLFk",
+          "url": "https://www.youtube.com/shorts/EoWHV-FBLFk",
+          "uploader": "Teacher Kevin PH (SAME as oAwJEJ9Muz4)",
+          "duration_s": 31,
+          "view_count": 46,
+          "initially_skipped_reason": "Same uploader as cand_yt_primary → very high probability same Shopee Affiliate template overlay style. KHÔNG retry spam.",
+          "verified_after_user_prompt": "Round 3 retry executed — đã download + extract keyframes + visual verify. Confirmed same template + thêm 1 phát hiện mới quan trọng (xem candidate_tertiary block bên dưới).",
+          "status": "downloaded_and_visual_verified"
+        }
+      ],
+      "candidates_downloaded": [
+        {
+          "candidate_id": "cand_yt_primary_oAwJEJ9Muz4",
+          "local_path": "production/batch_001/yt_013/demo_match/sources/cand_yt_primary.mp4",
+          "file_size_bytes": 1396597,
+          "duration_s": 31,
+          "resolution": "1080x1920 portrait 9:16",
+          "keyframes_extracted": "production/batch_001/yt_013/demo_match/sources/keyframes/ — 8 frames @ 2/5/8/12/16/20/26/30s, scaled 540 width JPG",
+          "guard_6_visual_safety": {
+            "logo_brand_watermark": "FAIL — heavy overlay xuyên suốt: 'YT × SHOPEE AFFILIATE' top banner, '#ShopeeTagToWin' subtitle, 'SUPER SALE' yellow-red badge top-right, 'Browse and Buy!' bottom-right, 'GET BIG DISCOUNT!' bottom red bar. Overlay chiếm ~30-35% frame area.",
+            "qr_or_barcode": "Không detect (không có)",
+            "license_plate_or_pii": "Không detect (sản phẩm shot, không có người)",
+            "heavy_text_overlay": "FAIL — Shopee Affiliate creator template overlay xuyên suốt 31s",
+            "brand_mismatch": "WARN — 'YT × SHOPEE AFFILIATE' creator brand đè lên content. Đây là content recycled từ Shopee Tag To Win campaign (Philippines), reup tại VN sẽ conflict với affiliate creator gốc.",
+            "repair_playbook_evaluation": "Priority 1 (blur top+bottom) sẽ blur ~40% frame → phá nội dung. Priority 2 (cover) → block product showcase. Priority 3 (crop) → mất sản phẩm. Priority 4 (trim) → vi phạm xuyên suốt không trim được.",
+            "decision": "NEEDS_NEW_CANDIDATE — không repair sạch được"
+          },
+          "guard_8_product_match": {
+            "evidence_from_keyframes": "kf_2s: 'Turbo fan One-click gathering' promo slide. kf_5s: 'Turbine blade — Wind is twice as strong' spec slide. kf_8s: handheld white fan trong tay người, real hand. kf_12s: spec sheet — Product name='Turbofan', 16.5×7.8×4.9cm, three speed adjustable, USB. kf_16s: blue fan với MINI-FAN engraving + circular base disc. kf_20s: pink fan cùng form factor. kf_26s + kf_30s: PINK + BLUE variants showcased + 'BUY 1 TAKE 1' badge.",
+            "axis_1_function": "PASS — handheld mini fan, 3 speed, USB rechargeable confirmed",
+            "axis_2_form": "FAIL — product là 'Turbofan / MINI-FAN' với **fixed circular base disc** (đáy đĩa cố định), KHÔNG có foldable phone-stand handle như T10 Card mô tả",
+            "axis_3_usage": "FAIL — visual không show 3-speed toggle press hoặc fold handle to stand phone. Slideshow promo, không phải real usage demo.",
+            "axis_4_context": "PASS — studio shot indoor",
+            "axis_5_nature": "FAIL — bản chất KHÁC: T10 = handheld + foldable phone-stand handle (Shopee Card field 11). Clip = generic 'Turbofan' với fixed base disc — KHÔNG có phone-stand fold mechanism. Vi phạm anti-bait-and-switch HARD RULE.",
+            "decision": "MISMATCH_REJECT — 3/5 axes FAIL (2, 3, 5). Axis 5 (bản chất) FAIL = immediate reject per spec."
+          },
+          "slideshow_filter_check": "FAIL — 7/8 keyframes là promotional slideshow style (spec sheet, color variants showcase, 'Buy 1 Take 1' badge). Chỉ 1 frame (kf_8s) có real hand. Vi phạm filter 'không slideshow' user."
+        },
+        {
+          "candidate_id": "cand_yt_secondary_X4snifJ_7Hg",
+          "local_path": "production/batch_001/yt_013/demo_match/sources/cand_yt_secondary.mp4",
+          "file_size_bytes": 6249096,
+          "duration_s": 59,
+          "resolution": "1080x1920 portrait 9:16",
+          "keyframes_extracted": "production/batch_001/yt_013/demo_match/sources/keyframes_sec/ — 7 frames @ 3/8/15/25/35/45/55s, scaled 540 width JPG",
+          "guard_6_visual_safety": {
+            "logo_brand_watermark": "PASS — không heavy overlay, không promotional template",
+            "qr_or_barcode": "Không detect",
+            "license_plate_or_pii": "WARN — khuôn mặt creator rõ trong kf_25s, kf_45s. Creator (Technical Madnawat) là YouTuber public, nhưng reup không xin permission = GUARD 7 R1 (anti-copy) risk + có thể cần Repair Playbook blur face nếu reup.",
+            "heavy_text_overlay": "PASS — clean frames",
+            "brand_mismatch": "PASS — content organic, không creator brand stamp",
+            "decision": "PASS_WITH_REPAIR_POSSIBLE — face blur required nếu reup; nhưng overall clean"
+          },
+          "guard_8_product_match": {
+            "evidence_from_keyframes": "kf_3s: real hand cầm WHITE handheld fan trước red shirt creator. kf_15s: PINK fan với **LCD DIGITAL DISPLAY hiện '01'** — KHÁC sản phẩm T10 (T10 Card không có LCD). kf_25s: creator cầm fan trắng có pink LED ring light around base. kf_45s: creator cầm 2 thành phần fan, có vẻ tháo rời.",
+            "axis_1_function": "PASS — handheld mini fan confirmed (multiple variants)",
+            "axis_2_form": "FAIL — kf_15s shows fan với LCD digital display (T10 Card KHÔNG có LCD). Multiple variants mixed in same video → không isolate T10 form factor cụ thể. Phone-stand fold mechanism KHÔNG clearly demonstrated trong frames visible.",
+            "axis_3_usage": "WARN — real demo có nhưng cho nhiều product variant khác nhau, không focus T10 usage cụ thể",
+            "axis_4_context": "PASS — indoor studio brick wall, desk context",
+            "axis_5_nature": "FAIL — đây là **multi-product comparison/review video**, KHÔNG phải T10 dedicated demo. Reup gắn affiliate T10 sẽ vi phạm anti-bait-and-switch (clip show fan A+B+C, link Shopee chỉ T10).",
+            "decision": "MISMATCH_REJECT — axes 2 + 5 FAIL (multi-product mix, LCD variant không khớp T10)"
+          },
+          "slideshow_filter_check": "PASS — real human demo, không slideshow"
+        }
+      ],
+      "candidate_tertiary_round_3": {
+        "candidate_id": "cand_yt_tertiary_EoWHV-FBLFk",
+        "local_path": "production/batch_001/yt_013/demo_match/sources/cand_yt_tertiary.mp4",
+        "file_size_bytes": 1879256,
+        "duration_s": 31,
+        "resolution": "1080x1920 portrait 9:16",
+        "keyframes_extracted": "production/batch_001/yt_013/demo_match/sources/keyframes_ter/ — 5 frames @ 2/8/15/20/28s",
+        "critical_new_finding": "kf_15s rõ ràng cho thấy T10 product line gồm 2 phần: (1) fan handheld + (2) disc base RỜI với **phone-holder slot** rõ rệt (text overlay 'Gift base mobile Phone holder'). Đây là cơ chế 'Làm Giá Đỡ Điện Thoại' trong Shopee Card T10 — disc base IS the phone stand, KHÔNG phải foldable handle như evaluation lúc trước assume.",
+        "guard_6_visual_safety": {
+          "logo_brand_watermark": "FAIL — heavy overlay xuyên suốt: 'YT x Shopee Affiliate' top + 'Teacher Kevin PH' creator badge + 'Shop Now!' calligraphic + creator profile picture top-right + YouTube logo + 'BIG DISCOUNT!' bottom",
+          "qr_or_barcode": "Không detect",
+          "license_plate_or_pii": "FAIL — **creator face Teacher Kevin PH ở top-right** xuyên suốt 31s = PII của creator gốc, reup cần xin permission hoặc blur face",
+          "heavy_text_overlay": "FAIL — overlay ~30-35% frame area, tệ hơn primary do thêm creator profile pic",
+          "brand_mismatch": "FAIL — explicit 'YT x Shopee Affiliate' + 'Teacher Kevin PH' creator brand stamp",
+          "repair_playbook_evaluation": "Same as primary: blur top + bottom = phá nội dung. Cover face PII = mất top region. Crop = mất sản phẩm.",
+          "decision": "NEEDS_NEW_CANDIDATE — không repair sạch được"
+        },
+        "guard_8_product_match_revised": {
+          "evidence_from_keyframes": "kf_2s: hand holding pink mini fan với base trên bàn + figurine + flowers indoor setting. kf_15s: navy blue T10 fan handheld + **separate disc base với phone-holder slot** (text 'Gift base mobile Phone holder'). kf_28s: comparison slide 'Turbo fan vs Other fan' specs (Turbofan blades vs Other fan flat blades, 'Small and comes with base stand').",
+          "axis_1_function": "PASS — handheld mini fan 3 speed USB",
+          "axis_2_form": "PASS (REVISED from previous evaluation) — T10 = fan handheld + separate disc base with phone-holder slot, EVIDENT trong kf_15s. Form factor match Shopee Card.",
+          "axis_3_usage": "WARN — slideshow showcase, không show real toggle/usage demo. Comparison slide không phải user-demonstration.",
+          "axis_4_context": "PASS — indoor desk context (kf_2s flowers+figurine indoor setting)",
+          "axis_5_nature": "PASS (REVISED) — T10 form factor confirmed via kf_15s 'Gift base mobile Phone holder' visual evidence. Đây CHÍNH LÀ T10 product line. Previous evaluation 'bản chất khác' là WRONG — disc base IS phone stand per T10 design.",
+          "decision": "MATCH_NEEDS_REVIEW — 4 PASS + 1 WARN. NHƯNG GUARD 6 fatal → overall reject."
+        },
+        "slideshow_filter_check": "FAIL — kf_2s real shot OK, kf_8s/15s/20s product showcase slides, kf_28s comparison spec slide. ~3/5 frames là promotional template, vi phạm filter 'không slideshow' user."
+      },
+      "candidates_rejected_summary_corrected": {
+        "cand_yt_primary (oAwJEJ9Muz4)": "REJECT — GUARD 6 heavy Shopee Affiliate template overlay (fatal, không repair sạch). GUARD 8 axis 5 evaluation lúc đầu sai (assumed phone-stand = foldable handle), thực tế disc base = T10 phone holder → axis 5 likely PASS. Nhưng GUARD 6 vẫn fatal độc lập.",
+        "cand_yt_secondary (X4snifJ_7Hg)": "REJECT — GUARD 8 axis 5 FAIL (multi-product review với LCD digital variant ≠ T10, mix nhiều fan brands). GUARD 6 PASS clean (real human demo, no overlay).",
+        "cand_yt_tertiary (EoWHV-FBLFk)": "REJECT — GUARD 6 FAIL fatal (same Teacher Kevin PH template + creator face PII). GUARD 8 likely PASS với evidence T10 disc-base phone-holder rõ ràng. BUT GUARD 6 alone reject.",
+        "cand_yt_unavailable (x-I1r5N3KPc)": "Video unavailable on YouTube"
+      },
+      "key_correction_note": "Round 3 retry đã exposes critical error trong evaluation round 1: T10 'phone-stand' KHÔNG phải foldable handle — nó là separate disc base với phone-holder slot. Tôi đã quá nhanh kết luận axis 5 FAIL cho primary mà không có visual evidence rõ về T10 mechanism. Round 3 tertiary cung cấp evidence cứng. Updated evaluation: primary + tertiary có axis 5 PASS (T10 form factor match), nhưng GUARD 6 fatal độc lập (Shopee Affiliate template overlay 30-35% frame). Secondary vẫn axis 5 FAIL (multi-product review). Final status FAIL vẫn giữ — vì cả 3 candidates đều có ≥1 guard fail fatal.",
+      "pattern_observed": "YouTube indexed 'T10 mini fan' content có 2 pattern chính: (1) Shopee Affiliate template promotional ads với heavy overlay (Philippines creators, Teacher Kevin PH style) → GUARD 6 FAIL; (2) Multi-product mini fan review channels (Technical Madnawat) → GUARD 8 axis 5 FAIL bait-and-switch risk. KHÔNG có organic T10-specific demo từ Vietnamese user trên YouTube indexed.",
+      "tool_health_youtube": "yt-dlp YouTube branch HEALTHY — download cả 2 candidate thành công với HLS stream. FFmpeg keyframe extract 100% success.",
+      "decision": "FAIL — ERR_SOURCE_NOT_FOUND",
+      "decision_reason": "3 vòng search YouTube + 2 vòng visual verify cả candidates xác nhận: KHÔNG có YouTube/Shorts clip nào đạt MATCH_CONFIRMED cho T10. Pattern bias rõ ràng (Shopee promo ads vs multi-product reviews), không phải vấn đề keyword. Affiliate target T10 với phone-stand foldable handle = sản phẩm specific, content YouTube cho nó là ads promo chứ không phải organic user demo."
+    },
+    "operator_unblock_options_after_youtube_fail": [
+      {
+        "option_id": "opt_2_user_paste_source_now_primary",
+        "label": "User tự tải clip T10 thật từ TikTok merrygracepacana (ssstik.io / snaptik) hoặc Douyin",
+        "scope_required": "User chạy 1 lần thủ công, paste mp4 vào production/batch_001/yt_013/demo_match/sources/. /chay vòng sau extract keyframes + chấm GUARD 6/8.",
+        "risk": "Thấp — không scope mới. Đây là path ngắn nhất.",
+        "recommendation": "PRIMARY recommendation sau khi YouTube fallback exhaust."
+      },
+      {
+        "option_id": "opt_1_tiktok_cookie_scope",
+        "label": "Mở scope TikTok cookie session (giống Round 2C Shopee)",
+        "scope_required": "User duyệt headed browser TikTok login → tạo .secrets/tiktok_storage_state.json → yt-dlp --cookies. Mỗi commit verify gitignore.",
+        "risk": "Session expire, có thể bị TikTok block account nếu fetch quá thường.",
+        "recommendation": "Khuyến nghị nếu muốn Demo Match Agent tự động cho nhiều video sau."
+      },
+      {
+        "option_id": "opt_4_reject_t10_change_product",
+        "label": "Bỏ case T10, đổi sản phẩm Shopee khác dễ tìm demo hơn",
+        "scope_required": "Rollback Shopee Product Agent, chạy lại Discovery Mode.",
+        "risk": "Mất công Card T10 (verified affiliate VERIFIED_FROM_LONG_LINK).",
+        "recommendation": "Nếu T10 thực sự không có visual demo public organic accessible thì option này clean. NHƯNG user prompt nói rõ 'Không đổi sản phẩm' → SKIP option này."
+      }
+    ],
     "outcome_status": "SUSPENDED_NEEDS_USER_SOURCE",
     "outcome_reason": "Cả 2 candidate khả thi (C + A) đều bị TikTok serve audio-only cho anonymous yt-dlp request. Anti-bot không trả video stream khi không có cookie/session hợp lệ. Theo user constraint 'Không dùng cookie nếu chưa có permission mới' — KHÔNG được thử cookie để bypass. → Pipeline Script QC Agent vẫn BLOCKED.",
     "guard_8_visual_axes_status": {
@@ -311,11 +482,13 @@
   },
   "guard_6_overall_status": "UNKNOWN_PENDING_VISUAL_INSPECTION — không thể detect logo/watermark/QR/PII từ metadata-only. 2 candidate cần visual prescan trước khi đi tiếp.",
   "guard_8_overall_decision": "NO_MATCH_CONFIRMED_THIS_ROUND — 0/3 candidate đạt MATCH_CONFIRMED. 2/3 ở MATCH_NEEDS_REVIEW, 1/3 ở MISMATCH_REJECT.",
-  "final_status": "SUSPENDED_NEEDS_USER_SOURCE",
+  "final_status": "FAIL",
+  "final_status_reason_code": "ERR_SOURCE_NOT_FOUND",
   "final_status_history": [
     {"round": 1, "status": "SUSPENDED", "at": "2026-05-26T00:00:00.000Z (commit d0a5fac)", "reason": "Metadata-only — axes 3/4 + GUARD 6 unverified"},
     {"round": 2, "status": "SUSPENDED_NEEDS_USER_SOURCE", "at": "2026-05-26T00:00:00.000Z (visual_verify_attempt — format probe only)", "reason": "yt-dlp -F probe candidate C + A đều trả audio-only listing."},
-    {"round": 3, "status": "ERR_SOURCE_DOWNLOAD_FAILED_TIKTOK_NO_COOKIE", "at": "2026-05-26T00:00:00.000Z (hardened evidence — actual download)", "reason": "Actual download attempted 4 methods cand C + 1 method cand A + YouTube sanity OK. Confirmed TikTok platform-level gate (music CDN endpoint, image-post-with-music suspected). yt-dlp tool healthy. Final status SUSPENDED_NEEDS_USER_SOURCE giữ nguyên — vẫn cần unblock path từ user (opt_1 cookie scope / opt_2 user paste source / opt_3 YouTube retry / opt_4 reject T10)."}
+    {"round": 3, "status": "ERR_SOURCE_DOWNLOAD_FAILED_TIKTOK_NO_COOKIE", "at": "2026-05-26T00:00:00.000Z (commit b01609a — hardened evidence)", "reason": "Actual download 4 methods cand C + 1 method cand A + YouTube sanity OK. TikTok platform-level gate confirmed. yt-dlp tool healthy."},
+    {"round": 4, "status": "FAIL — ERR_SOURCE_NOT_FOUND", "at": "2026-05-26T00:00:00.000Z (YouTube fallback exhausted)", "reason": "YouTube fallback search 6 keyword → 4 viable candidates → 1 video unavailable, 2 downloaded + visual verified, cả 2 đều FAIL GUARD 6 hoặc GUARD 8. Không tìm được clip đạt MATCH_CONFIRMED standard. Xem youtube_fallback_attempt block bên dưới."}
   ],
   "final_status_reasoning": {
     "not_success": "Không có candidate đạt MATCH_CONFIRMED (5/5 axes PASS). Pipeline Script QC Agent BLOCKED per HARD RULE 'Không chạy pipeline nếu chưa MATCH_CONFIRMED'.",
