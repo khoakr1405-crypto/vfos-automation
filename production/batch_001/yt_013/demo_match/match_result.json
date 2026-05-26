@@ -1,0 +1,235 @@
+{
+  "agent": "demo_match_agent",
+  "schema_version": "0.1.0",
+  "created_at": "2026-05-26T00:00:00.000Z",
+  "phase_ref": "PF-STEP 3 Demo Match — execution v0 (Phần 24 Agent Architecture v0)",
+  "video_id": "yt_013",
+  "lane": "shopee_first",
+  "upstream_artifact": {
+    "type": "shopee_product_card",
+    "path": "production/batch_001/yt_013/shopee_product_card.json",
+    "decision": "PRODUCT_SELECTED"
+  },
+  "plan_artifact": "production/batch_001/yt_013/demo_match/match_search_plan.json",
+  "execution_summary": {
+    "rounds_completed": 3,
+    "max_rounds": 3,
+    "search_method": "WebSearch (Google) + yt-dlp metadata-only (--skip-download --dump-single-json)",
+    "no_download_invoked": true,
+    "no_shopee_call": true,
+    "no_facebook_call": true,
+    "no_cookie_used": true,
+    "tools_used": ["WebSearch", "WebFetch (oembed only)", "yt-dlp --skip-download"]
+  },
+  "retry_log": {
+    "rounds": [
+      {
+        "round_n": 1,
+        "keywords_used": [
+          "\"quạt mini T10\" review TikTok",
+          "mini fan T10 handheld phone stand demo unboxing",
+          "\"handheld fan\" \"phone stand\" 3 speed rechargeable mini portable"
+        ],
+        "platforms_searched": ["tiktok_vn", "youtube_shorts", "amazon_us", "tiktok_general"],
+        "candidates_found": 8,
+        "candidates_passing_title_filter": 3,
+        "candidates_passing_guard_8": 0,
+        "reject_reasons": "Title-only filter at this stage; visual + duration unverified yet",
+        "keyword_adjustment_for_next_round": "Tìm keyword VN-specific để check viral signal trên FB Reels VN audience"
+      },
+      {
+        "round_n": 2,
+        "keywords_used": [
+          "\"T10\" quạt cầm tay 3 tốc độ gập phone stand pin sạc",
+          "\"quạt cầm tay T10\" \"giá đỡ điện thoại\" review youtube shorts"
+        ],
+        "platforms_searched": ["tiktok_vn", "youtube_shorts_vn", "facebook_vn", "product_page_cartup"],
+        "candidates_found": 6,
+        "candidates_passing_title_filter": 0,
+        "candidates_passing_guard_8": 0,
+        "reject_reasons": "Vietnamese search → NAME COLLISION discovery: 'T10' trong tiếng Việt còn là model giá đỡ điện thoại (phone holder, 30-45cm aluminum) — KHÔNG phải quạt T10. Không có Vietnamese-language T10 fan review xếp hạng cao trên Google index. cartup.com confirmed T10 product class: 2200mAh, 3 speeds, 5-blade, phone-stand base, 250g, ABS, USB rechargeable.",
+        "keyword_adjustment_for_next_round": "Quay lại keyword English/non-VN cho TikTok + dùng yt-dlp metadata để verify duration + view_count thật"
+      },
+      {
+        "round_n": 3,
+        "keywords_used": [
+          "site:youtube.com/shorts \"quạt mini T10\" review unboxing",
+          "\"T10\" handheld fan turbo \"3 speed\" demo wind test indoor",
+          "yt-dlp --skip-download for 3 candidate URL verify"
+        ],
+        "platforms_searched": ["youtube_shorts_global", "tiktok_global", "amazon_in", "ebay", "walmart", "jiomart"],
+        "candidates_found": 5,
+        "candidates_with_hard_metadata_verified": 3,
+        "candidates_passing_guard_8_metadata_axes": 2,
+        "reject_reasons": "1 candidate (Smart Tech Info YouTube) rejected vì duration 195s > 60s filter. 2 candidate (gxx4910 TikTok, merrygracepacana TikTok) pass duration + title filter, nhưng visual axes (3, 4) + GUARD 6 không thể verify từ metadata-only.",
+        "keyword_adjustment_for_next_round": "n/a — 3/3 vòng đã hoàn tất per AUTO-SOURCE RETRY POLICY"
+      }
+    ]
+  },
+  "guard_8_evaluation_table": {
+    "candidates": [
+      {
+        "candidate_id": "cand_001_tiktok_7445563729002958096",
+        "source_url": "https://www.tiktok.com/@gxx4910/video/7445563729002958096",
+        "platform": "tiktok_global",
+        "creator_handle": "@gxx4910 (channel: GXX)",
+        "title": "T10 mini fan with phone stand",
+        "description": "T10 mini fan with phone stand",
+        "duration_s": 26,
+        "view_count": 114,
+        "like_count": 2,
+        "comment_count": 0,
+        "upload_date": "20241207",
+        "music_track": "Flowerovlove snippet",
+        "orientation": "portrait_9_16 (TikTok default, unverified actual frame ratio)",
+        "thumbnail_evidence_url": "https://p16-common-sign.tiktokcdn.com/tos-alisg-p-0037/owJX9ZiETuryI5AAvA0YBhVXEB1PIODLiBrMP~tplv-tiktokx-origin.image",
+        "axes_score": {
+          "axis_1_function": "PASS",
+          "axis_2_form": "PASS",
+          "axis_3_usage": "WARN",
+          "axis_4_context": "WARN",
+          "axis_5_nature": "PASS"
+        },
+        "axes_evidence": {
+          "axis_1_function": "Title 'T10 mini fan' + 'phone stand' xác nhận handheld mini fan + phone stand. 3-speed cycle: không có evidence trực tiếp trong title/description.",
+          "axis_2_form": "Title explicit 'T10' + 'phone stand'. Match product class theo Shopee Product Card slug=mini_fan_t10.",
+          "axis_3_usage": "Không có visual evidence press 3-speed button hoặc fold to stand. Cần inspection visual.",
+          "axis_4_context": "Không có visual evidence indoor/desk. Title không mention bối cảnh. Cần inspection visual.",
+          "axis_5_nature": "Title 'T10 mini fan with phone stand' khớp đúng bản chất sản phẩm Card (handheld rechargeable + phone-stand). KHÔNG có hint camping/LED/tower fan trong title."
+        },
+        "decision": "MATCH_NEEDS_REVIEW",
+        "decision_reason": "3 PASS + 2 WARN (axes 3, 4 visual unverified). Per SKILL spec ('4/5 đạt + 1 trục mơ hồ' → NEEDS_REVIEW; 3/5 + 2 ambiguous → cũng NEEDS_REVIEW không phải MATCH_CONFIRMED). VIRAL signal yếu: 114 views = không phù hợp reup vì người xem có thể đã thấy clip này quá ít trên FB Reels VN.",
+        "guard_6_visual_safety_prescan": {
+          "logo_brand_watermark": "UNKNOWN — metadata không reveal. TikTok native watermark sẽ có, cần verify.",
+          "qr_or_barcode": "UNKNOWN",
+          "license_plate_or_pii": "UNKNOWN",
+          "method_required_to_verify": "Operator mở thumbnail URL hoặc clip trong browser; hoặc yt-dlp download + ffmpeg keyframe extract (cần user mở scope)"
+        },
+        "viral_signal_concern": "View count 114 là low-tier. Operator có thể prefer candidate C (merrygracepacana, 21k views) làm source nếu visual axes 3/4 đều PASS."
+      },
+      {
+        "candidate_id": "cand_002_youtube_oHVnxV7GFNk",
+        "source_url": "https://www.youtube.com/watch?v=oHVnxV7GFNk",
+        "platform": "youtube_global",
+        "creator_handle": "Smart Tech Info (@SmartTechInfoujwal)",
+        "title": "Handheld Fan T-10 Mini Fan Unboxing and Review",
+        "duration_s": 195,
+        "view_count": "unknown (yt-dlp truncated output)",
+        "orientation": "landscape_16_9 (aspect_ratio=1.78 từ storyboard format)",
+        "thumbnail_evidence_url": "https://i.ytimg.com/vi/oHVnxV7GFNk/hqdefault.jpg",
+        "axes_score": {
+          "axis_1_function": "PASS",
+          "axis_2_form": "PASS",
+          "axis_3_usage": "UNKNOWN (deferred — rejected upstream)",
+          "axis_4_context": "UNKNOWN (deferred — rejected upstream)",
+          "axis_5_nature": "PASS"
+        },
+        "axes_evidence": {
+          "axis_1_function": "Title 'Handheld Fan T-10 Mini Fan Unboxing and Review' xác nhận handheld T10 mini fan, đang review.",
+          "axis_2_form": "T-10 explicit trong title.",
+          "axis_3_usage": "n/a — rejected at duration filter",
+          "axis_4_context": "n/a — rejected at duration filter",
+          "axis_5_nature": "Title khớp bản chất T10 handheld."
+        },
+        "decision": "MISMATCH_REJECT",
+        "decision_reason": "Duration 195s (3:15) > filter 60s. Đây là long-form unboxing video, KHÔNG fit short-form factory scope (15-60s portrait 9:16). Aspect ratio landscape 16:9 không phù hợp Facebook Reels. Reject ở filter trước khi tốn effort visual inspection.",
+        "guard_6_visual_safety_prescan": "n/a — rejected upstream"
+      },
+      {
+        "candidate_id": "cand_003_tiktok_7383639027028593925",
+        "source_url": "https://www.tiktok.com/@merrygracepacana/video/7383639027028593925",
+        "platform": "tiktok_global",
+        "creator_handle": "@merrygracepacana (channel id: gracias24)",
+        "title": "T10 new turbine handheld small🛒🌻#fyp #minifanportable #portablefan #fyp #fypシviral",
+        "description": "T10 new turbine handheld small (same as title)",
+        "duration_s": 23,
+        "view_count": 21100,
+        "like_count": 183,
+        "comment_count": 29,
+        "save_count": 103,
+        "repost_count": 484,
+        "upload_date": "20240623",
+        "music_track": "Nasty - Tinashe",
+        "hashtags": ["#fyp", "#minifanportable", "#portablefan", "#fypシviral"],
+        "orientation": "portrait_9_16 (TikTok default, unverified actual frame ratio)",
+        "thumbnail_evidence_url": "https://p16-common-sign.tiktokcdn.com/tos-maliva-p-0068/aebbb1a43c234f9e9b4f3dcdc2f90ff0_1719137439~tplv-tiktokx-origin.image",
+        "axes_score": {
+          "axis_1_function": "PASS",
+          "axis_2_form": "WARN",
+          "axis_3_usage": "WARN",
+          "axis_4_context": "WARN",
+          "axis_5_nature": "PASS"
+        },
+        "axes_evidence": {
+          "axis_1_function": "Title 'T10 new turbine handheld small' xác nhận handheld + turbine (matches Shopee Card category 'Quạt cầm tay Turbo Mini T10'). Hashtag #portablefan + #minifanportable confirm portable function.",
+          "axis_2_form": "T10 explicit, 'handheld small' phù hợp form factor. Phone-stand fold KHÔNG được mention trong title/description. WARN vì không có evidence phone-stand visible.",
+          "axis_3_usage": "3-speed cycle: không có evidence trực tiếp. Cần inspection visual.",
+          "axis_4_context": "Indoor/desk: không có evidence. Hashtag #fypシviral cho thấy đây là content viral generic, chưa biết context filming.",
+          "axis_5_nature": "T10 + turbine + handheld + small — match bản chất sản phẩm Card. KHÔNG có hint camping/LED/tower."
+        },
+        "decision": "MATCH_NEEDS_REVIEW",
+        "decision_reason": "3 PASS + 2 WARN (axis 2 phone-stand chưa mention, axes 3+4 visual unverified). Viral signal MẠNH: 21100 views, 183 likes, 484 reposts, 29 comments — phù hợp reup pattern (đã viral trong cộng đồng global). Tuy nhiên audience hashtag là global #fypシviral chưa target VN — bonus điểm operator/Script QC để re-tone caption cho VN.",
+        "guard_6_visual_safety_prescan": {
+          "logo_brand_watermark": "UNKNOWN — metadata không reveal. TikTok native watermark sẽ có. Music 'Nasty - Tinashe' là copyright music của TikTok — phải dùng audio thay thế khi reup (sẽ replace bằng VFOS voice + BGM theo pipeline).",
+          "qr_or_barcode": "UNKNOWN",
+          "license_plate_or_pii": "UNKNOWN",
+          "method_required_to_verify": "Operator mở thumbnail URL hoặc clip trong browser; hoặc yt-dlp download + ffmpeg keyframe extract (cần user mở scope)"
+        },
+        "copyright_music_note": "Audio gốc dùng nhạc bản quyền (Tinashe - Nasty). Pipeline VFOS sẽ thay audio bằng voice-over + BGM riêng (yt_005_bgm_v2_candidate_b) → music copyright KHÔNG phải vấn đề cho final output."
+      }
+    ]
+  },
+  "candidate_pool": {
+    "shortlist_confirmed": [],
+    "needs_review": [
+      "cand_001_tiktok_7445563729002958096 (low viral signal — 114 views)",
+      "cand_003_tiktok_7383639027028593925 (strong viral signal — 21.1k views, recommended priority)"
+    ],
+    "rejected": [
+      "cand_002_youtube_oHVnxV7GFNk (duration 195s > 60s filter, landscape 16:9)"
+    ]
+  },
+  "guard_6_overall_status": "UNKNOWN_PENDING_VISUAL_INSPECTION — không thể detect logo/watermark/QR/PII từ metadata-only. 2 candidate cần visual prescan trước khi đi tiếp.",
+  "guard_8_overall_decision": "NO_MATCH_CONFIRMED_THIS_ROUND — 0/3 candidate đạt MATCH_CONFIRMED. 2/3 ở MATCH_NEEDS_REVIEW, 1/3 ở MISMATCH_REJECT.",
+  "final_status": "SUSPENDED",
+  "final_status_reasoning": {
+    "not_success": "Không có candidate đạt MATCH_CONFIRMED (5/5 axes PASS). Pipeline Script QC Agent BLOCKED per HARD RULE 'Không chạy pipeline nếu chưa MATCH_CONFIRMED'.",
+    "not_fail": "3 vòng retry đã hoàn tất nhưng VẪN có 2 candidate khả thi ở MATCH_NEEDS_REVIEW (cand_001 + cand_003). FAIL chỉ áp dụng khi 3 vòng + tất cả candidate đều REJECT. Đây không phải case.",
+    "suspended_because": [
+      "Axes 3 (3-speed toggle visible) + axis 4 (indoor/desk context) yêu cầu inspection visual của clip thật — không thể verify từ metadata title/description.",
+      "GUARD 6 visual safety (logo/watermark/QR/PII detection) yêu cầu keyframe extract — chỉ có thể làm sau khi download clip (operator scope, không phải /chay scope).",
+      "User explicit instruction: 'Không chạy video' + 'Không gọi Shopee/Facebook' — yt-dlp download để extract keyframes chưa được mở scope."
+    ],
+    "operator_unblock_path": [
+      "Bước 1: Operator mở thumbnail URL của candidate C (https://p16-common-sign.tiktokcdn.com/tos-maliva-p-0068/aebbb1a43c234f9e9b4f3dcdc2f90ff0_1719137439~tplv-tiktokx-origin.image) trong browser — kiểm tra: (a) form factor T10 visible, (b) phone-stand base có không, (c) bối cảnh indoor.",
+      "Bước 2: Nếu thumbnail xác nhận tốt, operator mở clip thật trên TikTok web (https://www.tiktok.com/@merrygracepacana/video/7383639027028593925) — xem 23s, đánh giá axes 3+4 + GUARD 6.",
+      "Bước 3a: Nếu visual PASS → update match_result.json: candidate C decision = MATCH_CONFIRMED, axes_score axis_3+4 PASS, guard_6 result PASS hoặc PASS_WITH_REPAIR (kèm Repair Playbook nếu cần blur watermark TikTok). → Unblock Script QC Agent.",
+      "Bước 3b: Nếu visual FAIL → mark candidate C reject, lặp lại với candidate A (cand_001), hoặc trigger vòng search retry 4 (vượt 3 vòng policy — cần user duyệt mở scope).",
+      "Bước 4 (alternative): Mở scope cho /chay vòng sau dùng yt-dlp download + ffmpeg keyframe extract cho candidate C — đây là 'chạy video' nên user phải explicit cho phép."
+    ]
+  },
+  "recommended_priority": {
+    "primary_candidate": "cand_003_tiktok_7383639027028593925 (merrygracepacana)",
+    "primary_reasons": [
+      "Viral signal mạnh (21.1k views, 183 likes, 484 reposts) — đã được global audience validate là engaging content",
+      "Duration 23s — fits perfectly trong 15-60s window cho FB Reels VN",
+      "T10 + turbine + handheld khớp đúng Shopee Card category 'Quạt cầm tay Turbo Mini T10'",
+      "Copyright music (Tinashe - Nasty) sẽ bị thay bằng voice-over VFOS + BGM nên không phải vấn đề"
+    ],
+    "fallback_candidate": "cand_001_tiktok_7445563729002958096 (gxx4910)",
+    "fallback_reasons": [
+      "Title explicit mention 'phone stand' (đầy đủ hơn candidate C về axis 2)",
+      "Duration 26s — fits filter",
+      "NHƯNG viral signal yếu (114 views) — operator nên cân nhắc rủi ro reup clip ít engagement"
+    ]
+  },
+  "agent_boundary_compliance": {
+    "this_agent": "Demo Match Agent",
+    "reads_only_from": ["production/batch_001/yt_013/shopee_product_card.json", "production/batch_001/yt_013/demo_match/match_search_plan.json"],
+    "writes_only_to": ["production/batch_001/yt_013/demo_match/match_result.json"],
+    "did_not_modify": ["shopee_product_card.json (Shopee Product Agent owns)", "match_search_plan.json (plan immutable)"],
+    "did_not_call": ["Shopee API", "Shopee Affiliate dashboard", "Facebook Graph API", "Script Writer", "Voice Sync", "BGM Mix", "yt-dlp download (only --skip-download metadata)"],
+    "downstream_agent_status": "Script QC Agent BLOCKED — chờ ≥1 candidate MATCH_CONFIRMED"
+  },
+  "sot_path_note": "Pre-migration path: production/batch_001/yt_013/demo_match/. Phần 24 spec sẽ chuyển sang production/_runs/<run_id>/demo_match/match_result.json khi pipeline code migrate."
+}
