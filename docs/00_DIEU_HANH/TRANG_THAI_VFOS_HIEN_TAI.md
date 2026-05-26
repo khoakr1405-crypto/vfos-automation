@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-05-26 (Phần 24 — VFOS Agent Architecture v0: spec 5 agent + yt_014 Shopee-First end-to-end voice-sync BGM-mix preview + publish plan completed)
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `daf18ee7e29021c120f4f9639da4d6f4ac3c1298` (mới nhất post-Phần-24 script/subtitle)
+> **Cập nhật lần cuối**: 2026-05-26 (Round 25 — /chay Auto-Run Controller v0 + Deterministic Routing Hardening: 15 command aliases, Locked State Matrix, Infinite Loop Prevention, Cold Start Logic, No Rerender Rule, OpenAI Viral Content Style Policy)
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `d2f3cad` (mới nhất pre-Round-25, sẽ bump khi commit Round 25)
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -1430,6 +1430,38 @@ Vòng này sửa skill + docs để `/chay` tự quyết định + tự retry + 
 
 ---
 
+### ✅ Round 25 — /chay Auto-Run Controller v0 + Deterministic Routing Hardening: ĐÃ CHỐT (2026-05-26)
+
+**Mục tiêu**: giảm tối đa số prompt user phải gõ. Sau round này user chỉ cần gõ `/chay`, `/chay <video_id>`, `/chay <video_id> plan`, `/chay status`, `/chay resume`, `/chay commit` — controller tự đọc state, suy `next_agent`, chạy nếu an toàn. KHÔNG hỏi A/B/C, KHÔNG retry vô hạn, KHÔNG rerender, KHÔNG publish thật.
+
+**Đã làm**:
+- `.claude/skills/chay/SKILL.md` — chèn section lớn **"AUTO-RUN CONTROLLER v0 (Round 25)"** ngay sau "BƯỚC 0", trước "MODE ROUTING". Gồm 12 sub-section (A–L):
+  - **A. Command Aliases (HARD ENUM)** — 15 commands: `/chay`, `/chay status`, `/chay <video_id>`, `/chay <video_id> status`, `/chay plan`, `/chay <video_id> plan`, `/chay resume`, `/chay <video_id> resume`, `/chay commit`, `/chay stop`, `/chay <video_id> --force-retry`, `/chay <video_id> --reset`, `/chay shopee <url>`, `/chay product <url>`, `/chay keywords "<keyword>"`.
+  - **B. Active Video Priority** — memory `active_video_id` → scan `production/batch_001/yt_*/` → nhiều candidate = `ERR_AMBIGUOUS_NEXT_STEP` (không hỏi A/B/C). User-specified video_id KHÔNG bị override.
+  - **C. Locked State Matrix** — 8 trạng thái deterministic (SUCCESS / SUCCESS_MATCH_CONFIRMED / SUCCESS_MATCH_NEEDS_REVIEW / SUSPENDED / FAILED / publish_plan-DONE / final-video-no-plan / match_result-FAIL). Đọc state theo priority 1–8 (waiting_state → agent report → publish_plan → match_result → script artifacts → product card → state doc fallback). Timeout 30 phút cho SUSPENDED.
+  - **D. Artifact Matrix** — fallback infer `next_agent` từ artifact present khi không có latest status rõ (8 row mapping).
+  - **E. No Rerender Rule (HARD)** — final video + publish_plan trỏ đúng path → `DONE_WAITING_USER_REVIEW`, KHÔNG render lại. Chỉ rerender với lệnh explicit `/chay <id> rerender` / `final-reels-render`.
+  - **F. Infinite Loop Prevention (HARD)** — agent FAILED ở run hiện tại → `ERR_PREVIOUS_RUN_FAILED_LOCKED`. Retry CHỈ khi `--force-retry` + `retry_count < max_retry` + không phải hard-forbidden blocker (secret leak / publish permission / auth required). Retry metadata bắt buộc: `previous_failed_agent`, `previous_reason_code`, `retry_count`, `retry_allowed`, `force_retry_used`.
+  - **G. Cold Start Logic** — phân biệt 3 input: có URL Shopee → Commerce Product Agent; có keyword → Discovery Mode; không gì → `ERR_COLD_START_INPUT_MISSING` (không hỏi A/B/C).
+  - **H. Permission Boundary mặc định** — allowed (read artifact, run next_agent, create JSON, render preview nếu next, OpenAI cho script/subtitle) vs forbidden (no publish, no cookie misuse, no force push, no commit ngoài /chay commit, no Con số 2).
+  - **I. OpenAI Viral Content Style Policy (Script & Claim Safety Agent)** — style hài hước/vui/dí dỏm/hơi bá đạo, câu ngắn 3–7 từ, keyword ngữ cảnh VN ("góc học tập", "dân văn phòng", "dưới 40k"). Blocklist banned phrase: "an toàn tuyệt đối", "không bao giờ kẹt tóc", "mát như điều hòa", "pin trâu cả ngày", "thay thế điều hòa", "trị bệnh/làm đẹp/sức khỏe" không có bằng chứng. Subtitle workflow: log đúng `rejected_count` + `rejection_reasons`, KHÔNG bịa "0 rejected", KHÔNG hợp thức hóa variant rủi ro bằng cách thêm "có thể" / "mình thấy". Ví dụ style tốt: "Ủa quạt gì mà không thấy cánh?", "Test bằng giấy cho khỏi nói điêu", "Dưới 40k mà có trò hay phết".
+  - **J. Report Format ngắn** — 8 field default (detected_video_id / detected_next_agent / action_taken / status / reason_code / output_artifacts / next_step_short / git_status_summary). Báo dài chỉ khi FAIL / SUSPENDED / security issue / user yêu cầu chi tiết. `DONE_WAITING_USER_REVIEW` báo thêm final_video_path + caption_draft + affiliate_link.
+  - **K. Reason Codes canonical enum** — 4 nhóm (SYSTEM 8 codes, SCRIPT 2, RENDER 2, COMMERCE 5). Bao gồm `ERR_AMBIGUOUS_NEXT_STEP`, `ERR_COLD_START_INPUT_MISSING`, `ERR_NEXT_AGENT_MISSING`, `ERR_PREVIOUS_RUN_FAILED_LOCKED`, `ERR_SYS_EXIT_GATE_TIMEOUT`, `ERR_RETRY_BUDGET_EXHAUSTED`, `ERR_OPENAI_API_KEY_MISSING`, `ERR_USER_APPROVAL_REQUIRED`, `ERR_SCR_MAJOR_TIMING_OVERFLOW`, `ERR_SUBTITLE_CLAIM_RISK`, `ERR_FINAL_VIDEO_EXISTS_NO_RERENDER`, `ERR_RENDER_QC_FAILED`, `ERR_PRODUCT_DATA_INSUFFICIENT`, `ERR_AFFILIATE_OWNER_MISMATCH`, `ERR_AUTH_REQUIRED`, `ERR_SOURCE_NOT_FOUND`, `ERR_SOURCE_DOWNLOAD_FAILED`, `ERR_SHOPEE_THROTTLED`.
+  - **L. Self-Apply checklist** — 11 mục controller tự kiểm trước khi báo kết quả.
+- `.claude/skills/chay/SKILL.md` — bổ sung **HARD CONSTRAINTS Round 25** (10 bullet × cấm) trong section "HARD CONSTRAINTS": cấm hỏi A/B/C, cấm rerender không lệnh explicit, cấm retry FAILED tự động, cấm retry vô hạn external API, cấm đổi video_id khi user specified, cấm report dài thường, cấm log "0 rejected" giả, cấm hợp thức hóa variant rủi ro, cấm báo "thiếu artifact" sai trong cold start.
+- `.claude/skills/chay/SKILL.md` — bổ sung 12 mục Round 25 vào **SELF-REVIEW CHECKLIST** cuối skill (parse args, active video priority, locked state matrix, no rerender, infinite loop, retry metadata, cold start, permission, subtitle log, report format, reason codes).
+- `docs/00_DIEU_HANH/TRANG_THAI_VFOS_HIEN_TAI.md` — file này, ghi Round 25 + cập nhật header + Git status.
+
+**Locked State Matrix verify trên yt_014**: artifact hiện có `production/batch_001/yt_014/facebook_reels_publish_plan.json` với `publish_status="not_published"`, `needs_user_review=true`, `final_video_path="production/batch_001/yt_014/final_reels_v1/yt_014_final_reels_v1.mp4"` (tồn tại) → `/chay yt_014` (sau Round 25) PHẢI trả `status=DONE_WAITING_USER_REVIEW`, `action_taken=none`, `next_step_short="User review/manual publish"`, KHÔNG render lại final_reels_v2. `/chay yt_014 plan` PHẢI báo cùng status nhưng không chạy agent.
+
+**Quan hệ với Phần 24**: Auto-Run Controller là layer **kỷ luật parse args + đọc state** đặt phía trên monolithic `/chay`. Vẫn KHÔNG implement code multi-agent — boundary của 5 agent (Shopee Product / Demo Match / Script QC ≡ Script & Claim Safety / Facebook Publish Plan / Git & Artifact) giữ nguyên theo `docs/00_DIEU_HANH/VFOS_AGENT_ARCHITECTURE_V0.md`. Git & Artifact Agent rule (commit-only-when-prompted) tiếp tục áp dụng — Auto-Run Controller `/chay commit` chỉ commit khi prompt user cho phép rõ.
+
+**Không làm**: chạy yt_014 audio/render lại, rerender final video, publish, gọi Shopee/Facebook, dùng cookie/token, gọi OpenAI API, sửa code pipeline, commit media binary, động `production/batch_001/yt_014/final_reels_v2/*.mp4`. Chỉ cập nhật docs/skill.
+
+**Commit**: `docs: add chay auto-run controller v0` (sẽ bump hash khi push).
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
@@ -1578,9 +1610,9 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mốc tại thời điểm cập nhật trạng thái | `daf18ee7e29021c120f4f9639da4d6f4ac3c1298` (mới nhất post-Phần-24 script/subtitle) |
+| Commit mốc tại thời điểm cập nhật trạng thái | `d2f3cad` (mới nhất pre-Round-25; sẽ bump hash khi push Round 25) |
 | Remote | `origin` (GitHub) |
-| Sync status | Phần 11–23 + Round 2A/2B/2C + Round 3A/3C ĐÃ PUSH. Phần 24 yt_014 audio-assembly & publish plan completed. Đang trình user duyệt publish plan. |
+| Sync status | Phần 11–24 + Round 2A/2B/2C + Round 3A/3C ĐÃ PUSH. Round 25 (Auto-Run Controller v0) docs/skill update — sẽ commit + push trong vòng này. |
 
 **Trạng thái artifacts production** (tính đến 2026-05-20):
 - `production/batch_001/yt_007/` (text artifacts): **ĐÃ commit** ở `df1609e` — scene_input, script v1/v2/v3, manifest BGM. Dùng làm reference cho vòng Voice Sync autonomy.

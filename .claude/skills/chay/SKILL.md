@@ -56,8 +56,322 @@ Dù ở mode nào, agent phải làm ngay khi nhận `/chay`:
 
 1. Đọc `docs/00_DIEU_HANH/TRANG_THAI_VFOS_HIEN_TAI.md`
 2. Xác định "bước tiếp theo duy nhất" trong memory
-3. Xác định mode từ args (xem phần MODE ROUTING bên dưới)
-4. Báo ngắn: "Mode: X — bắt đầu [mô tả task]"
+3. **Chạy AUTO-RUN CONTROLLER v0** (section ngay bên dưới) để parse args + locked state matrix
+4. Nếu controller resolve được `action_taken` rõ → thực hiện. Nếu không → fallback MODE ROUTING.
+5. Báo ngắn theo REPORT FORMAT NGẮN (Auto-Run Controller).
+
+---
+
+## AUTO-RUN CONTROLLER v0 (Round 25 — 2026-05-26 Deterministic Routing Hardening)
+
+> **Mục đích**: Giảm tối đa số prompt user phải gõ. `/chay` tự đọc state, tự suy next_agent, tự chạy nếu an toàn — KHÔNG hỏi A/B/C, KHÔNG retry vô hạn, KHÔNG chạy sai lane, KHÔNG publish thật.
+>
+> **Quan hệ với MODE ROUTING cũ**: Controller chạy TRƯỚC MODE ROUTING. Nếu controller resolve được action (DONE / SUSPENDED / FAIL / SUCCESS-with-next_agent) → dùng kết quả controller. Nếu controller fallthrough (eg input không match alias nào và không có state) → MODE ROUTING cũ vẫn áp dụng.
+>
+> **Trạng thái triển khai**: spec áp dụng cho monolithic `/chay`. KHÔNG implement code multi-agent trong vòng này (vẫn theo Phần 24 Agent Architecture v0). Controller là **kỷ luật parse args + đọc state** trong skill, không phải thêm code mới.
+
+### A. Command Aliases (HARD ENUM)
+
+| # | Command | Hành vi |
+|---|---|---|
+| 1 | `/chay` | Auto-detect active video + next_agent. Chạy nếu chỉ một bước hợp lệ và không bị lock. |
+| 2 | `/chay status` | Báo trạng thái tổng thể. KHÔNG chạy agent. |
+| 3 | `/chay <video_id>` | Tiếp tục video_id đó theo next_agent tự suy ra. |
+| 4 | `/chay <video_id> status` | Báo trạng thái video_id đó. KHÔNG chạy. |
+| 5 | `/chay plan` | Auto-detect active video + next_agent NHƯNG KHÔNG chạy agent. |
+| 6 | `/chay <video_id> plan` | Báo next_agent dự kiến của video_id đó. KHÔNG chạy. |
+| 7 | `/chay resume` | Resume `waiting_state` gần nhất nếu có và chưa timeout. |
+| 8 | `/chay <video_id> resume` | Resume `waiting_state` của video_id đó nếu có và chưa timeout. |
+| 9 | `/chay commit` | Chỉ commit artifact đã pass nếu Git & Artifact Agent rule (Phần 24 mục 6) cho phép. |
+| 10 | `/chay stop` | Dừng sạch. KHÔNG chạy tiếp. |
+| 11 | `/chay <video_id> --force-retry` | Cho phép retry agent FAILED. Phải ghi `retry_count` + không vượt retry budget. |
+| 12 | `/chay <video_id> --reset` | Reset state của video_id chỉ khi an toàn. KHÔNG xóa artifact cũ — chỉ tạo run/state mới. |
+| 13 | `/chay shopee <url>` | Cold start Shopee-First lane bằng Commerce Product Agent với link Shopee. |
+| 14 | `/chay product <url>` | Alias `/chay shopee <url>` nếu URL là Shopee. |
+| 15 | `/chay keywords "<keyword>"` | Cold start product discovery nếu chưa có URL. KHÔNG bịa product data. |
+
+**HARD parse rule**:
+- Nếu input KHÔNG match enum trên + không phải URL hợp lệ + không phải free text MODE 3 → trả về `status=FAIL`, `reason_code=ERR_AMBIGUOUS_NEXT_STEP`, KHÔNG đoán.
+- `<video_id>` pattern: `yt_NNN` (3 digit hoặc nhiều hơn). Sai pattern → `ERR_AMBIGUOUS_NEXT_STEP`.
+- Modifier flags (`--force-retry`, `--reset`) chỉ hợp lệ khi có `<video_id>` cụ thể.
+
+### B. Active Video Priority (khi `/chay` không kèm video_id)
+
+Thứ tự ưu tiên:
+
+1. **`active_video_id` trong `TRANG_THAI_VFOS_HIEN_TAI.md`** (mục 7 "Bước tiếp theo duy nhất" — đọc tên `yt_NNN` đang trạng thái current). Nếu có và hợp lệ → dùng.
+2. Nếu không có → scan `production/batch_001/yt_*/` tìm video_id mới nhất có artifact chưa DONE (ưu tiên file mtime gần nhất + `facebook_reels_publish_plan.json` thiếu hoặc `match_result.json` chưa SUCCESS).
+3. Nếu **chỉ một candidate hợp lệ** → dùng candidate đó.
+4. Nếu **nhiều candidate cùng hợp lệ** → FAIL:
+   - `status = FAIL`
+   - `reason_code = ERR_AMBIGUOUS_NEXT_STEP`
+   - **KHÔNG hỏi A/B/C**. Chỉ báo danh sách candidate + yêu cầu `/chay <video_id>` cụ thể.
+
+Nếu user nhập `/chay <video_id>` rõ ràng → dùng đúng video_id đó. **KHÔNG tự đổi sang video khác** dù memory ghi active là cái khác.
+
+### C. Locked State Matrix (Deterministic Routing)
+
+Controller PHẢI đọc report/state gần nhất theo thứ tự (dừng ngay khi tìm được):
+
+1. `waiting_state.json` nếu có (suspended/pending operator)
+2. Latest agent report JSON (per-run artifact)
+3. `facebook_reels_publish_plan.json`
+4. Final preview path / publish plan path
+5. `demo_match/match_result.json`
+6. Script/subtitle artifacts (`script_ai_v1_extended.json`, `subtitle_overlay_plan.json`)
+7. `shopee_product_card.json` + `demo_match/match_search_plan.json`
+8. `TRANG_THAI_VFOS_HIEN_TAI.md` fallback
+
+Trạng thái routing bắt buộc:
+
+| Latest status | Hành động Controller | reason_code |
+|---|---|---|
+| `SUCCESS` | Đọc `next_agent` trong contract. Nếu hợp lệ + không forbidden → chạy. Missing → suy từ Artifact Matrix. Vẫn không rõ → FAIL. | — / `ERR_NEXT_AGENT_MISSING` |
+| `SUCCESS_MATCH_CONFIRMED` | Chuyển Script & Claim Safety Agent nếu chưa có script; có script → Audio & Assembly Agent. KHÔNG hỏi user. | — |
+| `SUCCESS_MATCH_NEEDS_REVIEW` | `status=SUSPENDED` + `reason_code=ERR_USER_APPROVAL_REQUIRED`. KHÔNG chạy tiếp. Timeout 30 phút → `FAILED` + `ERR_SYS_EXIT_GATE_TIMEOUT`. | `ERR_USER_APPROVAL_REQUIRED` / `ERR_SYS_EXIT_GATE_TIMEOUT` |
+| `SUSPENDED` | Kiểm `waiting_state` timestamp. Còn trong timeout → SUSPENDED + `"Use /chay <video_id> resume after resolving blocker"`. Quá 30 phút → FAILED + `ERR_SYS_EXIT_GATE_TIMEOUT`. KHÔNG chạy agent thường. | `ERR_SYS_EXIT_GATE_TIMEOUT` (nếu timeout) |
+| `FAILED` | KHÔNG tự chạy lại agent cũ. `status=FAIL` + `reason_code=ERR_PREVIOUS_RUN_FAILED_LOCKED`. Chỉ unlock bằng `--force-retry` hoặc `--reset`. | `ERR_PREVIOUS_RUN_FAILED_LOCKED` |
+| `publish_plan` tồn tại + `publish_status="not_published"` + `needs_user_review=true` + `final_video_path` tồn tại | `status=DONE_WAITING_USER_REVIEW`. KHÔNG render lại. KHÔNG publish. Báo `final_video_path` + manual review step. | — |
+| `final_video_path` tồn tại NHƯNG publish_plan thiếu | `next_agent=Publish Plan & Policy Agent` (Facebook Publish Plan Agent). | — |
+| `match_result` FAIL / `ERR_SOURCE_NOT_FOUND` | `status=FAIL`. KHÔNG tự search lại nếu không có `--force-retry`. Báo blocker. | `ERR_SOURCE_NOT_FOUND` |
+
+### D. Artifact Matrix (fallback infer next_agent)
+
+Khi không có latest status rõ, suy `next_agent` từ artifact present:
+
+| Có | Chưa có | next_agent / status |
+|---|---|---|
+| `shopee_product_card.json` + `demo_match/match_search_plan.json` | `demo_match/match_result.json` | **Source Match Agent** (Demo Match Agent) |
+| `match_result.json` (MATCH_CONFIRMED) | `script_ai_v1_extended.json` | **Script & Claim Safety Agent** (Script QC Agent) |
+| `script_ai_v1_extended.json` + `subtitle_overlay_plan.json` | final preview / `voice_sync_manifest` | **Audio & Assembly Agent** (Voice/BGM/Render) |
+| final preview | `facebook_reels_publish_plan.json` | **Publish Plan & Policy Agent** (Facebook Publish Plan Agent) |
+| `facebook_reels_publish_plan.json` (`not_published` + `needs_user_review=true`) | — | `DONE_WAITING_USER_REVIEW` — không chạy thêm |
+| `match_result` = FAIL | — | `FAIL_SOURCE_NOT_FOUND` — không tự retry nếu không `--force-retry` |
+| `match_result` = SUSPENDED | — | `SUSPENDED` — cần resume/unblock |
+| Final video path tồn tại + publish_plan trỏ đúng path | — | `DONE_WAITING_USER_REVIEW` — KHÔNG render lại |
+
+### E. No Rerender Rule (HARD)
+
+Nếu final video tồn tại VÀ `facebook_reels_publish_plan.json` trỏ đúng `final_video_path`:
+
+- **KHÔNG** render lại
+- **KHÔNG** chạy Audio & Assembly Agent lại
+- **KHÔNG** sửa subtitle/script
+- `status = DONE_WAITING_USER_REVIEW`
+
+Chỉ rerender khi user gõ explicit:
+- `/chay <video_id> rerender`
+- `/chay <video_id> final-reels-render`
+- Hoặc task explicit có chữ "rerender" / "render lại" / "render mới"
+
+### F. Infinite Loop Prevention (HARD)
+
+Nếu một agent đã FAILED ở run hiện tại, `/chay` thường **KHÔNG** được kích hoạt lại agent đó. Áp dụng cho mọi reason_code, đặc biệt:
+
+- `ERR_SCR_MAJOR_TIMING_OVERFLOW`
+- `ERR_SOURCE_NOT_FOUND`
+- `ERR_SOURCE_DOWNLOAD_FAILED`
+- `ERR_RENDER_QC`
+- `ERR_OPENAI_API_KEY_MISSING`
+- `ERR_VOICE_SYNC`
+- `ERR_SHOPEE_THROTTLED`
+
+Khi user gõ lại `/chay <video_id>` mà latest state FAILED:
+- `status = FAIL`
+- `reason_code = ERR_PREVIOUS_RUN_FAILED_LOCKED`
+- `action_taken = none`
+- `next_step_short = "Use --force-retry or --reset if operator intentionally wants retry."`
+
+Retry CHỈ được phép khi:
+1. User dùng `--force-retry`
+2. `retry_count` chưa vượt `max_retry`
+3. Blocker KHÔNG thuộc loại **hard forbidden**: secret leak, publish permission, auth required chưa resolved.
+
+**Retry metadata bắt buộc** (ghi vào artifact retry log của run):
+- `previous_failed_agent`
+- `previous_reason_code`
+- `retry_count`
+- `retry_allowed: true/false`
+- `force_retry_used: true/false`
+
+Cấm: gọi API vô tội vạ, retry OpenAI/ElevenLabs/yt-dlp/ffmpeg vô hạn, spam network.
+
+### G. Cold Start Logic
+
+Khi KHÔNG có artifact/report nào trong:
+- `production/_runs/<run_id>/` (SoT mới, Phần 24)
+- HOẶC `production/batch_001/<video_id>/` (pre-migration)
+
+Controller KHÔNG được báo "thiếu artifact" ngay. Phải phân biệt input:
+
+1. **Có Shopee URL** (`/chay shopee <url>` / `/chay product <url>` / `/chay <video_id> shopee <url>`):
+   → Cold Start Commerce Product Agent (Shopee Product Agent).
+   → Link-first flow: resolve link → validate affiliate owner → create Product Card → 6-trục scoring.
+   → `PRODUCT_SELECTED` → tạo `match_search_plan`.
+   → Không đủ data → `PRODUCT_NEEDS_USER_REVIEW` / FAIL rõ.
+
+2. **Có keyword** (`/chay keywords "<keyword>"`):
+   → Product Discovery Mode.
+   → KHÔNG bịa product data.
+   → Không tìm được product đủ data → `FAIL` + `ERR_PRODUCT_DATA_INSUFFICIENT`.
+
+3. **Không URL, không keyword, không active video**:
+   → `status = FAIL`
+   → `reason_code = ERR_COLD_START_INPUT_MISSING`
+   → `action_taken = none`
+   → `next_step_short = "Provide Shopee link using /chay shopee <url> or set active_video_id."`
+   → **KHÔNG hỏi A/B/C**.
+
+### H. Permission Boundary mặc định (Auto-Run Controller scope)
+
+**Allowed**:
+- Đọc artifact
+- Chạy agent kế tiếp nếu trong scope của Locked State Matrix
+- Tạo JSON/MD artifact trong video_id hiện tại
+- Search / download / extract nếu agent tương ứng cần và không bị cấm rõ
+- Render preview nếu Audio & Assembly Agent được `next_agent` rõ
+- Dùng OpenAI API cho subtitle/script nếu `OPENAI_API_KEY` present VÀ task thuộc Script & Claim Safety Agent
+- Dùng targeted browser click trong Commerce Product Agent NẾU user đã login thủ công và task cho phép
+
+**Forbidden** (HARD — vi phạm = FAIL):
+- KHÔNG publish Facebook thật
+- KHÔNG gọi Facebook live publish API
+- KHÔNG dùng Shopee/Facebook cookie nếu chưa được phép rõ
+- KHÔNG nhập password / OTP
+- KHÔNG lưu password vào `.env`
+- KHÔNG in cookie / token / API key (kể cả masked > 12 char)
+- KHÔNG `git clean` / `git reset --hard` / `git stash` / `git push --force`
+- KHÔNG commit trừ khi lệnh là `/chay commit` HOẶC prompt user cho phép rõ (Phần 24 Git Agent rule)
+- KHÔNG mở Con số 2
+- KHÔNG đổi sản phẩm nếu current product đang active
+- KHÔNG hỏi user A/B/C
+- KHÔNG retry vô hạn
+- KHÔNG random click tự do trên dashboard thật
+
+### I. OpenAI Viral Content Style Policy (Script & Claim Safety Agent)
+
+> **Áp dụng cho**: Script QC Agent (alias **Script & Claim Safety Agent** sau Round 25) khi viết voice script / caption / subtitle / overlay text. Bổ sung GUARD 7 R3/R5 — KHÔNG thay thế.
+
+**Style mục tiêu** (viral nhưng claim-safe):
+- Hài hước, vui tươi, dí dỏm
+- Hơi bá đạo (cheeky), bắt trend nhẹ
+- Câu ngắn dễ đọc trên Reels (3–7 từ / dòng subtitle)
+- Nhiều keyword có khả năng viral nhưng KHÔNG spam
+- Giữ chất review tự nhiên, KHÔNG quảng cáo thô
+
+**Keyword strategy**:
+- Dùng keyword sản phẩm thật (tên SKU, tính năng quan sát được)
+- Dùng keyword ngữ cảnh VN: "góc học tập", "dân văn phòng", "mùa nóng", "gadget mini", "món lạ Shopee", "dưới 40k", "test thực tế"
+- KHÔNG nhồi hashtag hoặc keyword vô nghĩa
+
+**Hard claim-safety BLOCKLIST** (subtitle/script chứa = REJECT variant):
+
+| Banned phrase | Lý do |
+|---|---|
+| "an toàn tuyệt đối" | absolute claim |
+| "không bao giờ kẹt tóc / kẹt tay / bị kẹt" | absolute negative claim |
+| "mát như điều hòa" | misleading comparison |
+| "siêu mạnh nhất" / "tốt nhất" / "rẻ nhất" / "số 1" / "duy nhất" | banned absolute (đã có trong GUARD 7 R3) |
+| "pin trâu cả ngày" | unverifiable spec |
+| "thay thế điều hòa" | misleading product claim |
+| "trị bệnh / làm đẹp / sức khỏe" (không có bằng chứng) | medical/health claim |
+
+**OpenAI subtitle workflow (Script & Claim Safety Agent)**:
+1. OpenAI tạo N variant (eg N=3..5).
+2. Agent PHẢI scan từng variant với blocklist trên + GUARD 7 R3/R5.
+3. Reject variant có claim rủi ro. **KHÔNG được ghi `"0 rejected"` nếu thực tế có variant rủi ro** — phải log đúng `rejected_count`.
+4. Selected subtitle PHẢI ưu tiên observable facts ("không thấy cánh", "test bằng giấy", "để bàn gọn").
+5. Nếu OpenAI tạo câu hay nhưng rủi ro → **reject, KHÔNG tự hợp thức hóa** bằng cách thêm "có thể" / "mình thấy" để né (đó là loophole).
+
+**Ví dụ style tốt** (claim-safe + viral tone):
+- "Ủa quạt gì mà không thấy cánh?"
+- "Test bằng giấy cho khỏi nói điêu"
+- "Không lộ cánh — nhìn hơi ảo nha"
+- "Để bàn gọn ghê"
+- "Dưới 40k mà có trò hay phết"
+
+**Subtitle metadata bắt buộc ghi** (vào `subtitle_overlay_plan.json` hoặc artifact tương ứng):
+```
+{
+  "variants_generated": <int>,
+  "variants_rejected": <int>,
+  "rejection_reasons": [{"variant_id": "...", "reason": "banned absolute: 'tốt nhất'"}, ...],
+  "selected_variant_id": "...",
+  "claim_safety_pass": true
+}
+```
+
+### J. Report Format ngắn (Auto-Run Controller default output)
+
+Mỗi lần `/chay` chạy xong CHỈ báo ngắn (8 field):
+
+```
+1. detected_video_id        : yt_NNN
+2. detected_next_agent      : <agent name | none>
+3. action_taken             : ran <agent> | none | reported_only | resumed | committed | stopped
+4. status                   : SUCCESS | FAIL | SUSPENDED | DONE | DONE_WAITING_USER_REVIEW
+5. reason_code              : <code | null>
+6. output_artifacts         : [paths…]
+7. next_step_short          : <one line>
+8. git_status_summary       : clean | <N modified, M untracked>
+```
+
+KHÔNG báo cáo dài trừ khi:
+- `status = FAIL`
+- `status = SUSPENDED`
+- Security issue (cookie leak, secret in staging, publish API call attempted)
+- User yêu cầu chi tiết (`/chay <video_id> status`)
+
+Khi `status = DONE_WAITING_USER_REVIEW` báo thêm:
+- `final_video_path`
+- `caption_draft`
+- `affiliate_link` (hoặc `"needs_user_input"`)
+- `publish_status`
+- `next_step_short = "User review/manual publish"`
+
+### K. Reason Codes (canonical enum)
+
+**SYSTEM**:
+- `ERR_AMBIGUOUS_NEXT_STEP` — nhiều candidate cùng hợp lệ / args không match enum
+- `ERR_COLD_START_INPUT_MISSING` — không URL, không keyword, không active video
+- `ERR_NEXT_AGENT_MISSING` — latest SUCCESS nhưng contract thiếu `next_agent` + artifact matrix không suy ra được
+- `ERR_PREVIOUS_RUN_FAILED_LOCKED` — agent FAILED ở run hiện tại, cần `--force-retry` / `--reset`
+- `ERR_SYS_EXIT_GATE_TIMEOUT` — `waiting_state` quá 30 phút hoặc timeout_policy
+- `ERR_RETRY_BUDGET_EXHAUSTED` — `retry_count` vượt `max_retry`
+- `ERR_OPENAI_API_KEY_MISSING` — script/subtitle workflow cần key nhưng `OPENAI_API_KEY` không set
+- `ERR_USER_APPROVAL_REQUIRED` — `MATCH_NEEDS_REVIEW` / publish review pending
+
+**SCRIPT**:
+- `ERR_SCR_MAJOR_TIMING_OVERFLOW` — block budget overflow >2 từ ở CTA hoặc Voice Sync MAJOR sau remediation
+- `ERR_SUBTITLE_CLAIM_RISK` — subtitle variant chứa banned claim (blocklist Section I)
+
+**RENDER**:
+- `ERR_FINAL_VIDEO_EXISTS_NO_RERENDER` — yêu cầu render nhưng final video đã tồn tại, cần lệnh rerender explicit
+- `ERR_RENDER_QC_FAILED` — ffmpeg QC fail (streams / duration mismatch / clipping)
+
+**COMMERCE**:
+- `ERR_PRODUCT_DATA_INSUFFICIENT` — Discovery Mode không tìm được product đủ field
+- `ERR_AFFILIATE_OWNER_MISMATCH` — affiliate link verify owner mismatch
+- `ERR_AUTH_REQUIRED` — Shopee/Facebook auth chưa resolved
+- `ERR_SOURCE_NOT_FOUND` — Demo Match không tìm được clip nguồn tương đồng
+- `ERR_SOURCE_DOWNLOAD_FAILED` — yt-dlp / download fail
+- `ERR_SHOPEE_THROTTLED` — Shopee API rate limit / 403
+
+### L. Self-Apply checklist (Controller chạy trước khi báo kết quả)
+
+```
+[ ] Đã parse args theo Command Aliases (Section A)? Args không match → ERR_AMBIGUOUS_NEXT_STEP?
+[ ] Nếu /chay không args → đã xác định active_video_id (Section B) hoặc FAIL?
+[ ] Đã đọc state theo Locked State Matrix (Section C) theo đúng thứ tự ưu tiên?
+[ ] Nếu FAILED ở run hiện tại → đã chặn bằng ERR_PREVIOUS_RUN_FAILED_LOCKED (Section F)?
+[ ] Nếu final video + publish_plan tồn tại → đã trả DONE_WAITING_USER_REVIEW (Section E), KHÔNG rerender?
+[ ] Nếu cold start không input → ERR_COLD_START_INPUT_MISSING (Section G), KHÔNG hỏi A/B/C?
+[ ] Action_taken không vi phạm Permission Boundary (Section H)?
+[ ] Nếu chạy Script & Claim Safety Agent → đã apply blocklist (Section I), log rejected_count thật?
+[ ] Report 8 field ngắn (Section J) — không báo dài khi không cần?
+[ ] reason_code (nếu có) thuộc canonical enum (Section K)?
+[ ] Commit CHỈ khi /chay commit hoặc prompt rõ (Phần 24 mục 6) — KHÔNG tự commit "vì đã xong"?
+```
 
 ---
 
@@ -1093,6 +1407,17 @@ Bắt buộc chạy trước khi báo "hoàn thành":
 [ ] (Shopee Discovery Mode only) Không bịa link Shopee/product/giá/hoa hồng/sales/rating? Nếu không có quyền lấy data Shopee trực tiếp → đã báo limitation rõ + xin user dán link Shopee?
 [ ] (Shopee Discovery Mode only) Tự chọn candidate khi ≥1 PRODUCT_SELECTED rõ — KHÔNG hỏi user lựa chọn nhỏ khi memory + scoring đủ rõ?
 [ ] (Lane scope) KHÔNG hỏi user "Shopee hay TikTok Shop" — TikTok Shop là future lane defer (Phần 22), mặc định Shopee?
+[ ] (Round 25 Auto-Run Controller) Đã parse args theo Command Aliases (Section A)? Args không match → ERR_AMBIGUOUS_NEXT_STEP, không đoán?
+[ ] (Round 25) Active video resolve theo priority B (memory → scan)? Nhiều candidate → FAIL ERR_AMBIGUOUS_NEXT_STEP, không hỏi A/B/C?
+[ ] (Round 25 Locked State Matrix) Đã đọc state theo đúng thứ tự ưu tiên 1–8 (Section C)? Trạng thái match đúng deterministic table?
+[ ] (Round 25 No Rerender) Final video + publish_plan tồn tại → trả DONE_WAITING_USER_REVIEW, không rerender trừ lệnh explicit?
+[ ] (Round 25 Infinite Loop) Agent FAILED ở run hiện tại → block bằng ERR_PREVIOUS_RUN_FAILED_LOCKED? Chỉ unlock khi --force-retry / --reset?
+[ ] (Round 25) retry_count, retry_allowed, force_retry_used đã ghi vào artifact retry log? Không vượt max_retry?
+[ ] (Round 25 Cold Start) Không artifact + có URL Shopee → cold start Commerce Product Agent? Có keyword → Discovery Mode? Không gì → ERR_COLD_START_INPUT_MISSING?
+[ ] (Round 25 Permission) Action không vi phạm Permission Boundary (Section H — no publish API, no cookie misuse, no force push, no commit ngoài /chay commit)?
+[ ] (Round 25 Subtitle) Variants generated/rejected log đúng số thật? Selected variant pass blocklist Section I (banned absolute, medical claim, misleading)?
+[ ] (Round 25 Report Format) Report ngắn 8 field khi SUCCESS/DONE? Báo dài chỉ khi FAIL/SUSPENDED/security/user yêu cầu chi tiết?
+[ ] (Round 25 Reason Codes) reason_code thuộc canonical enum (Section K)? Không tự bịa code mới?
 ```
 
 ---
@@ -1216,6 +1541,32 @@ KHÔNG BAO GIỜ:
     `/chay` thật sự chạy — phải ghi "SoT path: `production/batch_001/
     <video_id>/` (pre-migration, Phần 24 spec sẽ chuyển `production/
     _runs/<run_id>/`)" để tracking minh bạch.
+  × (Round 25 AUTO-RUN CONTROLLER) Hỏi user A/B/C khi nhiều candidate
+    cùng hợp lệ — phải FAIL với `ERR_AMBIGUOUS_NEXT_STEP` + báo danh
+    sách candidate, KHÔNG đoán.
+  × (Round 25) Rerender khi final video đã tồn tại và publish_plan trỏ
+    đúng path — phải trả `DONE_WAITING_USER_REVIEW`, chỉ rerender khi
+    user gõ explicit `/chay <video_id> rerender` / `final-reels-render`.
+  × (Round 25) Tự retry agent đã FAILED ở run hiện tại — phải block
+    bằng `ERR_PREVIOUS_RUN_FAILED_LOCKED`, chỉ unlock bằng
+    `--force-retry` hoặc `--reset`.
+  × (Round 25) Retry vô hạn OpenAI / ElevenLabs / yt-dlp / ffmpeg /
+    Shopee fetch — `retry_count` PHẢI ghi vào artifact, vượt
+    `max_retry` → `ERR_RETRY_BUDGET_EXHAUSTED`.
+  × (Round 25) Tự chuyển sang video_id khác khi user nhập
+    `/chay <video_id>` cụ thể — phải dùng đúng video_id đó dù memory
+    có ghi active là cái khác.
+  × (Round 25) Report dài khi `status = SUCCESS` / `DONE` thường —
+    chỉ 8 field ngắn (Auto-Run Controller Section J). Báo dài chỉ
+    khi FAIL / SUSPENDED / security issue / user yêu cầu chi tiết.
+  × (Round 25 Subtitle policy) Log `"0 rejected"` khi thực tế có
+    variant chứa banned claim — phải log đúng `rejected_count` +
+    `rejection_reasons`. KHÔNG hợp thức hóa variant rủi ro bằng cách
+    thêm "có thể" / "mình thấy" để né (loophole, vi phạm GUARD 7 R3).
+  × (Round 25 Cold start) Báo "thiếu artifact" ngay khi không có
+    artifact trong `production/_runs/<run_id>/` hoặc
+    `production/batch_001/<video_id>/` — phải phân biệt input
+    (URL Shopee / keyword / không có gì) rồi trả reason_code đúng.
 
 CHỈ LÀM TRONG SCOPE:
   ✓ 1 video mỗi lần /chay
