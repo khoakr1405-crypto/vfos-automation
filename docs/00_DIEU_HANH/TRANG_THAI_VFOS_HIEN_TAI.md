@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-05-26 (Phần 24 — VFOS Agent Architecture v0: spec 5 agent + Git & Artifact Agent commit-only-when-prompted + artifact SoT `production/_runs/<run_id>/`)
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `8bcdebb` (mới nhất pre-Phần-24). Phần 24 commit `docs: define vfos agent architecture v0` sẽ bump khi push.
+> **Cập nhật lần cuối**: 2026-05-26 (Phần 24 — VFOS Agent Architecture v0: spec 5 agent + yt_014 Shopee-First end-to-end voice-sync BGM-mix preview + publish plan completed)
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `daf18ee7e29021c120f4f9639da4d6f4ac3c1298` (mới nhất post-Phần-24 script/subtitle)
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -1475,9 +1475,11 @@ Vòng này sửa skill + docs để `/chay` tự quyết định + tự retry + 
 >
 > **MỐC ĐÃ ĐẠT 2026-05-24**: 6 video qua pipeline (yt_005, yt_006, yt_007, yt_009, yt_010 Video-First + yt_011 Shopee-First). Phần 16 AUTO-SOURCE RETRY verified. Phần 22 Shopee-First Lane verified end-to-end. Phần 23 hardening đã rule-ize lessons learned + agent-ready boundaries cho 4 sub-agent tương lai.
 >
-> **MỐC ĐÃ ĐẠT 2026-05-26 (Phần 24)**: Agent Architecture v0 spec đã chốt — 5 agent boundary (4 cũ + Git & Artifact Agent), artifact SoT path `production/_runs/<run_id>/`, Git Agent commit-only-when-prompted rule. Spec đầy đủ ở `docs/00_DIEU_HANH/VFOS_AGENT_ARCHITECTURE_V0.md`. KHÔNG có code multi-agent, KHÔNG migrate artifact cũ.
+> **MỐC ĐÃ ĐẠT 2026-05-26 (Phần 24)**: Agent Architecture v0 spec đã chốt — 5 agent boundary (4 cũ + Git & Artifact Agent), artifact SoT path `production/_runs/<run_id>/`, Git Agent commit-only-when-prompted rule. Spec đầy đủ ở `docs/00_DIEU_HANH/VFOS_AGENT_ARCHITECTURE_V0.md`.
 >
-> **Bước tiếp theo duy nhất: USER quyết định strategy tiếp theo.**
+> **TRẠNG THÁI yt_014 (2026-05-26)**: **Shopee-First Audio Assembly & publish plan success** theo Agent Architecture v0. Đã tạo voice_sync_manifest, voice_timeline.mp3, mixed_audio.mp3, preview_vi.mp4 và facebook_reels_publish_plan.json. Technical QC hoàn toàn đạt: duration mismatch = 0.134s (<0.5s), max_volume = -4.5 dB (no clipping), 0 leak, 2 streams (H264, AAC).
+>
+> **Bước tiếp theo duy nhất: USER duyệt publish plan và quyết định strategy tiếp theo.**
 >
 > Có 6 hướng khả thi (KHÔNG tự chọn — chờ user quyết):
 >
@@ -1576,9 +1578,9 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mốc tại thời điểm cập nhật trạng thái | `8bcdebb` (pre-Phần-24). Phần 24 commit `docs: define vfos agent architecture v0` sẽ bump hash khi push. |
+| Commit mốc tại thời điểm cập nhật trạng thái | `daf18ee7e29021c120f4f9639da4d6f4ac3c1298` (mới nhất post-Phần-24 script/subtitle) |
 | Remote | `origin` (GitHub) |
-| Sync status | Phần 11–23 + Round 2A/2B/2C + Round 3A/3C ĐÃ PUSH. Phần 24 (Agent Architecture v0 spec) ĐANG commit (chỉ docs + SKILL.md, KHÔNG đụng code pipeline, KHÔNG migrate artifact, KHÔNG tạo agent file thật). Bước tiếp: user quyết định 1 trong 6 hướng ở mục 7. |
+| Sync status | Phần 11–23 + Round 2A/2B/2C + Round 3A/3C ĐÃ PUSH. Phần 24 yt_014 audio-assembly & publish plan completed. Đang trình user duyệt publish plan. |
 
 **Trạng thái artifacts production** (tính đến 2026-05-20):
 - `production/batch_001/yt_007/` (text artifacts): **ĐÃ commit** ở `df1609e` — scene_input, script v1/v2/v3, manifest BGM. Dùng làm reference cho vòng Voice Sync autonomy.

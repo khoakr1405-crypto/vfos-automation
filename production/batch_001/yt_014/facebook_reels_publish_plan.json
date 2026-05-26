@@ -1,0 +1,25 @@
+{
+  "video_id": "yt_014",
+  "created_at": "2026-05-26T14:16:00.000Z",
+  "phase_ref": "Phần 23 Publish Plan v0",
+  "platform": "facebook_reels",
+  "affiliate_platform": "shopee",
+  "lane": "shopee_first",
+  "product_card_path": "production/batch_001/yt_014/shopee_product_card.json",
+  "final_video_path": "production/batch_001/yt_014/bgm_mix_v1/yt_014_voice_blocks_bgm_preview_vi.mp4",
+  "caption_draft": "Mình vừa thử chiếc quạt không cánh để bàn mini T10 Turbo này, thiết kế độc lạ và gió thổi mát mát êm ái qua giấy mỏng. Để trên góc học tập hay bàn làm việc là chuẩn bài luôn. Ai quan tâm thì mình để link Shopee ở phần mô tả nha!",
+  "cta_text": "Link mình để ở phần mô tả nha.",
+  "shopee_affiliate_url": "https://s.shopee.vn/9fI1rVFybA",
+  "hashtags": [
+    "#dogiadung",
+    "#gadgetmini",
+    "#meovat",
+    "#quatkhongcanh"
+  ],
+  "publish_status": "not_published",
+  "needs_user_review": true,
+  "publish_blockers": [
+    "user_review_required"
+  ],
+  "notes": "Caption drafted with soft tone and verified affiliate link."
+}
