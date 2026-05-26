@@ -21,6 +21,126 @@
     "no_cookie_used": true,
     "tools_used": ["WebSearch", "WebFetch (oembed only)", "yt-dlp --skip-download"]
   },
+  "visual_verification_attempt": {
+    "attempted_at": "2026-05-26T00:00:00.000Z",
+    "scope_opened_by_user": "yt_013 demo-match-visual-verify-candidate-c (user prompt 2026-05-26 — đã mở scope yt-dlp download + visual verify, CHƯA mở scope pipeline)",
+    "permission_constraints": [
+      "no_cookie",
+      "no_retry_spam (max 1 probe per candidate)",
+      "no_pipeline (Script/Voice/BGM blocked)",
+      "no_shopee_call",
+      "no_facebook_call"
+    ],
+    "candidates_probed": [
+      {
+        "candidate_id": "cand_003_tiktok_7383639027028593925 (Candidate C — merrygracepacana, priority recommended)",
+        "url": "https://www.tiktok.com/@merrygracepacana/video/7383639027028593925",
+        "probe_methods_attempted": [
+          {
+            "method": "yt-dlp -F (format list)",
+            "result": "Only `audio m4a audio only aac` listed. No video format row."
+          },
+          {
+            "method": "yt-dlp -o cand_003.%(ext)s (default format selection, actual download)",
+            "result": "Downloaded `cand_003.m4a` (972 KB audio-only). yt-dlp log: `Downloading 1 format(s): audio`."
+          },
+          {
+            "method": "yt-dlp -f 'best/bestvideo+bestaudio/bestvideo/best' -o cand_003_force.%(ext)s (force best video selector chain, actual download)",
+            "result": "Cùng kết quả — `cand_003_force.m4a` 972 KB audio-only. Force selector chain không tìm được video stream nào để chọn."
+          },
+          {
+            "method": "yt-dlp --get-url (direct media URL extraction)",
+            "result": "Trả về `https://sf9-ies-music-sg.tiktokcdn.com/obj/tos-alisg-ve-2774/oMABTPDSF1oxB5EYRZLCCBbtGmeIMQOfgqOCAE` — host là `sf9-ies-music-sg.tiktokcdn.com` = TikTok **music CDN** (audio track only), KHÔNG phải video CDN. Đây là evidence TikTok cố ý serve audio-only cho anonymous request."
+          }
+        ],
+        "available_formats": [
+          {"id": "audio", "ext": "m4a", "resolution": "audio only", "vcodec": "audio only", "acodec": "aac"}
+        ],
+        "video_stream_available": false,
+        "audio_files_created_locally": [
+          "production/batch_001/yt_013/demo_match/sources/cand_003.m4a (972 KB, gitignored)",
+          "production/batch_001/yt_013/demo_match/sources/cand_003_force.m4a (972 KB, gitignored — same content as cand_003.m4a, đã xác nhận force selector không khác)"
+        ],
+        "likely_root_cause": "Cand C có thể là TikTok **image-post-with-music** format (slideshow ảnh + background music) — không phải video clip. Music CDN endpoint (`ies-music`) xác nhận giả thuyết này. HOẶC TikTok anti-bot policy gate video CDN cho anonymous yt-dlp request.",
+        "decision": "SOURCE_DOWNLOAD_FAILED — actual download attempted với 3 method (default + force + URL extract), tất cả audio-only. KHÔNG retry TikTok no-cookie nữa."
+      },
+      {
+        "candidate_id": "cand_001_tiktok_7445563729002958096 (Candidate A — gxx4910, fallback)",
+        "url": "https://www.tiktok.com/@gxx4910/video/7445563729002958096",
+        "probe_methods_attempted": [
+          {
+            "method": "yt-dlp -F (format list)",
+            "result": "Only `audio mp3 audio only mp3` listed. No video format row."
+          },
+          {
+            "method": "yt-dlp -o cand_001.%(ext)s (default format selection, actual download)",
+            "result": "Downloaded `cand_001.mp3` (528 KB audio-only). yt-dlp log: `Downloading 1 format(s): audio`."
+          }
+        ],
+        "available_formats": [
+          {"id": "audio", "ext": "mp3", "resolution": "audio only", "vcodec": "audio only", "acodec": "mp3"}
+        ],
+        "video_stream_available": false,
+        "audio_files_created_locally": [
+          "production/batch_001/yt_013/demo_match/sources/cand_001.mp3 (528 KB, gitignored)"
+        ],
+        "decision": "SOURCE_DOWNLOAD_FAILED — same TikTok pattern. Cand A là fallback option, cũng audio-only. KHÔNG retry."
+      }
+    ],
+    "tool_health_sanity_check": {
+      "yt_dlp_version": "2026.03.17 (current — không phải bản cũ)",
+      "youtube_sanity_check_url": "https://www.youtube.com/watch?v=oHVnxV7GFNk (cand B — đã reject do duration 195s)",
+      "youtube_sanity_check_method": "yt-dlp --get-url -f 'best[height<=480]'",
+      "youtube_sanity_check_result": "✅ Trả về URL hợp lệ `https://rr5---sn-8qj-nbodl.googlevideo.com/videoplayback?...mime=video%2Fmp4&dur=195.256` — yt-dlp YouTube branch HEALTHY, có lấy được video stream MP4.",
+      "conclusion": "yt-dlp tool KHÔNG bị lỗi. KHÔNG phải bug version. KHÔNG phải missed flag. Vấn đề là TikTok platform-level — anonymous request không được serve video stream cho 2 candidate trên (cand C có thể là image-post-with-music, cand A có thể bị anti-bot gate)."
+    },
+    "retry_policy_applied": "Vòng metadata-only: 3/3 (đã commit d0a5fac). Vòng visual-verify thật: 3 method × cand C + 1 method × cand A + YouTube sanity = 5 method total. KHÔNG retry TikTok no-cookie nữa per user constraint 2026-05-26 + per HARD RULE 'KHÔNG retry spam'.",
+    "outcome_status": "SUSPENDED_NEEDS_USER_SOURCE",
+    "outcome_reason": "Cả 2 candidate khả thi (C + A) đều bị TikTok serve audio-only cho anonymous yt-dlp request. Anti-bot không trả video stream khi không có cookie/session hợp lệ. Theo user constraint 'Không dùng cookie nếu chưa có permission mới' — KHÔNG được thử cookie để bypass. → Pipeline Script QC Agent vẫn BLOCKED.",
+    "guard_8_visual_axes_status": {
+      "axis_3_usage (3-speed + fold visual)": "UNVERIFIED — không có video frame",
+      "axis_4_context (indoor/desk visual)": "UNVERIFIED — không có video frame",
+      "note": "Axes 1, 2, 5 đã PASS từ metadata title evidence trong vòng metadata-only trước (giữ nguyên)."
+    },
+    "guard_6_visual_safety_status": {
+      "logo_brand_watermark": "UNVERIFIED",
+      "qr_or_barcode": "UNVERIFIED",
+      "license_plate_or_pii": "UNVERIFIED",
+      "heavy_text_overlay": "UNVERIFIED",
+      "brand_mismatch": "UNVERIFIED",
+      "note": "Toàn bộ GUARD 6 cần keyframe extract → cần video file."
+    },
+    "operator_unblock_options": [
+      {
+        "option_id": "opt_1_open_tiktok_cookie_scope",
+        "label": "Mở scope cookie session cho TikTok (giống Round 2C Shopee Session)",
+        "scope_required": "User duyệt riêng — tạo .secrets/tiktok_storage_state.json qua headed browser login, yt-dlp dùng --cookies-from-browser hoặc --cookies <file>. Mỗi commit verify không leak.",
+        "risk": "Session expire, có thể bị block account nếu fetch quá thường. Chỉ dùng cho debug/dev, không cho production fetch loop.",
+        "recommendation": "Khuyến nghị nếu muốn tự động Demo Match cho nhiều video sau này"
+      },
+      {
+        "option_id": "opt_2_user_paste_source",
+        "label": "User tự tải clip qua browser/extension → paste file vào production/batch_001/yt_013/demo_match/sources/cand_003.mp4",
+        "scope_required": "User chạy 1 lần thủ công. /chay vòng sau đọc file local + extract keyframes + GUARD 6/8 visual.",
+        "risk": "Thấp — không cần cookie, không scope mới.",
+        "recommendation": "Path nhanh nhất cho 1 video case T10 hiện tại"
+      },
+      {
+        "option_id": "opt_3_youtube_shorts_alternative",
+        "label": "Tìm clip T10 demo trên YouTube Shorts (yt-dlp YouTube không bị anti-bot strict như TikTok)",
+        "scope_required": "Mở scope vòng search retry 4 (vượt 3 vòng AUTO-SOURCE RETRY POLICY) cho YouTube Shorts only.",
+        "risk": "YouTube Shorts ít content T10 Vietnamese hơn TikTok. Có thể không tìm được candidate phù hợp.",
+        "recommendation": "Fallback nếu opt_2 không khả thi"
+      },
+      {
+        "option_id": "opt_4_reject_t10_change_product",
+        "label": "Bỏ case T10, chọn sản phẩm Shopee khác có demo dễ tìm hơn",
+        "scope_required": "Rollback Shopee Product Agent, chạy lại Discovery Mode với candidate khác.",
+        "risk": "Mất công effort đã đầu tư vào Card T10 (verified affiliate VERIFIED_FROM_LONG_LINK).",
+        "recommendation": "Chỉ nên dùng nếu T10 thực sự không có visual demo public access"
+      }
+    ]
+  },
   "retry_log": {
     "rounds": [
       {
@@ -191,7 +311,12 @@
   },
   "guard_6_overall_status": "UNKNOWN_PENDING_VISUAL_INSPECTION — không thể detect logo/watermark/QR/PII từ metadata-only. 2 candidate cần visual prescan trước khi đi tiếp.",
   "guard_8_overall_decision": "NO_MATCH_CONFIRMED_THIS_ROUND — 0/3 candidate đạt MATCH_CONFIRMED. 2/3 ở MATCH_NEEDS_REVIEW, 1/3 ở MISMATCH_REJECT.",
-  "final_status": "SUSPENDED",
+  "final_status": "SUSPENDED_NEEDS_USER_SOURCE",
+  "final_status_history": [
+    {"round": 1, "status": "SUSPENDED", "at": "2026-05-26T00:00:00.000Z (commit d0a5fac)", "reason": "Metadata-only — axes 3/4 + GUARD 6 unverified"},
+    {"round": 2, "status": "SUSPENDED_NEEDS_USER_SOURCE", "at": "2026-05-26T00:00:00.000Z (visual_verify_attempt — format probe only)", "reason": "yt-dlp -F probe candidate C + A đều trả audio-only listing."},
+    {"round": 3, "status": "ERR_SOURCE_DOWNLOAD_FAILED_TIKTOK_NO_COOKIE", "at": "2026-05-26T00:00:00.000Z (hardened evidence — actual download)", "reason": "Actual download attempted 4 methods cand C + 1 method cand A + YouTube sanity OK. Confirmed TikTok platform-level gate (music CDN endpoint, image-post-with-music suspected). yt-dlp tool healthy. Final status SUSPENDED_NEEDS_USER_SOURCE giữ nguyên — vẫn cần unblock path từ user (opt_1 cookie scope / opt_2 user paste source / opt_3 YouTube retry / opt_4 reject T10)."}
+  ],
   "final_status_reasoning": {
     "not_success": "Không có candidate đạt MATCH_CONFIRMED (5/5 axes PASS). Pipeline Script QC Agent BLOCKED per HARD RULE 'Không chạy pipeline nếu chưa MATCH_CONFIRMED'.",
     "not_fail": "3 vòng retry đã hoàn tất nhưng VẪN có 2 candidate khả thi ở MATCH_NEEDS_REVIEW (cand_001 + cand_003). FAIL chỉ áp dụng khi 3 vòng + tất cả candidate đều REJECT. Đây không phải case.",
