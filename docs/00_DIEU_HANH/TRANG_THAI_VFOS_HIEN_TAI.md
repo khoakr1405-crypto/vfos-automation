@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-05-27 (Round 27 patch — enroll 2 alias `/chay shopee-cdp-test` + `/chay shopee-first` vào Auto-Run Controller Section A HARD ENUM để CLI Round 27 không bị ERR_AMBIGUOUS_NEXT_STEP. Docs/skill only, không đổi code production.)
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `f99eecc` (Round 27 CLI; alias enrollment sẽ bump hash khi commit)
+> **Cập nhật lần cuối**: 2026-05-27 (Round 27B — Shopee CDP browser auto-launch + CAPTCHA human-assist guard. `packages/shopee/src/cdp-bootstrap.ts` (port probe, browser path resolver, user-data-dir + profile lock safety, detached spawn, port polling, captcha detect/wait). CLI tích hợp `--captcha-wait-seconds`, `--no-auto-launch`, `--browser-path`, `--browser-user-data-dir`. SKILL Section A.1 + Section H + Section K cập nhật. **27 unit tests pass; total 73/73 suite pass.**)
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `3c80228` (Round 27 + alias docs; Round 27B sẽ bump hash khi commit)
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -1682,6 +1682,63 @@ Vòng này sửa skill + docs để `/chay` tự quyết định + tự retry + 
 Patch CHỈ docs/skill. KHÔNG chạy CLI thật, KHÔNG mở yt_015, KHÔNG đổi code production.
 
 Commit: `docs: add chay aliases for shopee cdp extraction`.
+
+---
+
+### ✅ Round 27B — Shopee CDP Browser Auto-Launch + CAPTCHA Human-Assist Guard: ĐÃ CHỐT (2026-05-27)
+
+**Mục tiêu**: Cốc Cốc/Chrome không sẵn ở port 9222 → CLI Round 27 fail `ERR_CDP_BROWSER_NOT_FOUND` đợi 90s. Round 27B đảo hành vi: CLI **tự launch browser có kiểm soát** với profile đã login, đồng thời **chờ operator giải CAPTCHA thủ công** khi gặp guard. KHÔNG nhập password/OTP/CAPTCHA tự động.
+
+**Đã làm**:
+
+- **Module mới** [packages/shopee/src/cdp-bootstrap.ts](packages/shopee/src/cdp-bootstrap.ts) — pure helpers + orchestrator có inject deps để test:
+  - `bootstrapBrowser(config, deps)` — probe port → resolve browser path → resolve user-data-dir → profile lock check → `spawn { detached: true }` với `--remote-debugging-port=9222 --user-data-dir=<dir> --no-first-run --no-default-browser-check` → poll port (default 15s, interval 1s) → return `BootstrapResult`.
+  - `resolveBrowserPath` — priority: `--browser-path` override → `VFOS_BROWSER_PATH` env → `DEFAULT_BROWSER_PATHS_WIN32` (Cốc Cốc Program Files / Program Files (x86) / `%LOCALAPPDATA%` → Chrome Program Files / Program Files (x86)). Throw `ERR_CDP_BROWSER_NOT_FOUND_ON_DISK` nếu hết candidate.
+  - `resolveUserDataDir` — priority: `--browser-user-data-dir` → `VFOS_BROWSER_USER_DATA_DIR` env. BẮT BUỘC một trong hai → throw `ERR_CDP_USER_DATA_DIR_REQUIRED`. KHÔNG tự dùng default profile (mất login session) hoặc spawn profile trống (login wall).
+  - `detectProfileLock(dir)` — check `SingletonLock` / `SingletonCookie` / `LockFile` → throw `ERR_CDP_PROFILE_LOCKED`. KHÔNG tự xoá.
+  - Stdout/stderr browser child redirect vào `production/_commerce/cdp_bootstrap.log` (gitignored bởi `*.log`).
+  - `detectCaptchaGuard(page)` — quét URL (`verify.shopee.vn`/`shopee.vn/security`/`/buyer/login`/`shopee.vn/account/login`) + DOM (`div[class*="captcha"]`, `iframe[src*="captcha"]`, `iframe[src*="security"]`, `.shopee-popup__container`, `div[role="dialog"][class*="login"]`) + body text (`xác minh`, `captcha`, `verify`, `security check`, `đăng nhập`).
+  - `waitForCaptchaResolution(page, opts)` — poll mỗi 1s trong `waitSeconds`. `cleared=true` ngay khi tín hiệu biến → continue. Quá hạn → `cleared=false, reason_code=ERR_CAPTCHA_TIMEOUT`.
+  - Constants top-of-file: `DEFAULT_CAPTCHA_WAIT_SECONDS=20`, `MIN_CAPTCHA_WAIT_SECONDS=10`, `MAX_CAPTCHA_WAIT_SECONDS=60`. `clampCaptchaWaitSeconds(raw)` apply ở `parseCliValues` + `waitForCaptchaResolution`.
+
+- **CLI mở rộng** [packages/shopee/scripts/extract-links-cdp.ts](packages/shopee/scripts/extract-links-cdp.ts):
+  - Args mới: `--captcha-wait-seconds=N`, `--browser-path=PATH`, `--browser-user-data-dir=PATH`, `--no-auto-launch`.
+  - Trước `chromium.connectOverCDP`: gọi `bootstrapBrowser`. Nếu bootstrap launched mới → giảm Playwright retries xuống 1 (port đã verified open) — tránh 3×30s timeout. Nếu `--no-auto-launch` + port đóng → fail `ERR_CDP_BROWSER_LAUNCH_FAILED` ngay không spawn.
+  - Sau khi locate tab Shopee Affiliate: gọi `detectCaptchaGuard` + `waitForCaptchaResolution`. Phát hiện → in `⚠️ VFOS WARNING` + countdown 5s tick. Operator giải xong → continue. Quá hạn → exit 2 `ERR_CAPTCHA_TIMEOUT`, KHÔNG đóng browser.
+  - `parseCliValues` validate `captcha-wait-seconds ∈ [10, 60]`, owner format, target/max-clicks.
+
+- **Tests mới** [packages/shopee/tests/cdp-bootstrap.test.ts](packages/shopee/tests/cdp-bootstrap.test.ts) — **27/27 pass**:
+  - `expandEnvPath`: 3 test (LOCALAPPDATA replace, missing var, no placeholder).
+  - `resolveBrowserPath`: 4 test (override, env, default fallback, no exe → `ERR_CDP_BROWSER_NOT_FOUND_ON_DISK`).
+  - `resolveUserDataDir`: 4 test (override, env, missing → `ERR_CDP_USER_DATA_DIR_REQUIRED`, blank env).
+  - `detectProfileLock`: 2 test (no lock null, SingletonLock found).
+  - `bootstrapBrowser`: 7 scenario (already_running, auto-launched + spawn args verified, no exe, profile locked, port timeout, `--no-auto-launch`, missing user-data-dir).
+  - `clampCaptchaWaitSeconds`: 4 test (clamp low, clamp high, in-range, undefined → 20).
+  - `waitForCaptchaResolution`: 3 test (cleared immediately, cleared mid-wait at tick 5, timeout → ERR_CAPTCHA_TIMEOUT).
+- **Toàn shopee test suite**: **73/73 pass** (27 bootstrap + 20 cdp-extract-helpers + 14 link-registry + 12 extract).
+
+- **SKILL.md update** [.claude/skills/chay/SKILL.md](.claude/skills/chay/SKILL.md):
+  - **Section A.1** mở rộng — hành vi auto-launch + scope exception + CAPTCHA guard chi tiết.
+  - **Section H** Permission Boundary — bổ sung "Allowed" entry cho Round 27B auto-launch (CHỈ trong Commerce Product Agent Shopee CDP flow, KHÔNG cho Facebook/publish/payment/shopee:login/shopee:fetch/OTP).
+  - **Section K** Reason Codes — thêm group "COMMERCE — CDP Bootstrap (Round 27B)": `ERR_CDP_BROWSER_NOT_FOUND_ON_DISK`, `ERR_CDP_PORT_TIMEOUT_AFTER_LAUNCH`, `ERR_CDP_PROFILE_LOCKED`, `ERR_CDP_USER_DATA_DIR_REQUIRED`, `ERR_CDP_BROWSER_LAUNCH_FAILED`, `ERR_CAPTCHA_TIMEOUT`.
+
+- **TRANG_THAI** (file này): Round 27B entry + header + commit hash bump.
+
+**Verify**:
+- Tests: `npx tsx --test packages/shopee/tests/*.test.ts` → 73/73 pass (~580ms).
+- Typecheck: `tsc -p packages/shopee/tsconfig.json --noEmit` → clean cho cdp-bootstrap.ts + extract-links-cdp.ts + tests (errors còn lại đều ở scratch scripts untracked + pre-existing `secret-redaction.ts`).
+- Smoke `--help` → in đúng options mới + bootstrap behaviour + operator env.
+- Smoke `--captcha-wait-seconds=5` → exit `ERR_INVALID_ARGS` (out of `[10, 60]`).
+- Smoke `--no-auto-launch --cdp-retries=1` (port 9222 đóng) → exit `ERR_CDP_BROWSER_LAUNCH_FAILED` ngay (~1s), spawn không gọi.
+
+**Operator setup mới** (one-time):
+- Set env `VFOS_BROWSER_USER_DATA_DIR` trỏ vào profile Cốc Cốc/Chrome đã login Shopee Affiliate. Ví dụ Windows PowerShell: `[Environment]::SetEnvironmentVariable("VFOS_BROWSER_USER_DATA_DIR", "C:\Users\Admin\AppData\Local\CocCoc\Browser\User Data", "User")`. Nếu skip → CLI sẽ throw `ERR_CDP_USER_DATA_DIR_REQUIRED` rõ ràng.
+- Optional: set `VFOS_BROWSER_PATH` nếu cài Cốc Cốc/Chrome ở path không chuẩn.
+- Optional: `--no-auto-launch` để giữ hành vi attach-only Round 27 cũ.
+
+**Không làm**: chạy CDP thật trên browser sản xuất, lấy link production thật, mở yt_015, chạy video/audio/render, publish, gọi Facebook API, nhập password/OTP/CAPTCHA, log cookie/token/header, commit POC scratch hàng loạt, commit registry runtime JSON, commit `cdp_bootstrap.log`, xoá `SingletonLock` tự động.
+
+**Commit**: `feat: add cdp browser auto-launch and captcha human-assist to shopee flow` (hash sẽ bump khi push).
 
 ---
 

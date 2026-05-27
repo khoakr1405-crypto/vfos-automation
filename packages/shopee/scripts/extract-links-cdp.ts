@@ -57,6 +57,12 @@ import {
   shouldSkipPreClick,
   type ParsedCliArgs,
 } from "../src/cdp-extract-helpers.js";
+import {
+  bootstrapBrowser,
+  CdpBootstrapError,
+  detectCaptchaGuard,
+  waitForCaptchaResolution,
+} from "../src/cdp-bootstrap.js";
 
 // ── workspace + env ─────────────────────────────────────────────────────────
 
@@ -86,28 +92,46 @@ function loadEnv(rootDir: string): void {
   }
 }
 
-const HELP_TEXT = `Shopee CDP Production Extraction CLI (Round 27)
+const HELP_TEXT = `Shopee CDP Production Extraction CLI (Round 27 + Round 27B bootstrap)
 
 Usage:
   pnpm shopee:extract-links-cdp [options]
 
 Options:
-  --target-count=N      New valid links to extract before stopping  (default 1)
-  --max-clicks=N        Safety ceiling — never click more than this (default 5)
-  --owner-id=an_<id>    Expected affiliate owner id                 (env SHOPEE_AFFILIATE_OWNER_ID)
-  --registry-path=PATH  Registry JSON path                          (default production/_commerce/shopee_link_registry.json)
-  --cdp-endpoint=URL    CDP endpoint                                (default http://127.0.0.1:9222)
-  --cdp-retries=N       CDP connect retry count                     (default 3)
-  --dry-run             Log actions only — never write to registry
-  --help                Show this help and exit
+  --target-count=N           New valid links to extract           (default 1)
+  --max-clicks=N             Safety ceiling for clicks            (default 5)
+  --owner-id=an_<id>         Expected affiliate owner id          (env SHOPEE_AFFILIATE_OWNER_ID)
+  --registry-path=PATH       Registry JSON path                   (default production/_commerce/shopee_link_registry.json)
+  --cdp-endpoint=URL         CDP endpoint                         (default http://127.0.0.1:9222)
+  --cdp-retries=N            Retry budget after bootstrap         (default 3)
+  --captcha-wait-seconds=N   Human-assist wait when CAPTCHA seen  (default 20, range [10..60])
+  --browser-path=PATH        Override browser exe                 (else VFOS_BROWSER_PATH then disk search)
+  --browser-user-data-dir=P  Override profile dir                 (else VFOS_BROWSER_USER_DATA_DIR — required to launch)
+  --no-auto-launch           Probe only — never spawn a browser
+  --dry-run                  Log actions only — never write to registry
+  --help                     Show this help and exit
 
 Default mode is SINGLE-LINK: stop as soon as 1 new valid link is captured.
 Batch mode (target_count > 1) only activates with an explicit --target-count flag.
 
-Pre-requisites (one-time, operator):
-  1. Launch Cốc Cốc/Chrome with --remote-debugging-port=9222
-  2. Manually log in to Shopee Affiliate
-  3. Open https://affiliate.shopee.vn/offer/product_offer in the logged-in browser
+Bootstrap behaviour (Round 27B):
+  - If 127.0.0.1:9222 is already listening, the CLI attaches to that browser.
+  - If not, it launches Cốc Cốc / Chrome with --remote-debugging-port=9222 and
+    your existing profile (VFOS_BROWSER_USER_DATA_DIR). It NEVER spawns a blank
+    profile and NEVER types your password / OTP / CAPTCHA.
+  - When a CAPTCHA / login wall is detected on the page, the CLI pauses
+    --captcha-wait-seconds and re-checks each second. Solve it in the browser
+    yourself; the run continues automatically when the overlay clears.
+
+Operator env (required for auto-launch):
+  VFOS_BROWSER_USER_DATA_DIR  Path to your Cốc Cốc/Chrome profile already
+                              logged into Shopee Affiliate. Required because
+                              we refuse to spawn a fresh profile and hit a
+                              login wall on your behalf.
+
+Operator env (optional):
+  VFOS_BROWSER_PATH           Override the browser executable search.
+  SHOPEE_AFFILIATE_OWNER_ID   Override affiliate owner id (an_<digits>).
 `;
 
 // ── DOM helpers (run inside page.evaluate context) ──────────────────────────
@@ -196,6 +220,10 @@ async function main(): Promise<number> {
       "registry-path": { type: "string" },
       "cdp-endpoint": { type: "string" },
       "cdp-retries": { type: "string" },
+      "captcha-wait-seconds": { type: "string" },
+      "browser-path": { type: "string" },
+      "browser-user-data-dir": { type: "string" },
+      "no-auto-launch": { type: "boolean", default: false },
       "dry-run": { type: "boolean", default: false },
       help: { type: "boolean", default: false },
     },
@@ -233,16 +261,54 @@ async function main(): Promise<number> {
     mkdirSync(dirname(registryConfig.registry_path), { recursive: true });
   }
 
-  process.stdout.write("=== Shopee CDP Extraction (Round 27) ===\n");
-  process.stdout.write(`  target_count : ${cli.target_count}\n`);
-  process.stdout.write(`  max_clicks   : ${cli.max_clicks} (safety ceiling)\n`);
-  process.stdout.write(`  owner_id     : ${cli.expected_owner}\n`);
-  process.stdout.write(`  registry     : ${cli.registry_path}\n`);
-  process.stdout.write(`  cdp_endpoint : ${cli.cdp_endpoint}\n`);
-  process.stdout.write(`  cdp_retries  : ${cli.cdp_retries}\n`);
-  process.stdout.write(`  dry_run      : ${cli.dry_run}\n\n`);
+  process.stdout.write("=== Shopee CDP Extraction (Round 27 + 27B bootstrap) ===\n");
+  process.stdout.write(`  target_count        : ${cli.target_count}\n`);
+  process.stdout.write(`  max_clicks          : ${cli.max_clicks} (safety ceiling)\n`);
+  process.stdout.write(`  owner_id            : ${cli.expected_owner}\n`);
+  process.stdout.write(`  registry            : ${cli.registry_path}\n`);
+  process.stdout.write(`  cdp_endpoint        : ${cli.cdp_endpoint}\n`);
+  process.stdout.write(`  cdp_retries         : ${cli.cdp_retries}\n`);
+  process.stdout.write(`  captcha_wait_seconds: ${cli.captcha_wait_seconds}\n`);
+  process.stdout.write(`  no_auto_launch      : ${cli.no_auto_launch}\n`);
+  process.stdout.write(`  dry_run             : ${cli.dry_run}\n\n`);
 
-  // ── CDP connect ───────────────────────────────────────────────────────────
+  // ── CDP bootstrap (Round 27B) — probe port, auto-launch if needed ────────
+
+  const endpointUrl = new URL(cli.cdp_endpoint);
+  const cdpPort = parseInt(endpointUrl.port, 10) || 9222;
+  const cdpHost = endpointUrl.hostname || "127.0.0.1";
+  const bootstrapLogPath = resolve(workspaceRoot, "production", "_commerce", "cdp_bootstrap.log");
+
+  let bootstrappedNewBrowser = false;
+  try {
+    const bootstrap = await bootstrapBrowser({
+      host: cdpHost,
+      port: cdpPort,
+      no_auto_launch: cli.no_auto_launch,
+      ...(cli.browser_path ? { browser_path_override: cli.browser_path } : {}),
+      ...(cli.browser_user_data_dir
+        ? { user_data_dir_override: cli.browser_user_data_dir }
+        : {}),
+      log_path: bootstrapLogPath,
+    });
+    process.stdout.write(`  bootstrap_status    : ${bootstrap.status}\n`);
+    if (bootstrap.status === "launched") {
+      bootstrappedNewBrowser = true;
+      process.stdout.write(`  browser_path        : ${bootstrap.browser_path}\n`);
+      process.stdout.write(`  user_data_dir       : ${bootstrap.user_data_dir}\n`);
+      process.stdout.write(`  waited_after_launch : ${bootstrap.waited_ms_after_launch}ms\n`);
+    }
+    process.stdout.write("\n");
+  } catch (e) {
+    if (e instanceof CdpBootstrapError) {
+      process.stderr.write(`${e.reason_code}\n  ${e.message}\n`);
+    } else {
+      process.stderr.write(`ERR_CDP_BROWSER_LAUNCH_FAILED\n  ${(e as Error).message}\n`);
+    }
+    return 2;
+  }
+
+  // ── CDP connect (post-bootstrap, port is verified open) ───────────────────
 
   let chromium: typeof import("playwright").chromium;
   try {
@@ -252,18 +318,22 @@ async function main(): Promise<number> {
     return 2;
   }
 
+  // If bootstrap actually launched a new browser, the port has already been
+  // verified — collapse Playwright retries to 1 to avoid the 3×30s default
+  // timeout when something else goes wrong.
+  const effectiveRetries = bootstrappedNewBrowser ? 1 : cli.cdp_retries;
   let browser: Browser | null = null;
-  for (let attempt = 1; attempt <= cli.cdp_retries; attempt++) {
+  for (let attempt = 1; attempt <= effectiveRetries; attempt++) {
     try {
-      process.stdout.write(`  CDP connect attempt ${attempt}/${cli.cdp_retries}…\n`);
+      process.stdout.write(`  CDP connect attempt ${attempt}/${effectiveRetries}…\n`);
       browser = await chromium.connectOverCDP(cli.cdp_endpoint);
       process.stdout.write("  CDP connected.\n");
       break;
     } catch (e) {
       process.stderr.write(`  CDP connect failed: ${(e as Error).message.slice(0, 100)}\n`);
-      if (attempt === cli.cdp_retries) {
+      if (attempt === effectiveRetries) {
         process.stderr.write(
-          "ERR_CDP_BROWSER_NOT_FOUND\n  Ensure Cốc Cốc/Chrome is running with --remote-debugging-port=9222.\n",
+          "ERR_CDP_BROWSER_NOT_FOUND\n  Bootstrap reported port open but Playwright still cannot attach.\n",
         );
         return 2;
       }
@@ -292,7 +362,38 @@ async function main(): Promise<number> {
     await browser.close();
     return 2;
   }
-  process.stdout.write(`  Target tab: ${page.url().slice(0, 80)}\n\n`);
+  process.stdout.write(`  Target tab: ${page.url().slice(0, 80)}\n`);
+
+  // ── CAPTCHA / login-wall human-assist guard (Round 27B) ──────────────────
+
+  const initialDetection = await detectCaptchaGuard(page);
+  if (initialDetection.detected) {
+    process.stdout.write(
+      `\n⚠️  VFOS WARNING: phát hiện CAPTCHA/Login/Xác minh — signals=[${initialDetection.signals.join(", ")}]\n` +
+        `   Hệ thống tạm dừng chờ tối đa ${cli.captcha_wait_seconds}s. Hãy giải thủ công trên cửa sổ browser.\n`,
+    );
+    const wait = await waitForCaptchaResolution(page, {
+      waitSeconds: cli.captcha_wait_seconds,
+      pollIntervalMs: 1000,
+      onTick: ({ secondsElapsed, secondsRemaining, detection }) => {
+        if (detection.detected && secondsElapsed > 0 && secondsElapsed % 5 === 0) {
+          process.stdout.write(
+            `   captcha guard: elapsed=${secondsElapsed}s remaining=${secondsRemaining}s\n`,
+          );
+        }
+      },
+    });
+    if (!wait.cleared) {
+      process.stderr.write(
+        `\n${wait.reason_code}\n  Captcha/login overlay still present after ${wait.waited_seconds}s.\n` +
+          `  Resolve in browser manually then rerun /chay shopee-cdp-test.\n`,
+      );
+      await browser.close();
+      return 2;
+    }
+    process.stdout.write(`   captcha guard cleared after ${wait.waited_seconds}s — continuing.\n`);
+  }
+  process.stdout.write("\n");
 
   // ── extraction loop ───────────────────────────────────────────────────────
 

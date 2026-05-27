@@ -200,7 +200,15 @@ export interface ParsedCliArgs {
   cdp_retries: number;
   expected_owner: string;
   registry_path: string;
+  captcha_wait_seconds: number;
+  no_auto_launch: boolean;
+  browser_user_data_dir: string | null;
+  browser_path: string | null;
 }
+
+const MIN_CAPTCHA_WAIT = 10;
+const MAX_CAPTCHA_WAIT = 60;
+const DEFAULT_CAPTCHA_WAIT = 20;
 
 export function parseCliValues(
   values: Record<string, string | boolean | undefined>,
@@ -219,6 +227,13 @@ export function parseCliValues(
     throw new Error(`--owner-id must match an_<digits> (got ${owner})`);
   }
 
+  const cw = parseInt(String(values["captcha-wait-seconds"] ?? DEFAULT_CAPTCHA_WAIT), 10);
+  if (!Number.isFinite(cw) || cw < MIN_CAPTCHA_WAIT || cw > MAX_CAPTCHA_WAIT) {
+    throw new Error(
+      `--captcha-wait-seconds must be an integer in [${MIN_CAPTCHA_WAIT}, ${MAX_CAPTCHA_WAIT}] (got ${cw})`,
+    );
+  }
+
   return {
     target_count: tc,
     max_clicks: mc,
@@ -227,5 +242,9 @@ export function parseCliValues(
     cdp_retries: cr,
     expected_owner: owner,
     registry_path: (values["registry-path"] as string | undefined) ?? defaults.registry_path,
+    captcha_wait_seconds: cw,
+    no_auto_launch: values["no-auto-launch"] === true,
+    browser_user_data_dir: (values["browser-user-data-dir"] as string | undefined) ?? null,
+    browser_path: (values["browser-path"] as string | undefined) ?? null,
   };
 }

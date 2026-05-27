@@ -97,26 +97,45 @@ Dù ở mode nào, agent phải làm ngay khi nhận `/chay`:
 - `<video_id>` pattern: `yt_NNN` (3 digit hoặc nhiều hơn). Sai pattern → `ERR_AMBIGUOUS_NEXT_STEP`.
 - Modifier flags (`--force-retry`, `--reset`) chỉ hợp lệ khi có `<video_id>` cụ thể.
 
-### A.1. `/chay shopee-cdp-test` — Spec chi tiết (Round 27 alias)
+### A.1. `/chay shopee-cdp-test` — Spec chi tiết (Round 27 alias + Round 27B bootstrap)
 
 Alias **smoke test cô lập** cho production CLI `pnpm shopee:extract-links-cdp`. Mục đích: verify CDP flow + registry write + dedup hoạt động end-to-end mà KHÔNG kéo theo video pipeline.
 
 **Hành vi bắt buộc**:
-1. Verify operator pre-requisite đã sẵn sàng (Cốc Cốc/Chrome `--remote-debugging-port=9222` + tab `affiliate.shopee.vn/offer/product_offer` mở + đã login). Nếu CDP fail → trả `ERR_CDP_BROWSER_NOT_FOUND` / `ERR_CDP_TARGET_TAB_NOT_FOUND` exactly như CLI báo.
-2. Chạy CLI với args mặc định: `--target-count=1 --max-clicks=5`. KHÔNG override flag trừ khi user explicit gõ thêm (eg `/chay shopee-cdp-test --dry-run`).
+1. Verify operator pre-requisite. Round 27B đổi hành vi từ "operator phải tự mở browser" sang **controlled auto-launch**:
+   - Port 9222 đã listening → attach thẳng.
+   - Port 9222 đóng + `VFOS_BROWSER_USER_DATA_DIR` được set tới profile đã login Shopee → CLI tự `spawn` Cốc Cốc/Chrome với `--remote-debugging-port=9222 --user-data-dir=<profile>`. **Bắt buộc env này** để tránh tạo profile trống (login wall). KHÔNG bao giờ nhập password/OTP/CAPTCHA tự động.
+   - Operator có thể truyền `--no-auto-launch` để giữ hành vi cũ (attach-only) hoặc `--browser-path` / `--browser-user-data-dir` override.
+2. Chạy CLI với args mặc định: `--target-count=1 --max-clicks=5 --captcha-wait-seconds=20`. KHÔNG override trừ khi user explicit gõ thêm (eg `/chay shopee-cdp-test --dry-run`).
 3. Truyền-thẳng output CLI vào REPORT FORMAT Section J (stdout của CLI thay cho `next_step_short`).
 4. Sau khi CLI exit:
    - Exit 0 → `status=SUCCESS`, `action_taken=ran shopee-cdp-test`, `output_artifacts=[<registry_path>]`.
    - Exit 1 → `status=SUSPENDED` + reason từ CLI (eg `"reached max_clicks without target_count"`).
-   - Exit 2 → `status=FAIL` + reason_code map từ CLI (`ERR_CDP_BROWSER_NOT_FOUND` / `ERR_CDP_TARGET_TAB_NOT_FOUND` / `ERR_INVALID_ARGS` / `ERR_PLAYWRIGHT_NOT_INSTALLED`).
+   - Exit 2 → `status=FAIL` + reason_code map từ CLI. Reason codes có thể trả: `ERR_CDP_BROWSER_NOT_FOUND_ON_DISK`, `ERR_CDP_PORT_TIMEOUT_AFTER_LAUNCH`, `ERR_CDP_PROFILE_LOCKED`, `ERR_CDP_USER_DATA_DIR_REQUIRED`, `ERR_CDP_BROWSER_LAUNCH_FAILED`, `ERR_CDP_BROWSER_NOT_FOUND`, `ERR_CDP_TARGET_TAB_NOT_FOUND`, `ERR_CAPTCHA_TIMEOUT`, `ERR_AUTH_REQUIRED`, `ERR_INVALID_ARGS`, `ERR_PLAYWRIGHT_NOT_INSTALLED`.
+
+**Auto-launch exception scope (Round 27B HARD)** — chỉ Commerce Product Agent Shopee CDP flow được tự `spawn` browser:
+- Chỉ chấp nhận browser executable từ `DEFAULT_BROWSER_PATHS_WIN32` (Cốc Cốc Program Files / Program Files (x86) / LOCALAPPDATA → Chrome Program Files / Program Files (x86)) hoặc `VFOS_BROWSER_PATH` env.
+- Profile dir BẮT BUỘC qua `VFOS_BROWSER_USER_DATA_DIR` hoặc `--browser-user-data-dir`. Profile có lock file (`SingletonLock` / `SingletonCookie` / `LockFile`) → `ERR_CDP_PROFILE_LOCKED`, KHÔNG xoá lock, KHÔNG spawn lần 2.
+- Browser spawn `{ detached: true }` — KHÔNG đóng khi CLI exit (operator reuse session).
+- Stdout/stderr browser child redirect vào `production/_commerce/cdp_bootstrap.log` — gitignored bởi rule `*.log` (KHÔNG commit). KHÔNG log cookie / header / token vào file này.
+- KHÔNG áp dụng cho Facebook publish, payment, settings, OTP flow nào khác.
+
+**CAPTCHA / login-wall human-assist guard (Round 27B HARD)**:
+- Sau khi attach và mở tab Shopee Affiliate, CLI gọi `detectCaptchaGuard(page)`. Tín hiệu: URL chứa `verify.shopee.vn` / `shopee.vn/security` / `/buyer/login`; DOM có `div[class*="captcha"]` / `iframe[src*="captcha"]` / `iframe[src*="security"]` / `.shopee-popup__container` / dialog login; body text chứa "xác minh" / "captcha" / "verify" / "security check" / "đăng nhập".
+- Phát hiện → in cảnh báo `⚠️ VFOS WARNING: phát hiện CAPTCHA/Login/Xác minh` + poll DOM mỗi 1s trong `--captcha-wait-seconds` (default 20, range `[10, 60]`, **constant top-of-file** trong [packages/shopee/src/cdp-bootstrap.ts](packages/shopee/src/cdp-bootstrap.ts), KHÔNG hardcode rải rác).
+- Operator giải thủ công trên browser → guard biến mất → CLI tiếp tục extraction ngay khi `cleared=true`.
+- Quá `--captcha-wait-seconds` chưa giải → `status=SUSPENDED`, `reason_code=ERR_CAPTCHA_TIMEOUT`, `exit_code=2`. KHÔNG đóng browser, KHÔNG nhập credential, KHÔNG resume state stale. Operator rerun `/chay shopee-cdp-test` sau khi xử lý xong.
 
 **HARD constraints**:
 - KHÔNG tạo `video_id` mới. KHÔNG khởi tạo `production/batch_001/yt_NNN/`.
 - KHÔNG mở yt_015 hay video nào khác.
 - KHÔNG chạy Script Writer / Voice Sync / BGM Mix / Final Render.
 - KHÔNG publish. KHÔNG gọi Facebook API.
-- KHÔNG commit (mặc định). Operator phải gõ `/chay commit` riêng nếu muốn commit kết quả (mà registry runtime JSON KHÔNG được commit theo `.gitignore` policy).
+- KHÔNG commit (mặc định). Operator phải gõ `/chay commit` riêng nếu muốn commit kết quả (registry runtime JSON + `cdp_bootstrap.log` KHÔNG được commit theo `.gitignore` policy).
 - KHÔNG batch nhiều link — `target_count` cố định = 1 trừ khi user gõ explicit `--target-count=N` trong command.
+- KHÔNG dùng auto-launch exception cho mục đích khác (Facebook, publish, payment, OTP) — chỉ Shopee Affiliate Product Offer tab.
+- KHÔNG tự xoá `SingletonLock` để bypass `ERR_CDP_PROFILE_LOCKED`. KHÔNG fallback sang profile khác.
+- KHÔNG nhập password / OTP / giải CAPTCHA tự động — guard chỉ chờ operator.
 
 **Output Section J template**:
 ```
@@ -449,6 +468,7 @@ Nếu controller phát hiện rerender command nhưng KHÔNG có rerender keywor
 - Render preview nếu Audio & Assembly Agent được `next_agent` rõ
 - Dùng OpenAI API cho subtitle/script nếu `OPENAI_API_KEY` present VÀ task thuộc Script & Claim Safety Agent
 - Dùng targeted browser click trong Commerce Product Agent NẾU user đã login thủ công và task cho phép
+- **(Round 27B)** Tự `spawn` Cốc Cốc/Chrome với `--remote-debugging-port=9222` qua `cdp-bootstrap.ts` — **CHỈ** khi: (1) port 9222 đóng, (2) Commerce Product Agent Shopee CDP flow, (3) `VFOS_BROWSER_USER_DATA_DIR` set tới profile đã login. Spawn `{detached:true}` + KHÔNG đóng browser khi CLI exit. **Auto-launch không áp dụng** cho Facebook / publish / payment / shopee:login / shopee:fetch / OTP flow.
 
 **Forbidden** (HARD — vi phạm = FAIL):
 - KHÔNG publish Facebook thật
@@ -780,6 +800,14 @@ Khi `status = DONE_WAITING_USER_REVIEW` báo thêm:
 - `ERR_LINK_REGISTRY_STALE_LOCK` — lock cũ hơn `stale_lock_ms`
 - `ERR_LINK_REGISTRY_WRITE_FAILED` — atomic rename / JSON sanity fail
 - `ERR_LINK_REGISTRY_MISSING` — registry path không tồn tại khi cần read
+
+**COMMERCE — CDP Bootstrap (Round 27B)**:
+- `ERR_CDP_BROWSER_NOT_FOUND_ON_DISK` — không tìm được browser exe theo `VFOS_BROWSER_PATH` / `--browser-path` / `DEFAULT_BROWSER_PATHS_WIN32` (Cốc Cốc + Chrome)
+- `ERR_CDP_PORT_TIMEOUT_AFTER_LAUNCH` — `spawn` thành công nhưng port 9222 không listen trong `port_wait_timeout_ms` (default 15s)
+- `ERR_CDP_PROFILE_LOCKED` — user-data-dir có `SingletonLock` / `SingletonCookie` / `LockFile` → operator phải đóng browser instance khác, KHÔNG tự xoá lock
+- `ERR_CDP_USER_DATA_DIR_REQUIRED` — không có `VFOS_BROWSER_USER_DATA_DIR` env và không có `--browser-user-data-dir` override; CLI từ chối spawn profile trống
+- `ERR_CDP_BROWSER_LAUNCH_FAILED` — `child_process.spawn` throw, hoặc `--no-auto-launch` được set khi port 9222 đóng
+- `ERR_CAPTCHA_TIMEOUT` — guard CAPTCHA/login chưa clear sau `--captcha-wait-seconds` (default 20, range `[10, 60]`)
 
 ### L. Self-Apply checklist (Controller chạy trước khi báo kết quả)
 

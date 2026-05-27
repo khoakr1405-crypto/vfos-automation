@@ -68,3 +68,32 @@ export type {
   ValidationOutcome,
   ParsedCliArgs,
 } from "./cdp-extract-helpers.js";
+
+export {
+  CdpBootstrapError,
+  bootstrapBrowser,
+  resolveBrowserPath,
+  resolveUserDataDir,
+  detectProfileLock,
+  expandEnvPath,
+  detectCaptchaGuard,
+  waitForCaptchaResolution,
+  clampCaptchaWaitSeconds,
+  DEFAULT_CAPTCHA_WAIT_SECONDS,
+  MIN_CAPTCHA_WAIT_SECONDS,
+  MAX_CAPTCHA_WAIT_SECONDS,
+  DEFAULT_BROWSER_PATHS_WIN32,
+  realDeps,
+  realProbePort,
+} from "./cdp-bootstrap.js";
+export type {
+  CdpBootstrapReasonCode,
+  BootstrapResult,
+  BootstrapConfig,
+  BootstrapDeps,
+  SpawnHandle,
+  CaptchaPage,
+  CaptchaDetection,
+  CaptchaWaitOptions,
+  CaptchaWaitResult,
+} from "./cdp-bootstrap.js";
