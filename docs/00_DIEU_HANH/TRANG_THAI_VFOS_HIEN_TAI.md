@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-05-27 (Round 27 — Shopee CDP production extraction CLI: `pnpm shopee:extract-links-cdp` wired vào `link-registry.ts`, default target_count=1, max_clicks=5 safety ceiling, fresh DOM query mỗi iteration, modal verify → appendRejected ERR_MODAL_UNRECOGNIZED, no `any`, 20/20 helper tests pass + 26/26 registry tests pass.)
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `112c905` (Round 26 patch single-link default; Round 27 sẽ commit ngay sau update này)
+> **Cập nhật lần cuối**: 2026-05-27 (Round 27 patch — enroll 2 alias `/chay shopee-cdp-test` + `/chay shopee-first` vào Auto-Run Controller Section A HARD ENUM để CLI Round 27 không bị ERR_AMBIGUOUS_NEXT_STEP. Docs/skill only, không đổi code production.)
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `f99eecc` (Round 27 CLI; alias enrollment sẽ bump hash khi commit)
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -1673,7 +1673,15 @@ Vòng này sửa skill + docs để `/chay` tự quyết định + tự retry + 
 
 **Không làm**: chạy CDP thật trên Shopee tab live, lấy link production thật, mở yt_015, chạy video, publish, gọi Facebook API, nhập password/OTP, log cookie/token/header, commit POC scratch hàng loạt, commit registry runtime JSON `production/_commerce/shopee_link_registry.json`, xoá scratch khác (`load-picks.ts`, `extract-active-coccoc.ts`, etc. vẫn untracked — operator tự xoá).
 
-**Commit**: `feat: add shopee cdp production extraction cli` (commit hash sẽ bump sau khi commit).
+**Commit**: `feat: add shopee cdp production extraction cli` (`f99eecc`).
+
+**Patch 2026-05-27 (post Round 27 — alias enrollment)**: thêm 2 alias mới vào Auto-Run Controller Section A HARD ENUM để CLI Round 27 không bị `ERR_AMBIGUOUS_NEXT_STEP`:
+- `/chay shopee-cdp-test` (alias #16) — smoke test cô lập cho `pnpm shopee:extract-links-cdp`. KHÔNG tạo video_id, KHÔNG mở video mới, KHÔNG commit mặc định. Spec chi tiết ở SKILL Section A.1 + REPORT FORMAT template.
+- `/chay shopee-first` (alias #17) — promote `BROWSER_CDP_TARGETED_CLICK` thành step 1 của MODE 4 Shopee-First Lane cold start. Lấy 1 link mới → tạo Card + scoring → PRODUCT_SELECTED thì assign `video_id` mới kế tiếp + chuyển Demo Match Agent. KHÔNG publish, KHÔNG commit trừ khi prompt cho phép. Spec chi tiết ở SKILL Section A.2 + REPORT FORMAT template.
+
+Patch CHỈ docs/skill. KHÔNG chạy CLI thật, KHÔNG mở yt_015, KHÔNG đổi code production.
+
+Commit: `docs: add chay aliases for shopee cdp extraction`.
 
 ---
 

@@ -89,11 +89,98 @@ Dù ở mode nào, agent phải làm ngay khi nhận `/chay`:
 | 13 | `/chay shopee <url>` | Cold start Shopee-First lane bằng Commerce Product Agent với link Shopee. |
 | 14 | `/chay product <url>` | Alias `/chay shopee <url>` nếu URL là Shopee. |
 | 15 | `/chay keywords "<keyword>"` | Cold start product discovery nếu chưa có URL. KHÔNG bịa product data. |
+| 16 | `/chay shopee-cdp-test` | **Smoke test** cho Round 27 production CLI (`pnpm shopee:extract-links-cdp`). Lấy 1 link mới hợp lệ + upsert registry. KHÔNG tạo video_id, KHÔNG mở video mới, KHÔNG publish, KHÔNG commit (mặc định). Xem Section A.1 bên dưới. |
+| 17 | `/chay shopee-first` | Cold start Shopee-First Lane (MODE 4 trigger). Dùng `pnpm shopee:extract-links-cdp` lấy 1 link mới → tạo Product Card + 6-trục scoring; PRODUCT_SELECTED → assign `video_id` mới kế tiếp + chuyển Demo Match Agent. KHÔNG publish. KHÔNG commit trừ khi prompt cho phép rõ. Xem Section A.2 bên dưới. |
 
 **HARD parse rule**:
 - Nếu input KHÔNG match enum trên + không phải URL hợp lệ + không phải free text MODE 3 → trả về `status=FAIL`, `reason_code=ERR_AMBIGUOUS_NEXT_STEP`, KHÔNG đoán.
 - `<video_id>` pattern: `yt_NNN` (3 digit hoặc nhiều hơn). Sai pattern → `ERR_AMBIGUOUS_NEXT_STEP`.
 - Modifier flags (`--force-retry`, `--reset`) chỉ hợp lệ khi có `<video_id>` cụ thể.
+
+### A.1. `/chay shopee-cdp-test` — Spec chi tiết (Round 27 alias)
+
+Alias **smoke test cô lập** cho production CLI `pnpm shopee:extract-links-cdp`. Mục đích: verify CDP flow + registry write + dedup hoạt động end-to-end mà KHÔNG kéo theo video pipeline.
+
+**Hành vi bắt buộc**:
+1. Verify operator pre-requisite đã sẵn sàng (Cốc Cốc/Chrome `--remote-debugging-port=9222` + tab `affiliate.shopee.vn/offer/product_offer` mở + đã login). Nếu CDP fail → trả `ERR_CDP_BROWSER_NOT_FOUND` / `ERR_CDP_TARGET_TAB_NOT_FOUND` exactly như CLI báo.
+2. Chạy CLI với args mặc định: `--target-count=1 --max-clicks=5`. KHÔNG override flag trừ khi user explicit gõ thêm (eg `/chay shopee-cdp-test --dry-run`).
+3. Truyền-thẳng output CLI vào REPORT FORMAT Section J (stdout của CLI thay cho `next_step_short`).
+4. Sau khi CLI exit:
+   - Exit 0 → `status=SUCCESS`, `action_taken=ran shopee-cdp-test`, `output_artifacts=[<registry_path>]`.
+   - Exit 1 → `status=SUSPENDED` + reason từ CLI (eg `"reached max_clicks without target_count"`).
+   - Exit 2 → `status=FAIL` + reason_code map từ CLI (`ERR_CDP_BROWSER_NOT_FOUND` / `ERR_CDP_TARGET_TAB_NOT_FOUND` / `ERR_INVALID_ARGS` / `ERR_PLAYWRIGHT_NOT_INSTALLED`).
+
+**HARD constraints**:
+- KHÔNG tạo `video_id` mới. KHÔNG khởi tạo `production/batch_001/yt_NNN/`.
+- KHÔNG mở yt_015 hay video nào khác.
+- KHÔNG chạy Script Writer / Voice Sync / BGM Mix / Final Render.
+- KHÔNG publish. KHÔNG gọi Facebook API.
+- KHÔNG commit (mặc định). Operator phải gõ `/chay commit` riêng nếu muốn commit kết quả (mà registry runtime JSON KHÔNG được commit theo `.gitignore` policy).
+- KHÔNG batch nhiều link — `target_count` cố định = 1 trừ khi user gõ explicit `--target-count=N` trong command.
+
+**Output Section J template**:
+```
+detected_video_id        : (n/a — alias không gắn video_id)
+state_source_path        : (n/a)
+artifact_source_path     : production/_commerce/shopee_link_registry.json
+namespace_mode           : batch_legacy
+detected_next_agent      : (n/a — smoke test)
+action_taken             : ran shopee-cdp-test
+status                   : SUCCESS | SUSPENDED | FAIL
+reason_code              : <CLI reason_code | null>
+output_artifacts         : [production/_commerce/shopee_link_registry.json]
+next_step_short          : <CLI status line>
+git_status_summary       : clean | <N modified, M untracked>
+```
+
+### A.2. `/chay shopee-first` — Spec chi tiết (cold start lane alias)
+
+Alias chính cho **MODE 4 Shopee-First Lane** cold start KHÔNG kèm link. Promote `BROWSER_CDP_TARGETED_CLICK` thành step 1 của lane (thay thế operator paste manual khi link registry chưa có entry phù hợp).
+
+**Hành vi bắt buộc (PF-STEP 0 → PF-STEP 2)**:
+1. Verify CDP pre-req giống Section A.1.
+2. Chạy `pnpm shopee:extract-links-cdp --target-count=1 --max-clicks=5` để lấy **1 link mới hợp lệ** (single-link default Round 26 patch).
+3. CLI exit 0 (1 link upsert thành công):
+   - Đọc registry, lấy entry vừa upsert (`first_seen_at` mới nhất + match `affiliate_link_status` ≠ FAILED).
+   - Tạo `shopee_product_card.json` với schema mở rộng (24 field) — field business unknown ghi `"unknown"`, KHÔNG bịa.
+   - Chấm SHOPEE PRODUCT SELECTION SCORING 6 trục.
+   - **Nếu `decision == "PRODUCT_SELECTED"`**:
+     a. Assign `video_id` mới kế tiếp theo pattern `yt_NNN` (scan `production/batch_001/yt_*/` + đếm lớn nhất + +1).
+     b. Tạo folder `production/batch_001/<video_id>/`.
+     c. Move/persist `shopee_product_card.json` vào folder mới.
+     d. `next_agent = "Demo Match Agent"` (Source Match Agent).
+     e. `status = SUCCESS`, `action_taken = ran shopee-first cold start, assigned <video_id>`.
+   - **Nếu `decision == "PRODUCT_NEEDS_USER_REVIEW"`**:
+     - KHÔNG assign video_id. Card persist tạm vào `production/_commerce/pending_review/<short_link_hash>_card.json`.
+     - `status = SUSPENDED`, `reason_code = ERR_USER_APPROVAL_REQUIRED`.
+   - **Nếu `decision == "PRODUCT_REJECTED"`**:
+     - KHÔNG assign video_id. KHÔNG persist Card.
+     - `status = FAIL`, `reason_code = ERR_PRODUCT_DATA_INSUFFICIENT` hoặc lý do scoring.
+     - **KHÔNG tự retry** CDP để lấy link khác — operator quyết định (vi phạm AUTO-DECISION POLICY nếu tự loop).
+4. CLI exit 1 hoặc 2 → forward status như Section A.1.
+
+**HARD constraints**:
+- KHÔNG publish. KHÔNG gọi Facebook API.
+- KHÔNG chạy Script Writer / Voice Sync / Render trong cùng turn — chỉ cold start đến PF-STEP 2 (Card + scoring + video_id assignment).
+- KHÔNG commit trừ khi prompt user cho phép rõ (theo Git & Artifact Agent rule Phần 24).
+- KHÔNG mở yt_015 hay video_id cụ thể — chỉ assign video_id tự động theo scan tăng dần khi PRODUCT_SELECTED.
+- KHÔNG batch >1 link — single-link default Round 26 patch.
+
+**Output Section J template (khi PRODUCT_SELECTED)**:
+```
+detected_video_id        : <yt_NNN mới assign>
+state_source_path        : production/batch_001/<video_id>/shopee_product_card.json
+artifact_source_path     : production/batch_001/<video_id>/
+namespace_mode           : batch_legacy
+detected_next_agent      : Demo Match Agent
+action_taken             : ran shopee-first cold start, assigned <video_id>
+status                   : SUCCESS
+reason_code              : null
+output_artifacts         : [production/batch_001/<video_id>/shopee_product_card.json,
+                           production/_commerce/shopee_link_registry.json]
+next_step_short          : Demo Match Agent — tìm clip demo tương đồng cho <video_id>.
+git_status_summary       : <N modified, M untracked>
+```
 
 ### B. Active Video Priority (khi `/chay` không kèm video_id)
 
