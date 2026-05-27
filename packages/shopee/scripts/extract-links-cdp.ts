@@ -148,24 +148,43 @@ interface ProductCard {
 
 async function discoverProductCards(page: Page): Promise<ProductCard[]> {
   return page.evaluate(() => {
+    // 1. Tìm tất cả các phần tử chứa text "lấy link"/"get link" (case-insensitive,
+    //    giới hạn độ dài để né nút "Lấy link hàng loạt" / "Get link batch")
     const buttons = Array.from(document.querySelectorAll<HTMLElement>("*")).filter((el) => {
-      const t = (el.textContent ?? "").trim();
-      return (t === "Lấy link" || t === "Get link") && el.children.length === 0;
+      const t = (el.textContent ?? "").trim().toLowerCase();
+
+      if (!t.includes("lấy link") && !t.includes("get link")) return false;
+      if (t.length > 15) return false; // Loại trừ nút "Lấy link hàng loạt"
+
+      // Leaf-Node by substring: bỏ qua thẻ cha nếu có thẻ con bên trong
+      // cũng chứa cùng cụm từ — chỉ lấy thẻ sâu nhất sát chữ thực tế.
+      const hasChildWithSameText = Array.from(el.children).some((child) => {
+        const ct = (child.textContent ?? "").trim().toLowerCase();
+        return ct.includes("lấy link") || ct.includes("get link");
+      });
+      return !hasChildWithSameText;
     });
 
+    // 2. Khôi phục tọa độ và bóc tách thông tin từ các nút tìm được
     return buttons.slice(0, 20).map((btn, idx) => {
+      // Leo ngược lên trên (Climb up) để tìm khung bọc toàn bộ ô sản phẩm (Card Container)
       let card: Element | null = btn;
       for (let i = 0; i < 12 && card; i++) {
-        const txt = (card.textContent ?? "").trim();
-        if (txt.length > 30 && txt.length < 400) break;
+        // Ô sản phẩm chuẩn bắt buộc phải chứa ảnh thumbnail và có hiển thị giá tiền ₫
+        if (card.querySelector("img") && card.textContent?.includes("₫")) {
+          break;
+        }
         card = card.parentElement;
       }
+
+      // Tách lấy tên sản phẩm bằng cách cắt bỏ phần text từ ký tự ₫ trở đi
       const rawText = (card?.textContent ?? "").trim();
       const name = (rawText.match(/^[^₫]+/)?.[0] ?? "").trim().slice(0, 120);
 
+      // Tìm link gốc của sản phẩm nếu có sẵn trên thẻ
       let href: string | null = null;
       const a = card?.querySelector<HTMLAnchorElement>(
-        'a[href*="shopee.vn/"][href*="-i."], a[href*="shopee.vn/product/"]',
+        'a[href*="shopee.vn/"][href*="-i."], a[href*="shopee.vn/product/"], a[href*="s.shopee.vn"]',
       );
       if (a?.href) href = a.href;
 
@@ -174,17 +193,29 @@ async function discoverProductCards(page: Page): Promise<ProductCard[]> {
   });
 }
 
-async function clickGetLinkButton(page: Page, n: number): Promise<boolean> {
-  return page.evaluate((idx: number) => {
+async function clickGetLinkButton(page: Page, index: number): Promise<boolean> {
+  return page.evaluate((idx) => {
+    // Đồng bộ tuyệt đối thuật toán tìm nút "Lấy link" sát chữ thực tế nhất
+    // (case-insensitive + giới hạn độ dài, khớp với discoverProductCards)
     const buttons = Array.from(document.querySelectorAll<HTMLElement>("*")).filter((el) => {
-      const t = (el.textContent ?? "").trim();
-      return (t === "Lấy link" || t === "Get link") && el.children.length === 0;
+      const t = (el.textContent ?? "").trim().toLowerCase();
+
+      if (!t.includes("lấy link") && !t.includes("get link")) return false;
+      if (t.length > 15) return false; // Loại trừ nút "Lấy link hàng loạt"
+
+      const hasChildWithSameText = Array.from(el.children).some((child) => {
+        const ct = (child.textContent ?? "").trim().toLowerCase();
+        return ct.includes("lấy link") || ct.includes("get link");
+      });
+      return !hasChildWithSameText;
     });
-    const b = buttons[idx];
-    if (!b) return false;
-    b.click();
+
+    const targetBtn = buttons[idx];
+    if (!targetBtn) return false;
+
+    targetBtn.click();
     return true;
-  }, n);
+  }, index);
 }
 
 async function extractShortLinkFromModal(page: Page): Promise<string | null> {
@@ -408,6 +439,25 @@ async function main(): Promise<number> {
     process.stdout.write(
       `── iter (extracted=${extracted}/${cli.target_count}, clicks=${clicks}/${cli.max_clicks}) ──\n`,
     );
+
+    // SPA Hydration Wait — đợi React render danh sách sản phẩm xong trước khi scan DOM.
+    // Predicate khớp filter của discoverProductCards (case-insensitive + length<15)
+    // để tránh false-positive với button "Lấy link hàng loạt".
+    try {
+      process.stdout.write("  [CDP] Chờ danh sách sản phẩm hiển thị (SPA Hydration)...\n");
+      await page.waitForFunction(
+        () => {
+          const els = Array.from(document.querySelectorAll("*"));
+          return els.some((el) => {
+            const t = (el.textContent ?? "").trim().toLowerCase();
+            return (t.includes("lấy link") || t.includes("get link")) && t.length < 15;
+          });
+        },
+        { timeout: 15000 },
+      );
+    } catch {
+      process.stdout.write("  [CDP] Timeout chờ sản phẩm, tiến hành scan trực tiếp...\n");
+    }
 
     const cards = await discoverProductCards(page);
     process.stdout.write(`  visible cards: ${cards.length}\n`);
