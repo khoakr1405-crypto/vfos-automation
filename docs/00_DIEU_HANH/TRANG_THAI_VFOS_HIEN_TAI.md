@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-05-27 (Round 26 — promote yt_014 successful patterns vào hệ thống chung: Final Reels Render 9:16, Overlay Anti-Overlap Rule, OpenAI Viral Subtitle Workflow expanded. Output A docs-only, 0 code helper promoted.)
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `9a581f1` (Round 26B Shopee link registry + CDP docs; sẽ bump hash khi commit Round 26)
+> **Cập nhật lần cuối**: 2026-05-27 (Round 27 — Shopee CDP production extraction CLI: `pnpm shopee:extract-links-cdp` wired vào `link-registry.ts`, default target_count=1, max_clicks=5 safety ceiling, fresh DOM query mỗi iteration, modal verify → appendRejected ERR_MODAL_UNRECOGNIZED, no `any`, 20/20 helper tests pass + 26/26 registry tests pass.)
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `112c905` (Round 26 patch single-link default; Round 27 sẽ commit ngay sau update này)
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -1621,6 +1621,59 @@ Vòng này sửa skill + docs để `/chay` tự quyết định + tự retry + 
 **Commit**: `docs: promote yt_014 successful patterns to shared pipeline` (`8bef9fc`).
 
 **Patch 2026-05-27 (post Round 26)**: cập nhật CDP extraction default → `target_count = 1` (single-link default). User explicit không muốn lấy 3–5 link mỗi lần khi không cần. Batch mode CHỈ activate khi user yêu cầu rõ ("lấy N link" / "lấy N sản phẩm" / "tìm nhiều để so sánh") hoặc CLI `--target-count=N`. `max_clicks_per_batch = 5` là **safety ceiling**, KHÔNG phải mục tiêu. Workflow nhắm: 1 link mới hợp lệ → 1 Product Card → 1 scoring → PRODUCT_SELECTED → 1 video_id mới + Source Match Agent. Cập nhật SKILL.md (Default tuning + Batch mode + Stop conditions + 3 HARD CONSTRAINTS + 2 SELF-REVIEW) + VFOS_AGENT_ARCHITECTURE_V0.md (mục 3.1 Shopee Product Agent). Commit: `docs: shopee cdp default to single-link extraction`.
+
+---
+
+### ✅ Round 27 — Shopee CDP Production Extraction CLI: ĐÃ CHỐT (2026-05-27)
+
+**Mục tiêu**: thay thế 6+ POC scratch scripts (`click-and-extract-links.ts`, `cdp-extract.ts` draft, `get-one-link.ts`, etc.) bằng **1 production CLI duy nhất** wire vào `link-registry.ts`, đáp ứng đủ hardening Round 26B + patch single-link default.
+
+**Đã làm**:
+
+- **Module mới** [packages/shopee/src/cdp-extract-helpers.ts](packages/shopee/src/cdp-extract-helpers.ts) — pure helpers testable không cần real browser:
+  - `extractShopidItemid(canonical)` — parse 3 path shape (`-i.<shopid>.<itemid>`, `/opaanlp/<shopid>/<itemid>`, `/<slug>/<shopid>/<itemid>`).
+  - `resolveShortLink(url, fetcher)` — injectable fetcher; HEAD redirect → fallback GET; KHÔNG đọc request/response cookies.
+  - `shouldSkipPreClick(registry, owner, probe)` — pre-click dedup HARD priority: shopid+itemid > canonical > short_link > product_name; trả về `match_field` cho operator log.
+  - `classifyResolvedLink(canonical, expectedOwner)` — `ACCEPT` | `REJECT (ERR_AFFILIATE_OWNER_MISMATCH)` | `REVIEW (NEEDS_USER_REVIEW)`.
+  - `parseCliValues(values, defaults)` — validate target_count ≥ 1, max_clicks ≥ target_count, owner_id `an_<digits>`, cdp_retries ≥ 1.
+
+- **CLI mới** [packages/shopee/scripts/extract-links-cdp.ts](packages/shopee/scripts/extract-links-cdp.ts) — production CLI `pnpm shopee:extract-links-cdp`:
+  - Default `--target-count=1` (single-link), `--max-clicks=5` safety ceiling.
+  - **Fresh DOM query mỗi iteration** — không giữ stale index; `Set<string> attemptedNames` chỉ track session tại Node-side để skip card đã thử.
+  - **Modal verify** sau click → URL hợp lệ → resolve; URL missing → `appendRejected(ERR_MODAL_UNRECOGNIZED)` → đóng modal Escape → re-query DOM iteration tiếp.
+  - **Pre-click dedup** kiểm tra shopid+itemid (nếu đọc được từ card `<a href>`) + product_name từ registry.
+  - **Post-resolve dedup MANDATORY** — sau khi resolve short link → kiểm lại bằng shopid+itemid + canonical_url + short_link; nếu trùng → skip không upsert. 3 hit liên tiếp → `SUSPENDED`.
+  - **Owner validation** qua `classifyResolvedLink` → `ACCEPT` upsert; `REJECT` → `appendRejected(ERR_AFFILIATE_OWNER_MISMATCH)`; `REVIEW` upsert với `affiliate_link_status=NEEDS_USER_REVIEW`.
+  - **CDP failure policy** đúng spec: connect fail 3 retry → `ERR_CDP_BROWSER_NOT_FOUND` (exit 2); tab missing → `ERR_CDP_TARGET_TAB_NOT_FOUND` (exit 2). KHÔNG tự fallback storage_state/cookie/HAR.
+  - **No `any`** — dùng `Browser`, `Page` từ playwright + `FetchLike` injectable type cho tests. Triple-slash `/// <reference lib="dom" />` cho DOM body bên trong `page.evaluate`.
+  - **`--help` text** đầy đủ option + pre-req operator + KHẲNG ĐỊNH single-link default.
+  - **`--dry-run`** — log actions, không write registry, không appendRejected.
+
+- **Tests mới** [packages/shopee/tests/cdp-extract-helpers.test.ts](packages/shopee/tests/cdp-extract-helpers.test.ts) — **20/20 pass**:
+  - `extractShopidItemid`: 4 test (opaanlp, `-i.`, unrelated URL, null).
+  - `classifyResolvedLink`: 4 test (ACCEPT, REJECT owner mismatch, REVIEW missing gads_t_sig, REJECT null).
+  - `shouldSkipPreClick`: 3 test (empty registry, hit by shopid_itemid, hit by normalized product_name).
+  - `rerun behaviour`: 1 test (first upsert insert, second upsert same shopid+itemid → duplicate times_seen=2, entries.length=1).
+  - `resolveShortLink`: 3 test (Location header, fallback GET .url, fetcher throw → null).
+  - `parseCliValues`: 5 test (defaults 1/5, --target-count=3 ok, max < target reject, owner format reject, target<1 reject).
+- **Toàn shopee test suite**: **46/46 pass** (20 cdp + 26 link-registry).
+
+- **Package wiring** [packages/shopee/package.json](packages/shopee/package.json): thêm `"shopee:extract-links-cdp": "tsx scripts/extract-links-cdp.ts"`.
+- **Export** [packages/shopee/src/index.ts](packages/shopee/src/index.ts): re-export 5 helper + 5 type.
+- **Xoá** draft `packages/shopee/scripts/cdp-extract.ts` (untracked, không có git impact).
+- **TRANG_THAI** (file này): Round 27 entry + header + commit hash bump.
+
+**Verify**:
+- Tests: `npx tsx --test packages/shopee/tests/*.test.ts` → 46/46 pass.
+- Typecheck: `tsc -p packages/shopee/tsconfig.json --noEmit` → clean cho `extract-links-cdp.ts` + `cdp-extract-helpers.ts` + tests (errors còn lại đều ở scratch scripts untracked `get-one-link.ts` / `test-single-link-cdp.ts` + pre-existing `secret-redaction.ts` error).
+- Smoke `--help` → in đúng option + pre-req.
+- Smoke `--target-count=abc` → exit `ERR_INVALID_ARGS`.
+- Smoke `--dry-run --cdp-retries=1` (không có tab Shopee mở) → CDP connect OK + `ERR_CDP_TARGET_TAB_NOT_FOUND` exit cleanly. CDP failure policy verified.
+- Security scan diff: 0 secret thật — chỉ có guard comment "never log cookies/tokens".
+
+**Không làm**: chạy CDP thật trên Shopee tab live, lấy link production thật, mở yt_015, chạy video, publish, gọi Facebook API, nhập password/OTP, log cookie/token/header, commit POC scratch hàng loạt, commit registry runtime JSON `production/_commerce/shopee_link_registry.json`, xoá scratch khác (`load-picks.ts`, `extract-active-coccoc.ts`, etc. vẫn untracked — operator tự xoá).
+
+**Commit**: `feat: add shopee cdp production extraction cli` (commit hash sẽ bump sau khi commit).
 
 ---
 

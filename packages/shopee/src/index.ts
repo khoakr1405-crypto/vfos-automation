@@ -53,3 +53,18 @@ export type {
   LinkRegistryReasonCode,
   UpsertResult,
 } from "./link-registry.js";
+
+export {
+  extractShopidItemid,
+  resolveShortLink,
+  shouldSkipPreClick,
+  classifyResolvedLink,
+  parseCliValues,
+} from "./cdp-extract-helpers.js";
+export type {
+  ShopidItemid,
+  FetchLike,
+  PreClickDedupResult,
+  ValidationOutcome,
+  ParsedCliArgs,
+} from "./cdp-extract-helpers.js";
