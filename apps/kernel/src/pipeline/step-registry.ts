@@ -93,6 +93,15 @@ export const PIPELINE_STEPS: Record<string, StepDefinition> = {
     expectedArtifacts: ['publish/facebook_reels_publish_plan.json'],
     description: 'Draft Facebook Reels caption and schedule metadata.',
   },
+  'production-like:select-product-offline': {
+    stepName: 'production-like:select-product-offline',
+    command: 'pnpm',
+    args: ['offline-product-select'],
+    cwd: '.',
+    timeoutMs: 30_000,
+    expectedArtifacts: ['data/temp/pipeline-p6-demo/selected_product_card.json'],
+    description: 'Production-like offline Shopee product candidate selection.',
+  },
 };
 
 export class StepRegistry {
