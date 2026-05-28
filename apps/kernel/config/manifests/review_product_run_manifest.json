@@ -1,0 +1,22 @@
+{
+  "manifestVersion": "v1",
+  "lane": "review_product",
+  "runId": "run_review_product_p9",
+  "subject": "yt_016_review_product_p9",
+  "mode": "pass",
+  "inputs": {
+    "productCandidatesPath": "production/_commerce/shopee_product_candidates.json",
+    "videoCandidateMetadataPath": "production/_commerce/shopee_product_candidates.json"
+  },
+  "output": {
+    "rootDir": "data/temp/pipeline-p9-demo"
+  },
+  "operatorApproval": {
+    "requiresPreviewApproval": true,
+    "allowPublish": false,
+    "allowExternalApi": false
+  },
+  "metadata": {
+    "notes": "P9 offline manifest demo for review_product lane"
+  }
+}

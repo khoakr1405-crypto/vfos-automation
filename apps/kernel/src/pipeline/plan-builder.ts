@@ -1,7 +1,7 @@
 /**
  * Pipeline Plan Builder — Generates declarative JSON execution plans for the Auto-Pipeline.
  *
- * Upgraded to load and interpolate versioned Lane Templates/Configurations.
+ * Upgraded in P9 to read, validate, and merge a dynamic Run Manifest with static Lane Configurations.
  */
 
 import { existsSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
@@ -84,8 +84,112 @@ export interface LaneConfig {
   steps: LaneConfigStepTemplate[];
 }
 
+// ── Run Manifest Types (P9) ───────────────────────────────────────────────
+
+export interface RunManifest {
+  manifestVersion: string;
+  lane: string;
+  runId: string;
+  subject: string;
+  mode: string;
+  inputs: {
+    productCandidatesPath: string;
+    videoCandidateMetadataPath: string;
+    [key: string]: any;
+  };
+  output: {
+    rootDir: string;
+  };
+  operatorApproval: {
+    requiresPreviewApproval: boolean;
+    allowPublish: boolean;
+    allowExternalApi: boolean;
+  };
+  metadata?: Record<string, any>;
+}
+
 export class PlanBuilder {
   constructor(private readonly repoRoot: string = '.') {}
+
+  /**
+   * Generates a pipeline_plan.json by loading a versioned Run Manifest, validating safety gates,
+   * merging it with a static Lane Config, and executing template interpolation.
+   */
+  buildPlanFromManifest(
+    manifestPath: string,
+    options?: {
+      mode?: 'pass' | 'product-fail' | 'invalid-manifest' | 'unsafe-manifest';
+    },
+  ): BuildPlanResult {
+    // Handle invalid manifest simulation before loading
+    if (options?.mode === 'invalid-manifest') {
+      throw new Error('Run Manifest Validation Failed: Manifest file is malformed or missing key identifier fields.');
+    }
+
+    const resolvedManifestPath = join(this.repoRoot, manifestPath);
+    if (!existsSync(resolvedManifestPath)) {
+      throw new Error(`Run Manifest file not found at: ${resolvedManifestPath}`);
+    }
+
+    let manifest: RunManifest;
+    try {
+      manifest = JSON.parse(readFileSync(resolvedManifestPath, 'utf8'));
+    } catch (err: any) {
+      throw new Error(`Failed to parse Run Manifest JSON: ${err.message}`);
+    }
+
+    // 1. Thorough Run Manifest Validation (Safety & Structure)
+    if (!manifest.manifestVersion || manifest.manifestVersion !== 'v1') {
+      throw new Error('Run Manifest Validation Failed: missing or invalid "manifestVersion" (must be "v1").');
+    }
+    if (!manifest.lane || manifest.lane !== 'review_product') {
+      throw new Error('Run Manifest Validation Failed: missing or invalid "lane" field (must be "review_product").');
+    }
+    if (!manifest.runId || typeof manifest.runId !== 'string') {
+      throw new Error('Run Manifest Validation Failed: missing "runId".');
+    }
+    if (!manifest.subject || typeof manifest.subject !== 'string') {
+      throw new Error('Run Manifest Validation Failed: missing "subject".');
+    }
+    if (!manifest.inputs || !manifest.inputs.productCandidatesPath || !manifest.inputs.videoCandidateMetadataPath) {
+      throw new Error('Run Manifest Validation Failed: missing inputs productCandidatesPath or videoCandidateMetadataPath.');
+    }
+    if (!manifest.output || !manifest.output.rootDir) {
+      throw new Error('Run Manifest Validation Failed: missing output rootDir.');
+    }
+    if (!manifest.operatorApproval) {
+      throw new Error('Run Manifest Validation Failed: missing operatorApproval settings.');
+    }
+
+    // 2. Strict Safety Gate Checks (allowExternalApi & allowPublish)
+    if (
+      manifest.operatorApproval.allowExternalApi === true ||
+      manifest.operatorApproval.allowPublish === true ||
+      options?.mode === 'unsafe-manifest'
+    ) {
+      throw new Error(
+        'Safety Gate Violation: Manifest requests live operations (external API or publishing) which is strictly forbidden in this offline dry-run pilot.',
+      );
+    }
+
+    // 3. Resolve Lane Config Path
+    const laneConfigPath = join(this.repoRoot, 'apps/kernel/config/lanes', `${manifest.lane}.json`);
+
+    // 4. Delegate to core buildPlan with dynamic values merged
+    const runId = manifest.runId;
+    const outputDir = join(manifest.output.rootDir, runId);
+    const mode = options?.mode || (manifest.mode as any) || 'pass';
+
+    return this.buildPlan({
+      runId,
+      subject: manifest.subject,
+      selectedProductCardPath: join(this.repoRoot, manifest.inputs.productCandidatesPath),
+      videoCandidateMetadataPath: join(this.repoRoot, manifest.inputs.videoCandidateMetadataPath),
+      outputDir,
+      laneConfigPath,
+      mode,
+    });
+  }
 
   /**
    * Generates a pipeline_plan.json by loading a versioned Lane Template and interpolating variables.
@@ -97,7 +201,7 @@ export class PlanBuilder {
     videoCandidateMetadataPath: string;
     outputDir: string;
     laneConfigPath?: string; // Optional path, defaults to review_product
-    mode?: 'pass' | 'product-fail' | 'missing-input' | 'invalid-plan' | 'invalid-config';
+    mode?: 'pass' | 'product-fail' | 'missing-input' | 'invalid-plan' | 'invalid-config' | 'invalid-manifest' | 'unsafe-manifest';
   }): BuildPlanResult {
     const runId = options.runId;
     const resolvedOutputDir = join(this.repoRoot, options.outputDir);
@@ -113,7 +217,7 @@ export class PlanBuilder {
     }
 
     // 2. Validate input files existence
-    if (options.mode !== 'invalid-plan') {
+    if (options.mode !== 'invalid-plan' && options.mode !== 'invalid-manifest' && options.mode !== 'unsafe-manifest') {
       if (!existsSync(options.selectedProductCardPath)) {
         throw new Error(`Input selectedProductCard file not found: ${options.selectedProductCardPath}`);
       }
