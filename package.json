@@ -40,7 +40,8 @@
     "pipeline:p9-demo": "tsx scripts/pipeline-p9-demo.ts",
     "offline-visual-metadata": "tsx scripts/offline-visual-metadata-demo.ts",
     "pipeline:p10-demo": "tsx scripts/pipeline-p10-demo.ts",
-    "pipeline:run-manifest": "tsx scripts/pipeline-run-manifest.ts"
+    "pipeline:run-manifest": "tsx scripts/pipeline-run-manifest.ts",
+    "offline-script-generate": "tsx scripts/offline-script-generate-demo.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

@@ -12,17 +12,19 @@ export interface ScriptGuardConfig {
   minCharacters?: number;
   maxCharacters?: number;
   bannedPhrases?: string[];
+  targetStep?: string;
 }
 
 export class ScriptGuard implements Guard {
   readonly guardName = 'ScriptGuard';
-  readonly targetStep = 'script:generate';
+  readonly targetStep: string;
 
   private readonly minCharacters: number;
   private readonly maxCharacters: number;
   private readonly bannedPhrases: string[];
 
   constructor(config?: ScriptGuardConfig) {
+    this.targetStep = config?.targetStep ?? 'script:generate';
     this.minCharacters = config?.minCharacters ?? 20;
     this.maxCharacters = config?.maxCharacters ?? 5000;
     this.bannedPhrases = config?.bannedPhrases ?? ['fake link', 'reup content', 'scam product'];

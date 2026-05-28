@@ -67,6 +67,34 @@
       ]
     },
     {
+      "stepName": "demo:script-generate",
+      "description": "Production-like offline AI voiceover script generator",
+      "command": "tsx",
+      "argsTemplate": [
+        "scripts/offline-script-generate-demo.ts",
+        "--output",
+        "{outputDir}/script_artifact.json",
+        "--mode",
+        "{mode}"
+      ],
+      "cwd": ".",
+      "timeoutMs": 10000,
+      "expectedArtifacts": [
+        {
+          "pathTemplate": "{outputDir}/script_artifact.json",
+          "required": true,
+          "nonEmpty": true
+        }
+      ],
+      "guards": [
+        {
+          "guardName": "ScriptGuard",
+          "artifactPathTemplate": "{outputDir}/script_artifact.json",
+          "blocking": true
+        }
+      ]
+    },
+    {
       "stepName": "demo:publish",
       "description": "Downstream Publish Step",
       "command": "node",

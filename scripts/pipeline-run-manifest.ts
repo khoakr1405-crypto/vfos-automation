@@ -13,6 +13,7 @@ import { RunStore } from '../apps/kernel/src/pipeline/run-store.js';
 import { AutoPipeline } from '../apps/kernel/src/pipeline/auto-pipeline.js';
 import { ProductMatchGuard } from '../apps/kernel/src/pipeline/guards/product-match-guard.js';
 import { VisualGuard } from '../apps/kernel/src/pipeline/guards/visual-guard.js';
+import { ScriptGuard } from '../apps/kernel/src/pipeline/guards/script-guard.js';
 import { PlanBuilder } from '../apps/kernel/src/pipeline/plan-builder.js';
 
 function printHelp() {
@@ -180,11 +181,13 @@ async function main() {
   const runStore = new RunStore(logger, { dataDir: './data' });
   const productGuard = new ProductMatchGuard();
   const visualGuard = new VisualGuard();
+  const defaultScriptGuard = new ScriptGuard();
+  const customScriptGuard = new ScriptGuard({ targetStep: 'demo:script-generate' });
 
   const pipeline = new AutoPipeline({
     logger,
     runStore,
-    guards: [productGuard, visualGuard],
+    guards: [productGuard, visualGuard, defaultScriptGuard, customScriptGuard],
   });
 
   console.log('\n  [Operator] Executing multi-step validation workflow...');
