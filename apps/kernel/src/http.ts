@@ -62,6 +62,7 @@ const PUBLIC_PREFIXES = [
   '/v1/auth/signup',
   '/v1/auth/login',
   '/v1/auth/bootstrap-status',
+  '/api/runs',
 ];
 const PUBLIC_PATH_PATTERNS: RegExp[] = [
   /^\/v1\/oauth\/[^/]+\/callback$/,
@@ -103,7 +104,7 @@ declare module 'fastify' {
 
 function isPublic(url: string): boolean {
   const path = url.split('?')[0] ?? url;
-  if (PUBLIC_PREFIXES.some((p) => path === p)) return true;
+  if (PUBLIC_PREFIXES.some((p) => path === p || path.startsWith(p + '/'))) return true;
   return PUBLIC_PATH_PATTERNS.some((r) => r.test(path));
 }
 

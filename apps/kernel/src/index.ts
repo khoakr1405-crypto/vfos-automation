@@ -33,6 +33,8 @@ import { MetaOAuthProvider } from './oauth/meta.js';
 import { createSchedulerLoop } from './scheduler/loop.js';
 import { setupTelemetry, shutdownTelemetry } from './telemetry/setup.js';
 import { WebhookDispatcher } from './webhooks/dispatcher.js';
+import { RunStore } from './pipeline/run-store.js';
+import { registerStatusRoutes } from './pipeline/status-api.js';
 import { registerPublishWorker } from './workers/publish.js';
 import { registerRenderWorker } from './workers/render.js';
 import { registerSchedulerWorker } from './workers/scheduler.js';
@@ -61,6 +63,8 @@ async function main(): Promise<void> {
 
   const blob = new BlobStore(logger, join(cfg.DATA_DIR, 'blobs'));
   await blob.start();
+
+  const runStore = new RunStore(logger, { dataDir: cfg.DATA_DIR });
 
   const busOpts: { redisUrl?: string } = {};
   if (cfg.REDIS_URL) busOpts.redisUrl = cfg.REDIS_URL;
@@ -184,11 +188,14 @@ async function main(): Promise<void> {
     defaultTenantId: cfg.TENANT_DEFAULT_ID,
   });
 
+  registerStatusRoutes(app, runStore, { isDev: cfg.NODE_ENV === 'development' });
+
   await app.listen({ host: cfg.KERNEL_HOST, port: cfg.KERNEL_PORT });
   logger.info({ port: cfg.KERNEL_PORT, bus: bus.name, queue: queue.name }, 'kernel.ready');
 
   const shutdown = async (signal: string): Promise<void> => {
     logger.info({ signal }, 'kernel.shutdown');
+    runStore.flush();
     await schedulerLoop.stop();
     await webhookDispatcher.stop();
     await plugins.stopAll();
