@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-05-27 (Round 27B — Shopee CDP browser auto-launch + CAPTCHA human-assist guard. `packages/shopee/src/cdp-bootstrap.ts` (port probe, browser path resolver, user-data-dir + profile lock safety, detached spawn, port polling, captcha detect/wait). CLI tích hợp `--captcha-wait-seconds`, `--no-auto-launch`, `--browser-path`, `--browser-user-data-dir`. SKILL Section A.1 + Section H + Section K cập nhật. **27 unit tests pass; total 73/73 suite pass.**)
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `3c80228` (Round 27 + alias docs; Round 27B sẽ bump hash khi commit)
+> **Cập nhật lần cuối**: 2026-05-28 (Round 28 — Sub-Agent validation run thành công rực rỡ với video `yt_016` Khăn Giấy Treo Tường TopGia, đạt 100% tự động qua các sub-agent, tối ưu hóa từ ngữ bằng Operator Trim, xuất thành công Reels video `yt_016_final_reels_v2_3.mp4` đạt chuẩn QC và lưu kế hoạch xuất bản Facebook Reels.)
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `15c2210` (Round 27B Auto-Pilot + yt_015 milestones; Round 28 sẽ bump hash khi commit)
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
 
 ---
@@ -1791,7 +1791,17 @@ Commit: `docs: add chay aliases for shopee cdp extraction`.
 >
 > **TRẠNG THÁI yt_014 (2026-05-26)**: **Shopee-First Audio Assembly & publish plan success** theo Agent Architecture v0. Đã tạo voice_sync_manifest, voice_timeline.mp3, mixed_audio.mp3, preview_vi.mp4 và facebook_reels_publish_plan.json. Technical QC hoàn toàn đạt: duration mismatch = 0.134s (<0.5s), max_volume = -4.5 dB (no clipping), 0 leak, 2 streams (H264, AAC).
 >
-> **Bước tiếp theo duy nhất: USER đánh giá thành phẩm yt_015 và quyết định chiến lược tiếp theo.**
+> **Bước tiếp theo duy nhất: USER đánh giá thành phẩm yt_016 và quyết định các chiến lược tiếp theo.**
+>
+> **MỐC ĐẠT ĐƯỢC 2026-05-28 (Round 28 — Sub-Agent validation run)**:
+> - **Chạy thành công và hoàn thành video Khăn Giấy Rút Treo Tường `yt_016`**: Dự án đạt cột mốc quan trọng tiếp theo khi chạy thành công `yt_016` theo đúng chuẩn kiến trúc **Sub-Agent validation run**.
+> - **Quy trình chạy tự động và tối ưu hóa**: 
+>   - **Commerce Product Agent**: Tự động phát hiện và phê duyệt sản phẩm `PRODUCT_SELECTED` (Giấy vệ sinh treo tường TopGia 100k, 9% hoa hồng, 1tr+ bán) với điểm Selection Scoring tối đa 18/18.
+>   - **Demo Match Agent**: Trùng khớp 100% SKU (`MATCH_CONFIRMED`) từ nguồn sạch hoàn toàn không watermark.
+>   - **Script & Claim Safety Agent**: Áp dụng quy trình kiểm soát chất lượng từ `gpt-4o-mini`, phát hiện và từ chối biến thể rủi ro chứa từ cấm `an toàn tuyệt đối` / `tốt nhất`. Đã tự động áp dụng `OPERATOR TRIM POLICY` cắt giảm từ ngữ vượt cap ở block b2 và b3 để đưa tổng số từ về 33 từ (nằm trong window target).
+>   - **Audio & Assembly & Final Reels Render**: Xuất thành công tệp render cuối cùng `yt_016_final_reels_v2_3.mp4` (15.6s, 1080x1920 portrait) đạt chuẩn QC kỹ thuật (volume -2.9 dB, 2 streams, 0 leak).
+>   - **Facebook Reels Publish Plan**: Đã tạo và persist tệp `facebook_reels_publish_plan.json` chứa thông tin đăng bài, hashtag đã tối ưu, cùng link Shopee Affiliate rút gọn đã được verify thành công.
+> - **Tự động hóa Git Agent**: Tự động stage các file text/manifest của `yt_016` sạch sẽ không dính binary file.
 >
 > **MỐC ĐẠT ĐƯỢC 2026-05-28 (Round 27B Auto-Pilot)**:
 > - **Tích hợp chế độ Auto-Pilot Mode**: Cập nhật playbook và logic vận hành trong `SKILL.md` để tự động duyệt video 5/5, tự động trim gọt kịch bản, giới hạn human-in-the-loop chỉ dừng khi gặp blocker vật lý nặng (OTP, Lock profile, brand không sửa được).

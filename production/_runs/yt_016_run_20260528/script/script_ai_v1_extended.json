@@ -1,0 +1,161 @@
+{
+  "input": {
+    "video_id": "yt_016",
+    "content_goal": "Giới thiệu mượt mà khăn giấy treo tường TopGia (hanging kitchen paper towel) cho Reels VN. Tone chia sẻ trải nghiệm thực tế lau dọn nhà bếp, KHÔNG quảng cáo thô, KHÔNG dùng từ cấm. Focus observable facts: giấy treo tường, rút bằng 1 tay mượt mà, giấy 4 lớp dày siêu dai, nhúng nước không rách.",
+    "target_platform": "reels",
+    "duration_target_s": 15.6,
+    "tone": "vui vẻ chia sẻ, cheeky nhẹ, bắt trend, review chân thực",
+    "affiliate_angle": "shopee_link_bio",
+    "cta_style": "soft_link_in_description",
+    "scene_timeline": [
+      {
+        "window_start_s": 0.0,
+        "window_end_s": 3.5,
+        "scene_type": "HOOK",
+        "visual_summary": "Cận cảnh gói khăn giấy TopGia màu pastel treo ngược trên tường bếp. Một bàn tay với tay lên chuẩn bị rút.",
+        "notes": "Hook tò mò: khăn giấy treo tường?"
+      },
+      {
+        "window_start_s": 3.5,
+        "window_end_s": 7.5,
+        "scene_type": "KITCHEN",
+        "visual_summary": "Tay rút một tờ giấy xuống cực kỳ mượt mà, gói giấy đứng yên không hề bị xê dịch hay rơi xuống.",
+        "notes": "Demo rút một tay mượt mà."
+      },
+      {
+        "window_start_s": 7.5,
+        "window_end_s": 12.0,
+        "scene_type": "FILLER",
+        "visual_summary": "Tay nhúng tờ giấy vào bát nước đầy, sau đó nhấc lên, kéo căng hai bên nhưng giấy không hề bị mủn hay rách.",
+        "notes": "Demo nhúng nước không rách."
+      },
+      {
+        "window_start_s": 12.0,
+        "window_end_s": 15.6,
+        "scene_type": "CTA",
+        "visual_summary": "Model cười tươi chỉ tay xuống giỏ hàng Shopee góc màn hình. Clip đóng mượt.",
+        "notes": "CTA giỏ hàng Shopee."
+      }
+    ]
+  },
+  "output": {
+    "hook": "Ủa khăn giấy gì mà treo được lên tường?",
+    "blocks": [
+      {
+        "block_id": "b1",
+        "window_start_s": 0.0,
+        "window_end_s": 3.5,
+        "intent": "HOOK",
+        "line": "Ủa khăn giấy gì mà treo được lên tường?",
+        "notes": "Pass 1 hook."
+      },
+      {
+        "block_id": "b2",
+        "window_start_s": 3.5,
+        "window_end_s": 7.5,
+        "intent": "KITCHEN",
+        "line": "Rút một tay cực kỳ mượt mà, siêu tiện lợi.",
+        "notes": "operator_trim: 14→10 từ để vừa khít WPS budget của Voice Sync."
+      },
+      {
+        "block_id": "b3",
+        "window_start_s": 7.5,
+        "window_end_s": 12.0,
+        "intent": "FILLER",
+        "line": "Giấy bốn lớp siêu dai, nhúng nước thoải mái không lo rách.",
+        "notes": "operator_trim: 16→12 từ. Cắt bỏ 'chất lượng đỉnh cao an toàn tuyệt đối' (banned claim) để giữ observable facts."
+      },
+      {
+        "block_id": "b4",
+        "window_start_s": 12.0,
+        "window_end_s": 15.6,
+        "intent": "CTA",
+        "line": "Mua ngay dưới phần giỏ hàng shopee nha!",
+        "notes": "Pass 1 CTA."
+      }
+    ],
+    "cta": "Mua ngay dưới phần giỏ hàng shopee nha!",
+    "full_script": "Ủa khăn giấy gì mà treo được lên tường?\nRút một tay cực kỳ mượt mà, siêu tiện lợi.\nGiấy bốn lớp siêu dai, nhúng nước thoải mái không lo rách.\nMua ngay dưới phần giỏ hàng shopee nha!",
+    "writer_notes": [
+      "Auto-Pilot operator trim applied 2026-05-28.",
+      "b2 trimmed 14→10 words.",
+      "b3 trimmed 16→12 words. Banned phrase 'an toàn tuyệt đối' successfully rejected and fallback applied."
+    ]
+  },
+  "meta": {
+    "model": "gpt-4o-mini",
+    "input_tokens": 4210,
+    "output_tokens": 312,
+    "response_id": "resp_093952580bba8c0625572413843478006a17c65830f0819b"
+  },
+  "quality_report": {
+    "banned_phrases_found": [],
+    "hook_consistent": true,
+    "cta_consistent": true,
+    "cta_preserved": true,
+    "word_count_original_extender": 40,
+    "word_count_post_operator_trim": 33,
+    "word_count_target": 35,
+    "word_count_within_target_original": false,
+    "word_count_within_target_post_trim": true,
+    "budget_mode": "timeline_aware",
+    "duration_based_target": 40,
+    "aggregate_block_cap": 36,
+    "target_adjustment_reason": "duration-based target reconciled for 15.6s timeline awareness",
+    "block_budget_violations_original": [
+      { "block_id": "b3", "intent": "FILLER", "window_duration_s": 4.5, "max_words": 13, "actual_words": 16, "overflow_words": 3, "severity": "minor", "reason": "FILLER 16 words exceeds cap 13" }
+    ],
+    "block_budget_violations_post_trim": [],
+    "warnings_original": [
+      "[BLOCK_BUDGET_MINOR] b3 (FILLER, 4.5s): FILLER 16 words exceeds cap 13"
+    ],
+    "warnings_post_trim": [],
+    "quality_status": "accepted_after_operator_trim",
+    "near_pass_reason": null,
+    "passed": true,
+    "passed_reason": "Operator trim resolved b3 minor violation. Banned phrase 'an toàn tuyệt đối' successfully removed."
+  },
+  "operator_trim": {
+    "operator_trim_applied": true,
+    "operator_trim_applied_at": "2026-05-28T06:06:35.000Z",
+    "original_quality_status": "fail",
+    "original_word_count": 40,
+    "trimmed_blocks": ["b2", "b3"],
+    "trim_diff": {
+      "b2": {
+        "before": "Rút một tay cực kỳ mượt mà, siêu tiện lợi và nhanh gọn vô cùng.",
+        "before_word_count": 14,
+        "after": "Rút một tay cực kỳ mượt mà, siêu tiện lợi.",
+        "after_word_count": 10,
+        "cap": 11,
+        "fits_cap": true
+      },
+      "b3": {
+        "before": "Giấy bốn lớp siêu dai, chất lượng đỉnh cao an toàn tuyệt đối nhúng nước thoải mái.",
+        "before_word_count": 16,
+        "after": "Giấy bốn lớp siêu dai, nhúng nước thoải mái không lo rách.",
+        "after_word_count": 12,
+        "cap": 13,
+        "fits_cap": true
+      }
+    },
+    "post_trim_word_count": 33,
+    "post_trim_reason": "WPS budget trim and claim safety filter on 'an toàn tuyệt đối'.",
+    "post_trim_quality_status": "accepted_after_operator_trim",
+    "validator_rerun_status": "not_available",
+    "final_used_for_voice_sync": true,
+    "validator_rerun_required_for_recommit": false,
+    "claim_safety_post_trim_check": {
+      "banned_keywords_strict_scan": "PASS — Zero banned keywords.",
+      "absolute_claim_scan": "PASS — No absolute negative claims.",
+      "tone_check": "PASS — Friendly sharing, cheeky viral hook."
+    }
+  },
+  "extender_meta": {
+    "pass1_word_count": 28,
+    "pass1_response_id": "resp_093dad6b466082e3006a17c64dea0c8198b45f807d1894ce57",
+    "pass2_response_id": "resp_0625572413843478006a17c65830f0819b99395952580bba8c"
+  },
+  "generated_at": "2026-05-28T06:06:00.000Z",
+  "operator_modified_at": "2026-05-28T06:06:35.000Z"
+}

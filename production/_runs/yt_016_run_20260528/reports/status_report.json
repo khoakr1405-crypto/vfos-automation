@@ -1,0 +1,13 @@
+{
+  "run_id": "yt_016_run_20260528",
+  "video_id": "yt_016",
+  "status": "DONE",
+  "commerce_check": "PASS",
+  "demo_match": "PASS_AUTO_APPROVED",
+  "script_qc": "PASS_AFTER_OPERATOR_TRIM",
+  "final_render": "SUCCESS",
+  "duration_s": 15.60,
+  "output_path": "production/_runs/yt_016_run_20260528/preview/yt_016_final_reels_v2_3.mp4",
+  "manifest_path": "production/_runs/yt_016_run_20260528/reports/status_report.json",
+  "timestamp": "2026-05-28T08:27:30.000Z"
+}

@@ -1,0 +1,113 @@
+{
+  "video_id": "yt_016",
+  "lane": "shopee_first",
+  "phase_ref": "Round 28 Sub-Agent validation run",
+  "created_at": "2026-05-28T06:05:00.000Z",
+  "promoted_at": "2026-05-28T06:06:00.000Z",
+  "promotion_note": "Commerce Product Agent verified and auto-approved for yt_016. High confidence product in TopGia kitchen/housework lane.",
+  "shopee_product_url": "https://shopee.vn/opaanlp/1016604648/23552060269",
+  "short_url_original": "https://s.shopee.vn/17Xw5Sny3",
+  "canonical_url": "https://shopee.vn/opaanlp/1016604648/23552060269?__mobile__=1&credential_token=8wEwiDL7YDd6xUGHhvUdzLBhR2ezFj6oSuvmoKWoqt&exp_group=rollout&gads_t_sig=gqRjZGVrxHCFomtpsTE0MjUxOnRzc19zZGtfa2V5omt20QABpGFsZ2_SAAAAZKNkZWvAomN0xEAAAAAMRoz0ZUjQw0QlRa--FjB0AKnHQPF7xv4DyGj9-GQwqn4zSdB6gztmw7ebmtsZs9FPJxlVqctc57WUE3IRqmNpcGhlcnRleHTElQAAAAxhJ5EZRPAfj-5Pv-d99ItQMtVlVrL1klP_9cMn6Z3070_TZNQa9gI8l5cB__LKS9Jze0n9Oc0CfI91_DSvbHkWkWhNC1aWVcSh6x-ZICLDcW28sF1RPYMsTOgK3O11ydPhVTog1QoZJN__z257KTtt41PJUnSgqtY2iY00INnkaO4YgBg7fTtRfzQVBQjXWyxF&mmp_pid=an_17376660568&uls_trackid=55odvo7u00vd&utm_campaign=id_HA7vvbUxsp&utm_content=----&utm_medium=affiliates&utm_source=an_17376660568&utm_term=eyk576jgzcis",
+  "shopid": "1016604648",
+  "itemid": "23552060269",
+  "product_name": "Giấy vệ sinh treo tường TopGia đa sắc đa năng từ bột giấy thiên nhiên, 1280tờ/4lớp",
+  "product_name_short": "Khăn giấy treo tường TopGia",
+  "price_vnd": 100001,
+  "commission_pct": "9%",
+  "estimated_commission_vnd": 9000,
+  "sales_count": "1tr+",
+  "rating": 4.9,
+  "review_count": "100k+",
+  "shop_name": "TopGia Official Store",
+  "why_worthwhile": "Sản phẩm khăn giấy dạng treo tường siêu dai và đa năng. Rất phù hợp ngách gia dụng gia đình Việt Nam. (a) Vấn đề giải quyết: khăn giấy để bàn dễ dính nước, cồng kềnh; dạng treo tường tiết kiệm không gian, rút dễ dàng bằng 1 tay. (b) Ai mua: các bà nội trợ, bạn trẻ decor phòng, thợ nấu ăn, góc bếp. (c) Visual demo: lau nước, lau dầu mỡ, nhúng nước không rách, giật giấy bằng 1 tay mượt mà. (d) Content-led affiliate: review thật, lau bếp cực đã.",
+  "data_confidence": "high",
+  "data_source_notes": {
+    "product_name": "CDP DOM scrape từ tab affiliate.shopee.vn/offer/product_offer",
+    "shopid": "extract từ canonical URL pattern /opaanlp/<shopid>/<itemid>",
+    "itemid": "extract từ canonical URL pattern /opaanlp/<shopid>/<itemid>",
+    "shopee_product_url": "canonical URL từ CDP modal input.value, resolved via HTTP redirect",
+    "short_url_original": "extract từ CDP modal copy field",
+    "canonical_url": "resolved redirect chain → opaanlp deep-link với gads_t_sig + utm_source=an_17376660568",
+    "affiliate_owner_id": "verified ACCEPT (an_17376660568 match expected_affiliate_owner_id qua utm_source + mmp_pid)",
+    "price_vnd": "CDP product card DOM scrape",
+    "commission_pct": "Scrape from offer portal",
+    "sales_count": "Scrape from offer portal",
+    "rating": "Scrape from offer portal",
+    "review_count": "Scrape from offer portal",
+    "shop_name": "Scrape from offer portal"
+  },
+  "selection_scoring": {
+    "axes": [
+      {
+        "id": 1,
+        "name": "Demo clarity",
+        "score": 3,
+        "note": "Rút giấy bằng một tay, lau dầu mỡ siêu sạch và ngâm nước không rách là visual cực rõ ràng."
+      },
+      {
+        "id": 2,
+        "name": "Shopee affiliate potential",
+        "score": 3,
+        "note": "Tỉ lệ hoa hồng 9% trên đơn hàng 100k, lượt bán 1tr+ chứng minh đây là sản phẩm cực kỳ đắt hàng (high converter)."
+      },
+      {
+        "id": 3,
+        "name": "Visual appeal cho Facebook Reels",
+        "score": 3,
+        "note": "Màu sắc pastel đẹp mắt, xếp nếp sang xịn mịn, kéo giấy trơn tru tạo cảm giác satisfying cao."
+      },
+      {
+        "id": 4,
+        "name": "Vietnam audience fit (Facebook Reels VN)",
+        "score": 3,
+        "note": "Mọi gia đình Việt Nam đều cần khăn giấy sạch, dai và tiện lợi cho bếp và nhà vệ sinh."
+      },
+      {
+        "id": 5,
+        "name": "Source/demo availability",
+        "score": 3,
+        "note": "Nhiều clip demo của TopGia và Douyin về việc test độ dai của giấy treo tường."
+      },
+      {
+        "id": 6,
+        "name": "Risk level",
+        "score": 3,
+        "note": "Rủi ro cực thấp. Không phải mỹ phẩm bôi da hay thuốc uống. Giấy 100% bột tự nhiên an toàn."
+      }
+    ],
+    "total": 18,
+    "max": 18,
+    "threshold_pass": 13,
+    "threshold_min_risk_axis": 2
+  },
+  "decision": "PRODUCT_SELECTED",
+  "decision_note": "Perfect score 18/18. Absolutely approved for core pipeline execution.",
+  "script_writer_constraints": {
+    "banned_keywords_strict": [
+      "an toàn tuyệt đối",
+      "siêu mạnh nhất",
+      "tốt nhất",
+      "rẻ nhất",
+      "chính hãng 100%",
+      "cam kết",
+      "đảm bảo",
+      "số 1",
+      "duy nhất",
+      "trị mụn",
+      "chữa bệnh"
+    ],
+    "tone_focus": [
+      "chia sẻ trải nghiệm thực tế lau dọn nhà cửa bếp núc",
+      "chứng minh độ dai khi nhúng nước và kéo căng",
+      "thiết kế treo tường tiết kiệm không gian cực tiện",
+      "soft review, không quảng cáo thô"
+    ],
+    "approved_neutral_phrases": [
+      "khăn giấy treo tường",
+      "rút cực kỳ mượt mà",
+      "giấy dai phết nhúng nước không rách",
+      "để góc bếp tiện gọn",
+      "giấy từ bột thiên nhiên"
+    ]
+  }
+}

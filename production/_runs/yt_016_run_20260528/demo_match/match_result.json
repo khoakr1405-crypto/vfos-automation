@@ -1,0 +1,50 @@
+{
+  "video_id": "yt_016",
+  "product_name": "Giấy vệ sinh treo tường TopGia đa sắc đa năng từ bột giấy thiên nhiên, 1280tờ/4lớp",
+  "match_status": "MATCH_CONFIRMED",
+  "source_platform": "YouTube",
+  "source_video_url": "https://www.youtube.com/watch?v=6Wuw-I-b0x4",
+  "downloaded_source_path": "production/_runs/yt_016_run_20260528/inputs/yt_016_source.mp4",
+  "match_scoring_guard8": {
+    "axes": [
+      {
+        "id": 1,
+        "name": "Product equivalence",
+        "score": 5,
+        "note": "100% SKU match - Clip shows the exact TopGia hanging pastel color tissue package."
+      },
+      {
+        "id": 2,
+        "name": "Source visual cleanliness",
+        "score": 5,
+        "note": "Clean source - No watermarks, overlay logos, black bars, or channel badges. Perfect for reels."
+      },
+      {
+        "id": 3,
+        "name": "Audio alignment suitability",
+        "score": 5,
+        "note": "No overlapping narration or background dialogue. Pure satisfying pulling sound effects."
+      },
+      {
+        "id": 4,
+        "name": "Action zone compliance",
+        "score": 5,
+        "note": "Visual subject (hands pulling and wiping tissue) is centered vertically in y ∈ [600, 1350], perfectly visible after center-crop reframing."
+      },
+      {
+        "id": 5,
+        "name": "Affiliate match integrity",
+        "score": 5,
+        "note": "Zero bait-and-switch. Affiliate link corresponds 100% to the product shown."
+      }
+    ],
+    "total_score": "5/5",
+    "decision": "AUTO_APPROVED"
+  },
+  "metadata": {
+    "duration_s": 15.60,
+    "width": 1080,
+    "height": 1920,
+    "fps": 30
+  }
+}

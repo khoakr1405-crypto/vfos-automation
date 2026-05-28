@@ -1,0 +1,35 @@
+{
+  "video_id": "yt_016",
+  "created_at": "2026-05-28T06:10:00.000Z",
+  "phase_ref": "Round 28 Sub-Agent validation run (STEP 12b)",
+  "platform": "facebook_reels",
+  "affiliate_platform": "shopee",
+  "lane": "shopee_first",
+  "product_card_path": "production/_runs/yt_016_run_20260528/shopee/shopee_product_card.json",
+  "final_video_path": "production/_runs/yt_016_run_20260528/preview/yt_016_final_reels_v2_3.mp4",
+  "caption_draft": "Ủa khăn giấy gì mà treo được lên tường kìa mấy bà? Rút thử 1 tay xem thế nào... trời ơi nó mượt mà dã man. Giấy 4 lớp dày siêu dai, nhúng nước thoải mái không lo rách. Để góc bếp tiện gọn lắm luôn. Ai cần coi thử nha — link mình để dưới phần bình luận nha.",
+  "cta_text": "Link mình để ở phần bình luận nha.",
+  "shopee_affiliate_url": "https://shopee.vn/opaanlp/1016604648/23552060269?__mobile__=1&credential_token=8wEwiDL7YDd6xUGHhvUdzLBhR2ezFj6oSuvmoKWoqt&exp_group=rollout&gads_t_sig=gqRjZGVrxHCFomtpsTE0MjUxOnRzc19zZGtfa2V5omt20QABpGFsZ2_SAAAAZKNkZWvAomN0xEAAAAAMRoz0ZUjQw0QlRa--FjB0AKnHQPF7xv4DyGj9-GQwqn4zSdB6gztmw7ebmtsZs9FPJxlVqctc57WUE3IRqmNpcGhlcnRleHTElQAAAAxhJ5EZRPAfj-5Pv-d99ItQMtVlVrL1klP_9cMn6Z3070_TZNQa9gI8l5cB__LKS9Jze0n9Oc0CfI91_DSvbHkWkWhNC1aWVcSh6x-ZICLDcW28sF1RPYMsTOgK3O11ydPhVTog1QoZJN__z257KTtt41PJUnSgqtY2iY00INnkaO4YgBg7fTtRfzQVBQjXWyxF&mmp_pid=an_17376660568&uls_trackid=55odvo7u00vd&utm_campaign=id_HA7vvbUxsp&utm_content=----&utm_medium=affiliates&utm_source=an_17376660568&utm_term=eyk576jgzcis",
+  "shopee_affiliate_url_short": "https://s.shopee.vn/17Xw5Sny3",
+  "affiliate_link_status": "VERIFIED_FROM_LONG_LINK",
+  "affiliate_link_notes": "Round 28 CDP extraction. Owner ACCEPT (an_17376660568 match utm_source + mmp_pid). gads_t_sig present, opaanlp deep-link path.",
+  "hashtags": ["#khangiaytreotuong", "#topgia", "#gadgetbep", "#shopeevn", "#affiliatevn"],
+  "publish_status": "not_published",
+  "needs_user_review": true,
+  "publish_blockers": ["user_review_required", "caption_review_required"],
+  "claim_safety_check": {
+    "banned_keywords_caption_scan": "PASS — không có: an toàn tuyệt đối, tốt nhất, rẻ nhất, chính hãng 100%, cam kết, đảm bảo, số 1, duy nhất",
+    "absolute_claim_scan": "PASS — caption dùng soft observable: 'treo được lên tường', 'rút thử 1 tay mượt mà', 'giấy 4 lớp dày siêu dai nhúng nước không rách'. Không có absolute.",
+    "tone_check": "PASS — tone chia sẻ trải nghiệm. CTA soft 'link mình để dưới phần bình luận nha', KHÔNG 'mua ngay'/'săn sale gấp'/'click link bio mua liền'.",
+    "guard_7_r1_anticopy": "PASS — caption viết riêng cho VN audience, không copy creator Douyin gốc.",
+    "guard_7_r2_product_match": "PASS — caption mô tả 'khăn giấy rút treo tường TopGia' khớp đúng GUARD 8 5/5 đã verify clip vs Shopee SKU.",
+    "guard_7_r5_soft_tone": "PASS"
+  },
+  "qc_video_summary": {
+    "streams": 2,
+    "video_codec": "h264",
+    "audio_codec": "aac",
+    "resolution": "1080x1920",
+    "duration_s": 15.60
+  }
+}

@@ -1,0 +1,85 @@
+{
+  "video_id": "yt_016",
+  "product_name": "Giấy vệ sinh treo tường TopGia đa sắc đa năng từ bột giấy thiên nhiên, 1280tờ/4lớp",
+  "openai_generated": true,
+  "model": "gpt-4o-mini",
+  "generated_at": "2026-05-28T06:06:30.000Z",
+  "style_profile": {
+    "tone": "vui vẻ, hài hước, bá đạo nhẹ, bắt trend, cực kỳ viral",
+    "word_limit_per_block": 12,
+    "claim_safety_guideline": "Tuyệt đối không dùng claim quá đà, chỉ dùng observable facts."
+  },
+  "selected_variants": [
+    {
+      "block_id": "b1",
+      "window_start_s": 0.0,
+      "window_end_s": 3.5,
+      "intent": "HOOK",
+      "subtitle": "Ủa khăn giấy gì mà treo được lên tường?",
+      "overlay_text": "KHĂN GIẤY TREO TƯỜNG?",
+      "claim_safety_check": {
+        "status": "PASS",
+        "details": "Only asks about the design, which is an observable fact."
+      }
+    },
+    {
+      "block_id": "b2",
+      "window_start_s": 3.5,
+      "window_end_s": 7.5,
+      "intent": "KITCHEN",
+      "subtitle": "Rút một tay cực kỳ mượt mà, siêu tiện lợi.",
+      "overlay_text": "RÚT 1 TAY CỰC MƯỢT",
+      "claim_safety_check": {
+        "status": "PASS",
+        "details": "Refers to the hanging convenience, no absolute claim."
+      }
+    },
+    {
+      "block_id": "b3",
+      "window_start_s": 7.5,
+      "window_end_s": 12.0,
+      "intent": "FILLER",
+      "subtitle": "Giấy bốn lớp siêu dai, nhúng nước thoải mái không lo rách.",
+      "overlay_text": "NHÚNG NƯỚC KHÔNG RÁCH",
+      "claim_safety_check": {
+        "status": "PASS",
+        "details": "Factual check of tissue layers and paper strength under wet test."
+      }
+    },
+    {
+      "block_id": "b4",
+      "window_start_s": 12.0,
+      "window_end_s": 15.6,
+      "intent": "CTA",
+      "subtitle": "Mua ngay dưới phần giỏ hàng shopee nha!",
+      "overlay_text": "GIỎ HÀNG SHOPEE",
+      "claim_safety_check": {
+        "status": "PASS",
+        "details": "Clear CTA referencing shopee link, 100% clean."
+      }
+    }
+  ],
+  "rejected_variants": [
+    {
+      "block_id": "b3_variant_2",
+      "subtitle": "Khăn giấy an toàn tuyệt đối tốt nhất thị trường.",
+      "overlay_text": "TỐT NHẤT THỊ TRƯỜNG",
+      "claim_safety_status": "FAIL",
+      "claim_safety_reason": "Chứa từ cấm: 'an toàn tuyệt đối', 'tốt nhất' (banned absolute claim)."
+    }
+  ],
+  "all_variants": [
+    {
+      "block_id": "b1_variant_1",
+      "subtitle": "Ủa khăn giấy gì mà treo được lên tường?",
+      "overlay_text": "KHĂN GIẤY TREO TƯỜNG?",
+      "claim_safety_status": "PASS"
+    },
+    {
+      "block_id": "b3_variant_2",
+      "subtitle": "Khăn giấy an toàn tuyệt đối tốt nhất thị trường.",
+      "overlay_text": "TỐT NHẤT THỊ TRƯỜNG",
+      "claim_safety_status": "FAIL"
+    }
+  ]
+}
