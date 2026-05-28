@@ -35,7 +35,8 @@
     "pipeline:p5-demo": "tsx scripts/pipeline-p5-demo.ts",
     "offline-product-select": "tsx scripts/offline-product-select-demo.ts",
     "pipeline:p6-demo": "tsx scripts/pipeline-p6-demo.ts",
-    "pipeline:p7-demo": "tsx scripts/pipeline-p7-demo.ts"
+    "pipeline:p7-demo": "tsx scripts/pipeline-p7-demo.ts",
+    "pipeline:p8-demo": "tsx scripts/pipeline-p8-demo.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

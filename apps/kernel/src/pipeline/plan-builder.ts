@@ -1,10 +1,10 @@
 /**
  * Pipeline Plan Builder — Generates declarative JSON execution plans for the Auto-Pipeline.
  *
- * Taches execution blueprint (steps, artifacts, guards) from input metadata.
+ * Upgraded to load and interpolate versioned Lane Templates/Configurations.
  */
 
-import { existsSync, writeFileSync, mkdirSync } from 'node:fs';
+import { existsSync, writeFileSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 export interface ExpectedArtifactSpec {
@@ -46,16 +46,49 @@ export interface PipelinePlan {
 
 export interface BuildPlanResult {
   planPath: string;
+  laneConfigPath: string;
   runId: string;
   stepCount: number;
   outputDir: string;
+}
+
+// ── Lane Config Types ──────────────────────────────────────────────────────
+
+export interface LaneConfigStepTemplate {
+  stepName: string;
+  description: string;
+  command: string;
+  argsTemplate: string[];
+  cwd: string;
+  timeoutMs: number;
+  expectedArtifacts?: {
+    pathTemplate: string;
+    required: boolean;
+    nonEmpty: boolean;
+  }[];
+  guards?: {
+    guardName: string;
+    artifactPathTemplate: string;
+    blocking: boolean;
+  }[];
+}
+
+export interface LaneConfig {
+  laneVersion: string;
+  lane: string;
+  description: string;
+  defaults?: {
+    timeoutMs?: number;
+    outputDirPattern?: string;
+  };
+  steps: LaneConfigStepTemplate[];
 }
 
 export class PlanBuilder {
   constructor(private readonly repoRoot: string = '.') {}
 
   /**
-   * Generates a pipeline_plan.json dynamically for the review_product lane.
+   * Generates a pipeline_plan.json by loading a versioned Lane Template and interpolating variables.
    */
   buildPlan(options: {
     runId: string;
@@ -63,12 +96,23 @@ export class PlanBuilder {
     selectedProductCardPath: string;
     videoCandidateMetadataPath: string;
     outputDir: string;
-    mode?: 'pass' | 'product-fail' | 'missing-input' | 'invalid-plan';
+    laneConfigPath?: string; // Optional path, defaults to review_product
+    mode?: 'pass' | 'product-fail' | 'missing-input' | 'invalid-plan' | 'invalid-config';
   }): BuildPlanResult {
     const runId = options.runId;
     const resolvedOutputDir = join(this.repoRoot, options.outputDir);
 
-    // 1. Validate inputs existence unless simulating invalid plan mode
+    // 1. Resolve Lane Config Path
+    const configPath =
+      options.laneConfigPath ||
+      join(this.repoRoot, 'apps/kernel/config/lanes/review_product.json');
+
+    // Handle invalid config simulation before loading
+    if (options.mode === 'invalid-config') {
+      throw new Error('Lane Config Validation Failed: Lane configuration file is malformed or missing steps.');
+    }
+
+    // 2. Validate input files existence
     if (options.mode !== 'invalid-plan') {
       if (!existsSync(options.selectedProductCardPath)) {
         throw new Error(`Input selectedProductCard file not found: ${options.selectedProductCardPath}`);
@@ -78,67 +122,112 @@ export class PlanBuilder {
       }
     }
 
-    const outArtifactPath = join(resolvedOutputDir, 'product_match_artifact.json');
+    // 3. Load Lane Config
+    if (!existsSync(configPath)) {
+      throw new Error(`Lane configuration file not found at: ${configPath}`);
+    }
 
-    // 2. Build steps list
+    let laneConfig: LaneConfig;
+    try {
+      laneConfig = JSON.parse(readFileSync(configPath, 'utf8'));
+    } catch (err: any) {
+      throw new Error(`Failed to parse Lane Config JSON: ${err.message}`);
+    }
+
+    // 4. Validate Lane Config Schema Thoroughly ("Validate lane config kỹ")
+    if (!laneConfig.lane || laneConfig.lane !== 'review_product') {
+      throw new Error(`Lane Config Validation Failed: missing or invalid "lane" field (must be "review_product").`);
+    }
+    if (!laneConfig.laneVersion || laneConfig.laneVersion !== 'v1') {
+      throw new Error(`Lane Config Validation Failed: missing or invalid "laneVersion" (must be "v1").`);
+    }
+    if (!laneConfig.steps || !Array.isArray(laneConfig.steps) || laneConfig.steps.length === 0) {
+      throw new Error(`Lane Config Validation Failed: "steps" array must be present and non-empty.`);
+    }
+
+    for (const step of laneConfig.steps) {
+      if (!step.stepName || !step.command || !step.argsTemplate || !step.cwd || step.timeoutMs === undefined) {
+        throw new Error(
+          `Lane Config Validation Failed: step "${step.stepName || 'unnamed'}" must contain stepName, command, argsTemplate, cwd, and timeoutMs.`,
+        );
+      }
+    }
+
+    // 5. Setup Interpolation Variables
+    const vars: Record<string, string> = {
+      runId,
+      outputDir: resolvedOutputDir,
+      mode: options.mode || 'pass',
+      'inputs.productCandidatesPath': options.selectedProductCardPath,
+      publishCommand:
+        options.mode === 'product-fail'
+          ? `"console.error('ERROR: Downstream should not run when product mismatch occurs!'); process.exit(1);"`
+          : `"console.log('Simulating video publish step after plan-builder pass...');"`,
+    };
+
+    const interpolate = (str: string): string => {
+      return str.replace(/\{([^{}]+)\}/g, (match: string, key: string): string => {
+        if (key in vars) {
+          return vars[key] ?? '';
+        }
+        throw new Error(`Missing template variable: ${key}`);
+      });
+    };
+
+    // 6. Build dynamic plan steps by executing template interpolation
     const steps: PlanStepDefinition[] = [];
 
     if (options.mode !== 'invalid-plan') {
-      // Step 1: Product Selection & Matching
-      steps.push({
-        stepName: 'demo:product-match',
-        description: 'Production-like offline Shopee candidate selection',
-        command: 'tsx',
-        args: [
-          'scripts/offline-product-select-demo.ts',
-          '--candidatesFile',
-          options.selectedProductCardPath,
-          '--outFile',
-          outArtifactPath,
-          '--productId',
-          '2', // Select candidate 2 (Quạt cầm tay mini) by default
-          ...(options.mode === 'product-fail'
-            ? ['--detectedProductName', '"Bông tắm lưới xơ mướp"', '--forceMatchAxes', 'blocking-fail']
-            : ['--forceMatchAxes', 'all-pass']),
-        ],
-        cwd: '.',
-        timeoutMs: 15000,
-        expectedArtifacts: [
-          {
-            path: outArtifactPath,
-            required: true,
-            nonEmpty: true,
-          },
-        ],
-        guards: [
-          {
-            guardName: 'ProductMatchGuard',
-            artifactPath: outArtifactPath,
-            blocking: true,
-          },
-        ],
-      });
+      for (const stepTemplate of laneConfig.steps) {
+        // Interpolate arguments array
+        const args: string[] = [];
+        for (const argTemplate of stepTemplate.argsTemplate || []) {
+          if (argTemplate === '{extraArgs}') {
+            if (options.mode === 'product-fail') {
+              args.push('--detectedProductName', '"Bông tắm lưới xơ mướp"', '--forceMatchAxes', 'blocking-fail');
+            } else {
+              args.push('--forceMatchAxes', 'all-pass');
+            }
+          } else {
+            args.push(interpolate(argTemplate));
+          }
+        }
 
-      // Step 2: Publish Simulation
-      steps.push({
-        stepName: 'demo:publish',
-        description: 'Downstream Publish Step',
-        command: 'node',
-        args: [
-          '-e',
-          options.mode === 'product-fail'
-            ? `"console.error('ERROR: Downstream should not run when product mismatch occurs!'); process.exit(1);"`
-            : `"console.log('Simulating video publish step after plan-builder pass...');"`,
-        ],
-        cwd: '.',
-        timeoutMs: 5000,
-        expectedArtifacts: [],
-      });
+        // Interpolate expected artifacts paths
+        const expectedArtifacts: ExpectedArtifactSpec[] = (stepTemplate.expectedArtifacts || []).map((art) => ({
+          path: interpolate(art.pathTemplate),
+          required: art.required,
+          nonEmpty: art.nonEmpty,
+        }));
+
+        // Interpolate guard binding paths
+        const guards: GuardBindingSpec[] = (stepTemplate.guards || []).map((g) => ({
+          guardName: g.guardName,
+          artifactPath: interpolate(g.artifactPathTemplate),
+          blocking: g.blocking,
+        }));
+
+        const planStep: PlanStepDefinition = {
+          stepName: stepTemplate.stepName,
+          description: stepTemplate.description || '',
+          command: stepTemplate.command,
+          args,
+          cwd: stepTemplate.cwd,
+          timeoutMs: stepTemplate.timeoutMs,
+          expectedArtifacts,
+        };
+
+        if (guards.length > 0) {
+          planStep.guards = guards;
+        }
+
+        steps.push(planStep);
+      }
     }
 
     const plan: PipelinePlan = {
-      planVersion: 'v1',
-      lane: 'review_product',
+      planVersion: laneConfig.laneVersion,
+      lane: laneConfig.lane,
       runId,
       subject: options.subject,
       createdAt: new Date().toISOString(),
@@ -160,6 +249,7 @@ export class PlanBuilder {
 
     return {
       planPath,
+      laneConfigPath: configPath,
       runId,
       stepCount: steps.length,
       outputDir: resolvedOutputDir,

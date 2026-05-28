@@ -1,0 +1,54 @@
+{
+  "laneVersion": "v1",
+  "lane": "review_product",
+  "description": "Default review product lane for VFOS auto-pipeline",
+  "defaults": {
+    "timeoutMs": 10000,
+    "outputDirPattern": "data/temp/pipeline-p8-demo/{runId}"
+  },
+  "steps": [
+    {
+      "stepName": "demo:product-match",
+      "description": "Production-like offline Shopee candidate selection and match builder",
+      "command": "tsx",
+      "argsTemplate": [
+        "scripts/offline-product-select-demo.ts",
+        "--candidatesFile",
+        "{inputs.productCandidatesPath}",
+        "--outFile",
+        "{outputDir}/product_match_artifact.json",
+        "--productId",
+        "2",
+        "{extraArgs}"
+      ],
+      "cwd": ".",
+      "timeoutMs": 15000,
+      "expectedArtifacts": [
+        {
+          "pathTemplate": "{outputDir}/product_match_artifact.json",
+          "required": true,
+          "nonEmpty": true
+        }
+      ],
+      "guards": [
+        {
+          "guardName": "ProductMatchGuard",
+          "artifactPathTemplate": "{outputDir}/product_match_artifact.json",
+          "blocking": true
+        }
+      ]
+    },
+    {
+      "stepName": "demo:publish",
+      "description": "Downstream Publish Step",
+      "command": "node",
+      "argsTemplate": [
+        "-e",
+        "{publishCommand}"
+      ],
+      "cwd": ".",
+      "timeoutMs": 5000,
+      "expectedArtifacts": []
+    }
+  ]
+}
