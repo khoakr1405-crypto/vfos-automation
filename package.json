@@ -28,7 +28,8 @@
     "shopee:select": "tsx packages/shopee/scripts/select-products.ts",
     "shopee:extract-links-cdp": "tsx packages/shopee/scripts/extract-links-cdp.ts",
     "status": "tsx scripts/status-cli.ts",
-    "step:demo": "tsx scripts/step-demo.ts"
+    "step:demo": "tsx scripts/step-demo.ts",
+    "pipeline:demo": "tsx scripts/auto-pipeline-demo.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
