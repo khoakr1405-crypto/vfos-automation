@@ -1,11 +1,17 @@
 #!/usr/bin/env tsx
 /// <reference lib="dom" />
 /**
- * Shopee CDP Production Extraction CLI (Round 27).
+ * Shopee CDP Production Extraction CLI (Round 27 + 27B).
  *
  * Replaces the 6+ POC scratch scripts (`click-and-extract-links.ts`,
  * `cdp-extract.ts`, `get-one-link.ts`, etc.) with a single hardened CLI that
  * implements the Round 26B BROWSER_CDP_TARGETED_CLICK flow + Link Registry.
+ *
+ * Round 27B additions:
+ *   - CDP Browser Bootstrap: auto-launches Cốc Cốc/Chrome with
+ *     --remote-debugging-port=9222 when the port is not already listening.
+ *   - CAPTCHA / login-wall human-assist guard: pauses extraction when
+ *     verification screen is detected, waits for operator to resolve.
  *
  *   pnpm shopee:extract-links-cdp [--target-count=N] [--max-clicks=N] [--dry-run] [...]
  *
@@ -49,6 +55,13 @@ import {
   appendRejected,
   type LinkRegistryConfig,
 } from "../src/link-registry.js";
+import {
+  bootstrapBrowser,
+  CdpBootstrapError,
+  detectCaptchaGuard,
+  waitForCaptchaResolution,
+  clampCaptchaWaitSeconds,
+} from "../src/cdp-bootstrap.js";
 import {
   classifyResolvedLink,
   extractShopidItemid,

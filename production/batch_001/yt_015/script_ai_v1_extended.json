@@ -1,0 +1,168 @@
+{
+  "input": {
+    "video_id": "yt_015",
+    "content_goal": "Gioi thieu mem ao co quat lam mat (cooling fan jacket) cho audience Reels VN mua he cao diem. Tone soft chia se trai nghiem, KHONG quang cao tho, KHONG claim brand JAPAN, KHONG dung tu 'dieu hoa'. Focus observable facts: ao co 2 quat suon lung duoi, gio thoi qua than, hop di nang cong truong xe om.",
+    "target_platform": "reels",
+    "duration_target_s": 15.6,
+    "tone": "vui chia se ban dan, hoi to mo, soft tone, khong overhype",
+    "affiliate_angle": "shopee_link_bio",
+    "cta_style": "soft_link_in_description",
+    "scene_timeline": [
+      {
+        "window_start_s": 0,
+        "window_end_s": 3,
+        "scene_type": "HOOK",
+        "visual_summary": "Close-up lung ao navy treo, hand cham nhe vao quat tron trang o suon lung duoi. 1 quat visible ro net.",
+        "notes": "Hook to mo: ao bao ho ma co quat? Visual la 1 quat tron trang noi bat tren nen navy."
+      },
+      {
+        "window_start_s": 3,
+        "window_end_s": 7,
+        "scene_type": "KITCHEN",
+        "visual_summary": "Back view full ao navy, hand cham 2 quat tron trang o 2 suon lung duoi. Reflective stripe nguc visible.",
+        "notes": "Demo cau tao: 2 quat + reflective stripe + form jacket work-style. Show ro form factor de match Shopee SKU."
+      },
+      {
+        "window_start_s": 7,
+        "window_end_s": 12,
+        "scene_type": "KITCHEN",
+        "visual_summary": "Model nu mac ao navy + tank top trang ben trong, dung outdoor giua cay xanh va da. Vai goc xoay show 2 quat suon lung. Hand gesture chi ve phia quat.",
+        "notes": "Demo wear test outdoor. Bo i canh hot summer day. Tone tu nhien khong overhype."
+      },
+      {
+        "window_start_s": 12,
+        "window_end_s": 15.6,
+        "scene_type": "CTA",
+        "visual_summary": "Full body shot model dung mac ao navy. Tay nhe show mat truoc ao co zip + flap pocket nho. Closing pose.",
+        "notes": "CTA soft: link mo ta nha. KHONG dung 'mua ngay', KHONG 'san sale gap'."
+      }
+    ]
+  },
+  "output": {
+    "hook": "Áo bảo hộ mà có quạt?",
+    "blocks": [
+      {
+        "block_id": "b1",
+        "window_start_s": 0,
+        "window_end_s": 3,
+        "intent": "HOOK",
+        "line": "Áo bảo hộ mà có quạt?",
+        "notes": ""
+      },
+      {
+        "block_id": "b2",
+        "window_start_s": 3,
+        "window_end_s": 7,
+        "intent": "KITCHEN",
+        "line": "Có 2 quạt ở 2 bên lưng, gió mát ngày hè.",
+        "notes": "operator_trim: 18→11 từ. Cắt 'giúp bạn luôn mát mẻ trong những ngày hè oi ả' → 'gió mát ngày hè' (observable fact, giữ tone)."
+      },
+      {
+        "block_id": "b3",
+        "window_start_s": 7,
+        "window_end_s": 12,
+        "intent": "KITCHEN",
+        "line": "Mặc áo này đi ra ngoài rất thoải mái, đỡ nóng bức.",
+        "notes": "operator_trim: 16→12 từ. Cắt 'không lo nóng bức hay khó chịu' → 'đỡ nóng bức' (soft tone, tránh absolute 'không lo')."
+      },
+      {
+        "block_id": "b4",
+        "window_start_s": 12,
+        "window_end_s": 15,
+        "intent": "CTA",
+        "line": "Link mô tả nha.",
+        "notes": ""
+      }
+    ],
+    "cta": "Link mô tả nha.",
+    "full_script": "Áo bảo hộ mà có quạt?\nCó 2 quạt ở 2 bên lưng, gió mát ngày hè.\nMặc áo này đi ra ngoài rất thoải mái, đỡ nóng bức.\nLink mô tả nha.",
+    "writer_notes": [
+      "Pass 2 Extender expanded b2/b3 vượt cap → operator trim manually applied 2026-05-28.",
+      "b2 trimmed 18→11 từ (fit cap 11 exact). Giữ observable fact '2 quạt 2 bên lưng' + soft 'gió mát ngày hè'.",
+      "b3 trimmed 16→12 từ (within cap 14). Đổi 'không lo nóng bức hay khó chịu' (absolute negative borderline) → 'đỡ nóng bức' (soft, observable)."
+    ]
+  },
+  "meta": {
+    "model": "gpt-4o-mini-2024-07-18",
+    "input_tokens": 4514,
+    "output_tokens": 374,
+    "response_id": "resp_0625572413843478006a17c65830f0819b99395952580bba8c"
+  },
+  "quality_report": {
+    "banned_phrases_found": [],
+    "hook_consistent": true,
+    "cta_consistent": true,
+    "cta_preserved": true,
+    "word_count_original_extender": 44,
+    "word_count_post_operator_trim": 32,
+    "word_count_target": 36,
+    "word_count_within_target_original": false,
+    "word_count_within_target_post_trim": false,
+    "budget_mode": "timeline_aware",
+    "duration_based_target": 44,
+    "aggregate_block_cap": 40,
+    "target_adjustment_reason": "duration-based target 44 vượt 90% aggregate cap 40; reconciled to 36 (≤cap-4 từ buffer)",
+    "block_budget_violations_original": [
+      { "block_id": "b2", "intent": "KITCHEN", "window_duration_s": 4, "max_words": 11, "actual_words": 18, "overflow_words": 7, "severity": "major", "reason": "KITCHEN 18 từ vượt cap 11 +7" },
+      { "block_id": "b3", "intent": "KITCHEN", "window_duration_s": 5, "max_words": 14, "actual_words": 16, "overflow_words": 2, "severity": "minor", "reason": "KITCHEN 16 từ vượt cap 14 +2" }
+    ],
+    "block_budget_violations_post_trim": [],
+    "warnings_original": [
+      "[WORD_COUNT] [timeline_aware] 44 words vs target 36 (+22.2%, outside ±8% window)",
+      "[BLOCK_BUDGET_MAJOR] b2 (KITCHEN, 4s): KITCHEN 18 từ vượt cap 11 +7",
+      "[BLOCK_BUDGET_MINOR] b3 (KITCHEN, 5s): KITCHEN 16 từ vượt cap 14 +2",
+      "[BUDGET_RECONCILED] duration-based target 44 vượt 90% aggregate cap 40; reconciled to 36 (≤cap-4 từ buffer)"
+    ],
+    "warnings_post_trim": [
+      "[WORD_COUNT] [timeline_aware] 32 words vs target 36 (-11.1%, under ±8% window — accepted by operator trim for cap-compliance + claim safety)"
+    ],
+    "quality_status": "accepted_after_operator_trim",
+    "near_pass_reason": null,
+    "passed": true,
+    "passed_reason": "Operator trim resolved all block budget violations (MAJOR b2 + MINOR b3 both cleared). All blocks within cap. No banned phrases. Hook/CTA consistent and preserved. Under-budget word count -11.1% accepted as trade-off for safety + cap-fit."
+  },
+  "operator_trim": {
+    "operator_trim_applied": true,
+    "operator_trim_applied_at": "2026-05-28T04:42:00.000Z",
+    "original_quality_status": "fail",
+    "original_word_count": 44,
+    "trimmed_blocks": ["b2", "b3"],
+    "trim_diff": {
+      "b2": {
+        "before": "Có 2 quạt ở 2 bên lưng, giúp bạn luôn mát mẻ trong những ngày hè oi ả.",
+        "before_word_count": 18,
+        "after": "Có 2 quạt ở 2 bên lưng, gió mát ngày hè.",
+        "after_word_count": 11,
+        "cap": 11,
+        "fits_cap": true
+      },
+      "b3": {
+        "before": "Mặc áo này đi ra ngoài rất thoải mái, không lo nóng bức hay khó chịu.",
+        "before_word_count": 16,
+        "after": "Mặc áo này đi ra ngoài rất thoải mái, đỡ nóng bức.",
+        "after_word_count": 12,
+        "cap": 14,
+        "fits_cap": true
+      }
+    },
+    "post_trim_word_count": 32,
+    "post_trim_reason": "Pass 2 Extender vi phạm block budget cap: b2 MAJOR +7 từ over cap 11, b3 MINOR +2 từ over cap 14. Theo skill HARD STEP 6 'MAJOR violation → KHÔNG retry tự động, operator phải sửa scene_input HOẶC trim'. Operator chọn trim để giữ tone + claim safety thay vì rerun script:generate. Bonus: trim b3 đổi 'không lo nóng bức hay khó chịu' (absolute negative borderline) sang 'đỡ nóng bức' (soft, observable) — claim safer.",
+    "post_trim_quality_status": "accepted_after_operator_trim",
+    "validator_rerun_status": "not_available",
+    "validator_rerun_status_note": "Project không có command `pnpm script:validate` độc lập. Validation post-trim chỉ qua manual check: (1) word count đếm tay đúng cap mọi block, (2) không banned phrase, (3) hook/CTA preserved nguyên, (4) tone observable. Voice Sync sẽ là gate test thực tế next — nếu pass 6/6 fit thì xác nhận trim đúng.",
+    "final_used_for_voice_sync": true,
+    "validator_rerun_required_for_recommit": false,
+    "claim_safety_post_trim_check": {
+      "banned_keywords_strict_scan": "PASS — không có: JAPAN, Nhật, hàng Nhật, điều hòa, mát như điều hòa, thay thế điều hòa, tốt nhất, rẻ nhất, chính hãng 100%, cam kết, đảm bảo, số 1, duy nhất",
+      "absolute_claim_scan": "PASS — không có absolute claim. 'Đỡ nóng bức' là soft (observable comparative). 'Gió mát ngày hè' là observable (gió thật + mùa thật).",
+      "tone_check": "PASS — chia sẻ bạn dân, không quảng cáo thô. CTA 'Link mô tả nha' soft."
+    }
+  },
+  "extender_meta": {
+    "pass1_word_count": 26,
+    "pass1_response_id": "resp_093dad6b466082e3006a17c64dea0c8198b45f807d1894ce57",
+    "pass2_response_id": "resp_0625572413843478006a17c65830f0819b99395952580bba8c"
+  },
+  "generated_at": "2026-05-28T04:36:57.679Z",
+  "operator_modified_at": "2026-05-28T04:42:00.000Z"
+}

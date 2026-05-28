@@ -1,0 +1,50 @@
+{
+  "video_id": "yt_015",
+  "created_at": "2026-05-28T04:50:00.000Z",
+  "phase_ref": "Round 27B Facebook Publish Plan Agent v0 (STEP 12b)",
+  "platform": "facebook_reels",
+  "affiliate_platform": "shopee",
+  "lane": "shopee_first",
+  "product_card_path": "production/batch_001/yt_015/shopee_product_card.json",
+  "final_video_path": "production/batch_001/yt_015/bgm_mix_v1/yt_015_voice_blocks_bgm_preview_vi.mp4",
+  "caption_draft": "Mình thấy cái áo này có 2 cái quạt nhỏ ở 2 bên lưng, mặc đi nắng đỡ nóng hẳn. Mùa hè này phù hợp mấy bác đi đường, làm việc ngoài trời cả ngày. Ai cần coi thử nha — link mình để ở phần mô tả.",
+  "cta_text": "Link mình để ở phần mô tả nha.",
+  "shopee_affiliate_url": "https://shopee.vn/opaanlp/1436337708/24942159580?__mobile__=1&credential_token=8wEwiDL7YDiURKHs5TFku1aeYA8ypiUbBKosfE4hrp&exp_group=rollout&gads_t_sig=gqRjZGVrxHCFomtpsTE0MjUxOnRzc19zZGtfa2V5omt20QABpGFsZ2_SAAAAZKNkZWvAomN0xEAAAAAMRoz0ZUjQw0QlRa--FjB0AKnHQPF7xv4DyGj9-GQwqn4zSdB6gztmw7ebmtsZs9FPJxlVqctc57WUE3IRqmNpcGhlcnRleHTElQAAAAxfWKhomwPqV3bix2nRufo3ARjo3JeQCdI_FButFcETLw-HiPxQN9kWK_KcvKmFxQdDctxn2pCbDaAUjDHeUaEpLYyw1ywUxHP47EU2oEG5D935bQkmnviGB--yNXoQ_txngTX7ysEdtdDTZTLdHmkWRm49DwDzj5zyfZOXGyvWkGadvGx0NHU_0acRnC-Ot5zW&mmp_pid=an_17376660568&uls_trackid=55ok9no90203&utm_campaign=id_10E03wp3T9n&utm_content=----&utm_medium=affiliates&utm_source=an_17376660568&utm_term=eyppnjdqryhq",
+  "shopee_affiliate_url_short": "https://s.shopee.vn/5q5M6YuoJ4",
+  "affiliate_link_status": "VERIFIED_FROM_LONG_LINK",
+  "affiliate_link_notes": "Round 27B CDP extraction. Owner ACCEPT (an_17376660568 match utm_source + mmp_pid). gads_t_sig present, opaanlp deep-link path.",
+  "hashtags": ["#aocoquat", "#aobaoho", "#muahevn", "#gadgetvn", "#shopeevn", "#dochiase"],
+  "publish_status": "not_published",
+  "needs_user_review": true,
+  "publish_blockers": ["user_review_required", "caption_review_required"],
+  "claim_safety_check": {
+    "banned_keywords_caption_scan": "PASS — không có: JAPAN/Nhật, điều hòa, mát như điều hòa, tốt nhất, rẻ nhất, chính hãng 100%, cam kết, đảm bảo, số 1, duy nhất",
+    "absolute_claim_scan": "PASS — caption dùng soft observable: 'có 2 cái quạt', 'đỡ nóng hẳn', 'phù hợp mấy bác đi đường'. Không có absolute.",
+    "tone_check": "PASS — tone chia sẻ trải nghiệm. CTA soft 'link mình để ở phần mô tả nha', KHÔNG 'mua ngay'/'săn sale gấp'/'click link bio mua liền'.",
+    "guard_7_r1_anticopy": "PASS — caption viết riêng cho VN audience, không copy creator Douyin gốc (Trung văn '夏天干活怕热？...').",
+    "guard_7_r2_product_match": "PASS — caption mô tả 'áo có 2 cái quạt 2 bên lưng' khớp đúng GUARD 8 5/5 đã verify clip vs Shopee SKU.",
+    "guard_7_r5_soft_tone": "PASS"
+  },
+  "qc_video_summary": {
+    "streams": 2,
+    "video_codec": "h264",
+    "audio_codec": "aac",
+    "resolution": "720x1280 (portrait 9:16 native)",
+    "duration_video_s": 15.6,
+    "duration_audio_s": 15.6,
+    "duration_delta_s": 0.0,
+    "max_volume_db": -3.2,
+    "mean_volume_db": -21.6,
+    "source_audio_leak": "none detected",
+    "clipping": "none (max_volume -3.2 dB < -1 dB threshold)"
+  },
+  "operator_review_checklist": [
+    "Watch preview MP4 đầy đủ 15.6s, verify visual + audio đồng bộ",
+    "Verify CTA + affiliate link Shopee đúng sản phẩm trong clip (GUARD 7 R2)",
+    "Edit caption draft nếu muốn — tone/keyword/length",
+    "Verify hashtags phù hợp với Facebook Page topic",
+    "Quyết định post time (mùa hè cao điểm tháng 5 — ưu tiên 11-14h hoặc 19-21h)",
+    "Upload manually qua Facebook Creator Studio hoặc Meta Business Suite — KHÔNG dùng Graph API tự động"
+  ],
+  "notes": "Lane expansion 'cooling gadget outdoor' approved by user 2026-05-28 (case-by-case, NOT lane default change). yt_015 là proof-of-concept lane expansion — nếu engagement tốt sẽ cân nhắc thêm lane này vào CHANNEL/LANE PROFILE chính. Operator_trim đã apply trên script_ai_v1_extended (chi tiết tại script_ai_v1_extended.json::operator_trim)."
+}

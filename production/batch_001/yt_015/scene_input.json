@@ -1,0 +1,84 @@
+{
+  "video_id": "yt_015",
+  "lane": "shopee_first",
+  "phase_ref": "Round 27B Script & Claim Safety Agent v0 (PF-STEP 5)",
+  "created_at": "2026-05-28T04:18:00.000Z",
+  "content_goal": "Gioi thieu mem ao co quat lam mat (cooling fan jacket) cho audience Reels VN mua he cao diem. Tone soft chia se trai nghiem, KHONG quang cao tho, KHONG claim brand JAPAN, KHONG dung tu 'dieu hoa'. Focus observable facts: ao co 2 quat suon lung duoi, gio thoi qua than, hop di nang cong truong xe om.",
+  "target_platform": "reels",
+  "duration_target_s": 15.6,
+  "tone": "vui chia se ban dan, hoi to mo, soft tone, khong overhype",
+  "affiliate_angle": "shopee_link_bio",
+  "cta_style": "soft_link_in_description",
+  "affiliate_target": {
+    "platform": "shopee",
+    "link": "https://shopee.vn/opaanlp/1436337708/24942159580",
+    "short_link": "https://s.shopee.vn/5q5M6YuoJ4",
+    "product_name": "Ao bao ho gan quat lam mat",
+    "product_name_short": "Ao gan quat lam mat",
+    "shop_name": "unknown",
+    "shopid": "1436337708",
+    "itemid": "24942159580"
+  },
+  "claim_safety_constraints": {
+    "banned_keywords_strict": [
+      "JAPAN", "Japan", "Nhat Ban", "hang Nhat", "Made in Japan",
+      "dieu hoa", "mat nhu dieu hoa", "thay the dieu hoa", "lanh nhu dieu hoa",
+      "tot nhat", "re nhat", "chinh hang 100%", "cam ket", "dam bao",
+      "so 1", "duy nhat", "khong the tot hon"
+    ],
+    "tone_focus_phrases": [
+      "ao co quat",
+      "gio thoi qua",
+      "ao phong len",
+      "do nong di ngoai duong",
+      "tien cho may bac di nang ca ngay",
+      "test thu thay co gio",
+      "2 cai quat suon lung",
+      "mua he nong qua"
+    ],
+    "rationale": "User-instructed: ne brand JAPAN claim (sp goc TQ gan nhan JAPAN — misleading origin), ne 'dieu hoa' (banned phrase blocklist GUARD 7 R3). Focus TRAI NGHIEM thuc te + observable facts. Tone bandan kieu chia se."
+  },
+  "scene_timeline": [
+    {
+      "block_id": "b1",
+      "window_start_s": 0,
+      "window_end_s": 3,
+      "scene_type": "HOOK",
+      "visual_summary": "Close-up lung ao navy treo, hand cham nhe vao quat tron trang o suon lung duoi. 1 quat visible ro net.",
+      "notes": "Hook to mo: ao bao ho ma co quat? Visual la 1 quat tron trang noi bat tren nen navy."
+    },
+    {
+      "block_id": "b2",
+      "window_start_s": 3,
+      "window_end_s": 7,
+      "scene_type": "KITCHEN",
+      "visual_summary": "Back view full ao navy, hand cham 2 quat tron trang o 2 suon lung duoi. Reflective stripe nguc visible.",
+      "notes": "Demo cau tao: 2 quat + reflective stripe + form jacket work-style. Show ro form factor de match Shopee SKU."
+    },
+    {
+      "block_id": "b3",
+      "window_start_s": 7,
+      "window_end_s": 12,
+      "scene_type": "KITCHEN",
+      "visual_summary": "Model nu mac ao navy + tank top trang ben trong, dung outdoor giua cay xanh va da. Vai goc xoay show 2 quat suon lung. Hand gesture chi ve phia quat.",
+      "notes": "Demo wear test outdoor. Bo i canh hot summer day. Tone tu nhien khong overhype."
+    },
+    {
+      "block_id": "b4",
+      "window_start_s": 12,
+      "window_end_s": 15.6,
+      "scene_type": "CTA",
+      "visual_summary": "Full body shot model dung mac ao navy. Tay nhe show mat truoc ao co zip + flap pocket nho. Closing pose.",
+      "notes": "CTA soft: link mo ta nha. KHONG dung 'mua ngay', KHONG 'san sale gap'."
+    }
+  ],
+  "block_count_intent": {
+    "HOOK": 1,
+    "KITCHEN": 2,
+    "CTA": 1,
+    "total": 4
+  },
+  "source_clip_metadata_ref": "production/batch_001/yt_015/demo_match/match_result.json::source_metadata",
+  "guard_6_status_inherited": "PASS (no repair needed — see match_result.json::guard_6_visual_safety_post_scan)",
+  "guard_8_status_inherited": "MATCH_CONFIRMED 5/5 (see match_result.json::guard_8_product_match_post_scan)"
+}

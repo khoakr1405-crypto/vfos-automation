@@ -1,0 +1,122 @@
+{
+  "video_id": "yt_015",
+  "lane": "shopee_first",
+  "phase_ref": "Round 27B Shopee-First cold start v0 (PF-STEP 2 → 3 promoted)",
+  "created_at": "2026-05-28T03:48:00.000Z",
+  "promoted_at": "2026-05-28T03:55:00.000Z",
+  "promotion_note": "User-approved Option A on 2026-05-28 — lane expanded to 'cooling gadget outdoor' for this case due to current VN heat-wave market opportunity. PRODUCT_NEEDS_USER_REVIEW → PRODUCT_SELECTED.",
+  "shopee_product_url": "https://shopee.vn/opaanlp/1436337708/24942159580",
+  "short_url_original": "https://s.shopee.vn/5q5M6YuoJ4",
+  "canonical_url": "https://shopee.vn/opaanlp/1436337708/24942159580?__mobile__=1&credential_token=8wEwiDL7YDiURKHs5TFku1aeYA8ypiUbBKosfE4hrp&exp_group=rollout&gads_t_sig=gqRjZGVrxHCFomtpsTE0MjUxOnRzc19zZGtfa2V5omt20QABpGFsZ2_SAAAAZKNkZWvAomN0xEAAAAAMRoz0ZUjQw0QlRa--FjB0AKnHQPF7xv4DyGj9-GQwqn4zSdB6gztmw7ebmtsZs9FPJxlVqctc57WUE3IRqmNpcGhlcnRleHTElQAAAAxfWKhomwPqV3bix2nRufo3ARjo3JeQCdI_FButFcETLw-HiPxQN9kWK_KcvKmFxQdDctxn2pCbDaAUjDHeUaEpLYyw1ywUxHP47EU2oEG5D935bQkmnviGB--yNXoQ_txngTX7ysEdtdDTZTLdHmkWRm49DwDzj5zyfZOXGyvWkGadvGx0NHU_0acRnC-Ot5zW&mmp_pid=an_17376660568&uls_trackid=55ok9no90203&utm_campaign=id_10E03wp3T9n&utm_content=----&utm_medium=affiliates&utm_source=an_17376660568&utm_term=eyppnjdqryhq",
+  "shopid": "1436337708",
+  "itemid": "24942159580",
+  "product_name": "Áo Điều Hòa YAMA JAPAN 18V Áo Bảo Hộ Gắn Quạt Trang Phục Lao Động Làm Mát Cơ Thể Pin 50000mAH",
+  "product_name_short": "Áo gắn quạt làm mát có pin",
+  "price_vnd": "unknown",
+  "commission_pct": "unknown",
+  "estimated_commission_vnd": "unknown",
+  "sales_count": "unknown",
+  "rating": "unknown",
+  "review_count": "unknown",
+  "shop_name": "unknown",
+  "why_worthwhile": "Sản phẩm áo bảo hộ gắn quạt tích hợp pin (cooling fan jacket). (a) Vấn đề giải quyết: nóng bức khi làm việc ngoài trời / xưởng nóng — quạt thổi trực tiếp lên cơ thể qua áo. (b) Ai có thể mua: tài xế xe ôm/grab, thợ xây, công nhân xưởng, nông dân, người làm việc outdoor mùa nóng VN. (c) Visual demo dễ hiểu: áo phồng lên khi bật quạt, có thể quay khói/giấy bay để thấy luồng gió — hook viral trên Reels. (d) Hợp content-led affiliate: có thể làm content trải nghiệm 'thử áo gắn quạt mùa nóng' tone soft, không cần claim mạnh. (e) Tiềm năng Facebook Reels VN: concept viral mùa nóng, cao điểm tháng 5 VN heat-wave — user-approved expand lane sang cooling gadget outdoor cho case này.",
+  "data_confidence": "low",
+  "data_source_notes": {
+    "product_name": "CDP DOM scrape từ tab affiliate.shopee.vn/offer/product_offer",
+    "shopid": "extract từ canonical URL pattern /opaanlp/<shopid>/<itemid>",
+    "itemid": "extract từ canonical URL pattern /opaanlp/<shopid>/<itemid>",
+    "shopee_product_url": "canonical URL từ CDP modal input.value, resolved via HTTP redirect",
+    "short_url_original": "extract từ CDP modal copy field",
+    "canonical_url": "resolved redirect chain → opaanlp deep-link với gads_t_sig + utm_source=an_17376660568",
+    "affiliate_owner_id": "verified ACCEPT (an_17376660568 match expected_affiliate_owner_id qua utm_source + mmp_pid)",
+    "price_vnd": "unknown — CDP product card DOM không expose giá tại view này",
+    "commission_pct": "unknown — Shopee Affiliate dashboard data không lấy qua CDP product_offer page",
+    "sales_count": "unknown — không có trong DOM scrape hiện tại",
+    "rating": "unknown — không có trong DOM scrape hiện tại",
+    "review_count": "unknown — không có trong DOM scrape hiện tại",
+    "shop_name": "unknown — không có trong DOM scrape hiện tại"
+  },
+  "selection_scoring": {
+    "axes": [
+      {
+        "id": 1,
+        "name": "Demo clarity",
+        "score": 3,
+        "note": "Áo phồng + quạt thổi là visual cực rõ, hook 3s đầu dễ hiểu ngay. Có thể quay khói/giấy bay để chứng minh luồng gió thật."
+      },
+      {
+        "id": 2,
+        "name": "Shopee affiliate potential",
+        "score": 1,
+        "note": "Tất cả 4 field (price/commission/sales/rating) đều UNKNOWN — không verify được hoa hồng đáng làm hay không. Chấm thấp trung thực, KHÔNG bịa. Link đã VERIFIED owner=an_17376660568 nên có hoa hồng, nhưng không biết mức."
+      },
+      {
+        "id": 3,
+        "name": "Visual appeal cho Facebook Reels",
+        "score": 3,
+        "note": "Concept áo có quạt rất viral mùa nóng, satisfying motion (áo phồng), trước/sau rõ (mặc bình thường vs bật quạt)."
+      },
+      {
+        "id": 4,
+        "name": "Vietnam audience fit (Facebook Reels VN)",
+        "score": 2,
+        "note": "Niche target: tài xế xe ôm + thợ xây + công nhân + nông dân outdoor. Không phổ thông như gadget gia đình (lane mặc định VFOS). Nhưng dạng 'wow gadget' vẫn có thể viral cross-audience trên Reels."
+      },
+      {
+        "id": 5,
+        "name": "Source/demo availability",
+        "score": 3,
+        "note": "TikTok TQ + Douyin có rất nhiều demo cooling fan jacket. AliExpress + Temu cũng có product page demo. Source dồi dào, dễ tìm clip match GUARD 8."
+      },
+      {
+        "id": 6,
+        "name": "Risk level",
+        "score": 2,
+        "note": "Moderate risk — 3 yếu tố: (1) Brand 'YAMA JAPAN' có khả năng misleading origin (sản phẩm gốc TQ), script không nên claim 'hàng Nhật'. (2) Tên SP chứa 'điều hòa' — script phải né phrase banned 'mát như điều hòa' / 'thay thế điều hòa'. (3) Đồ điện 18V + pin 50000mAH — không phải y tế/mỹ phẩm/thuốc nên không HARD-reject, nhưng cần soft tone. Đều mitigable nếu script viết cẩn thận theo GUARD 7 R3/R5."
+      }
+    ],
+    "total": 14,
+    "max": 18,
+    "threshold_pass": 13,
+    "threshold_min_risk_axis": 2
+  },
+  "decision": "PRODUCT_SELECTED",
+  "decision_note": "User-approved Option A on 2026-05-28: lane expanded to 'cooling gadget outdoor' for this case (VN heat-wave market opportunity). Original scoring 14/18 ≥ threshold 13 + trục 6 = 2 ≥ min_risk_axis 2 → PRODUCT_SELECTED. NEEDS_USER_REVIEW override (data_confidence=low + lane drift) đã được user resolve manually.",
+  "script_writer_constraints": {
+    "banned_keywords_strict": [
+      "JAPAN",
+      "Japan",
+      "Nhật Bản",
+      "hàng Nhật",
+      "Made in Japan",
+      "điều hòa",
+      "mát như điều hòa",
+      "thay thế điều hòa",
+      "lạnh như điều hòa",
+      "tốt nhất",
+      "rẻ nhất",
+      "chính hãng 100%",
+      "cam kết",
+      "đảm bảo",
+      "số 1",
+      "duy nhất"
+    ],
+    "tone_focus": [
+      "trải nghiệm thực tế làm mát mùa nóng",
+      "cảm giác mát khi bật quạt",
+      "tiện cho người làm việc ngoài trời",
+      "test bằng khói/giấy bay để show luồng gió",
+      "soft chia sẻ, không quảng cáo thô"
+    ],
+    "rationale": "User-instructed 2026-05-28: né JAPAN brand claim (risk misleading origin — sản phẩm TQ gắn nhãn JAPAN), né 'điều hòa' (banned phrase blocklist GUARD 7 R3 + Section I). Focus vào TRẢI NGHIỆM thực tế làm mát + observable facts (gió thổi qua áo, áo phồng) — không claim cooling power kiểu 'mát như AC'.",
+    "approved_neutral_phrases": [
+      "áo có quạt",
+      "áo gắn quạt làm mát",
+      "có gió thổi qua",
+      "đỡ nóng khi đứng nắng",
+      "tiện cho mấy bác đi nắng cả ngày",
+      "test thử bằng giấy",
+      "áo phồng lên khi bật"
+    ]
+  }
+}

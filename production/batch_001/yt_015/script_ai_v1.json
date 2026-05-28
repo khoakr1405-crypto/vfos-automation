@@ -1,0 +1,113 @@
+{
+  "input": {
+    "video_id": "yt_015",
+    "content_goal": "Gioi thieu mem ao co quat lam mat (cooling fan jacket) cho audience Reels VN mua he cao diem. Tone soft chia se trai nghiem, KHONG quang cao tho, KHONG claim brand JAPAN, KHONG dung tu 'dieu hoa'. Focus observable facts: ao co 2 quat suon lung duoi, gio thoi qua than, hop di nang cong truong xe om.",
+    "target_platform": "reels",
+    "duration_target_s": 15.6,
+    "tone": "vui chia se ban dan, hoi to mo, soft tone, khong overhype",
+    "affiliate_angle": "shopee_link_bio",
+    "cta_style": "soft_link_in_description",
+    "scene_timeline": [
+      {
+        "window_start_s": 0,
+        "window_end_s": 3,
+        "scene_type": "HOOK",
+        "visual_summary": "Close-up lung ao navy treo, hand cham nhe vao quat tron trang o suon lung duoi. 1 quat visible ro net.",
+        "notes": "Hook to mo: ao bao ho ma co quat? Visual la 1 quat tron trang noi bat tren nen navy."
+      },
+      {
+        "window_start_s": 3,
+        "window_end_s": 7,
+        "scene_type": "KITCHEN",
+        "visual_summary": "Back view full ao navy, hand cham 2 quat tron trang o 2 suon lung duoi. Reflective stripe nguc visible.",
+        "notes": "Demo cau tao: 2 quat + reflective stripe + form jacket work-style. Show ro form factor de match Shopee SKU."
+      },
+      {
+        "window_start_s": 7,
+        "window_end_s": 12,
+        "scene_type": "KITCHEN",
+        "visual_summary": "Model nu mac ao navy + tank top trang ben trong, dung outdoor giua cay xanh va da. Vai goc xoay show 2 quat suon lung. Hand gesture chi ve phia quat.",
+        "notes": "Demo wear test outdoor. Bo i canh hot summer day. Tone tu nhien khong overhype."
+      },
+      {
+        "window_start_s": 12,
+        "window_end_s": 15.6,
+        "scene_type": "CTA",
+        "visual_summary": "Full body shot model dung mac ao navy. Tay nhe show mat truoc ao co zip + flap pocket nho. Closing pose.",
+        "notes": "CTA soft: link mo ta nha. KHONG dung 'mua ngay', KHONG 'san sale gap'."
+      }
+    ]
+  },
+  "output": {
+    "hook": "Áo bảo hộ mà có quạt?",
+    "blocks": [
+      {
+        "block_id": "b1",
+        "window_start_s": 0,
+        "window_end_s": 3,
+        "intent": "HOOK",
+        "line": "Áo bảo hộ mà có quạt?",
+        "notes": "Hook to mo: ao bao ho ma co quat? Visual la 1 quat tron trang noi bat tren nen navy."
+      },
+      {
+        "block_id": "b2",
+        "window_start_s": 3,
+        "window_end_s": 7,
+        "intent": "KITCHEN",
+        "line": "Có 2 quạt ở 2 bên lưng.",
+        "notes": "Demo cau tao: 2 quat + reflective stripe + form jacket work-style. Show ro form factor de match Shopee SKU."
+      },
+      {
+        "block_id": "b3",
+        "window_start_s": 7,
+        "window_end_s": 12,
+        "intent": "KITCHEN",
+        "line": "Mặc áo này đi ra ngoài rất thoải mái.",
+        "notes": "Demo wear test outdoor. Bo i canh hot summer day. Tone tu nhien khong overhype."
+      },
+      {
+        "block_id": "b4",
+        "window_start_s": 12,
+        "window_end_s": 15.6,
+        "intent": "CTA",
+        "line": "Link mô tả nha.",
+        "notes": "CTA soft: link mo ta nha. KHONG dung 'mua ngay', KHONG 'san sale gap'."
+      }
+    ],
+    "cta": "Link mô tả nha.",
+    "full_script": "Áo bảo hộ mà có quạt?\n\nCó 2 quạt ở 2 bên lưng.\n\nMặc áo này đi ra ngoài rất thoải mái.\n\nLink mô tả nha.",
+    "writer_notes": [
+      "Hook gây sự tò mò về tính năng mới.",
+      "KITCHEN block được mở rộng tự nhiên để đạt tổng từ.",
+      "Tôn trọng tone vui vẻ, gần gũi trong từng câu."
+    ]
+  },
+  "meta": {
+    "model": "gpt-4o-mini-2024-07-18",
+    "input_tokens": 4730,
+    "output_tokens": 369,
+    "response_id": "resp_093dad6b466082e3006a17c64dea0c8198b45f807d1894ce57"
+  },
+  "quality_report": {
+    "banned_phrases_found": [],
+    "hook_consistent": true,
+    "cta_consistent": true,
+    "cta_preserved": null,
+    "word_count": 26,
+    "word_count_target": 36,
+    "word_count_within_target": false,
+    "budget_mode": "timeline_aware",
+    "duration_based_target": 44,
+    "aggregate_block_cap": 41,
+    "target_adjustment_reason": "duration-based target 44 vượt 90% aggregate cap 41; reconciled to 36 (≤cap-5 từ buffer)",
+    "block_budget_violations": [],
+    "warnings": [
+      "[WORD_COUNT] [timeline_aware] 26 words vs target 36 (-27.8%, outside ±8% window)",
+      "[BUDGET_RECONCILED] duration-based target 44 vượt 90% aggregate cap 41; reconciled to 36 (≤cap-5 từ buffer)"
+    ],
+    "quality_status": "fail",
+    "near_pass_reason": null,
+    "passed": false
+  },
+  "generated_at": "2026-05-28T04:36:40.072Z"
+}

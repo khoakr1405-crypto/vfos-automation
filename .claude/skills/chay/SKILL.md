@@ -832,6 +832,35 @@ Khi `status = DONE_WAITING_USER_REVIEW` báo thêm:
 [ ] Commit CHỈ khi /chay commit hoặc prompt rõ (Phần 24 mục 6) — KHÔNG tự commit "vì đã xong"?
 ```
 
+
+---
+
+## AUTO-PILOT MODE (Round 27B)
+
+VFOS is running in **Auto-Pilot Mode** to achieve a high degree of automation (80-90%). In this mode, the agent operates autonomously to make routine match, trim, and recovery decisions. Human-in-the-loop pauses (`SUSPENDED`) are strictly restricted.
+
+### 1. Autonomous Sourcing Approval (Demo Match)
+During the Demo Match phase (PF-STEP 4):
+- If the sourced video candidate scores a perfect **5/5 on GUARD 8**, or comes from a **clean, logo-free, and watermark-free web source**:
+  - The agent **MUST** automatically approve the video, assign the next sequential `yt_NNN` ID, download it, and advance to keyframe extraction.
+  - Do **NOT** pause to ask the operator.
+
+### 2. Autonomous Script Trimming (Script Writer)
+During the Script Generation and Verification phase (STEP 6):
+- If the AI Script Writer produces a script that has word-budget violations (over/under budget blocks) or minor compliance issues:
+  - The agent **MUST** autonomously apply the `OPERATOR TRIM POLICY` to edit and trim the kịch bản text so that it fits perfectly within the Voice Sync timeline.
+  - Rewrites must be clean, natural, and claim-safe (soft tone, no absolute terms).
+  - Update `script_ai_v1_extended.json` with the full `operator_trim` metadata block (setting `operator_trim_applied: true`, `post_trim_quality_status: "accepted_after_operator_trim"`, `final_used_for_voice_sync: true`).
+  - Advance directly to the Voice Sync phase. Do **NOT** pause to ask the operator.
+
+### 3. Gatekeeper Suspensions (The Only Allowed Blockers)
+The agent is permitted to yield control and pause execution (`SUSPENDED`) **ONLY** under severe physical or external blockers that cannot be bypassed via code:
+1. **`ERR_AUTH_REQUIRED` / OTP Request**: Manual intervention is required to complete a Shopee login or OTP challenge.
+2. **`ERR_CDP_PROFILE_LOCKED`**: Another browser instance is holding a profile lock.
+3. **`ERR_COPYRIGHT_BRAND_FATAL`**: The video candidate contains high-risk copyrighted brand trademarks/watermarks that cannot be cleanly removed or repaired using FFmpeg blurring/cropping without rendering the product unreadable.
+
+Every other decision (sourcing retries, script adjustments, volume/gain adjustments) must be solved autonomously.
+
 ---
 
 ## MODE ROUTING
