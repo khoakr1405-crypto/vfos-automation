@@ -14,6 +14,7 @@ import type { StepDefinition } from './step-registry.js';
 import { RunEventEmitter } from './run-events.js';
 import type { EventBus } from '../bus/types.js';
 import { RetryPolicy } from './retry-policy.js';
+import { GuardRunner, type Guard } from './guard-runner.js';
 
 export interface PipelineResult {
   run_id: string;
@@ -31,6 +32,7 @@ export interface AutoPipelineOpts {
   runStore: RunStore;
   bus?: EventBus;
   retryPolicy?: RetryPolicy;
+  guards?: Guard[];
 }
 
 export class AutoPipeline {
@@ -38,11 +40,13 @@ export class AutoPipeline {
   private readonly gate: ArtifactGate;
   private readonly emitter: RunEventEmitter | null = null;
   private readonly retryPolicy: RetryPolicy;
+  private readonly guardRunner: GuardRunner;
 
   constructor(private readonly opts: AutoPipelineOpts) {
     this.runner = new StepRunner(opts.logger);
     this.gate = new ArtifactGate(opts.logger, '.');
     this.retryPolicy = opts.retryPolicy ?? new RetryPolicy();
+    this.guardRunner = new GuardRunner(opts.logger);
     if (opts.bus) {
       this.emitter = new RunEventEmitter(opts.bus);
     }
@@ -159,6 +163,23 @@ export class AutoPipeline {
         error = `Artifact validation failed for: ${failedFile?.path || 'unknown'} (${failedFile?.reason || 'unspecified'})`;
         pipelineStatus = 'failed';
         break;
+      }
+
+      // Execute Quality Guards if configured
+      const stepGuards = (this.opts.guards || []).filter((g) => g.targetStep === step.stepName);
+      if (stepGuards.length > 0) {
+        const guardResult = await this.guardRunner.run(
+          step.stepName,
+          step.expectedArtifacts,
+          stepGuards,
+        );
+        if (!guardResult.passed) {
+          failedStep = step.stepName;
+          const firstBlocking = guardResult.blockingFailures[0];
+          error = `[Guard Violation] ${firstBlocking?.guardName || 'unknown'} failed for ${step.stepName}: ${firstBlocking?.reasons.join(', ') || 'blocking failure'}`;
+          pipelineStatus = 'failed';
+          break;
+        }
       }
 
       // Step completed successfully
