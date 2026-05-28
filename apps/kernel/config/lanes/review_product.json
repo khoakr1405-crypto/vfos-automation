@@ -39,6 +39,34 @@
       ]
     },
     {
+      "stepName": "demo:visual-check",
+      "description": "Production-like offline video visual metadata builder",
+      "command": "tsx",
+      "argsTemplate": [
+        "scripts/offline-visual-metadata-demo.ts",
+        "--output",
+        "{outputDir}/visual_metadata_artifact.json",
+        "--mode",
+        "{mode}"
+      ],
+      "cwd": ".",
+      "timeoutMs": 10000,
+      "expectedArtifacts": [
+        {
+          "pathTemplate": "{outputDir}/visual_metadata_artifact.json",
+          "required": true,
+          "nonEmpty": true
+        }
+      ],
+      "guards": [
+        {
+          "guardName": "VisualGuard",
+          "artifactPathTemplate": "{outputDir}/visual_metadata_artifact.json",
+          "blocking": true
+        }
+      ]
+    },
+    {
       "stepName": "demo:publish",
       "description": "Downstream Publish Step",
       "command": "node",
