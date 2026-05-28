@@ -31,7 +31,8 @@
     "step:demo": "tsx scripts/step-demo.ts",
     "pipeline:demo": "tsx scripts/auto-pipeline-demo.ts",
     "pipeline:p3-demo": "tsx scripts/pipeline-p3-demo.ts",
-    "pipeline:p4-demo": "tsx scripts/pipeline-p4-demo.ts"
+    "pipeline:p4-demo": "tsx scripts/pipeline-p4-demo.ts",
+    "pipeline:p5-demo": "tsx scripts/pipeline-p5-demo.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
