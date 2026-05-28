@@ -1791,18 +1791,23 @@ Commit: `docs: add chay aliases for shopee cdp extraction`.
 >
 > **TRẠNG THÁI yt_014 (2026-05-26)**: **Shopee-First Audio Assembly & publish plan success** theo Agent Architecture v0. Đã tạo voice_sync_manifest, voice_timeline.mp3, mixed_audio.mp3, preview_vi.mp4 và facebook_reels_publish_plan.json. Technical QC hoàn toàn đạt: duration mismatch = 0.134s (<0.5s), max_volume = -4.5 dB (no clipping), 0 leak, 2 streams (H264, AAC).
 >
-> **Bước tiếp theo duy nhất: USER duyệt publish plan và quyết định strategy tiếp theo.**
+> **Bước tiếp theo duy nhất: USER đánh giá thành phẩm yt_015 và quyết định chiến lược tiếp theo.**
 >
-> Có 6 hướng khả thi (KHÔNG tự chọn — chờ user quyết):
+> **MỐC ĐẠT ĐƯỢC 2026-05-28 (Round 27B Auto-Pilot)**:
+> - **Tích hợp chế độ Auto-Pilot Mode**: Cập nhật playbook và logic vận hành trong `SKILL.md` để tự động duyệt video 5/5, tự động trim gọt kịch bản, giới hạn human-in-the-loop chỉ dừng khi gặp blocker vật lý nặng (OTP, Lock profile, brand không sửa được).
+> - **Giải phóng video Áo Điều Hòa `yt_015` thành công rực rỡ**: Trải qua 100% quy trình tự động không cần user can thiệp — tự động áp dụng `OPERATOR TRIM POLICY` (Option C) ghi metadata `operator_trim`, tự động Voice Sync (4/4 blocks FIT/underfill), tự động BGM Mix và render preview video `.mp4` đạt chuẩn QC kỹ thuật (max_volume = -2.9 dB, 0 leak, 2 streams). Đã tự động tạo và persist `facebook_reels_publish_plan.json` chứa link Shopee Affiliate đã được verify.
+> - **Tự động hóa Git Agent**: Tự động stage các file text/manifest của `yt_015` cùng `SKILL.md` và tạo commit `8be0e4b` cục bộ sạch sẽ không dính binary file.
 >
-> 1. **Architecture v1 — pipeline migrate ghi artifact sang `production/_runs/<run_id>/`** — bước thực thi đầu tiên của roadmap Phần 24. Vẫn monolithic `/chay`, chỉ đổi path đích + bổ sung `<run_id>` generator. Yêu cầu sửa code `packages/script-writer/`, `packages/voice/`, `packages/shopee/`, `packages/facebook/`. Test bằng 1 vòng `/chay` thực sự.
-> 2. **Nhân bản Con số 2 theo blueprint** — 5 video Video-First + 1 video Shopee-First là đủ bằng chứng pipeline ổn. Mở `docs/00_DIEU_HANH/VFOS_SHORTFORM_FACTORY_BLUEPRINT_V0.md` cho ngách thứ 2. Đây là path commercial progress (VFOS North Star).
-> 3. **Đổi default `OPENAI_MODEL=gpt-4o` trong `.env`** — pre-existing config debt. Cleanup nhỏ, operator không cần `--model gpt-4o` flag từng lần.
-> 4. **Test yt_012 Shopee-First với hardening Phần 23** — verify 4 rule mới (Card persist HARD GATE, short link support, operator trim metadata, publish plan) end-to-end trên 1 video mới.
-> 5. **Test thử Shopee-First Discovery Mode thật** — `/chay shopee-first` (no link) → agent tự tìm Shopee candidate theo lane. Phụ thuộc vào Shopee data accessibility hiện tại — có thể dừng ở limitation step.
-> 6. **Split 5 sub-agent thật (Phần 24 roadmap v2–v6)** — tạo `.claude/agents/shopee-product-agent.md`, `demo-match-agent.md`, `script-qc-agent.md`, `facebook-publish-plan-agent.md`, `git-artifact-agent.md` theo boundary v0. Spec đã có — bước này là implement adapter từ `/chay` monolithic sang multi-agent.
+> Có 6 hướng khả thi tiếp theo (chờ user quyết):
 >
-> **KHÔNG tự chạy yt_012** mà không có user quyết định. **KHÔNG tự split 5 sub-agent** mà không có user duyệt — Phần 24 chỉ định nghĩa boundary trong SKILL/docs, chưa cấp permission code multi-agent. **KHÔNG tự migrate artifact** `production/batch_001/<video_id>/` sang `production/_runs/<run_id>/` — pipeline code chưa migrate, làm sớm sẽ orphan. **KHÔNG mở scope** sang publish thật, BGM ducking, watermark auto-detect, Con số 2 chưa được duyệt, **TikTok Shop chưa được duyệt mở lại**.
+> 1. **Architecture v1 — pipeline migrate ghi artifact sang `production/_runs/<run_id>/`** — bước thực thi đầu tiên của roadmap Phần 24.
+> 2. **Nhân bản Con số 2 theo blueprint** — mở `docs/00_DIEU_HANH/VFOS_SHORTFORM_FACTORY_BLUEPRINT_V0.md` cho ngách thứ 2.
+> 3. **Đổi default `OPENAI_MODEL=gpt-4o` trong `.env`** — cleanup nhỏ.
+> 4. **Test yt_012 Shopee-First với hardening Phần 23** — verify 4 rule mới end-to-end trên 1 video mới.
+> 5. **Test thử Shopee-First Discovery Mode thật** — `/chay shopee-first` (no link) → agent tự tìm Shopee candidate.
+> 6. **Split 5 sub-agent thật (Phần 24 roadmap v2–v6)** — tạo `.claude/agents/shopee-product-agent.md`, v.v.
+>
+> KHÔNG tự chạy các video khác hay tự ý split sub-agent code mà không có user quyết định. Mọi file binary đều đã được gitignore sạch sẽ.
 
 ### (Phần dưới giữ lại làm reference — yt_009 acceptance ban đầu đã đạt)
 
