@@ -27,7 +27,8 @@
     "shopee:fetch-products": "tsx packages/shopee/scripts/fetch-products-cookie.ts",
     "shopee:select": "tsx packages/shopee/scripts/select-products.ts",
     "shopee:extract-links-cdp": "tsx packages/shopee/scripts/extract-links-cdp.ts",
-    "status": "tsx scripts/status-cli.ts"
+    "status": "tsx scripts/status-cli.ts",
+    "step:demo": "tsx scripts/step-demo.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
