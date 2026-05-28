@@ -13,6 +13,7 @@ import { ArtifactGate, type GateReport } from './artifact-gate.js';
 import type { StepDefinition } from './step-registry.js';
 import { RunEventEmitter } from './run-events.js';
 import type { EventBus } from '../bus/types.js';
+import { RetryPolicy } from './retry-policy.js';
 
 export interface PipelineResult {
   run_id: string;
@@ -29,16 +30,19 @@ export interface AutoPipelineOpts {
   logger: Logger;
   runStore: RunStore;
   bus?: EventBus;
+  retryPolicy?: RetryPolicy;
 }
 
 export class AutoPipeline {
   private readonly runner: StepRunner;
   private readonly gate: ArtifactGate;
   private readonly emitter: RunEventEmitter | null = null;
+  private readonly retryPolicy: RetryPolicy;
 
   constructor(private readonly opts: AutoPipelineOpts) {
     this.runner = new StepRunner(opts.logger);
     this.gate = new ArtifactGate(opts.logger, '.');
+    this.retryPolicy = opts.retryPolicy ?? new RetryPolicy();
     if (opts.bus) {
       this.emitter = new RunEventEmitter(opts.bus);
     }
@@ -92,14 +96,57 @@ export class AutoPipeline {
         void this.emitter.emitStepStarted(currentRun, step.stepName).catch(() => {});
       }
 
-      // Execute Child Command
-      const outcome = await this.runner.run(step);
-      outcomes.push(outcome);
+      let attempt = 1;
+      const maxAttempts = this.retryPolicy.getMaxAttempts();
+      let outcome: StepOutcome | null = null;
 
-      // Handle runner crash/timeout
-      if (outcome.status !== 'success') {
+      while (attempt <= maxAttempts) {
+        if (attempt > 1) {
+          const delay = this.retryPolicy.calculateDelay(attempt);
+          this.opts.logger.warn(
+            { step: step.stepName, attempt, maxAttempts, delayMs: delay },
+            'step.retry.waiting',
+          );
+          await new Promise((r) => setTimeout(r, delay));
+        }
+
+        // Execute Child Command
+        outcome = await this.runner.run(step);
+        outcomes.push(outcome);
+
+        if (outcome.status === 'success') {
+          break;
+        }
+
+        // Step failed. Classify error to decide if retryable
+        const classification = this.retryPolicy.classify(outcome.exitCode, outcome.stderr);
+        if (classification === 'non_retryable') {
+          this.opts.logger.error(
+            { step: step.stepName, attempt, classification },
+            'step.failed.non_retryable',
+          );
+          break;
+        }
+
+        if (attempt === maxAttempts) {
+          this.opts.logger.error(
+            { step: step.stepName, attempt, maxAttempts },
+            'step.failed.max_attempts_reached',
+          );
+          break;
+        }
+
+        this.opts.logger.warn(
+          { step: step.stepName, attempt, classification },
+          'step.failed.retryable',
+        );
+        attempt++;
+      }
+
+      // Handle final step failures after attempts exhaust
+      if (!outcome || outcome.status !== 'success') {
         failedStep = step.stepName;
-        error = `Process ${outcome.status} (exit code ${outcome.exitCode}). stderr: ${outcome.stderr.trim()}`;
+        error = `Process ${outcome?.status ?? 'failed'} (exit code ${outcome?.exitCode ?? 'unknown'}, attempt ${attempt}/${maxAttempts}). stderr: ${outcome?.stderr.trim() ?? ''}`;
         pipelineStatus = 'failed';
         break;
       }
