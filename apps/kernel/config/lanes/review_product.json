@@ -95,6 +95,29 @@
       ]
     },
     {
+      "stepName": "demo:voice-generate",
+      "description": "Production-like offline AI voiceover audio generator",
+      "command": "tsx",
+      "argsTemplate": [
+        "scripts/offline-voice-generate-demo.ts",
+        "--script",
+        "{outputDir}/script_artifact.json",
+        "--output",
+        "{outputDir}/voice_artifact.json",
+        "--mode",
+        "{mode}"
+      ],
+      "cwd": ".",
+      "timeoutMs": 10000,
+      "expectedArtifacts": [
+        {
+          "pathTemplate": "{outputDir}/voice_artifact.json",
+          "required": true,
+          "nonEmpty": true
+        }
+      ]
+    },
+    {
       "stepName": "demo:publish",
       "description": "Downstream Publish Step",
       "command": "node",
