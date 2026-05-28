@@ -118,6 +118,33 @@
       ]
     },
     {
+      "stepName": "demo:render-manifest",
+      "description": "Production-like offline video render manifest builder",
+      "command": "tsx",
+      "argsTemplate": [
+        "scripts/offline-render-manifest-demo.ts",
+        "--visual",
+        "{outputDir}/visual_metadata_artifact.json",
+        "--script",
+        "{outputDir}/script_artifact.json",
+        "--voice",
+        "{outputDir}/voice_artifact.json",
+        "--output",
+        "{outputDir}/render_manifest.json",
+        "--mode",
+        "{mode}"
+      ],
+      "cwd": ".",
+      "timeoutMs": 10000,
+      "expectedArtifacts": [
+        {
+          "pathTemplate": "{outputDir}/render_manifest.json",
+          "required": true,
+          "nonEmpty": true
+        }
+      ]
+    },
+    {
       "stepName": "demo:publish",
       "description": "Downstream Publish Step",
       "command": "node",
