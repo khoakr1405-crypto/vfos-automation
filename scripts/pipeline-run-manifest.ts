@@ -15,6 +15,7 @@ import { ProductMatchGuard } from '../apps/kernel/src/pipeline/guards/product-ma
 import { VisualGuard } from '../apps/kernel/src/pipeline/guards/visual-guard.js';
 import { ScriptGuard } from '../apps/kernel/src/pipeline/guards/script-guard.js';
 import { PlanBuilder } from '../apps/kernel/src/pipeline/plan-builder.js';
+import { exportRunReport } from './run-report-exporter.js';
 
 function printHelp() {
   console.log(`
@@ -172,6 +173,25 @@ async function main() {
 
   // 6. Handle Dry Run exit
   if (values['dry-run']) {
+    exportRunReport({
+      manifestPath,
+      runtimeManifestPath: activeManifestPath,
+      planPath: buildResult.planPath,
+      outputDir: plan.outputDir,
+      plan,
+      result: {
+        run_id: 'dry_run_id',
+        status: 'dry_run',
+        steps_completed: 0,
+        steps_total: buildResult.stepCount,
+        failed_step: null,
+        error: null,
+      },
+      targetMode,
+      durationMs: 0,
+      isDryRun: true,
+    });
+
     console.log('\n  [Operator] Dry-run check completed! Plan successfully generated.');
     console.log('  ======================================================\n');
     process.exit(0);
@@ -191,8 +211,23 @@ async function main() {
   });
 
   console.log('\n  [Operator] Executing multi-step validation workflow...');
+  const startTime = Date.now();
   const result = await pipeline.executeFromPlan(buildResult.planPath);
+  const durationMs = Date.now() - startTime;
   runStore.flush();
+
+  // Export report
+  exportRunReport({
+    manifestPath,
+    runtimeManifestPath: activeManifestPath,
+    planPath: buildResult.planPath,
+    outputDir: plan.outputDir,
+    plan,
+    result,
+    targetMode,
+    durationMs,
+    isDryRun: false,
+  });
 
   // Print Final Report
   console.log('\n  --- Execution Outcome Report ---');
