@@ -58,6 +58,7 @@
     "shopee:bgm-gen": "tsx scripts/bgm-generator-demo.ts",
     "operator:review-pack": "tsx scripts/operator-review-pack-demo.ts",
     "publish:facebook": "tsx scripts/facebook-publish-command-demo.ts",
+    "production:pack": "tsx scripts/production-packager.ts",
     "shopee:audit": "tsx scripts/shopee-link-audit-demo.ts",
     "commerce:intake": "tsx scripts/commerce-intake-orchestrator.ts",
     "vfos:daily": "tsx scripts/vfos-daily-dashboard.ts",

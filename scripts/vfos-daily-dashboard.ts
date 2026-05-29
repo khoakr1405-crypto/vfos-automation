@@ -232,6 +232,20 @@ async function main() {
     } catch {}
   }
 
+  let packageStatus: 'FOUND' | 'MISSING' = 'MISSING';
+  const catalogPath = 'production/archive/catalog.json';
+  if (existsSync(catalogPath)) {
+    try {
+      const catalogObj = JSON.parse(readFileSync(catalogPath, 'utf8'));
+      if (catalogObj && Array.isArray(catalogObj.packages)) {
+        const found = catalogObj.packages.find((p: any) => p.runId === runId);
+        if (found) {
+          packageStatus = 'FOUND';
+        }
+      }
+    } catch {}
+  }
+
   let reelsValidationStatus: 'PASS' | 'WARN' | 'FAIL' | 'UNKNOWN' = 'UNKNOWN';
   const reelsValPath = activeRunDir ? join(activeRunDir, 'facebook_reels_validation_artifact.json') : '';
   const rootReelsValPath = 'data/temp/facebook_reels_validation_artifact.json';
@@ -710,6 +724,7 @@ ${recommendedNextCommand}
   if (facebookPublishStatusState !== 'MISSING') {
     console.log(`- Publish Status:    ${facebookPublishStatusState === 'READY_FOR_MANUAL_PUBLISH_SUBMISSION' ? 'READY FOR SUBMISSION 🟢' : facebookPublishStatusState === 'BLOCKED_PENDING_OPERATOR_APPROVAL' ? 'PENDING APPROVAL 🟡' : 'NOT READY 🔴'}`);
   }
+  console.log(`- Production Pack:   ${packageStatus === 'FOUND' ? 'PACKED 🟢' : 'MISSING ⚪'}`);
   console.log(`- Next Step:         ${publishAction}`);
 
   console.log('\n[4] Safety Lock Status');
