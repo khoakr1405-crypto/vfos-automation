@@ -194,15 +194,30 @@
     },
     {
       "stepName": "demo:publish",
-      "description": "Downstream Publish Step",
-      "command": "node",
+      "description": "Production-like offline Publish Safety Manifest builder",
+      "command": "tsx",
       "argsTemplate": [
-        "-e",
-        "{publishCommand}"
+        "scripts/offline-publish-manifest-demo.ts",
+        "--preview",
+        "{outputDir}/preview_artifact.json",
+        "--approval",
+        "{outputDir}/approval_artifact.json",
+        "--report",
+        "{outputDir}/run_report.json",
+        "--output",
+        "{outputDir}/publish_manifest.json",
+        "--mode",
+        "{mode}"
       ],
       "cwd": ".",
-      "timeoutMs": 5000,
-      "expectedArtifacts": []
+      "timeoutMs": 10000,
+      "expectedArtifacts": [
+        {
+          "pathTemplate": "{outputDir}/publish_manifest.json",
+          "required": true,
+          "nonEmpty": true
+        }
+      ]
     }
   ]
 }

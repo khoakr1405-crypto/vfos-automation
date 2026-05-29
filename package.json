@@ -45,7 +45,8 @@
     "offline-voice-generate": "tsx scripts/offline-voice-generate-demo.ts",
     "offline-render-manifest": "tsx scripts/offline-render-manifest-demo.ts",
     "offline-render-video": "tsx scripts/offline-render-video-demo.ts",
-    "offline-approval-gate": "tsx scripts/offline-approval-gate-demo.ts"
+    "offline-approval-gate": "tsx scripts/offline-approval-gate-demo.ts",
+    "offline-publish-manifest": "tsx scripts/offline-publish-manifest-demo.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
