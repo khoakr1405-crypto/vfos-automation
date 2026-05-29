@@ -21,6 +21,7 @@
     "facebook:test": "tsx packages/facebook/scripts/test-connection.ts",
     "facebook:test-post": "tsx packages/facebook/scripts/test-post.ts",
     "facebook:get-page-token": "tsx packages/facebook/scripts/get-page-token.ts",
+    "facebook:preflight": "tsx scripts/facebook-preflight-demo.ts",
     "shopee:login": "tsx packages/shopee/scripts/login-session.ts",
     "shopee:fetch": "tsx packages/shopee/scripts/fetch-offers.ts",
     "shopee:fetch-cookie": "tsx packages/shopee/scripts/fetch-offers-cookie.ts",
