@@ -58,7 +58,8 @@
     "shopee:bgm-gen": "tsx scripts/bgm-generator-demo.ts",
     "operator:review-pack": "tsx scripts/operator-review-pack-demo.ts",
     "publish:facebook": "tsx scripts/facebook-publish-command-demo.ts",
-    "shopee:audit": "tsx scripts/shopee-link-audit-demo.ts"
+    "shopee:audit": "tsx scripts/shopee-link-audit-demo.ts",
+    "commerce:intake": "tsx scripts/commerce-intake-orchestrator.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
