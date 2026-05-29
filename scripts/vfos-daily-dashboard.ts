@@ -262,6 +262,106 @@ async function main() {
   } catch {}
 
   // ======================================================
+  // EXPORT OPERATOR DAILY RUNBOOK (data/temp/vfos_daily_runbook.md)
+  // ======================================================
+  const runbookPath = 'data/temp/vfos_daily_runbook.md';
+  
+  // Map recommended next CLI command dynamically
+  let recommendedNextCommand = 'pnpm commerce:intake';
+  let recommendedWhy = 'Preflight connection diagnostics is recommended prior to extraction workflows.';
+  let expectedResult = 'CDP preflight diagnostic outputs connection and debug port ready status.';
+
+  if (productCardStatus === 'MISSING') {
+    if (preflightStatus === 'READY') {
+      recommendedNextCommand = 'pnpm commerce:intake --confirm-targeted-click';
+      recommendedWhy = 'CDP port 9222 connection is READY! Proceed to perform exactly 1 controlled link click and capture affiliate credentials.';
+      expectedResult = 'Normalized Selected Product Card is extracted to data/temp/selected_product_card.json.';
+    } else {
+      recommendedNextCommand = 'pnpm commerce:intake';
+      recommendedWhy = 'CDP debugging port connection is closed or not ready. Initialize preflight check to diagnose connection.';
+      expectedResult = 'Diagnostic report is exported to data/temp/shopee_cdp_preflight_status.json.';
+    }
+  } else if (auditStatus === 'FAIL') {
+    recommendedNextCommand = 'pnpm commerce:intake --confirm-targeted-click';
+    recommendedWhy = 'Shopee link registry audit has failed. Please resolve duplication/owner issues or re-extract Product Card.';
+    expectedResult = 'Fresh product card passes local audit gates.';
+  } else if (reviewPackStatus === 'MISSING') {
+    recommendedNextCommand = 'pnpm chay --offline';
+    recommendedWhy = 'Shopee Product Card is audited and ready! Run localized preview generator pipeline to build review package.';
+    expectedResult = 'Audio, script, and preview video rendering completed inside active run directory.';
+  } else if (reviewPackStatus === 'READY_FOR_FINAL_OPERATOR_APPROVAL') {
+    recommendedNextCommand = `pnpm publish:facebook --confirm-final-approval --run ${runId}`;
+    recommendedWhy = 'Consolidated operator review pack is fully generated. After manually inspecting preview video, trigger final publishing request.';
+    expectedResult = 'Secure dry-run publish manifest built and queued for production deployment.';
+  }
+
+  const runbookMarkdown = `# VFOS Daily Workflow Runbook
+
+> [!IMPORTANT]
+> \`pnpm vfos:daily\` is a read-only dashboard. It does not click, upload, publish, or call live APIs.
+
+## 1. Current Operational State
+- Generated at: \`${new Date().toISOString()}\`
+- Commerce Intake: \`${preflightStatus === 'READY' ? 'READY ✅' : preflightStatus === 'NOT_READY' ? 'NOT READY ❌' : 'UNKNOWN ⚪'}\`
+- Product Card: \`${productCardStatus === 'FOUND' ? 'FOUND ✅' : 'MISSING ❌'}\`${cardObj ? ` ("${cardObj.name}")` : ''}
+- Shopee Audit: \`${auditStatus === 'PASS' ? 'PASS ✅' : auditStatus === 'WARN' ? 'WARN ⚠️' : auditStatus === 'FAIL' ? 'FAIL ❌' : 'UNKNOWN ⚪'}\`
+- Review Preview: \`${previewStatus === 'FOUND' ? 'FOUND ✅' : 'MISSING ❌'}\`
+- Operator Review Pack: \`${reviewPackStatus === 'READY_FOR_FINAL_OPERATOR_APPROVAL' ? 'READY FOR APPROVAL ✅' : 'MISSING ❌'}\`
+- Publish Readiness: \`${publishManifestStatus === 'FOUND' ? 'READY ✅' : 'PENDING ❌'}\`
+
+## 2. Recommended Next Action
+- **Command**: \`${recommendedNextCommand}\`
+- **Why this command**: ${recommendedWhy}
+- **Expected result**: ${expectedResult}
+
+## 3. Safety Preconditions
+- Cốc Cốc or Chrome must be started with remote debugging enabled on port 9222 (\`--remote-debugging-port=9222\`).
+- The browser must be actively navigated to the Shopee Affiliate Product Offer catalog tab.
+- Absolutely **never** input passwords or bypass automated OTP prompts inside CDP automation.
+- Do not bypass or manually click security overlay layers or CAPTCHA blockers when automated scripts are connected.
+
+## 4. Step-by-Step Operator Workflow
+1. Run \`pnpm vfos:daily\` to check active operational states.
+2. If Product Card is missing, launch preflight checks and extract exactly 1 candidate card (\`pnpm commerce:intake --confirm-targeted-click\`).
+3. Confirm that Shopee Affiliate link registry offline audit successfully passes.
+4. Trigger the review video and preview renderer pipeline (\`pnpm chay --offline\`).
+5. Open \`operator_review_pack.md\` to manually review the generated reel kịch bản, hashtag, and video preview.
+6. Once manually approved, trigger the publish dry-run (\`pnpm publish:facebook --confirm-final-approval\`).
+
+## 5. Strict Operational Boundaries
+- Do not share \`.env\`, tokens, cookies, sessions, or browser storage.
+- Do not publish automatically.
+- Do not run live Facebook publishing without explicit final approval.
+- Do not bypass Shopee login, OTP, CAPTCHA, or security prompts.
+- Do not manually edit runtime artifacts unless you know exactly what you are doing.
+- Do not commit files from \`data/temp/\`.
+- Do not commit media files such as \`.mp4\`, \`.mp3\`, \`.wav\`, \`.m4a\`.
+
+## 6. Useful Commands
+- \`pnpm vfos:daily\` — Check central dashboard and export runbook
+- \`pnpm vfos:daily --refresh-preflight\` — Diagnostic browser diagnostic connection refresh
+- \`pnpm commerce:intake\` — Shopee preflight check
+- \`pnpm commerce:intake --confirm-targeted-click\` — Controlled 1-link Shopee extraction click
+- \`pnpm chay\` — Pipeline review run
+- \`pnpm chay --offline\` — Pipeline review offline execution
+- \`pnpm status -- --offline\` — Pipeline dashboard run status checks
+- \`pnpm publish:facebook --confirm-final-approval --run <runId>\` — Operator publish execution
+
+## 7. Artifact Paths
+- **vfos_daily_status.json**: \`${resolve(statusOutputPath)}\`
+- **vfos_daily_runbook.md**: \`${resolve(runbookPath)}\`
+- **selected_product_card.json**: \`${resolve(cardPath)}\`
+- **operator_review_pack.md**: \`${packPath ? resolve(dirname(packPath), 'operator_review_pack.md') : 'MISSING'}\`
+- **preview.mp4**: \`${packPath ? resolve(dirname(packPath), 'preview.mp4') : 'MISSING'}\`
+`;
+
+  try {
+    writeFileSync(runbookPath, runbookMarkdown, 'utf8');
+  } catch (err: any) {
+    console.error(`[Dashboard] Failed to write daily runbook: ${err.message}`);
+  }
+
+  // ======================================================
   // OUTPUT PRESENTATION
   // ======================================================
   if (isJsonOnly) {
@@ -306,6 +406,9 @@ async function main() {
   console.log('\n======================================================');
   console.log('💡 RECOMMENDED NEXT OPERATOR ACTION:');
   console.log(mainAdvice);
+  console.log('------------------------------------------------------');
+  console.log(`Runbook exported:         ${runbookPath}`);
+  console.log(`Recommended next command: ${recommendedNextCommand}`);
   console.log('======================================================\n');
 
   process.exit(0);
