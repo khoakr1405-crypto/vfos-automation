@@ -215,6 +215,24 @@ export function exportRunReport(opts: ExportRunReportOpts): void {
   };
 
   // 7. Formulate Operator Review Markdown block
+  let liveCardText = '';
+  const liveCardPath = 'data/temp/selected_product_card.json';
+  if (existsSync(liveCardPath)) {
+    try {
+      const card = JSON.parse(readFileSync(liveCardPath, 'utf8'));
+      if (card.validationStatus === 'VERIFIED') {
+        liveCardText = `
+> [!NOTE]
+> **🟢 Live Shopee Affiliate Product Card Active**
+> - **Product**: *${card.name}*
+> - **Short Link**: [${card.shortLink}](${card.shortLink})
+> - **Canonical Destination**: [${card.canonicalUrl.slice(0, 90)}...](${card.canonicalUrl})
+> - **Tracking Owner**: \`${card.affiliateOwnerId}\` (VERIFIED MATCH ✅)
+`;
+      }
+    } catch {}
+  }
+
   let operatorReviewMarkdown = '';
   if (isDryRun) {
     operatorReviewMarkdown = `
@@ -247,6 +265,7 @@ No steps were executed. Review the plan before running.
 - **Preview Artifact**: \`${previewArtifactPath}\`
 - **Expected Preview Path**: \`${previewMeta?.expectedPreviewPath || 'None'}\`${actualPreviewPathText}
 ${extraFixtureWarning}
+${liveCardText}
 > [!IMPORTANT]
 > **Required Action**:
 > Operator must review/test the preview video before any publish step is allowed.

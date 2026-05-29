@@ -37,6 +37,22 @@ async function main() {
     process.exit(1);
   }
 
+  // Check if live Shopee Affiliate Product Card is active
+  const liveCardPath = 'data/temp/selected_product_card.json';
+  let liveCard: any = null;
+  if (existsSync(liveCardPath)) {
+    try {
+      liveCard = JSON.parse(readFileSync(liveCardPath, 'utf8'));
+      console.log(`[P6 SELECT] Found active live Shopee Product Card: "${liveCard.name}"`);
+      if (liveCard.affiliateOwnerId !== 'an_17376660568') {
+        console.error(`[P6 SELECT] FATAL: Affiliate owner verification mismatch: expected an_17376660568, got ${liveCard.affiliateOwnerId}`);
+        process.exit(1);
+      }
+    } catch (err: any) {
+      console.warn(`[P6 SELECT] Warning: Failed to parse live product card: ${err.message}. Falling back to candidate database.`);
+    }
+  }
+
   // 1. Read candidates
   if (!existsSync(candidatesPath)) {
     console.error(`Candidates file not found at: ${candidatesPath}`);
@@ -124,25 +140,49 @@ async function main() {
     matchAxes.usage = false; // 2/5 axes -> fail/blocking
   }
 
-  const matchArtifact = {
-    shopeeProduct: {
-      productId: selectedCandidate.productId || `shopee_idx_${selectedCandidate.index}`,
-      name: nameLine,
-      category: 'household_essentials',
-      formFactor: 'roll_paper',
-      useCase: 'cleaning',
-      priceRange: priceLine,
-    },
-    videoCandidate: {
-      sourceId: 'demo_video_001',
-      detectedProductName: detectedName,
-      detectedCategory: detectedCategory,
-      detectedFormFactor: detectedFormFactor,
-      detectedUseCase: detectedUseCase,
-      visualContext: 'home_review',
-    },
-    matchAxes,
-  };
+  const matchArtifact = liveCard
+    ? {
+        shopeeProduct: {
+          productId: liveCard.itemId || liveCard.id || 'unknown_item',
+          name: liveCard.name || 'Unnamed Product',
+          category: 'household_essentials',
+          formFactor: 'roll_paper',
+          useCase: 'cleaning',
+          priceRange: '₫0 (Live Commerce Link)',
+          shortLink: liveCard.shortLink || '',
+          canonicalUrl: liveCard.canonicalUrl || '',
+          affiliateOwnerId: liveCard.affiliateOwnerId || '',
+          source: 'shopee_affiliate_cdp',
+        },
+        videoCandidate: {
+          sourceId: 'demo_video_001',
+          detectedProductName: values.detectedProductName || liveCard.name || 'Unnamed Product',
+          detectedCategory: values.detectedCategory || 'household_essentials',
+          detectedFormFactor: values.detectedFormFactor || 'roll_paper',
+          detectedUseCase: values.detectedUseCase || 'cleaning',
+          visualContext: 'home_review',
+        },
+        matchAxes,
+      }
+    : {
+        shopeeProduct: {
+          productId: selectedCandidate.productId || `shopee_idx_${selectedCandidate.index}`,
+          name: nameLine,
+          category: 'household_essentials',
+          formFactor: 'roll_paper',
+          useCase: 'cleaning',
+          priceRange: priceLine,
+        },
+        videoCandidate: {
+          sourceId: 'demo_video_001',
+          detectedProductName: detectedName,
+          detectedCategory: detectedCategory,
+          detectedFormFactor: detectedFormFactor,
+          detectedUseCase: detectedUseCase,
+          visualContext: 'home_review',
+        },
+        matchAxes,
+      };
 
   // Ensure output directory
   const outDir = dirname(outPath);
