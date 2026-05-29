@@ -1,4 +1,4 @@
-import { writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
 import { parseArgs } from 'node:util';
 import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
@@ -63,6 +63,9 @@ function main() {
   let hasRealFixture = false;
   let requiresOperatorFixtureReview = false;
 
+  const estimatedDuration = renderMeta.renderOptions?.estimatedDurationSec || 28;
+  const fadeOutStart = Math.max(0.5, estimatedDuration - 2.0);
+
   if (mode === 'local-preview') {
     const manifestInputPath = 'apps/kernel/config/manifests/media_input_manifest.json';
     let inputVideoPath = '';
@@ -103,10 +106,12 @@ function main() {
         console.log(`[OfflineRenderVideo] Integrating BGM track: "${bgmMeta.title}" at: ${bgmMeta.localAudioPath}`);
         ffmpegArgs.push('-i', bgmMeta.localAudioPath);
 
-        // Mix voiceover (input 1) and BGM (input 2) at volume 0.12 (-18dB)
+        // Mix voiceover (input 1) and BGM (input 2) with fade-in/out and peak limiter
+        const filterComplex = `[2:a]volume=0.12,afade=t=in:st=0:d=1.5,afade=t=out:st=${fadeOutStart}:d=2.0[bgm];[1:a][bgm]amix=inputs=2:duration=first,alimiter=level_in=1:level_out=0.9:limit=0.85:attack=5:release=50[a]`;
+        
         ffmpegArgs.push(
           '-filter_complex',
-          '[2:a]volume=0.12[bgm];[1:a][bgm]amix=inputs=2:duration=first[a]',
+          filterComplex,
           '-map',
           '0:v',
           '-map',
@@ -119,6 +124,30 @@ function main() {
           'aac',
           '-shortest',
         );
+
+        // Save audio quality report
+        const audioMixingReport = {
+          trackId: bgmMeta.trackId,
+          title: bgmMeta.title,
+          mood: bgmMeta.mood,
+          mixParameters: {
+            bgmVolumeMultiplier: 0.12,
+            bgmVolumeDb: "-18dB",
+            fadeInSec: 1.5,
+            fadeOutSec: 2.0,
+            fadeOutStartSec: fadeOutStart,
+            limiterLevelIn: 1.0,
+            limiterLevelOut: 0.9,
+            limiterLimit: 0.85
+          },
+          generatedAt: new Date().toISOString()
+        };
+        try {
+          writeFileSync(join(outputDir, 'bgm_mixing_report.json'), JSON.stringify(audioMixingReport, null, 2), 'utf8');
+          console.log(`[OfflineRenderVideo] Audio quality mixing statistics written successfully.`);
+        } catch (err) {
+          console.warn(`[OfflineRenderVideo] Warning: Failed to write audio quality report: ${err}`);
+        }
       } else {
         if (bgmMeta?.selected) {
           console.warn(
