@@ -123,7 +123,7 @@ export function exportRunReport(opts: ExportRunReportOpts): void {
       if (
         previewMeta.requiresOperatorReview === true &&
         previewMeta.readyForPublish === false &&
-        previewMeta.offlinePlaceholderOnly === true
+        (previewMeta.offlinePlaceholderOnly === true || previewMeta.localPreviewOnly === true)
       ) {
         isReadyForReview = true;
       }
@@ -167,6 +167,7 @@ export function exportRunReport(opts: ExportRunReportOpts): void {
     requiresReview: isReadyForReview,
     previewArtifactPath: isReadyForReview ? previewArtifactPath : null,
     expectedPreviewPath: isReadyForReview ? (previewMeta?.expectedPreviewPath || null) : null,
+    actualPreviewPath: isReadyForReview ? (previewMeta?.actualPreviewPath || null) : null,
     readyForPublish: false,
     message: isDryRun 
       ? 'Dry-run plan only. No steps executed.'
@@ -215,16 +216,18 @@ export function exportRunReport(opts: ExportRunReportOpts): void {
 No steps were executed. Review the plan before running.
 `;
   } else if (isReadyForReview) {
+    const previewType = previewMeta?.localPreviewOnly ? 'Real Local Preview Video' : 'Offline Video Placeholder';
+    const actualPreviewPathText = previewMeta?.actualPreviewPath ? `\n- **Actual Preview Path**: \`${previewMeta.actualPreviewPath}\`` : '';
     operatorReviewMarkdown = `
 ## Operator Review
 **State**: READY_FOR_OPERATOR_REVIEW
+- **Type**: ${previewType}
+- **Preview Artifact**: \`${previewArtifactPath}\`
+- **Expected Preview Path**: \`${previewMeta?.expectedPreviewPath || 'None'}\`${actualPreviewPathText}
 
-**Preview Artifact**: \`${previewArtifactPath}\`
-
-**Expected Preview Path**: \`${previewMeta?.expectedPreviewPath || 'None'}\`
-
-**Required Action**:
-Operator must review/test the preview video before any publish step is allowed.
+> [!IMPORTANT]
+> **Required Action**:
+> Operator must review/test the preview video before any publish step is allowed.
 
 **Safety Rule**:
 Do not publish to Facebook automatically after render.

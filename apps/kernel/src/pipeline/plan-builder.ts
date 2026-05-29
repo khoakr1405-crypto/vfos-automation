@@ -201,7 +201,7 @@ export class PlanBuilder {
     videoCandidateMetadataPath: string;
     outputDir: string;
     laneConfigPath?: string; // Optional path, defaults to review_product
-    mode?: 'pass' | 'product-fail' | 'missing-input' | 'invalid-plan' | 'invalid-config' | 'invalid-manifest' | 'unsafe-manifest';
+    mode?: 'pass' | 'product-fail' | 'missing-input' | 'invalid-plan' | 'invalid-config' | 'invalid-manifest' | 'unsafe-manifest' | 'local-preview' | 'preview-fail' | 'approval-reject' | 'approval-pending' | 'publish-fail';
   }): BuildPlanResult {
     const runId = options.runId;
     const resolvedOutputDir = join(this.repoRoot, options.outputDir);

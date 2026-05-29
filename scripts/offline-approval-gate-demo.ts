@@ -94,8 +94,8 @@ function main() {
       process.exit(1);
     }
 
-    if (previewMeta.offlinePlaceholderOnly !== true) {
-      console.error('ERROR: Security violation: preview artifact offlinePlaceholderOnly is not true.');
+    if (previewMeta.offlinePlaceholderOnly !== true && previewMeta.localPreviewOnly !== true) {
+      console.error('ERROR: Security violation: preview artifact must have offlinePlaceholderOnly: true or localPreviewOnly: true.');
       process.exit(1);
     }
 
