@@ -262,6 +262,47 @@ async function main() {
   } catch {}
 
   // ======================================================
+  // STAGE INFERENCE ENGINE
+  // ======================================================
+  type StageType = 
+    | 'NO_PRODUCT_CARD'
+    | 'COMMERCE_PREFLIGHT_READY'
+    | 'PRODUCT_CARD_READY'
+    | 'SHOPEE_AUDIT_FAILED'
+    | 'VIDEO_PREVIEW_MISSING'
+    | 'VIDEO_REVIEW_READY'
+    | 'FINAL_OPERATOR_REVIEW'
+    | 'PUBLISH_REQUEST_READY'
+    | 'UNKNOWN';
+
+  let lastCompletedStage: StageType = 'UNKNOWN';
+  let nextStage: 'COMMERCE_PREFLIGHT' | 'COMMERCE_INTAKE' | 'VIDEO_PREVIEW_GENERATION' | 'FINAL_OPERATOR_REVIEW' | 'MANUAL_INSPECTION' | 'UNKNOWN' = 'UNKNOWN';
+
+  if (productCardStatus === 'MISSING') {
+    lastCompletedStage = 'NO_PRODUCT_CARD';
+    if (preflightStatus === 'READY') {
+      nextStage = 'COMMERCE_INTAKE';
+    } else {
+      nextStage = 'COMMERCE_PREFLIGHT';
+    }
+  } else if (auditStatus === 'FAIL') {
+    lastCompletedStage = 'SHOPEE_AUDIT_FAILED';
+    nextStage = 'COMMERCE_INTAKE';
+  } else if (productCardStatus === 'FOUND' && auditStatus !== 'FAIL') {
+    if (reviewPackStatus === 'MISSING') {
+      lastCompletedStage = 'PRODUCT_CARD_READY';
+      nextStage = 'VIDEO_PREVIEW_GENERATION';
+    } else if (reviewPackStatus === 'READY_FOR_FINAL_OPERATOR_APPROVAL') {
+      lastCompletedStage = 'VIDEO_REVIEW_READY';
+      nextStage = 'FINAL_OPERATOR_REVIEW';
+    }
+  }
+  if (publishRequestStatus === 'FOUND' || publishManifestStatus === 'FOUND') {
+    lastCompletedStage = 'PUBLISH_REQUEST_READY';
+    nextStage = 'MANUAL_INSPECTION';
+  }
+
+  // ======================================================
   // EXPORT OPERATOR DAILY RUNBOOK (data/temp/vfos_daily_runbook.md)
   // ======================================================
   const runbookPath = 'data/temp/vfos_daily_runbook.md';
@@ -362,6 +403,139 @@ async function main() {
   }
 
   // ======================================================
+  // EXPORT OPERATOR STATE CHECKPOINT (data/temp/vfos_operator_checkpoint.json & md)
+  // ======================================================
+  const checkpointJsonPath = 'data/temp/vfos_operator_checkpoint.json';
+  const checkpointMdPath = 'data/temp/vfos_operator_checkpoint.md';
+
+  const checkpointJson = {
+    checkpointVersion: 'v1',
+    generatedAt: new Date().toISOString(),
+    source: 'pnpm vfos:daily',
+    repo: {
+      syncReminder: 'Before switching machines, commit/push on the old machine and pull latest on the new machine.',
+      shouldCheckGitBeforeContinuing: true
+    },
+    session: {
+      lastCompletedStage,
+      nextStage,
+      recommendedNextCommand,
+      recommendedNextReason: recommendedWhy
+    },
+    commerce: {
+      preflight: preflightStatus,
+      productCard: productCardStatus,
+      shopeeAudit: auditStatus,
+      selectedProductCardPath: cardPath
+    },
+    review: {
+      preview: previewStatus,
+      previewPath: previewPath || null,
+      operatorReviewPack: reviewPackStatus,
+      operatorReviewPackPath: packPath || null,
+      latestRunId: runId
+    },
+    publish: {
+      publishManifest: publishManifestStatus,
+      publishRequest: publishRequestStatus,
+      facebookRoute: pageRouteStatus,
+      reelsValidation: reelsValidationStatus,
+      safeToAutoPublish: false
+    },
+    safety: {
+      readOnlyCheckpoint: true,
+      clickedBrowser: false,
+      ranExtractor: false,
+      ranChay: false,
+      calledShopeeApi: false,
+      calledFacebookApi: false,
+      calledOpenAiApi: false,
+      calledElevenLabsApi: false,
+      published: false,
+      uploaded: false,
+      readEnv: false,
+      tokensMasked: true
+    },
+    handover: {
+      forSameMachine: [
+        'Run pnpm vfos:daily to refresh dashboard and checkpoint.',
+        'Follow recommendedNextCommand only after reviewing safety preconditions.'
+      ],
+      forDifferentMachine: [
+        'On the old machine, ensure all intended code changes are committed and pushed.',
+        'On the new machine, run git pull before continuing.',
+        'Do not assume data/temp runtime artifacts exist on the new machine unless manually transferred.',
+        'Never commit .env, cookies, sessions, tokens, media outputs, or data/temp artifacts.'
+      ]
+    }
+  };
+
+  try {
+    writeFileSync(checkpointJsonPath, JSON.stringify(checkpointJson, null, 2), 'utf8');
+  } catch (err: any) {
+    console.error(`[Dashboard] Failed to write JSON checkpoint: ${err.message}`);
+  }
+
+  const checkpointMd = `# VFOS Operator Checkpoint
+
+> [!IMPORTANT]
+> This checkpoint is read-only. It does not click, extract, upload, publish, or call live APIs.
+
+## 1. Session Summary
+- Generated at: \`${checkpointJson.generatedAt}\`
+- Last completed stage: \`${lastCompletedStage}\`
+- Next stage: \`${nextStage}\`
+- Recommended next command: \`${recommendedNextCommand}\`
+- Reason: ${recommendedWhy}
+
+## 2. Current State
+| Area | Status | Artifact |
+|---|---|---|
+| Commerce Preflight | \`${preflightStatus}\` | \`${preflightPath}\` |
+| Product Card | \`${productCardStatus}\` | \`${cardPath}\` |
+| Shopee Audit | \`${auditStatus}\` | \`${auditPath}\` |
+| Preview Video | \`${previewStatus}\` | \`${previewPath || 'MISSING'}\` |
+| Operator Review Pack | \`${reviewPackStatus}\` | \`${packPath || 'MISSING'}\` |
+| Publish Manifest | \`${publishManifestStatus}\` | \`${activeRunDir ? join(activeRunDir, 'publish_manifest.json') : 'MISSING'}\` |
+
+## 3. Safety Flags
+- Browser clicked: false
+- Extractor ran: false
+- Facebook API called: false
+- Published: false
+- Uploaded: false
+- Read \`.env\`: false
+
+## 4. Handover Notes
+### Same machine
+- Run \`pnpm vfos:daily\` before continuing.
+- Follow the recommended next command only after reviewing safety preconditions.
+
+### Switching machines
+- Commit/push intended code changes on the old machine.
+- On the new machine, run \`git pull\` first.
+- Runtime artifacts in \`data/temp\` may not exist on the new machine.
+- Never commit \`.env\`, cookies, tokens, sessions, media outputs, or runtime artifacts.
+
+## 5. Recommended Next Step
+\`\`\`bash
+${recommendedNextCommand}
+\`\`\`
+
+## 6. Strict Boundaries
+* Do not auto-publish.
+* Do not bypass Shopee login, OTP, or CAPTCHA.
+* Do not run extractor without explicit targeted-click confirmation.
+* Do not run live publish without explicit final approval.
+`;
+
+  try {
+    writeFileSync(checkpointMdPath, checkpointMd, 'utf8');
+  } catch (err: any) {
+    console.error(`[Dashboard] Failed to write Markdown checkpoint: ${err.message}`);
+  }
+
+  // ======================================================
   // OUTPUT PRESENTATION
   // ======================================================
   if (isJsonOnly) {
@@ -407,8 +581,11 @@ async function main() {
   console.log('💡 RECOMMENDED NEXT OPERATOR ACTION:');
   console.log(mainAdvice);
   console.log('------------------------------------------------------');
-  console.log(`Runbook exported:         ${runbookPath}`);
-  console.log(`Recommended next command: ${recommendedNextCommand}`);
+  console.log(`Runbook exported:\n${runbookPath}`);
+  console.log(`\nCheckpoint exported:\n${checkpointJsonPath}\n${checkpointMdPath}`);
+  console.log(`\nLast completed stage:\n${lastCompletedStage}`);
+  console.log(`\nNext stage:\n${nextStage}`);
+  console.log(`\nRecommended next command:\n${recommendedNextCommand}`);
   console.log('======================================================\n');
 
   process.exit(0);
