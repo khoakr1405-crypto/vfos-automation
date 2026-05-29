@@ -47,10 +47,12 @@
     "offline-render-video": "tsx scripts/offline-render-video-demo.ts",
     "offline-approval-gate": "tsx scripts/offline-approval-gate-demo.ts",
     "offline-publish-manifest": "tsx scripts/offline-publish-manifest-demo.ts",
-    "chay": "tsx scripts/chay.ts"
+    "chay": "tsx scripts/chay.ts",
+    "shopee:preflight": "tsx scripts/shopee-cdp-preflight-demo.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
+    "playwright": "^1.60.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3"
   }
