@@ -59,6 +59,27 @@ production/**/*.mp3
 production/**/*.m4a
 production/**/*.wav
 production/**/*.webm
+production/**/*.mov
 production/**/*.jpg
 production/**/*.jpeg
 production/**/*.png
+
+# VFOS runtime commerce artifacts (root-level only — selected_products/ subdir
+# stays tracked as canonical product card references)
+production/_commerce/*.json
+
+# VFOS production/archive runtime package output (production-packager.ts)
+production/archive/**
+
+# VFOS runtime reports / checkpoints / dashboards.
+# Note: data/ is already ignored above; these `**` patterns add defense for
+# alternate output locations and prevent accidental `git add -A` leak.
+**/vfos_daily_status.json
+**/vfos_daily_runbook.md
+**/vfos_operator_checkpoint.json
+**/vfos_operator_checkpoint.md
+**/vfos_git_sync_status.json
+**/facebook_publish_status.json
+**/facebook_publish_report.md
+**/operator_review_pack.json
+**/operator_review_pack.md
