@@ -43,7 +43,8 @@
     "pipeline:run-manifest": "tsx scripts/pipeline-run-manifest.ts",
     "offline-script-generate": "tsx scripts/offline-script-generate-demo.ts",
     "offline-voice-generate": "tsx scripts/offline-voice-generate-demo.ts",
-    "offline-render-manifest": "tsx scripts/offline-render-manifest-demo.ts"
+    "offline-render-manifest": "tsx scripts/offline-render-manifest-demo.ts",
+    "offline-approval-gate": "tsx scripts/offline-approval-gate-demo.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

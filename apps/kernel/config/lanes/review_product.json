@@ -145,6 +145,29 @@
       ]
     },
     {
+      "stepName": "demo:approval-gate",
+      "description": "Production-like offline Human/Operator Approval Gate",
+      "command": "tsx",
+      "argsTemplate": [
+        "scripts/offline-approval-gate-demo.ts",
+        "--render",
+        "{outputDir}/render_manifest.json",
+        "--output",
+        "{outputDir}/approval_artifact.json",
+        "--mode",
+        "{mode}"
+      ],
+      "cwd": ".",
+      "timeoutMs": 10000,
+      "expectedArtifacts": [
+        {
+          "pathTemplate": "{outputDir}/approval_artifact.json",
+          "required": true,
+          "nonEmpty": true
+        }
+      ]
+    },
+    {
       "stepName": "demo:publish",
       "description": "Downstream Publish Step",
       "command": "node",
