@@ -60,7 +60,8 @@
     "publish:facebook": "tsx scripts/facebook-publish-command-demo.ts",
     "shopee:audit": "tsx scripts/shopee-link-audit-demo.ts",
     "commerce:intake": "tsx scripts/commerce-intake-orchestrator.ts",
-    "vfos:daily": "tsx scripts/vfos-daily-dashboard.ts"
+    "vfos:daily": "tsx scripts/vfos-daily-dashboard.ts",
+    "vfos:sync-check": "tsx scripts/vfos-git-sync-guard.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

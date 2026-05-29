@@ -113,6 +113,15 @@ async function main() {
     auditStatus = 'NO_INPUT';
   }
 
+  let gitSyncStatus: 'PASS' | 'WARN' | 'DIVERGED' | 'DIRTY' | 'BLOCKED' | 'UNKNOWN' = 'UNKNOWN';
+  const gitSyncPath = 'data/temp/vfos_git_sync_status.json';
+  if (existsSync(gitSyncPath)) {
+    try {
+      const gitSync = JSON.parse(readFileSync(gitSyncPath, 'utf8'));
+      gitSyncStatus = gitSync.status || 'UNKNOWN';
+    } catch {}
+  }
+
   // 2. VIDEO REVIEW SCANNING
   // Scan for latest execution runs containing review pack or preview artifacts
   const latestPackDir = findLatestRunFolderWithFile('data/temp', 'operator_review_pack.json');
@@ -205,7 +214,13 @@ async function main() {
 
   // Final consolidated workflow advice
   let mainAdvice = 'Perform commerce diagnostics to kickstart daily intake workflow.';
-  if (productCardStatus === 'MISSING') {
+  if (gitSyncStatus === 'BLOCKED') {
+    mainAdvice = 'CRITICAL: Git Sync is BLOCKED by staged sensitive/runtime risks. Run pnpm vfos:sync-check to inspect.';
+  } else if (gitSyncStatus === 'DIVERGED') {
+    mainAdvice = 'CRITICAL: Git branches have DIVERGED. Please resolve conflicts manually before proceeding.';
+  } else if (gitSyncStatus === 'WARN' && preflightStatus !== 'READY' && productCardStatus === 'MISSING') {
+    mainAdvice = 'Git sync warning detected. It is highly recommended to sync git (push/pull) before daily workflows.';
+  } else if (productCardStatus === 'MISSING') {
     if (preflightStatus === 'READY') {
       mainAdvice = 'Perform targeted extraction: pnpm commerce:intake --confirm-targeted-click';
     } else {
@@ -253,6 +268,7 @@ async function main() {
       published: false,
       uploaded: false,
       readEnv: false,
+      gitSyncStatus,
     },
   };
 
@@ -336,6 +352,21 @@ async function main() {
     expectedResult = 'Secure dry-run publish manifest built and queued for production deployment.';
   }
 
+  // Override with sync checks when critical git warning or blocking staged artifacts exist
+  if (gitSyncStatus === 'BLOCKED') {
+    recommendedNextCommand = 'pnpm vfos:sync-check';
+    recommendedWhy = 'CRITICAL: Git Sync is BLOCKED due to staged sensitive/runtime risks. Run sync-check to resolve.';
+    expectedResult = 'Operator unstages sensitive/runtime files to return workspace to a safe state.';
+  } else if (gitSyncStatus === 'DIVERGED') {
+    recommendedNextCommand = 'pnpm vfos:sync-check';
+    recommendedWhy = 'CRITICAL: Branch history has diverged between local and origin. Please resolve manually.';
+    expectedResult = 'Workspace is synchronized with origin remote.';
+  } else if (gitSyncStatus === 'WARN' && (recommendedNextCommand === 'pnpm commerce:intake' || recommendedNextCommand === 'pnpm commerce:intake --confirm-targeted-click')) {
+    recommendedNextCommand = 'pnpm vfos:sync-check';
+    recommendedWhy = 'Git Sync warning detected (ahead/behind remote). Recommended to sync branch history prior to workflows.';
+    expectedResult = 'Git sync-check reports clean and synchronized status.';
+  }
+
   const runbookMarkdown = `# VFOS Daily Workflow Runbook
 
 > [!IMPORTANT]
@@ -349,6 +380,7 @@ async function main() {
 - Review Preview: \`${previewStatus === 'FOUND' ? 'FOUND ✅' : 'MISSING ❌'}\`
 - Operator Review Pack: \`${reviewPackStatus === 'READY_FOR_FINAL_OPERATOR_APPROVAL' ? 'READY FOR APPROVAL ✅' : 'MISSING ❌'}\`
 - Publish Readiness: \`${publishManifestStatus === 'FOUND' ? 'READY ✅' : 'PENDING ❌'}\`
+- Git Sync Status: \`${gitSyncStatus === 'PASS' ? 'PASS ✅' : gitSyncStatus === 'WARN' ? 'WARN ⚠️' : gitSyncStatus === 'BLOCKED' ? 'BLOCKED ❌' : gitSyncStatus === 'DIRTY' ? 'DIRTY 🟡' : 'UNKNOWN ⚪'}\`
 
 ## 2. Recommended Next Action
 - **Command**: \`${recommendedNextCommand}\`
@@ -414,7 +446,8 @@ async function main() {
     source: 'pnpm vfos:daily',
     repo: {
       syncReminder: 'Before switching machines, commit/push on the old machine and pull latest on the new machine.',
-      shouldCheckGitBeforeContinuing: true
+      shouldCheckGitBeforeContinuing: true,
+      gitSyncStatus
     },
     session: {
       lastCompletedStage,
@@ -497,6 +530,7 @@ async function main() {
 | Preview Video | \`${previewStatus}\` | \`${previewPath || 'MISSING'}\` |
 | Operator Review Pack | \`${reviewPackStatus}\` | \`${packPath || 'MISSING'}\` |
 | Publish Manifest | \`${publishManifestStatus}\` | \`${activeRunDir ? join(activeRunDir, 'publish_manifest.json') : 'MISSING'}\` |
+| Git Sync Status | \`${gitSyncStatus}\` | \`data/temp/vfos_git_sync_status.json\` |
 
 ## 3. Safety Flags
 - Browser clicked: false
@@ -576,6 +610,7 @@ ${recommendedNextCommand}
   console.log('- Facebook API called: false 🔒');
   console.log('- Auto-Publish:        false 🔒');
   console.log('- Read-only:           true  🔒');
+  console.log(`- Git Sync Status:     ${gitSyncStatus === 'PASS' ? 'PASS 🟢' : gitSyncStatus === 'WARN' ? 'WARN 🟡' : gitSyncStatus === 'BLOCKED' ? 'BLOCKED 🔴' : gitSyncStatus === 'DIRTY' ? 'DIRTY 🟡' : 'UNKNOWN ⚪'}`);
 
   console.log('\n======================================================');
   console.log('💡 RECOMMENDED NEXT OPERATOR ACTION:');
