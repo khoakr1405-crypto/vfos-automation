@@ -226,21 +226,92 @@ export function exportRunReport(opts: ExportRunReportOpts): void {
 
   // 7. Formulate Operator Review Markdown block
   let liveCardText = '';
+  const auditStatusPath = 'data/temp/shopee_link_audit_status.json';
   const liveCardPath = 'data/temp/selected_product_card.json';
-  if (existsSync(liveCardPath)) {
+
+  let auditStatus: any = null;
+  if (existsSync(auditStatusPath)) {
     try {
-      const card = JSON.parse(readFileSync(liveCardPath, 'utf8'));
-      if (card.validationStatus === 'VERIFIED') {
+      auditStatus = JSON.parse(readFileSync(auditStatusPath, 'utf8'));
+    } catch {}
+  }
+
+  if (auditStatus) {
+    if (auditStatus.status === 'FAIL') {
+      const violationsText = (auditStatus.violations || [])
+        .map((v: string) => `> - ${v}`)
+        .join('\n');
+      liveCardText = `
+> [!CAUTION]
+> **🔴 Shopee Affiliate Link Audit FAILED**
+> The live product card has been REJECTED due to safety/compliance violations. The pipeline safely fell back to sanitized local product candidates.
+> **Violations**:
+${violationsText || '> - Unknown safety violations'}
+`;
+    } else if (auditStatus.status === 'WARN') {
+      const warningsText = (auditStatus.warnings || []).map((w: string) => `> - ${w}`).join('\n');
+      let cardDetails = '';
+      if (existsSync(liveCardPath)) {
+        try {
+          const card = JSON.parse(readFileSync(liveCardPath, 'utf8'));
+          cardDetails = `
+> - **Product**: *${card.name}*
+> - **Short Link**: [${card.shortLink}](${card.shortLink})
+> - **Canonical Destination**: [${card.canonicalUrl.slice(0, 90)}...](${card.canonicalUrl})
+> - **Tracking Owner**: \`${card.affiliateOwnerId}\`
+`;
+        } catch {}
+      }
+      liveCardText = `
+> [!WARNING]
+> **⚠️ Shopee Affiliate Link Audit WARNING**
+> The live product card is accepted, but with registry duplication or structural warnings.
+${cardDetails}
+> **Warnings**:
+${warningsText || '> - Unknown warnings'}
+`;
+    } else if (auditStatus.status === 'PASS') {
+      let cardDetails = '';
+      if (existsSync(liveCardPath)) {
+        try {
+          const card = JSON.parse(readFileSync(liveCardPath, 'utf8'));
+          cardDetails = `
+> - **Product**: *${card.name}*
+> - **Short Link**: [${card.shortLink}](${card.shortLink})
+> - **Canonical Destination**: [${card.canonicalUrl.slice(0, 90)}...](${card.canonicalUrl})
+> - **Tracking Owner**: \`${card.affiliateOwnerId}\` (VERIFIED MATCH ✅)
+`;
+        } catch {}
+      }
+      liveCardText = `
+> [!NOTE]
+> **🟢 Shopee Affiliate Link Audit PASSED**
+> The live product card is fully verified, formatted correctly, and free of security anomalies.
+${cardDetails}
+`;
+    } else {
+      // NO_INPUT or other
+      liveCardText = `
+> [!NOTE]
+> **⚪ Shopee Affiliate Link Audit: NO INPUT**
+> No live product card or affiliate link was loaded. The pipeline is running in standard fallback mode using candidate fixtures.
+`;
+    }
+  } else {
+    // Fallback if audit status file is somehow not found
+    if (existsSync(liveCardPath)) {
+      try {
+        const card = JSON.parse(readFileSync(liveCardPath, 'utf8'));
         liveCardText = `
 > [!NOTE]
 > **🟢 Live Shopee Affiliate Product Card Active**
 > - **Product**: *${card.name}*
 > - **Short Link**: [${card.shortLink}](${card.shortLink})
 > - **Canonical Destination**: [${card.canonicalUrl.slice(0, 90)}...](${card.canonicalUrl})
-> - **Tracking Owner**: \`${card.affiliateOwnerId}\` (VERIFIED MATCH ✅)
+> - **Tracking Owner**: \`${card.affiliateOwnerId}\`
 `;
-      }
-    } catch {}
+      } catch {}
+    }
   }
 
   let operatorReviewMarkdown = '';

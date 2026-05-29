@@ -12,6 +12,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { parseArgs } from 'node:util';
+import { execSync } from 'node:child_process';
 
 const { values } = parseArgs({
   options: {
@@ -37,20 +38,80 @@ async function main() {
     process.exit(1);
   }
 
-  // Check if live Shopee Affiliate Product Card is active
+  // Run Shopee Affiliate Link Audit Gate
+  console.log('[P6 SELECT] Running Shopee Affiliate Link Auditor...');
+  try {
+    // Run audit command offline
+    execSync('pnpm shopee:audit', { stdio: 'inherit' });
+  } catch (err: any) {
+    // execSync throws if the command exits with non-zero code.
+    // The auditor exits with 1 on FAIL, so we handle it gracefully here.
+    console.log('[P6 SELECT] Shopee Affiliate Link Auditor completed with warning/failure.');
+  }
+
+  // Read audit status
+  const auditStatusPath = 'data/temp/shopee_link_audit_status.json';
+  let auditStatus: any = null;
+  if (existsSync(auditStatusPath)) {
+    try {
+      auditStatus = JSON.parse(readFileSync(auditStatusPath, 'utf8'));
+    } catch (err: any) {
+      console.warn(`[P6 SELECT] Failed to parse audit status: ${err.message}`);
+    }
+  }
+
   const liveCardPath = 'data/temp/selected_product_card.json';
   let liveCard: any = null;
+  let liveProductCardUsed = false;
+  let fallbackReason: string | null = null;
+  let shopeeAudit: any = {
+    status: 'NO_INPUT',
+    violations: [],
+    warnings: [],
+  };
+
+  if (auditStatus) {
+    shopeeAudit = {
+      status: auditStatus.status,
+      violations: auditStatus.violations || [],
+      warnings: auditStatus.warnings || [],
+    };
+  }
+
   if (existsSync(liveCardPath)) {
-    try {
-      liveCard = JSON.parse(readFileSync(liveCardPath, 'utf8'));
-      console.log(`[P6 SELECT] Found active live Shopee Product Card: "${liveCard.name}"`);
-      if (liveCard.affiliateOwnerId !== 'an_17376660568') {
-        console.error(`[P6 SELECT] FATAL: Affiliate owner verification mismatch: expected an_17376660568, got ${liveCard.affiliateOwnerId}`);
-        process.exit(1);
+    if (auditStatus?.status === 'FAIL') {
+      console.warn(
+        '⚠️  [P6 SELECT] Shopee Affiliate Link Audit FAILED. Rejecting live product card!',
+      );
+      liveCard = null;
+      liveProductCardUsed = false;
+      fallbackReason = 'SHOPEE_AUDIT_FAILED';
+    } else {
+      try {
+        liveCard = JSON.parse(readFileSync(liveCardPath, 'utf8'));
+        console.log(`[P6 SELECT] Found active live Shopee Product Card: "${liveCard.name}"`);
+        if (liveCard.affiliateOwnerId !== 'an_17376660568') {
+          console.error(
+            `[P6 SELECT] FATAL: Affiliate owner verification mismatch: expected an_17376660568, got ${liveCard.affiliateOwnerId}`,
+          );
+          process.exit(1);
+        }
+        liveProductCardUsed = true;
+        fallbackReason = null;
+      } catch (err: any) {
+        console.warn(
+          `[P6 SELECT] Warning: Failed to parse live product card: ${err.message}. Falling back to candidate database.`,
+        );
+        liveCard = null;
+        liveProductCardUsed = false;
+        fallbackReason = 'PARSE_ERROR';
       }
-    } catch (err: any) {
-      console.warn(`[P6 SELECT] Warning: Failed to parse live product card: ${err.message}. Falling back to candidate database.`);
     }
+  } else {
+    liveCard = null;
+    liveProductCardUsed = false;
+    fallbackReason = 'NO_SELECTED_PRODUCT_CARD';
+    shopeeAudit.status = 'NO_INPUT';
   }
 
   // 1. Read candidates
@@ -86,7 +147,9 @@ async function main() {
     });
 
     if (!selectedCandidate) {
-      console.error(`Selection failed: No product candidate matching ID/Index "${idVal}" was found.`);
+      console.error(
+        `Selection failed: No product candidate matching ID/Index "${idVal}" was found.`,
+      );
       process.exit(1);
     }
   } else {
@@ -105,17 +168,22 @@ async function main() {
     process.exit(1);
   }
 
-  const nameLine = rawLines.find(
-    (line) =>
-      line.length > 10 &&
-      !line.startsWith('₫') &&
-      !line.includes('%') &&
-      !line.includes('bán') &&
-      !line.includes('Lấy link')
-  ) || rawLines[0] || 'Unknown Product';
+  const nameLine =
+    rawLines.find(
+      (line) =>
+        line.length > 10 &&
+        !line.startsWith('₫') &&
+        !line.includes('%') &&
+        !line.includes('bán') &&
+        !line.includes('Lấy link'),
+    ) ||
+    rawLines[0] ||
+    'Unknown Product';
   const priceLine = rawLines.find((line) => line.startsWith('₫')) || '₫0';
 
-  console.log(`[P6 SELECT] Chosen Candidate Index ${selectedCandidate.index}: "${nameLine}" - Price: ${priceLine}`);
+  console.log(
+    `[P6 SELECT] Chosen Candidate Index ${selectedCandidate.index}: "${nameLine}" - Price: ${priceLine}`,
+  );
 
   // 3. Build mock video candidate match parameters
   const detectedName = values.detectedProductName || nameLine;
@@ -142,6 +210,9 @@ async function main() {
 
   const matchArtifact = liveCard
     ? {
+        liveProductCardUsed,
+        fallbackReason,
+        shopeeAudit,
         shopeeProduct: {
           productId: liveCard.itemId || liveCard.id || 'unknown_item',
           name: liveCard.name || 'Unnamed Product',
@@ -165,6 +236,9 @@ async function main() {
         matchAxes,
       }
     : {
+        liveProductCardUsed,
+        fallbackReason,
+        shopeeAudit,
         shopeeProduct: {
           productId: selectedCandidate.productId || `shopee_idx_${selectedCandidate.index}`,
           name: nameLine,
