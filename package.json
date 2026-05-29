@@ -49,7 +49,8 @@
     "offline-publish-manifest": "tsx scripts/offline-publish-manifest-demo.ts",
     "chay": "tsx scripts/chay.ts",
     "shopee:preflight": "tsx scripts/shopee-cdp-preflight-demo.ts",
-    "shopee:extractor": "tsx scripts/shopee-link-extractor-demo.ts"
+    "shopee:extractor": "tsx scripts/shopee-link-extractor-demo.ts",
+    "shopee:builder": "tsx scripts/shopee-product-card-builder.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
