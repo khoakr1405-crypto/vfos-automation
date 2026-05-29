@@ -13,9 +13,21 @@ function runGit(cmd: string): string {
 function main() {
   const args = process.argv.slice(2);
   const refreshRemoteUsed = args.includes('--refresh-remote');
+  const confirmPush = args.includes('--confirm-push');
+  const confirmPull = args.includes('--confirm-pull');
+  const ackUntrackedLocal = args.includes('--ack-untracked-local');
+
+  let requestedAction: 'none' | 'push' | 'pull' = 'none';
+  if (confirmPush) requestedAction = 'push';
+  else if (confirmPull) requestedAction = 'pull';
 
   console.log('======================================================');
   console.log('🧭  VFOS GIT SYNC GUARD');
+  if (requestedAction !== 'none') {
+    console.log(`Action requested:  ${requestedAction.toUpperCase()}`);
+  } else {
+    console.log('Mode:              read-only');
+  }
   console.log('======================================================');
 
   if (refreshRemoteUsed) {
@@ -175,7 +187,106 @@ function main() {
     recommendedAction = 'Review changes before continuing. Commit/stash/restore intentionally.';
   }
 
-  // 4. PRINT CLI OUTPUT
+  // 4. SUPERVISED ACTION HOOKS EXECUTION
+  let executed = false;
+  let actionResult: 'NONE' | 'SUCCESS' | 'FAILED' | 'BLOCKED' | 'REQUIRE_ACK' = 'NONE';
+  let blockedReason: string | null = null;
+  let commandRun: string | null = null;
+  let requiresAckUntrackedLocal = false;
+  const actionWarnings: string[] = [];
+
+  let ranGitPush = false;
+  let ranGitPull = false;
+
+  if (requestedAction === 'push') {
+    if (!isExpectedBranch) {
+      actionResult = 'BLOCKED';
+      blockedReason = `Push blocked: Must be on branch "master", current branch: "${branch}"`;
+    } else if (ahead === 0) {
+      actionResult = 'BLOCKED';
+      blockedReason = 'Push blocked: No ahead commits to push.';
+    } else if (behind > 0) {
+      actionResult = 'BLOCKED';
+      blockedReason = 'Push blocked: Remote has behind commits. Diverged history needs pull/merge.';
+    } else if (sensitiveRiskCount > 0) {
+      actionResult = 'BLOCKED';
+      blockedReason = 'Push blocked: Staged sensitive risks detected.';
+    } else if (runtimeRiskCount > 0) {
+      actionResult = 'BLOCKED';
+      blockedReason = 'Push blocked: Staged runtime/media risks detected.';
+    } else if (modifiedCount > 0) {
+      actionResult = 'BLOCKED';
+      blockedReason = 'Push blocked: Tracked modified files exist. Please commit or stash first.';
+    } else if (untrackedCount > 0 && !ackUntrackedLocal) {
+      actionResult = 'REQUIRE_ACK';
+      requiresAckUntrackedLocal = true;
+      blockedReason =
+        'Untracked local files detected. These files will NOT be pushed to GitHub. Run again with --ack-untracked-local to acknowledge.';
+    } else {
+      if (untrackedCount > 0) {
+        actionWarnings.push('Untracked local files are present and will NOT be pushed.');
+      }
+      console.log('\n🚀 Executing push command: git push origin master');
+      commandRun = 'git push origin master';
+      try {
+        execSync('git push origin master', { stdio: 'inherit' });
+        actionResult = 'SUCCESS';
+        executed = true;
+        ranGitPush = true;
+        // Refresh git counts
+        ahead = 0;
+        isUpToDate = behind === 0;
+      } catch (err: any) {
+        actionResult = 'FAILED';
+        executed = true;
+        blockedReason = `Git push command failed: ${err.message}`;
+      }
+    }
+  } else if (requestedAction === 'pull') {
+    if (!isExpectedBranch) {
+      actionResult = 'BLOCKED';
+      blockedReason = `Pull blocked: Must be on branch "master", current branch: "${branch}"`;
+    } else if (behind === 0) {
+      actionResult = 'BLOCKED';
+      blockedReason = 'Pull blocked: No behind commits to pull.';
+    } else if (ahead > 0) {
+      actionResult = 'BLOCKED';
+      blockedReason = 'Pull blocked: Local ahead commits exist. Pulling might cause conflicts.';
+    } else if (modifiedCount > 0) {
+      actionResult = 'BLOCKED';
+      blockedReason =
+        'Pull blocked: Working tree has modified tracked files. Pull is blocked to avoid overwriting local work.';
+    } else if (stagedCount > 0) {
+      actionResult = 'BLOCKED';
+      blockedReason = 'Pull blocked: Staged files exist. Commit or reset before pulling.';
+    } else if (untrackedCount > 0 && !ackUntrackedLocal) {
+      actionResult = 'REQUIRE_ACK';
+      requiresAckUntrackedLocal = true;
+      blockedReason =
+        'Untracked local files detected. Pulling might overwrite or conflict with untracked files. Run again with --ack-untracked-local to acknowledge.';
+    } else {
+      if (untrackedCount > 0) {
+        actionWarnings.push('Untracked local files present during pull.');
+      }
+      console.log('\n📥 Executing fast-forward pull command: git pull --ff-only origin master');
+      commandRun = 'git pull --ff-only origin master';
+      try {
+        execSync('git pull --ff-only origin master', { stdio: 'inherit' });
+        actionResult = 'SUCCESS';
+        executed = true;
+        ranGitPull = true;
+        // Refresh git counts
+        behind = 0;
+        isUpToDate = ahead === 0;
+      } catch (err: any) {
+        actionResult = 'FAILED';
+        executed = true;
+        blockedReason = `Git fast-forward pull failed: ${err.message}`;
+      }
+    }
+  }
+
+  // 5. PRINT CLI OUTPUT
   console.log(`\nBranch:            ${branch}`);
   console.log('Expected branch:   master');
   console.log(`Ahead origin:      ${ahead}`);
@@ -193,8 +304,37 @@ function main() {
     }
   }
 
+  if (requestedAction !== 'none') {
+    console.log(`\nAction Execution Result: [${actionResult}]`);
+    if (blockedReason) {
+      console.log(`Reason:            ${blockedReason}`);
+    }
+    if (commandRun) {
+      console.log(`Command run:       ${commandRun}`);
+    }
+    if (actionWarnings.length > 0) {
+      console.log('Warnings:');
+      for (const w of actionWarnings) {
+        console.log(`  - ${w}`);
+      }
+    }
+  }
+
   console.log('\n💡 RECOMMENDED ACTION:');
-  console.log(recommendedAction);
+  if (actionResult === 'REQUIRE_ACK' && requestedAction === 'push') {
+    console.log('Untracked local files detected.');
+    console.log('These files will NOT be pushed to GitHub.');
+    console.log('Run again with:');
+    console.log('pnpm vfos:sync-check --confirm-push --ack-untracked-local');
+    console.log('only if you understand these files remain local to this machine.');
+  } else if (actionResult === 'REQUIRE_ACK' && requestedAction === 'pull') {
+    console.log('Untracked local files detected.');
+    console.log('Pulling might overwrite or conflict with untracked files.');
+    console.log('Run again with:');
+    console.log('pnpm vfos:sync-check --confirm-pull --ack-untracked-local');
+  } else {
+    console.log(recommendedAction);
+  }
 
   console.log('\n🧭 HANDOVER REMINDER:');
   console.log('- Before leaving this machine: commit/push intended code changes.');
@@ -202,7 +342,7 @@ function main() {
   console.log('- Do not assume data/temp exists across machines.');
   console.log('======================================================\n');
 
-  // 5. EXPORT STATUS ARTIFACT
+  // 6. EXPORT STATUS ARTIFACT
   const syncStatusPath = 'data/temp/vfos_git_sync_status.json';
   const syncStatusJson = {
     syncCheckVersion: 'v1',
@@ -236,16 +376,30 @@ function main() {
     },
     risks,
     recommendedAction,
+    action: {
+      requested: requestedAction,
+      executed,
+      result: actionResult,
+      blockedReason,
+      command: commandRun,
+      requiresAckUntrackedLocal,
+      warnings: actionWarnings,
+    },
+    postActionSync: {
+      ahead,
+      behind,
+      isUpToDate,
+    },
     handover: {
       leavingThisMachine: 'If you made code changes, commit and push before switching machines.',
       startingOnNewMachine:
         'Run git pull before continuing. Do not assume data/temp artifacts exist.',
     },
     safety: {
-      readOnlyCheck: true,
+      readOnlyCheck: requestedAction === 'none',
       ranGitCommit: false,
-      ranGitPush: false,
-      ranGitPull: false,
+      ranGitPush,
+      ranGitPull,
       stagedFiles: false,
       readEnv: false,
       loggedSecrets: false,
