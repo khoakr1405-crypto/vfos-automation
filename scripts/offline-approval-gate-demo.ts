@@ -1,9 +1,9 @@
 /**
- * Offline Human/Operator Approval Gate Helper Script — Round P16.
+ * Offline Human/Operator Approval Gate Helper Script — Round P17.
  *
  * Simulates check for render output and operator review prior to publication simulation.
  *
- * Command: tsx scripts/offline-approval-gate-demo.ts --render <path> --output <path> [--mode <mode>] [--approve] [--reject]
+ * Command: tsx scripts/offline-approval-gate-demo.ts --render <path> [--preview <path>] --output <path> [--mode <mode>] [--approve] [--reject]
  */
 
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
@@ -11,6 +11,7 @@ import { parseArgs } from 'node:util';
 
 const options = {
   render: { type: 'string' as const },
+  preview: { type: 'string' as const },
   output: { type: 'string' as const },
   mode: { type: 'string' as const },
   approve: { type: 'boolean' as const },
@@ -21,6 +22,7 @@ const { values } = parseArgs({ options, strict: false });
 
 function main() {
   const renderPath = values.render;
+  const previewPath = values.preview;
   const outputPath = values.output;
   const mode = values.mode || 'pass';
   const forceApprove = values.approve || false;
@@ -46,7 +48,7 @@ function main() {
   }
 
   // If a preceding step's fail mode was bypassed/invoked here
-  if (['product-fail', 'visual-fail', 'script-fail', 'voice-fail', 'render-fail'].includes(mode)) {
+  if (['product-fail', 'visual-fail', 'script-fail', 'voice-fail', 'render-fail', 'preview-fail'].includes(mode)) {
     console.error(`ERROR: Preceding failure condition detected: mode "${mode}". Halting approval.`);
     process.exit(1);
   }
@@ -57,13 +59,47 @@ function main() {
     process.exit(1);
   }
 
-  // Parse file to verify valid JSON
+  // Parse render manifest
   let renderMeta: any;
   try {
     renderMeta = JSON.parse(readFileSync(renderPath, 'utf8'));
   } catch (err: any) {
     console.error(`ERROR: Failed to parse render manifest JSON: ${err.message}`);
     process.exit(1);
+  }
+
+  // Verify preview artifact if supplied
+  let previewMeta: any = null;
+  if (previewPath) {
+    if (!existsSync(previewPath)) {
+      console.error(`ERROR: Preview artifact not found at: ${previewPath}`);
+      process.exit(1);
+    }
+
+    try {
+      previewMeta = JSON.parse(readFileSync(previewPath, 'utf8'));
+    } catch (err: any) {
+      console.error(`ERROR: Failed to parse preview artifact JSON: ${err.message}`);
+      process.exit(1);
+    }
+
+    // Safety checks on preview artifact fields
+    if (previewMeta.requiresOperatorReview !== true) {
+      console.error('ERROR: Security violation: preview artifact does not require operator review.');
+      process.exit(1);
+    }
+
+    if (previewMeta.readyForPublish !== false) {
+      console.error('ERROR: Security violation: preview artifact readyForPublish is not false.');
+      process.exit(1);
+    }
+
+    if (previewMeta.offlinePlaceholderOnly !== true) {
+      console.error('ERROR: Security violation: preview artifact offlinePlaceholderOnly is not true.');
+      process.exit(1);
+    }
+
+    console.log('[OfflineApprovalGate] Safety validations passed for preview artifact.');
   }
 
   // Formulate the approval artifact
@@ -73,6 +109,9 @@ function main() {
     approvedBy: 'operator',
     approvedAt: new Date().toISOString(),
     renderManifestPath: renderPath,
+    previewArtifactPath: previewPath || null,
+    requiresOperatorReview: previewMeta ? previewMeta.requiresOperatorReview : true,
+    approvedPreviewPlaceholder: true,
     notes: 'Offline approval gate passed. Safe to continue to publish simulation.',
     offlineMode: mode,
   };
