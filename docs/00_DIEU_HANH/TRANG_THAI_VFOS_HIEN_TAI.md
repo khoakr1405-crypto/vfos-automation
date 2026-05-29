@@ -1,9 +1,9 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-05-28 (Round 28 — Sub-Agent validation run thành công rực rỡ với video `yt_016` Khăn Giấy Treo Tường TopGia, đạt 100% tự động qua các sub-agent, tối ưu hóa từ ngữ bằng Operator Trim, xuất thành công Reels video `yt_016_final_reels_v2_3.mp4` đạt chuẩn QC và lưu kế hoạch xuất bản Facebook Reels.)
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `15c2210` (Round 27B Auto-Pilot + yt_015 milestones; Round 28 sẽ bump hash khi commit)
-> **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task
+> **Cập nhật lần cuối**: 2026-05-29 (Phiên state-sync — Round 29 *VFOS Operator/Safety Hardening Suite* đã chốt LOCAL nhưng chưa push; file điều hành đồng bộ lại sau khi phát hiện stale so với 50+ commit kể từ `15c2210`. Ngày 2026-05-28 vẫn là mốc Round 28 yt_016 Sub-Agent validation thành công với `yt_016_final_reels_v2_3.mp4` đạt QC.)
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `9921431` (HEAD local — `feat: add production reel archive packager`; ahead origin 1, chưa push)
+> **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task → luôn chạy `pnpm vfos:daily` để có chỉ dẫn trạng thái mới nhất
 
 ---
 
@@ -1742,6 +1742,94 @@ Commit: `docs: add chay aliases for shopee cdp extraction`.
 
 ---
 
+### ✅ Round 29 — VFOS Operator/Safety Hardening Suite: ĐÃ CHỐT LOCAL (2026-05-29 state-sync)
+
+> **Ngữ cảnh phiên sync**: Phiên 50 phút ngày 2026-05-29 phát hiện file điều hành stale so với code thực — từ commit mốc `15c2210` (Round 27B) tới HEAD local `9921431` có **50+ commit hardening** đã chốt local nhưng chưa ghi vào file điều hành. Phiên sync này KHÔNG mở feature mới; chỉ visibility + state sync + hygiene map.
+
+**Mục tiêu chung của cụm Round 29**: đưa VFOS từ "pipeline chạy được + operator phải nhớ command rời rạc" lên "Operator chỉ cần `pnpm vfos:daily` để biết trạng thái + bước kế tiếp", đồng thời hardening safety boundary cho Git / Facebook / Shopee.
+
+**Cụm 1 — Run/Pipeline framework foundation** (`3a5a3cd → 03b4d5e`):
+- VFOS run status foundation, step runner + artifact gate, retry policy + health checks.
+- Guard runner, script guard, product match + visual guards.
+- Pipeline plan builder, review product lane config + run manifest.
+- Auto-pipeline dry run, offline production-like pipeline steps (first + second).
+- Run manifest operator CLI, offline script/voice/render/preview/manifest steps.
+- Run report export, human approval gate, `READY_FOR_OPERATOR_REVIEW` state.
+- Publish safety manifest, local preview render bridge, local media fixture render bridge.
+- `chay` orchestrator command (`pnpm chay`).
+
+**Cụm 2 — Script writing prompt upgrade** (`7018f4d`):
+- Upgrade script writing prompt sang Vietnamese youth slang style (khớp với memory `vfos-script-style`: hài hước/táo bạo vừa phải/giới trẻ + guardrails không phóng đại).
+
+**Cụm 3 — BGM library v0 (20 bài rotation)** (`cc73f68 → e28de7e`):
+- Background music library + selector, ElevenLabs BGM generator controlled batch 20.
+- Wire BGM selector + mix vào main pipeline, BGM fade treatments + audio limiter.
+- Khớp memory `vfos-bgm-rotation`: 20 bài xoay vòng, ưu tiên bài ít dùng, không tự gọi API generator.
+
+**Cụm 4 — Shopee CDP integration** (`2530762 → e9e4716`):
+- Shopee CDP preflight check, CDP link extraction, product card builder.
+- Wire selected product card vào review pipeline.
+
+**Cụm 5 — Facebook Reels publish preflight** (`486ec63 → 0069a9c`):
+- Facebook Page connection preflight test.
+- Facebook Page Reels publish preflight validation.
+- Facebook multi-page category routing preflight.
+- **KHÔNG có live publish** — chỉ preflight validation/readiness report.
+
+**Cụm 6 — Operator workflow polish + Git safety** (`5a7e863 → 9921431`):
+- Operator review pack + operator publish command.
+- Shopee affiliate link auditor + audit gate wire vào product pipeline.
+- Commerce intake orchestrator (`pnpm commerce:intake` + `--confirm-targeted-click`).
+- VFOS daily operator dashboard (`pnpm vfos:daily`) — one-command visibility.
+- Daily workflow runbook export → `data/temp/vfos_daily_runbook.md`.
+- Operator checkpoint export → `data/temp/vfos_operator_checkpoint.{json,md}`.
+- VFOS git sync guard (`pnpm vfos:sync-check`) — multi-machine safety.
+- Supervised Git sync action hooks + daily git command handoff.
+- Unified publish readiness report.
+- Production reel archive packager.
+
+**Trạng thái runtime hiện tại theo `pnpm vfos:daily` (2026-05-29 14:03Z)**:
+- Commerce Intake: Preflight `NOT_READY` 🔴 (browser CDP chưa kết nối — chấp nhận, không sửa trong phiên sync).
+- Product Card: `FOUND` 🟢 — "Quạt Cầm Tay Mini T10" với short link `https://s.shopee.vn/W3nOHwfl1`, audit owner `an_17376660568` PASS.
+- Review pack: `READY_FOR_FINAL_OPERATOR_APPROVAL` 🟢 ở folder `data/temp/pipeline-p9-demo/run_review_product_p9/`.
+- Publish manifest + page route + Reels validation: tất cả PASS, status `READY FOR SUBMISSION` 🟢.
+- Production pack: `PACKED` 🟢.
+- Safety locks: tất cả ENGAGED 🔒 (`browser_clicked=false`, `fb_api_called=false`, `auto_publish=false`, `read_only=true`).
+- Git sync: `WARN` 🟡 — ahead origin 1, dirty tree (untracked đã phân loại bên dưới).
+- Last completed stage: `PUBLISH_REQUEST_READY` → Next stage: `MANUAL_INSPECTION`.
+- Recommended next command (dashboard tự đề xuất): `pnpm publish:facebook --confirm-final-approval --run run_review_product_p9` — **chưa thực thi trong phiên sync, vẫn cần Operator review preview MP4 trước**.
+
+**Phân loại 23 untracked files** (phiên sync 2026-05-29 — chỉ map, KHÔNG bulk-commit):
+
+*Nhóm A — Source code utility/legacy, cần audit case-by-case round sau*:
+- `packages/shopee/scripts/click-and-extract-links.ts` — Playwright CDP extractor, ghi vào `_commerce/`.
+- `packages/shopee/scripts/download-and-verify-yt014.ts` — utility 1-batch `yt_014`, có thể stale sau Round 26 promote.
+- `packages/shopee/scripts/extract-active-coccoc.ts`, `extract-offers-active.ts`, `extract-offers-coccoc.ts`, `fetch-coccoc.ts` — series Cốc Cốc CDP extractor experiments.
+- `packages/shopee/scripts/generate-subtitles.ts`, `packages/script-writer/scripts/generate-subtitles.ts` — 2 subtitle generators (trùng tên cross-package, cần dedupe).
+- `packages/shopee/scripts/get-one-link.ts` — đơn giản, có thể throwaway.
+- `packages/shopee/scripts/load-picks.ts`, `resolve-and-validate.ts` — Shopee pick/resolve tooling.
+- `packages/shopee/scripts/test-single-link-cdp.ts` — **explicit docstring "scratch — keep untracked"** → giữ untracked.
+- `packages/script-writer/scripts/final-render.ts` — render utility CLI.
+
+→ **Hành động khuyến nghị**: round sau audit từng file: (a) đã được supersede bởi CLI promoted (Round 26/27) → xóa; (b) còn dùng → move sang `packages/*/src/` hoặc commit có chủ đích; (c) explicit scratch → giữ untracked + thêm `.gitignore` pattern.
+
+*Nhóm B — Runtime/artifacts KHÔNG commit*:
+- `production/_commerce/shopee_link_registry.json` — **CẢNH BÁO SENSITIVE: chứa `credential_token=...` + `gads_t_sig` trong canonical URLs**. Đề xuất round sau bổ sung `.gitignore` pattern `production/_commerce/*.json` và move registry sang `.secrets/` hoặc `data/`.
+- `production/_commerce/shopee_product_candidates.json`, `*_with_links.json`, `*_selection_report.json`, `*.last_error.json` — runtime extraction state.
+- `production/archive/` — output zip từ reel archive packager.
+- `production/batch_001/yt_005/voice_sync_v0_preset1/`, `production/batch_001/yt_006/`, `production/batch_001/yt_012/voice_sync_v0/`, `production/batch_001/yt_014/demo_match/sources/` — runtime artifacts batch (`.gitignore` đã cover media `.mp4/.mp3/.wav/...` nhưng JSON manifest chưa).
+
+→ **Hành động khuyến nghị**: round sau bổ sung `.gitignore` pattern `production/**/*.json` (hoặc allowlist cụ thể nếu vài JSON cần commit làm reference).
+
+*Nhóm C — Cần user quyết*: kết quả audit Nhóm A — script nào còn giá trị, script nào đã chết.
+
+**Commit/Push trong phiên sync này**:
+- Phiên sync chỉ cập nhật `docs/00_DIEU_HANH/TRANG_THAI_VFOS_HIEN_TAI.md`.
+- KHÔNG commit runtime artifacts. KHÔNG commit untracked scripts. KHÔNG push.
+- HEAD local sau khi user duyệt commit doc-only sẽ là `9921431 + 1`.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
@@ -1772,6 +1860,23 @@ Commit: `docs: add chay aliases for shopee cdp extraction`.
 ---
 
 ## 7. Bước tiếp theo duy nhất
+
+> **🆕 CHỈ DẪN MỚI NHẤT (2026-05-29 phiên state-sync)**:
+>
+> Sau Round 29 Operator/Safety Hardening Suite, nguồn chỉ dẫn trạng thái + bước kế tiếp **không còn là phần văn bản tĩnh dưới đây**, mà là output thực tế của `pnpm vfos:daily` + checkpoint mới nhất ở `data/temp/vfos_operator_checkpoint.md`.
+>
+> **Quy trình bắt buộc đầu mỗi phiên**:
+> 1. `pnpm vfos:sync-check` — verify git sync trước khi làm.
+> 2. `pnpm vfos:daily` — đọc dashboard, runbook, checkpoint.
+> 3. Theo `recommended next command` của dashboard. Nếu command là `pnpm publish:facebook --confirm-final-approval ...` → **dừng để Operator review preview MP4 trước**, không tự chạy.
+>
+> **Tại thời điểm phiên sync (2026-05-29 14:03Z)**:
+> - Pipeline đang ở `PUBLISH_REQUEST_READY → MANUAL_INSPECTION` cho run `run_review_product_p9` (Quạt T10).
+> - Bước Operator tiếp theo: xem `data/temp/pipeline-p9-demo/run_review_product_p9/operator_review_pack.md` + preview MP4 → duyệt hoặc reject.
+> - Sau khi Operator duyệt → mới chạy `pnpm publish:facebook --confirm-final-approval --run run_review_product_p9` (mặc định tạo readiness/report, không live upload).
+> - Git: ahead origin 1 (`9921431`) → quyết định push trước hoặc làm thêm rồi push một lượt.
+>
+> **Phần văn bản historical dưới đây giữ làm reference, KHÔNG còn là nguồn chỉ dẫn ưu tiên.**
 
 > **TRẠNG THÁI yt_009 (2026-05-22)**: **USER-APPROVED PASS_WITH_REPAIR final.** Phần 17 + Phần 18. Output: `production/batch_001/yt_009/bgm_mix_v1/yt_009_voice_blocks_bgm_preview_vi_repaired_v2.mp4`.
 >
@@ -1857,6 +1962,22 @@ Commit: `docs: add chay aliases for shopee cdp extraction`.
 
 ---
 
+## 7B. Trạng thái hiện tại sau Operator/Safety Hardening
+
+> Section này tóm gọn ranh giới vận hành sau Round 29 — đặt ở vị trí dễ scan đầu file điều hành.
+
+- Hệ thống đã có **dashboard / runbook / checkpoint** xuất ra `data/temp/` (`vfos_daily_status.json`, `vfos_daily_runbook.md`, `vfos_operator_checkpoint.{json,md}`).
+- `pnpm vfos:daily` là **nguồn chỉ dẫn trạng thái chính** — luôn chạy đầu phiên trước khi quyết định bước tiếp theo.
+- `pnpm vfos:sync-check` là **guard bắt buộc khi đổi máy** — phát hiện ahead/behind/dirty/staged sensitive.
+- `pnpm chay` vẫn **KHÔNG publish** — chỉ tạo preview + review pack + dừng ở `READY_FOR_FINAL_OPERATOR_APPROVAL`.
+- `pnpm publish:facebook` mặc định ở mức **readiness/report**, KHÔNG live publish; cần `--confirm-final-approval --run <runId>` để chạy publish flow đã được duyệt.
+- `pnpm commerce:intake` cần `--confirm-targeted-click` để click thật; mặc định chỉ preflight read-only.
+- Mọi live publish vẫn cần **human approval riêng + flag explicit**. Không bypass.
+- Safety locks hệ thống tự kiểm: `browser_clicked`, `extractor_ran`, `facebook_api_called`, `published`, `uploaded`, `read_env` — tất cả phải `false` ở trạng thái idle.
+- Memory mới (cross-session) đã ghi 7 entry: `vfos-role`, `vfos-safety-boundaries`, `vfos-round-based-workflow`, `vfos-script-style`, `vfos-automation-targets`, `vfos-shopee-owner`, `vfos-bgm-rotation` (xem `MEMORY.md` ở memory dir).
+
+---
+
 ## 8. Cấu trúc repo quan trọng
 
 ```
@@ -1905,13 +2026,16 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| Commit mốc tại thời điểm cập nhật trạng thái | `9a581f1` (Round 26B Shopee link registry + CDP docs; sẽ bump hash khi push Round 26) |
+| HEAD local | `9921431` `feat: add production reel archive packager` (2026-05-29 state-sync — sẽ +1 nếu user duyệt commit doc-only phiên này) |
 | Remote | `origin` (GitHub) |
-| Sync status | Phần 11–24 + Round 2A/2B/2C + Round 3A/3C + Round 25 + Round 25B + Round 26B ĐÃ PUSH. Round 26 (yt_014 patterns promoted to docs/skill) — sẽ commit + push trong vòng này. |
+| Sync status | **Ahead origin 1, behind 0** — Round 29 Operator/Safety Hardening Suite (50+ commit từ `15c2210`) đã commit LOCAL nhưng **chưa push**. Cần `git push origin master` sau khi user duyệt. |
+| Working tree | **DIRTY** — 23 untracked files đã được phân loại Nhóm A/B/C trong Round 29 narrative ở mục 4. |
 
-**Trạng thái artifacts production** (tính đến 2026-05-20):
-- `production/batch_001/yt_007/` (text artifacts): **ĐÃ commit** ở `df1609e` — scene_input, script v1/v2/v3, manifest BGM. Dùng làm reference cho vòng Voice Sync autonomy.
-- `production/batch_001/yt_005/voice_sync_v0_preset1/` + `production/batch_001/yt_006/` (text artifacts): còn untracked, chấp nhận — không phải hot path hiện tại.
-- Binary media (không commit theo `.gitignore`): tất cả `.mp4`, `.mp3` trong `production/`.
+**Trạng thái artifacts production** (tính đến 2026-05-29 phiên sync):
+- `production/batch_001/yt_007/` (text artifacts): ĐÃ commit ở `df1609e` — reference cho vòng Voice Sync autonomy.
+- `production/batch_001/yt_005/voice_sync_v0_preset1/`, `yt_006/`, `yt_012/voice_sync_v0/`, `yt_014/demo_match/sources/` (text/JSON artifacts): còn untracked — Nhóm B, runtime, không commit.
+- `production/_commerce/*.json`: untracked, runtime extraction state, **chứa credential_token trong canonical URLs (SENSITIVE)** → đề xuất gitignore round sau.
+- `production/archive/`: untracked, output từ reel archive packager (Cụm 6 Round 29) → runtime, không commit.
+- Binary media (`.mp4`, `.mp3`, `.wav`, `.m4a`, `.webm`, `.jpg/.jpeg/.png`): đã gitignore theo `.gitignore` lines 56-65, không commit.
 
-> File media là local artifact, đã có `.gitignore`, không commit binary.
+> Phiên 2026-05-29 chỉ commit file điều hành (`docs/00_DIEU_HANH/TRANG_THAI_VFOS_HIEN_TAI.md`). KHÔNG add runtime artifacts. KHÔNG add scratch scripts.
