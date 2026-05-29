@@ -10,6 +10,67 @@ function runGit(cmd: string): string {
   }
 }
 
+type PathKind = 'source' | 'secret' | 'runtime' | 'media' | 'other';
+
+const SOURCE_ROOTS = [
+  'packages/',
+  'scripts/',
+  'apps/',
+  'plugins/',
+  'docs/',
+  '.claude/',
+  'tests/',
+];
+
+const MEDIA_EXTS = ['.mp4', '.mp3', '.wav', '.m4a', '.mov', '.webm'];
+
+const RUNTIME_BASE_PREFIXES = [
+  'vfos_daily_status',
+  'vfos_daily_runbook',
+  'vfos_operator_checkpoint',
+  'vfos_git_sync_status',
+  'facebook_publish_status',
+  'facebook_publish_report',
+  'operator_review_pack',
+];
+
+const SECRET_JSON_BASENAME_RE =
+  /(?:^|[._-])(?:cookies?|session|tokens?|credentials?)(?:[._-]|\.json$)/;
+const SECRET_TXT_BASENAME_RE =
+  /(?:^|[._-])(?:cookies?|tokens?|credentials?)(?:[._-]|\.txt$)/;
+
+// Classify a single path into one of: source / secret / runtime / media / other.
+// Used to decide what is genuinely risky to commit vs. just a source file whose
+// name happens to contain a keyword like "cookie" or "login".
+function classifyPath(rawPath: string): PathKind {
+  const lower = rawPath.toLowerCase().replace(/\\/g, '/');
+  const basename = lower.split('/').pop() ?? '';
+
+  // 1. SECRET — true credential / session / token artifacts (highest priority).
+  if (basename === '.env' || basename.startsWith('.env.')) return 'secret';
+  if (lower.startsWith('.secrets/') || lower.includes('/.secrets/')) return 'secret';
+  if (lower.endsWith('.har')) return 'secret';
+  if (lower.includes('storage_state') || lower.includes('.storage_state.')) return 'secret';
+  if (basename.endsWith('.json') && SECRET_JSON_BASENAME_RE.test(basename)) return 'secret';
+  if (basename.endsWith('.txt') && SECRET_TXT_BASENAME_RE.test(basename)) return 'secret';
+  // production/_commerce root JSON (registry/candidates carry credential_token URLs).
+  if (/^production\/_commerce\/[^/]+\.json$/.test(lower)) return 'secret';
+
+  // 2. MEDIA — binary pipeline outputs.
+  if (MEDIA_EXTS.some((e) => lower.endsWith(e))) return 'media';
+
+  // 3. RUNTIME — generated reports / checkpoints / packaged archives.
+  if (lower.startsWith('data/temp/') || lower.includes('/data/temp/')) return 'runtime';
+  if (lower.startsWith('production/archive/')) return 'runtime';
+  if (RUNTIME_BASE_PREFIXES.some((p) => basename.startsWith(p))) return 'runtime';
+
+  // 4. SOURCE — tracked source code locations + root-level config files.
+  if (SOURCE_ROOTS.some((r) => lower.startsWith(r))) return 'source';
+  if (!lower.includes('/')) return 'source';
+
+  return 'other';
+}
+
 function main() {
   const args = process.argv.slice(2);
   const refreshRemoteUsed = args.includes('--refresh-remote');
@@ -71,14 +132,16 @@ function main() {
   }
 
   // 2. DETECT WORKING TREE AND STAGED RISKS
+  //
+  // `git status --porcelain` uses a fixed XY prefix (2 chars) where X is the
+  // index/staged status, Y the worktree status, then a space, then the path.
+  // We MUST NOT trim leading whitespace from each line or unstaged-modified
+  // (" M file") collapses to "M file" and is misread as staged.
   let statusLines: string[] = [];
   try {
     const statusOutput = runGit('git status --porcelain');
     if (statusOutput) {
-      statusLines = statusOutput
-        .split('\n')
-        .map((l) => l.trim())
-        .filter(Boolean);
+      statusLines = statusOutput.split('\n').filter((l) => l.length >= 3);
     }
   } catch {}
 
@@ -90,72 +153,59 @@ function main() {
   let runtimeRiskCount = 0;
   const risks: string[] = [];
 
-  const sensitiveRiskKeywords = [
-    '.env',
-    '.env.local',
-    '.env.production',
-    'cookie',
-    'cookies',
-    'session',
-    'token',
-    'secret',
-    'credential',
-    'storage_state',
-    'browser-data',
-    'debug-html',
-  ];
-
-  const runtimeMediaExtensions = ['.mp4', '.mp3', '.wav', '.m4a', '.mov', '.webm'];
-
-  const runtimeFileKeywords = [
-    'operator_review_pack.json',
-    'operator_review_pack.md',
-    'vfos_daily_status.json',
-    'vfos_daily_runbook.md',
-    'vfos_operator_checkpoint.json',
-    'vfos_operator_checkpoint.md',
-    'vfos_git_sync_status.json',
-  ];
-
   for (const line of statusLines) {
-    if (line.length < 3) continue;
     const indexStatus = line[0];
     const workTreeStatus = line[1];
-    const filePath = line.substring(3).trim();
 
-    const isStaged = indexStatus !== ' ' && indexStatus !== '?';
+    // Porcelain v1 path field starts at column 3. Trim only trailing whitespace.
+    let rawPath = line.slice(3).replace(/\s+$/, '');
+    // Rename / copy lines look like "R  old -> new" or "C  old -> new".
+    if (rawPath.includes(' -> ')) {
+      const parts = rawPath.split(' -> ');
+      rawPath = (parts[parts.length - 1] ?? rawPath).trim();
+    }
+    const filePath = rawPath;
+
     const isUntracked = indexStatus === '?' && workTreeStatus === '?';
+    const isStaged = !isUntracked && indexStatus !== ' ';
+    const isWorktreeModified = !isUntracked && workTreeStatus !== ' ';
 
-    if (isStaged) {
-      stagedCount++;
-    } else if (isUntracked) {
+    if (isUntracked) {
       untrackedCount++;
-    } else {
+    } else if (isStaged) {
+      stagedCount++;
+    } else if (isWorktreeModified) {
       modifiedCount++;
     }
 
-    // Check sensitive risk (in staged, modified or untracked)
-    const lowerPath = filePath.toLowerCase();
-    const matchesSensitive = sensitiveRiskKeywords.some((kw) => lowerPath.includes(kw));
-    if (matchesSensitive) {
-      sensitiveRiskCount++;
-      risks.push(
-        `SENSITIVE RISK: File containing potential secrets found: "${filePath}" (Staged: ${isStaged})`,
-      );
+    const kind = classifyPath(filePath);
+
+    // SECRET handling — BLOCK only when actually staged (about to commit).
+    // Untracked or unstaged-modified secret artifacts still emit a WARNING
+    // line so the operator sees them, but do not flip the guard to BLOCKED.
+    if (kind === 'secret') {
+      if (isStaged) {
+        sensitiveRiskCount++;
+        risks.push(
+          `SENSITIVE STAGED RISK: secret/credential artifact staged for commit: "${filePath}"`,
+        );
+      } else if (isUntracked) {
+        risks.push(
+          `SENSITIVE WARNING: secret/credential artifact present (untracked, not staged): "${filePath}"`,
+        );
+      } else {
+        risks.push(
+          `SENSITIVE WARNING: secret/credential artifact modified (unstaged): "${filePath}"`,
+        );
+      }
     }
 
-    // Check runtime staged risk (specifically staged only)
-    if (isStaged) {
-      const matchesRuntimeKeyword =
-        runtimeFileKeywords.some((kw) => lowerPath.includes(kw)) ||
-        lowerPath.includes('data/temp/') ||
-        lowerPath.includes('production/fixtures/');
-      const matchesMediaExtension = runtimeMediaExtensions.some((ext) => lowerPath.endsWith(ext));
-
-      if (matchesRuntimeKeyword || matchesMediaExtension) {
-        runtimeRiskCount++;
-        risks.push(`RUNTIME STAGED RISK: Generated artifact/media staged: "${filePath}"`);
-      }
+    // RUNTIME / MEDIA — BLOCK only when staged (generated artifacts must not
+    // enter history).
+    if ((kind === 'runtime' || kind === 'media') && isStaged) {
+      runtimeRiskCount++;
+      const label = kind === 'media' ? 'media artifact' : 'generated artifact';
+      risks.push(`RUNTIME STAGED RISK: ${label} staged for commit: "${filePath}"`);
     }
   }
 
