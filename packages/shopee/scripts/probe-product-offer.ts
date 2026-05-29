@@ -1,4 +1,21 @@
 #!/usr/bin/env tsx
+
+/**
+ * 🚫 DEPRECATED — Legacy Shopee cookie-based offer page probe.
+ *
+ * Probes /offer/product_offer using .secrets/shopee_cookie.txt to reverse-
+ * engineer page structure. Used during endpoint discovery rounds. Replaced
+ * by CDP targeted-click flow (Round 26B+) — no cookie HTTP probe in active
+ * path.
+ *
+ * Kept as REFERENCE-ONLY. Do NOT auto-trigger from /chay or commerce intake
+ * orchestrator. Do NOT run unless Operator explicitly authorizes AND
+ * provides fresh cookie.
+ *
+ * See: docs/00_DIEU_HANH/TRANG_THAI_VFOS_HIEN_TAI.md Phần 22–23, SKILL.md
+ * line ~1109 (Round 26B audit decision matrix).
+ */
+
 /**
  * VFOS Shopee — Product Offer Probe (one-shot)
  *

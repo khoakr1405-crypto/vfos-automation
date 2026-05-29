@@ -1,4 +1,20 @@
 #!/usr/bin/env tsx
+
+/**
+ * 🚫 DEPRECATED — Legacy Shopee HAR-based long_link inspection utility.
+ *
+ * Reads .secrets/shopee_product_offer.har and reports long_link patterns.
+ * Used during Round 3A endpoint discovery. Replaced by CDP targeted-click
+ * flow (Round 26B+) — no HAR analysis in active path.
+ *
+ * Kept as REFERENCE-ONLY. Do NOT auto-trigger from /chay or commerce intake
+ * orchestrator. Do NOT run unless Operator explicitly authorizes AND a fresh
+ * HAR is provided.
+ *
+ * See: docs/00_DIEU_HANH/TRANG_THAI_VFOS_HIEN_TAI.md Phần 22–23, SKILL.md
+ * line ~1109 (Round 26B audit decision matrix).
+ */
+
 /**
  * Inspect long_link patterns across all 20 items in HAR's product list.
  * NEVER prints cookies. Output: pattern stats + 3 sample URLs (truncated).

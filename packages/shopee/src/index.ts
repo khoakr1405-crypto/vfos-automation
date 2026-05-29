@@ -1,20 +1,33 @@
 /**
- * @vfos/shopee — Shopee Affiliate dashboard fetcher.
+ * @vfos/shopee — Shopee Affiliate link extraction library.
  *
- * v0 capability: load user's local browser session (Playwright storageState),
- * navigate to Shopee Affiliate offer dashboard, extract a small number of
- * product candidates, export to JSON artifact (no cookies/tokens included).
+ * Current official flow (Round 26B+): CDP attach to user's existing browser
+ * (Cốc Cốc / Chrome) + targeted-click on Shopee Affiliate dashboard. Operator
+ * authorizes each click. No internal API calls, no cookie HTTP scraping,
+ * no HAR replay, no storage_state reuse.
  *
- * Security:
- *   - Login session lives ONLY in .secrets/shopee_storage_state.json (gitignored)
+ * Public surface exported here:
+ *   - Types: ShopeeProductCandidate, ShopeeFetchManifest, DataConfidence
+ *   - Extract helpers: parsePriceVnd, parseCommissionPct, etc.
+ *   - Secret redaction: redactSecrets, redactError, isSecretFree
+ *   - Link registry (Round 26B+): upsertEntry, isDuplicate, findExistingEntry
+ *   - CDP extract helpers: extractShopidItemid, resolveShortLink, etc.
+ *   - CDP bootstrap (Round 27B+): bootstrapBrowser, captcha guards, etc.
+ *
+ * Active CLI driver: packages/shopee/scripts/extract-links-cdp.ts
+ * (`pnpm shopee:extract-links-cdp`) + the orchestrator chain
+ * `pnpm commerce:intake` → preflight → extractor → builder → audit.
+ *
+ * DEPRECATED flows (kept as FALLBACK per SKILL.md Round 26B audit policy,
+ * NOT auto-triggered): storage_state login (`shopee:login`/`shopee:fetch`),
+ * cookie-HTTP API (`shopee:fetch-cookie`/`shopee:fetch-products`), HAR
+ * inspectors (`analyze-har`/`inspect-*`/`probe-product-offer`). Each legacy
+ * script carries an in-file 🚫 DEPRECATED banner.
+ *
+ * Security (applies to ALL flows):
  *   - NO cookie/token/session data ever written to repo or stdout/stderr
- *   - User must complete login + captcha manually in headed browser
- *   - First run = operator approval (NOT auto-triggered)
- *
- * Future scope (NOT v0):
- *   - Search by keyword (Discovery Mode for /chay Shopee-First Lane)
- *   - Affiliate link wrapping (UTM source attribution)
- *   - Periodic refresh + retry on session expiry
+ *   - All errors/logs pass through secret-redaction before printing
+ *   - Operator authorizes browser actions; script never bypasses captcha/OTP
  */
 
 export type {

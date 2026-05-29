@@ -1,4 +1,22 @@
 #!/usr/bin/env tsx
+
+/**
+ * 🚫 DEPRECATED — Legacy Shopee cookie-HTTP API flow.
+ *
+ * Reads raw cookie from .secrets/shopee_cookie.txt and calls the internal
+ * /api/v3/offer/campaign/list endpoint discovered from HAR analysis (Round 3A).
+ * Replaced by CDP targeted-click flow (Round 26B+):
+ *   pnpm commerce:intake [--confirm-targeted-click]
+ *   pnpm shopee:preflight / shopee:extractor / shopee:builder / shopee:audit
+ *
+ * Kept as FALLBACK per SKILL.md policy. Only run when Operator explicitly
+ * authorizes AND the official CDP flow is unavailable. Do NOT auto-trigger
+ * from /chay or commerce intake orchestrator.
+ *
+ * See: docs/00_DIEU_HANH/TRANG_THAI_VFOS_HIEN_TAI.md Phần 22–23, SKILL.md
+ * line ~1109 (Round 26B audit decision matrix).
+ */
+
 /**
  * VFOS Shopee Cookie Fetcher v0 — HTTP-based campaign offer extraction
  *

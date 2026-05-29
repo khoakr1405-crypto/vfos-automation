@@ -1,14 +1,76 @@
 # @vfos/shopee
 
-Shopee Affiliate dashboard fetcher cho VFOS Shopee-First Lane. Dùng local browser session (Playwright `storageState`) để đọc dashboard và xuất product candidates ra JSON artifact.
+Shopee Affiliate link extraction library cho VFOS Shopee-First Lane.
 
-> **Default behavior: an toàn**. Không cookie nào được commit, không cookie nào log ra console, mọi session lưu ở `.secrets/` đã gitignored. Đọc kỹ Security trước khi chạy.
+> 🚫 **DEPRECATION NOTICE (Round 26B+)** — Flow `storageState login` + `cookie-HTTP API` + `HAR replay` mô tả ở phần cũ bên dưới đã **DEPRECATED**. Flow chính thức hiện tại là **CDP attach + targeted-click**. Phần "Setup / Usage" cũ giữ làm reference, không phải hướng dẫn vận hành.
 
-## Tại sao tồn tại
+> **Default behavior: an toàn**. Không cookie nào commit, không cookie nào log ra console. Mọi session/cookie sống ở `.secrets/` đã gitignored.
 
-Shopee không có public API cho affiliate offer dashboard. Anonymous WebFetch return shell HTML (SPA). Internal v4 API trả 403 anti-bot. Cách realistic v0: dùng login session thật của user trong browser headless qua Playwright, đọc DOM, export JSON. Đây là pattern **chậm nhưng chắc** mà user đã chốt 2026-05-22.
+## Official flow hiện tại — CDP targeted-click (Round 26B+)
 
-Surface v0 này chỉ phục vụ:
+```text
+pnpm commerce:intake                          # preflight read-only
+pnpm commerce:intake --confirm-targeted-click # extractor chạy thật, target_count=1
+```
+
+Orchestrator spawn chuỗi:
+- `pnpm shopee:preflight` — `scripts/shopee-cdp-preflight-demo.ts` (CDP probe port 9222)
+- `pnpm shopee:extractor` — `scripts/shopee-link-extractor-demo.ts` (targeted click, owner audit)
+- `pnpm shopee:builder` — `scripts/shopee-product-card-builder.ts` (normalize product card)
+- `pnpm shopee:audit` — `scripts/shopee-link-audit-demo.ts` (compliance gate)
+
+Driver thuần CDP của package:
+- `pnpm shopee:extract-links-cdp` — `packages/shopee/scripts/extract-links-cdp.ts` (Round 27 CLI)
+
+Browser auto-launch (Round 27B): `packages/shopee/src/cdp-bootstrap.ts` tự spawn Cốc Cốc/Chrome với `--remote-debugging-port=9222` khi port đóng + `VFOS_BROWSER_USER_DATA_DIR` đã set.
+
+Affiliate owner bắt buộc: `an_17376660568`. Mọi link mismatch → fail safe.
+
+## DEPRECATED flows — kept as FALLBACK (Round 26B audit policy)
+
+| Script / Command | Loại | Trạng thái |
+|---|---|---|
+| `pnpm shopee:login` (`scripts/login-session.ts`) | storage_state login | DEPRECATED — chỉ khi CDP không khả dụng + Operator explicit |
+| `pnpm shopee:fetch` (`scripts/fetch-offers.ts`) | storage_state fetch | DEPRECATED — same |
+| `pnpm shopee:fetch-cookie` (`scripts/fetch-offers-cookie.ts`) | cookie HTTP API | DEPRECATED — same |
+| `pnpm shopee:fetch-products` (`scripts/fetch-products-cookie.ts`) | cookie HTTP API | DEPRECATED — same |
+| `scripts/analyze-har.ts` | HAR endpoint discovery | DEPRECATED REFERENCE-ONLY |
+| `scripts/inspect-long-links.ts` | HAR inspection | DEPRECATED REFERENCE-ONLY |
+| `scripts/inspect-product-item.ts` | HAR inspection | DEPRECATED REFERENCE-ONLY |
+| `scripts/probe-product-offer.ts` | cookie endpoint probe | DEPRECATED REFERENCE-ONLY |
+
+KHÔNG auto-trigger từ `/chay` hoặc `commerce:intake`. Mỗi file có in-file 🚫 banner.
+
+## Cấu trúc
+
+| File | Loại | Mô tả |
+|---|---|---|
+| [src/types.ts](src/types.ts) | Schema | `ShopeeProductCandidate` + `ShopeeFetchManifest` |
+| [src/extract.ts](src/extract.ts) | Helpers | Selector list, parsePrice/Commission, confidence helper |
+| [src/secret-redaction.ts](src/secret-redaction.ts) | Security | redactSecrets, redactError, isSecretFree |
+| [src/link-registry.ts](src/link-registry.ts) | Registry | upsertEntry, isDuplicate, findExistingEntry (Round 26B) |
+| [src/cdp-extract-helpers.ts](src/cdp-extract-helpers.ts) | CDP helpers | extractShopidItemid, resolveShortLink, parseCliValues |
+| [src/cdp-bootstrap.ts](src/cdp-bootstrap.ts) | CDP boot | bootstrapBrowser, captcha guards (Round 27B) |
+| [src/index.ts](src/index.ts) | Re-exports | Public API |
+| [scripts/extract-links-cdp.ts](scripts/extract-links-cdp.ts) | `pnpm shopee:extract-links-cdp` | **ACTIVE** — CDP single-link extractor |
+| [scripts/login-session.ts](scripts/login-session.ts) | `pnpm shopee:login` | 🚫 DEPRECATED (fallback) |
+| [scripts/fetch-offers.ts](scripts/fetch-offers.ts) | `pnpm shopee:fetch` | 🚫 DEPRECATED (fallback) |
+| [scripts/fetch-offers-cookie.ts](scripts/fetch-offers-cookie.ts) | `pnpm shopee:fetch-cookie` | 🚫 DEPRECATED (fallback) |
+| [scripts/fetch-products-cookie.ts](scripts/fetch-products-cookie.ts) | `pnpm shopee:fetch-products` | 🚫 DEPRECATED (fallback) |
+
+---
+
+# Legacy reference (storage_state flow — DEPRECATED)
+
+> Phần dưới đây giữ làm reference cho fallback storage_state flow. KHÔNG phải hướng dẫn vận hành chính thức.
+
+## Tại sao tồn tại (lịch sử)
+
+Shopee không có public API cho affiliate offer dashboard. Anonymous WebFetch return shell HTML (SPA). Internal v4 API trả 403 anti-bot. Cách realistic v0 (trước Round 26B): dùng login session thật của user trong browser headless qua Playwright, đọc DOM, export JSON. Đây là pattern **chậm nhưng chắc** mà user đã chốt 2026-05-22.
+
+Sau Round 26B+, flow chính thức đã chuyển sang CDP attach (mô tả ở trên).
+
+Surface v0 cũ chỉ phục vụ:
 - `/chay shopee-first` Discovery Mode (Shopee Product Agent boundary).
 - Lấy 1–3 product candidates để chấm Selection Scoring + lập Shopee Product Card.
 
