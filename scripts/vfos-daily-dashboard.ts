@@ -114,13 +114,66 @@ async function main() {
   }
 
   let gitSyncStatus: 'PASS' | 'WARN' | 'DIVERGED' | 'DIRTY' | 'BLOCKED' | 'UNKNOWN' = 'UNKNOWN';
+  let gitSyncObj: any = null;
   const gitSyncPath = 'data/temp/vfos_git_sync_status.json';
   if (existsSync(gitSyncPath)) {
     try {
-      const gitSync = JSON.parse(readFileSync(gitSyncPath, 'utf8'));
-      gitSyncStatus = gitSync.status || 'UNKNOWN';
+      gitSyncObj = JSON.parse(readFileSync(gitSyncPath, 'utf8'));
+      gitSyncStatus = gitSyncObj.status || 'UNKNOWN';
     } catch {}
   }
+
+  // Git handoff inference logic
+  let recommendedGitCommand = 'pnpm vfos:sync-check';
+  let gitReason = 'Git synchronization status is unknown. Initialize sync check.';
+  let requiresManualOperatorAction = true;
+  let untrackedLocalOnlyWarning = false;
+
+  const ahead = gitSyncObj?.sync?.ahead || 0;
+  const behind = gitSyncObj?.sync?.behind || 0;
+  const hasUntracked = (gitSyncObj?.workingTree?.untrackedCount || 0) > 0;
+
+  if (gitSyncStatus === 'PASS') {
+    recommendedGitCommand = '';
+    gitReason = 'Git sync is clean. Continue with normal VFOS workflow.';
+    requiresManualOperatorAction = false;
+    untrackedLocalOnlyWarning = false;
+  } else if (gitSyncStatus === 'WARN') {
+    if (ahead > 0) {
+      recommendedGitCommand = 'pnpm vfos:sync-check --confirm-push --ack-untracked-local';
+      gitReason = 'Local commits exist and should be pushed before switching machines.';
+      untrackedLocalOnlyWarning = hasUntracked;
+    } else if (behind > 0) {
+      recommendedGitCommand = 'pnpm vfos:sync-check --confirm-pull --ack-untracked-local';
+      gitReason = 'Remote has newer commits. Pull before continuing on this machine.';
+      untrackedLocalOnlyWarning = hasUntracked;
+    } else {
+      recommendedGitCommand = 'pnpm vfos:sync-check';
+      gitReason = 'Switch branch or review git parameters.';
+      untrackedLocalOnlyWarning = false;
+    }
+  } else if (gitSyncStatus === 'DIRTY') {
+    recommendedGitCommand = 'pnpm vfos:sync-check';
+    gitReason = 'Review modified/untracked files before continuing.';
+    untrackedLocalOnlyWarning = hasUntracked;
+  } else if (gitSyncStatus === 'BLOCKED') {
+    recommendedGitCommand = 'pnpm vfos:sync-check';
+    gitReason = 'Sensitive/runtime staged risk must be resolved first.';
+    untrackedLocalOnlyWarning = false;
+  } else if (gitSyncStatus === 'DIVERGED') {
+    recommendedGitCommand = 'pnpm vfos:sync-check';
+    gitReason = 'Stop and resolve Git divergence manually.';
+    untrackedLocalOnlyWarning = false;
+  }
+
+  const gitHandoff = {
+    status: gitSyncStatus,
+    recommendedCommand: recommendedGitCommand,
+    reason: gitReason,
+    requiresManualOperatorAction,
+    dashboardExecutedAction: false,
+    untrackedLocalOnlyWarning,
+  };
 
   // 2. VIDEO REVIEW SCANNING
   // Scan for latest execution runs containing review pack or preview artifacts
@@ -270,6 +323,7 @@ async function main() {
       readEnv: false,
       gitSyncStatus,
     },
+    gitHandoff,
   };
 
   try {
@@ -354,17 +408,19 @@ async function main() {
 
   // Override with sync checks when critical git warning or blocking staged artifacts exist
   if (gitSyncStatus === 'BLOCKED') {
-    recommendedNextCommand = 'pnpm vfos:sync-check';
+    recommendedNextCommand = recommendedGitCommand;
     recommendedWhy = 'CRITICAL: Git Sync is BLOCKED due to staged sensitive/runtime risks. Run sync-check to resolve.';
     expectedResult = 'Operator unstages sensitive/runtime files to return workspace to a safe state.';
   } else if (gitSyncStatus === 'DIVERGED') {
-    recommendedNextCommand = 'pnpm vfos:sync-check';
+    recommendedNextCommand = recommendedGitCommand;
     recommendedWhy = 'CRITICAL: Branch history has diverged between local and origin. Please resolve manually.';
     expectedResult = 'Workspace is synchronized with origin remote.';
-  } else if (gitSyncStatus === 'WARN' && (recommendedNextCommand === 'pnpm commerce:intake' || recommendedNextCommand === 'pnpm commerce:intake --confirm-targeted-click')) {
-    recommendedNextCommand = 'pnpm vfos:sync-check';
-    recommendedWhy = 'Git Sync warning detected (ahead/behind remote). Recommended to sync branch history prior to workflows.';
-    expectedResult = 'Git sync-check reports clean and synchronized status.';
+  } else if (gitSyncStatus === 'WARN') {
+    if (recommendedNextCommand === 'pnpm commerce:intake' || recommendedNextCommand === 'pnpm commerce:intake --confirm-targeted-click') {
+      recommendedNextCommand = recommendedGitCommand;
+      recommendedWhy = `Git Sync warning detected (Ahead/Behind). ${gitReason}`;
+      expectedResult = 'Git sync-check reports clean and synchronized status.';
+    }
   }
 
   const runbookMarkdown = `# VFOS Daily Workflow Runbook
@@ -426,6 +482,18 @@ async function main() {
 - **selected_product_card.json**: \`${resolve(cardPath)}\`
 - **operator_review_pack.md**: \`${packPath ? resolve(dirname(packPath), 'operator_review_pack.md') : 'MISSING'}\`
 - **preview.mp4**: \`${packPath ? resolve(dirname(packPath), 'preview.mp4') : 'MISSING'}\`
+
+## 8. Git Sync Handoff
+- **Status**: ${gitSyncStatus}
+- **Recommended command**:
+  \`\`\`bash
+  ${recommendedGitCommand || 'None'}
+  \`\`\`
+- **Reason**: ${gitReason}
+- **Operator note**: This dashboard does not execute Git actions. Copy and run the command manually if appropriate.
+
+> [!IMPORTANT]
+> Untracked local files are not pushed to GitHub. If these files matter, intentionally add/commit them or back them up before switching machines.
 `;
 
   try {
@@ -449,6 +517,7 @@ async function main() {
       shouldCheckGitBeforeContinuing: true,
       gitSyncStatus
     },
+    gitHandoff,
     session: {
       lastCompletedStage,
       nextStage,
@@ -561,6 +630,18 @@ ${recommendedNextCommand}
 * Do not bypass Shopee login, OTP, or CAPTCHA.
 * Do not run extractor without explicit targeted-click confirmation.
 * Do not run live publish without explicit final approval.
+
+## 7. Git Sync Handoff
+- **Status**: ${gitSyncStatus}
+- **Recommended command**:
+  \`\`\`bash
+  ${recommendedGitCommand || 'None'}
+  \`\`\`
+- **Reason**: ${gitReason}
+- **Operator note**: This dashboard does not execute Git actions. Copy and run the command manually if appropriate.
+
+> [!IMPORTANT]
+> Untracked local files are not pushed to GitHub. If these files matter, intentionally add/commit them or back them up before switching machines.
 `;
 
   try {
@@ -611,6 +692,35 @@ ${recommendedNextCommand}
   console.log('- Auto-Publish:        false 🔒');
   console.log('- Read-only:           true  🔒');
   console.log(`- Git Sync Status:     ${gitSyncStatus === 'PASS' ? 'PASS 🟢' : gitSyncStatus === 'WARN' ? 'WARN 🟡' : gitSyncStatus === 'BLOCKED' ? 'BLOCKED 🔴' : gitSyncStatus === 'DIRTY' ? 'DIRTY 🟡' : 'UNKNOWN ⚪'}`);
+
+  if (gitSyncStatus === 'BLOCKED') {
+    console.log('\n======================================================');
+    console.log('🚫 Git Sync Requires Attention');
+    console.log('======================================================');
+    console.log('Status:              BLOCKED 🔴');
+    console.log(`Recommended command:\n${recommendedGitCommand}`);
+    console.log(`\nReason:\n${gitReason}`);
+    console.log('======================================================');
+  } else if (gitSyncStatus === 'DIVERGED') {
+    console.log('\n======================================================');
+    console.log('🚫 Git Sync Requires Attention');
+    console.log('======================================================');
+    console.log('Status:              DIVERGED 🔴');
+    console.log(`Recommended command:\n${recommendedGitCommand}`);
+    console.log(`\nReason:\n${gitReason}`);
+    console.log('======================================================');
+  } else {
+    console.log('\n======================================================');
+    console.log('🧭 Git Sync Handoff');
+    console.log('======================================================');
+    console.log(`Status:              ${gitSyncStatus === 'PASS' ? 'PASS 🟢' : gitSyncStatus + ' 🟡'}`);
+    console.log(`Recommended command:\n${recommendedGitCommand || 'None'}`);
+    console.log(`\nReason:\n${gitReason}`);
+    if (untrackedLocalOnlyWarning) {
+      console.log('\nWarning:\nUntracked local files will NOT be pushed to GitHub.');
+    }
+    console.log('======================================================');
+  }
 
   console.log('\n======================================================');
   console.log('💡 RECOMMENDED NEXT OPERATOR ACTION:');
