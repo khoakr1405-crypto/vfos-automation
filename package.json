@@ -50,7 +50,8 @@
     "chay": "tsx scripts/chay.ts",
     "shopee:preflight": "tsx scripts/shopee-cdp-preflight-demo.ts",
     "shopee:extractor": "tsx scripts/shopee-link-extractor-demo.ts",
-    "shopee:builder": "tsx scripts/shopee-product-card-builder.ts"
+    "shopee:builder": "tsx scripts/shopee-product-card-builder.ts",
+    "shopee:bgm": "tsx scripts/bgm-selector-demo.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
