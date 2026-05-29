@@ -221,6 +221,17 @@ async function main() {
     pageRouteStatus = 'FOUND';
   }
 
+  let facebookPublishStatusState: string = 'MISSING';
+  const facebookPublishStatusPath = 'data/temp/facebook_publish_status.json';
+  if (existsSync(facebookPublishStatusPath)) {
+    try {
+      const pubStatusObj = JSON.parse(readFileSync(facebookPublishStatusPath, 'utf8'));
+      if (pubStatusObj && pubStatusObj.state) {
+        facebookPublishStatusState = pubStatusObj.state;
+      }
+    } catch {}
+  }
+
   let reelsValidationStatus: 'PASS' | 'WARN' | 'FAIL' | 'UNKNOWN' = 'UNKNOWN';
   const reelsValPath = activeRunDir ? join(activeRunDir, 'facebook_reels_validation_artifact.json') : '';
   const rootReelsValPath = 'data/temp/facebook_reels_validation_artifact.json';
@@ -262,7 +273,15 @@ async function main() {
 
   let publishAction = 'Complete preceding video review steps before executing publish workflows.';
   if (reviewPackStatus === 'READY_FOR_FINAL_OPERATOR_APPROVAL') {
-    publishAction = `👉 Review pack ready! After manual inspection, run: pnpm publish:facebook --confirm-final-approval --run ${runId}`;
+    if (facebookPublishStatusState === 'READY_FOR_MANUAL_PUBLISH_SUBMISSION') {
+      publishAction = '🟢 Preflight publish report ready and verified. Open facebook_publish_report.md to review.';
+    } else if (facebookPublishStatusState === 'BLOCKED_PENDING_OPERATOR_APPROVAL') {
+      publishAction = `👉 Review pack ready! After manual inspection, run: pnpm publish:facebook --confirm-final-approval --run ${runId}`;
+    } else if (facebookPublishStatusState === 'NOT_READY_FOR_PUBLISHING') {
+      publishAction = '❌ Unified publishing validation failed. Resolve missing readiness fields.';
+    } else {
+      publishAction = `👉 Review pack ready! After manual inspection, run: pnpm publish:facebook --confirm-final-approval --run ${runId}`;
+    }
   }
 
   // Final consolidated workflow advice
@@ -284,7 +303,11 @@ async function main() {
   } else if (reviewPackStatus === 'MISSING') {
     mainAdvice = 'Execute preview video generator pipeline: pnpm chay --offline';
   } else if (reviewPackStatus === 'READY_FOR_FINAL_OPERATOR_APPROVAL') {
-    mainAdvice = `Inspect latest video run in operator_review_pack.md. When ready, run: pnpm publish:facebook --confirm-final-approval --run ${runId}`;
+    if (facebookPublishStatusState === 'READY_FOR_MANUAL_PUBLISH_SUBMISSION') {
+      mainAdvice = 'Preflight publish report ready and verified. Open facebook_publish_report.md to review.';
+    } else {
+      mainAdvice = `Inspect latest video run in operator_review_pack.md. When ready, run: pnpm publish:facebook --confirm-final-approval --run ${runId}`;
+    }
   }
 
   // ======================================================
@@ -684,6 +707,9 @@ ${recommendedNextCommand}
   console.log(`- Publish Manifest:  ${publishManifestStatus === 'FOUND' ? 'FOUND 🟢' : 'MISSING ⚪'}`);
   console.log(`- Page Route:        ${pageRouteStatus === 'FOUND' ? 'FOUND 🟢' : 'MISSING ⚪'}`);
   console.log(`- Reels Validation:  ${reelsValidationStatus === 'PASS' ? 'PASS 🟢' : reelsValidationStatus === 'FAIL' ? 'FAIL 🔴' : 'UNKNOWN ⚪'}`);
+  if (facebookPublishStatusState !== 'MISSING') {
+    console.log(`- Publish Status:    ${facebookPublishStatusState === 'READY_FOR_MANUAL_PUBLISH_SUBMISSION' ? 'READY FOR SUBMISSION 🟢' : facebookPublishStatusState === 'BLOCKED_PENDING_OPERATOR_APPROVAL' ? 'PENDING APPROVAL 🟡' : 'NOT READY 🔴'}`);
+  }
   console.log(`- Next Step:         ${publishAction}`);
 
   console.log('\n[4] Safety Lock Status');
