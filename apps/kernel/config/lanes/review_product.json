@@ -241,6 +241,27 @@
           "nonEmpty": true
         }
       ]
+    },
+    {
+      "stepName": "demo:operator-review-pack",
+      "description": "Final Operator Review Pack aggregator — READY_FOR_FINAL_OPERATOR_APPROVAL",
+      "command": "tsx",
+      "argsTemplate": [
+        "scripts/operator-review-pack-demo.ts",
+        "--outputDir",
+        "{outputDir}",
+        "--mode",
+        "{mode}"
+      ],
+      "cwd": ".",
+      "timeoutMs": 10000,
+      "expectedArtifacts": [
+        {
+          "pathTemplate": "{outputDir}/operator_review_pack.json",
+          "required": true,
+          "nonEmpty": true
+        }
+      ]
     }
   ]
 }

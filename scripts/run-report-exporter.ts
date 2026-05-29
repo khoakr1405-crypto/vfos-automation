@@ -163,25 +163,35 @@ export function exportRunReport(opts: ExportRunReportOpts): void {
   }
 
   // 5. Determine operator review state block
+  const reviewPackPath = join(outputDir, 'operator_review_pack.json');
+  const reviewPackMdPath = join(outputDir, 'operator_review_pack.md');
+  const hasReviewPack = existsSync(reviewPackPath);
+
   let operatorReviewState = 'NOT_READY';
   if (isDryRun) {
     operatorReviewState = 'DRY_RUN_PLAN_ONLY';
+  } else if (hasReviewPack) {
+    operatorReviewState = 'READY_FOR_FINAL_OPERATOR_APPROVAL';
   } else if (isReadyForReview) {
     operatorReviewState = 'READY_FOR_OPERATOR_REVIEW';
   }
 
   const operatorReviewBlock = {
     state: operatorReviewState,
-    requiresReview: isReadyForReview,
+    requiresReview: isReadyForReview || hasReviewPack,
     previewArtifactPath: isReadyForReview ? previewArtifactPath : null,
     expectedPreviewPath: isReadyForReview ? previewMeta?.expectedPreviewPath || null : null,
     actualPreviewPath: isReadyForReview ? previewMeta?.actualPreviewPath || null : null,
+    operatorReviewPackPath: hasReviewPack ? reviewPackPath : null,
+    operatorReviewPackMdPath: hasReviewPack ? reviewPackMdPath : null,
     readyForPublish: false,
     message: isDryRun
       ? 'Dry-run plan only. No steps executed.'
-      : isReadyForReview
-        ? 'Preview is ready for operator review. Do not publish until explicitly approved.'
-        : 'Preview was not generated. Fix failed step before operator review.',
+      : hasReviewPack
+        ? 'Operator Review Pack ready. Explicit operator approval required before live publish.'
+        : isReadyForReview
+          ? 'Preview is ready for operator review. Do not publish until explicitly approved.'
+          : 'Preview was not generated. Fix failed step before operator review.',
   };
 
   // 6. Formulate JSON Report
