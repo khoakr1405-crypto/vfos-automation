@@ -90,12 +90,46 @@ function main() {
         console.log(`- Audio: ${inputAudioPath}`);
       }
 
+      // Check BGM selected and present
+      const bgmMeta = renderMeta.assets?.bgm;
+      const hasBgmFile = bgmMeta?.selected && bgmMeta.localAudioPath && existsSync(bgmMeta.localAudioPath);
+
       const ffmpegArgs = ['-y', '-i', inputVideoPath];
       if (inputAudioPath && existsSync(inputAudioPath)) {
         ffmpegArgs.push('-i', inputAudioPath);
-        ffmpegArgs.push('-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest');
+      }
+
+      if (hasBgmFile) {
+        console.log(`[OfflineRenderVideo] Integrating BGM track: "${bgmMeta.title}" at: ${bgmMeta.localAudioPath}`);
+        ffmpegArgs.push('-i', bgmMeta.localAudioPath);
+
+        // Mix voiceover (input 1) and BGM (input 2) at volume 0.12 (-18dB)
+        ffmpegArgs.push(
+          '-filter_complex',
+          '[2:a]volume=0.12[bgm];[1:a][bgm]amix=inputs=2:duration=first[a]',
+          '-map',
+          '0:v',
+          '-map',
+          '[a]',
+          '-c:v',
+          'libx264',
+          '-pix_fmt',
+          'yuv420p',
+          '-c:a',
+          'aac',
+          '-shortest',
+        );
       } else {
-        ffmpegArgs.push('-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-an');
+        if (bgmMeta?.selected) {
+          console.warn(
+            `[OfflineRenderVideo] WARNING: BGM track "${bgmMeta.title}" audio file is missing at "${bgmMeta.localAudioPath}". Falling back to voiceover-only mix.`,
+          );
+        }
+        if (inputAudioPath && existsSync(inputAudioPath)) {
+          ffmpegArgs.push('-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest');
+        } else {
+          ffmpegArgs.push('-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-an');
+        }
       }
       ffmpegArgs.push(actualPreviewPath);
 

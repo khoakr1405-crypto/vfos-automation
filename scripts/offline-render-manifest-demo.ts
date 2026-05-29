@@ -1,9 +1,9 @@
 /**
- * Offline Render Manifest Helper Script — Round P15.
+ * Offline Render Manifest Helper Script — Round P15 + P29 BGM Integration.
  *
  * Simulates the offline compilation of render metadata from intermediate artifacts.
  *
- * Command: tsx scripts/offline-render-manifest-demo.ts --visual <path> --script <path> --voice <path> --output <path> [--mode <mode>]
+ * Command: tsx scripts/offline-render-manifest-demo.ts --visual <path> --script <path> --voice <path> [--bgm <path>] --output <path> [--mode <mode>]
  */
 
 import { writeFileSync, readFileSync, existsSync } from 'node:fs';
@@ -14,6 +14,7 @@ const options = {
   visual: { type: 'string' as const },
   script: { type: 'string' as const },
   voice: { type: 'string' as const },
+  bgm: { type: 'string' as const },
   output: { type: 'string' as const },
   mode: { type: 'string' as const },
 };
@@ -24,6 +25,7 @@ function main() {
   const visualPath = values.visual;
   const scriptPath = values.script;
   const voicePath = values.voice;
+  const bgmPath = values.bgm;
   const outputPath = values.output;
   const mode = values.mode || 'pass';
 
@@ -58,11 +60,17 @@ function main() {
   let visualMeta: any;
   let scriptMeta: any;
   let voiceMeta: any;
+  let bgmMeta: any = null;
 
   try {
     visualMeta = JSON.parse(readFileSync(visualPath, 'utf8'));
     scriptMeta = JSON.parse(readFileSync(scriptPath, 'utf8'));
     voiceMeta = JSON.parse(readFileSync(voicePath, 'utf8'));
+
+    if (bgmPath && existsSync(bgmPath)) {
+      bgmMeta = JSON.parse(readFileSync(bgmPath, 'utf8'));
+      console.log(`[OfflineRenderManifest] Successfully integrated BGM track selection: "${bgmMeta.title}" [ID: ${bgmMeta.trackId}]`);
+    }
   } catch (err: any) {
     console.error(`ERROR: Failed to parse input JSON files: ${err.message}`);
     process.exit(1);
@@ -77,6 +85,16 @@ function main() {
       voiceArtifactPath: voicePath,
       videoSourcePath: null,
       audioSourcePath: null,
+      bgm: bgmMeta
+        ? {
+            selected: true,
+            trackId: bgmMeta.trackId,
+            title: bgmMeta.title,
+            mood: bgmMeta.mood,
+            localAudioPath: bgmMeta.localAudioPath,
+            fileExists: bgmMeta.fileExists,
+          }
+        : { selected: false },
     },
     renderOptions: {
       resolution: '1080x1920',

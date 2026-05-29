@@ -118,6 +118,27 @@
       ]
     },
     {
+      "stepName": "demo:bgm-select",
+      "description": "Production-like offline BGM selection and rotation manager",
+      "command": "tsx",
+      "argsTemplate": [
+        "scripts/bgm-selector-demo.ts",
+        "--mood",
+        "calm",
+        "--output",
+        "{outputDir}/bgm_selection_artifact.json"
+      ],
+      "cwd": ".",
+      "timeoutMs": 10000,
+      "expectedArtifacts": [
+        {
+          "pathTemplate": "{outputDir}/bgm_selection_artifact.json",
+          "required": true,
+          "nonEmpty": true
+        }
+      ]
+    },
+    {
       "stepName": "demo:render-manifest",
       "description": "Production-like offline video render manifest builder",
       "command": "tsx",
@@ -129,6 +150,8 @@
         "{outputDir}/script_artifact.json",
         "--voice",
         "{outputDir}/voice_artifact.json",
+        "--bgm",
+        "{outputDir}/bgm_selection_artifact.json",
         "--output",
         "{outputDir}/render_manifest.json",
         "--mode",
