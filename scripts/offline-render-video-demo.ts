@@ -60,43 +60,120 @@ function main() {
   let offlinePlaceholderOnly = true;
   let status = 'placeholder';
   let notes = 'Offline placeholder only. No real video file was rendered.';
+  let hasRealFixture = false;
+  let requiresOperatorFixtureReview = false;
 
   if (mode === 'local-preview') {
-    console.log(`[OfflineRenderVideo] Running FFMPEG to generate real local preview video...`);
-    const ffmpegArgs = [
-      '-y',
-      '-f', 'lavfi',
-      '-i', 'testsrc=size=1080x1920:rate=30',
-      '-t', '5',
-      '-c:v', 'libx264',
-      actualPreviewPath
-    ];
+    const manifestInputPath = 'apps/kernel/config/manifests/media_input_manifest.json';
+    let inputVideoPath = '';
+    let inputAudioPath = '';
+    let hasFixtureFiles = false;
 
-    const result = spawnSync('ffmpeg', ffmpegArgs, { encoding: 'utf-8' });
+    if (existsSync(manifestInputPath)) {
+      try {
+        const mediaInput = JSON.parse(readFileSync(manifestInputPath, 'utf8'));
+        inputVideoPath = mediaInput.inputVideoPath || '';
+        inputAudioPath = mediaInput.inputAudioPath || '';
 
-    if (result.status !== 0) {
-      console.error('ERROR: FFMPEG execution failed:');
-      console.error(result.stderr);
-      // Write failure metadata with status NEEDS_RENDER_ENGINE as required
-      const errorArtifact = {
-        previewId: 'preview_run_review_product_p9',
-        renderManifestPath: renderPath,
-        status: 'NEEDS_RENDER_ENGINE',
-        rendered: false,
-        notes: 'FFmpeg execution failed during local preview render.',
-        offlineMode: mode,
-        generatedAt: new Date().toISOString(),
-      };
-      writeFileSync(outputPath, JSON.stringify(errorArtifact, null, 2), 'utf8');
-      process.exit(1);
+        if (inputVideoPath && existsSync(inputVideoPath)) {
+          hasFixtureFiles = true;
+        }
+      } catch (err) {
+        console.warn(`[OfflineRenderVideo] Warning: Failed to parse media input manifest: ${err}`);
+      }
     }
 
-    console.log(`[OfflineRenderVideo] Successfully rendered local preview video file: ${actualPreviewPath}`);
-    rendered = true;
-    localPreviewOnly = true;
-    offlinePlaceholderOnly = false;
-    status = 'local_preview_rendered';
-    notes = 'Local preview video rendered for operator review. Do not publish automatically.';
+    if (hasFixtureFiles) {
+      console.log(`[OfflineRenderVideo] Real media fixtures found! Composing from:`);
+      console.log(`- Video: ${inputVideoPath}`);
+      if (inputAudioPath && existsSync(inputAudioPath)) {
+        console.log(`- Audio: ${inputAudioPath}`);
+      }
+
+      const ffmpegArgs = ['-y', '-i', inputVideoPath];
+      if (inputAudioPath && existsSync(inputAudioPath)) {
+        ffmpegArgs.push('-i', inputAudioPath);
+        ffmpegArgs.push('-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest');
+      } else {
+        ffmpegArgs.push('-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-an');
+      }
+      ffmpegArgs.push(actualPreviewPath);
+
+      console.log(`[OfflineRenderVideo] Running FFMPEG command: ffmpeg ${ffmpegArgs.join(' ')}`);
+      const result = spawnSync('ffmpeg', ffmpegArgs, { encoding: 'utf-8' });
+
+      if (result.status !== 0) {
+        console.error('ERROR: FFMPEG composition of local fixtures failed:');
+        console.error(result.stderr);
+        const errorArtifact = {
+          previewId: 'preview_run_review_product_p9',
+          renderManifestPath: renderPath,
+          status: 'NEEDS_RENDER_ENGINE',
+          rendered: false,
+          notes: 'FFmpeg execution failed during local fixture composition.',
+          offlineMode: mode,
+          generatedAt: new Date().toISOString(),
+        };
+        writeFileSync(outputPath, JSON.stringify(errorArtifact, null, 2), 'utf8');
+        process.exit(1);
+      }
+
+      console.log(
+        `[OfflineRenderVideo] Successfully composed video from real local fixtures: ${actualPreviewPath}`,
+      );
+      rendered = true;
+      localPreviewOnly = true;
+      offlinePlaceholderOnly = false;
+      hasRealFixture = true;
+      status = 'local_preview_rendered';
+      notes =
+        'Local preview video composed from real local fixtures. Do not publish automatically.';
+    } else {
+      console.log(
+        `[OfflineRenderVideo] [INFO] Media fixture files missing (e.g. "${inputVideoPath}"). Falling back to programmatic testsrc composition but marking requiresOperatorFixtureReview: true.`,
+      );
+      const ffmpegArgs = [
+        '-y',
+        '-f',
+        'lavfi',
+        '-i',
+        'testsrc=size=1080x1920:rate=30',
+        '-t',
+        '5',
+        '-c:v',
+        'libx264',
+        actualPreviewPath,
+      ];
+
+      const result = spawnSync('ffmpeg', ffmpegArgs, { encoding: 'utf-8' });
+
+      if (result.status !== 0) {
+        console.error('ERROR: FFMPEG fallback execution failed:');
+        console.error(result.stderr);
+        const errorArtifact = {
+          previewId: 'preview_run_review_product_p9',
+          renderManifestPath: renderPath,
+          status: 'NEEDS_RENDER_ENGINE',
+          rendered: false,
+          notes: 'FFmpeg fallback execution failed during local preview render.',
+          offlineMode: mode,
+          generatedAt: new Date().toISOString(),
+        };
+        writeFileSync(outputPath, JSON.stringify(errorArtifact, null, 2), 'utf8');
+        process.exit(1);
+      }
+
+      console.log(
+        `[OfflineRenderVideo] Successfully rendered fallback preview video file: ${actualPreviewPath}`,
+      );
+      rendered = true;
+      localPreviewOnly = true;
+      offlinePlaceholderOnly = false;
+      requiresOperatorFixtureReview = true;
+      status = 'local_preview_rendered';
+      notes =
+        'Local preview video rendered using programmatic testsrc due to missing local fixtures. Please place fixture files to render real assets.';
+    }
   }
 
   // Formulate the preview artifact
@@ -105,7 +182,8 @@ function main() {
     renderManifestPath: renderPath,
     expectedPreviewPath: expectedPreviewPath,
     actualPreviewPath: actualPreviewPath,
-    durationSec: mode === 'local-preview' ? 5 : (renderMeta.renderOptions?.estimatedDurationSec || 28),
+    durationSec:
+      mode === 'local-preview' ? 5 : renderMeta.renderOptions?.estimatedDurationSec || 28,
     resolution: renderMeta.renderOptions?.resolution || '1080x1920',
     aspectRatio: renderMeta.renderOptions?.aspectRatio || '9:16',
     status: status,
@@ -114,6 +192,8 @@ function main() {
     offlinePlaceholderOnly: offlinePlaceholderOnly,
     requiresOperatorReview: true,
     readyForPublish: false,
+    hasRealFixture: hasRealFixture,
+    requiresOperatorFixtureReview: requiresOperatorFixtureReview,
     notes: notes,
     offlineMode: mode,
     generatedAt: new Date().toISOString(),

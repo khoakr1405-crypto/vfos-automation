@@ -1,0 +1,8 @@
+{
+  "inputVideoPath": "production/fixtures/sample_hero_video.mp4",
+  "inputAudioPath": "production/fixtures/sample_voiceover.mp3",
+  "validateSpecs": {
+    "requiredAspectRatio": "9:16",
+    "maxDurationSec": 60
+  }
+}

@@ -44,7 +44,9 @@ export function exportRunReport(opts: ExportRunReportOpts): void {
   try {
     mkdirSync(outputDir, { recursive: true });
   } catch (err: any) {
-    console.error(`[ReportExporter] ERROR: Failed to create output directory ${outputDir}: ${err.message}`);
+    console.error(
+      `[ReportExporter] ERROR: Failed to create output directory ${outputDir}: ${err.message}`,
+    );
     return;
   }
 
@@ -111,7 +113,11 @@ export function exportRunReport(opts: ExportRunReportOpts): void {
 
   // 3. Determine if preview artifact exists and meets security constraints (only if render-video succeeded or we are in completed run)
   const renderVideoStep = reportSteps.find((s: any) => s.stepName === 'demo:render-video');
-  const isRenderVideoSuccess = isDryRun ? false : (renderVideoStep ? renderVideoStep.status === 'success' : false);
+  const isRenderVideoSuccess = isDryRun
+    ? false
+    : renderVideoStep
+      ? renderVideoStep.status === 'success'
+      : false;
 
   const previewArtifactPath = join(outputDir, 'preview_artifact.json');
   let isReadyForReview = false;
@@ -138,7 +144,8 @@ export function exportRunReport(opts: ExportRunReportOpts): void {
     if (result.status === 'completed') {
       overallStatus = 'completed';
       if (isReadyForReview) {
-        recommendedNextAction = 'Preview is ready for operator review. Test the video before any publish step.';
+        recommendedNextAction =
+          'Preview is ready for operator review. Test the video before any publish step.';
       } else {
         recommendedNextAction = 'Ready for production render pipeline.';
       }
@@ -147,7 +154,8 @@ export function exportRunReport(opts: ExportRunReportOpts): void {
       // Determine if failed due to guard violation or generic command failure
       const isGuardViolation = result.error?.includes('[Guard Violation]') || false;
       if (isGuardViolation) {
-        recommendedNextAction = 'Review quality guard issues and adjust manifest/lane inputs before retry.';
+        recommendedNextAction =
+          'Review quality guard issues and adjust manifest/lane inputs before retry.';
       } else {
         recommendedNextAction = 'Inspect failed step stderr and artifact outputs before retry.';
       }
@@ -166,14 +174,14 @@ export function exportRunReport(opts: ExportRunReportOpts): void {
     state: operatorReviewState,
     requiresReview: isReadyForReview,
     previewArtifactPath: isReadyForReview ? previewArtifactPath : null,
-    expectedPreviewPath: isReadyForReview ? (previewMeta?.expectedPreviewPath || null) : null,
-    actualPreviewPath: isReadyForReview ? (previewMeta?.actualPreviewPath || null) : null,
+    expectedPreviewPath: isReadyForReview ? previewMeta?.expectedPreviewPath || null : null,
+    actualPreviewPath: isReadyForReview ? previewMeta?.actualPreviewPath || null : null,
     readyForPublish: false,
-    message: isDryRun 
+    message: isDryRun
       ? 'Dry-run plan only. No steps executed.'
-      : (isReadyForReview 
-          ? 'Preview is ready for operator review. Do not publish until explicitly approved.'
-          : 'Preview was not generated. Fix failed step before operator review.')
+      : isReadyForReview
+        ? 'Preview is ready for operator review. Do not publish until explicitly approved.'
+        : 'Preview was not generated. Fix failed step before operator review.',
   };
 
   // 6. Formulate JSON Report
@@ -189,8 +197,8 @@ export function exportRunReport(opts: ExportRunReportOpts): void {
       operatorReviewState, // Added top-level field for backwards compatibility safety
       stepsCompleted: isDryRun ? 0 : result.steps_completed,
       stepsTotal: steps.length,
-      failedStep: isDryRun ? null : (result.failed_step || null),
-      error: isDryRun ? null : (result.error || null),
+      failedStep: isDryRun ? null : result.failed_step || null,
+      error: isDryRun ? null : result.error || null,
       durationMs,
     },
     paths: {
@@ -216,15 +224,29 @@ export function exportRunReport(opts: ExportRunReportOpts): void {
 No steps were executed. Review the plan before running.
 `;
   } else if (isReadyForReview) {
-    const previewType = previewMeta?.localPreviewOnly ? 'Real Local Preview Video' : 'Offline Video Placeholder';
-    const actualPreviewPathText = previewMeta?.actualPreviewPath ? `\n- **Actual Preview Path**: \`${previewMeta.actualPreviewPath}\`` : '';
+    let previewType = 'Offline Video Placeholder';
+    let extraFixtureWarning = '';
+    if (previewMeta?.localPreviewOnly) {
+      if (previewMeta.hasRealFixture) {
+        previewType = 'Real Local Preview Video (Composed from local fixtures)';
+      } else if (previewMeta.requiresOperatorFixtureReview) {
+        previewType = 'Real Local Preview Video (Programmatic testsrc fallback)';
+        extraFixtureWarning =
+          '\n> [!WARNING]\n> **Missing Local Fixtures**: Programmatic testsrc was used due to missing local media assets. Please configure fixture files for full fidelity composition.\n';
+      } else {
+        previewType = 'Real Local Preview Video';
+      }
+    }
+    const actualPreviewPathText = previewMeta?.actualPreviewPath
+      ? `\n- **Actual Preview Path**: \`${previewMeta.actualPreviewPath}\``
+      : '';
     operatorReviewMarkdown = `
 ## Operator Review
 **State**: READY_FOR_OPERATOR_REVIEW
 - **Type**: ${previewType}
 - **Preview Artifact**: \`${previewArtifactPath}\`
 - **Expected Preview Path**: \`${previewMeta?.expectedPreviewPath || 'None'}\`${actualPreviewPathText}
-
+${extraFixtureWarning}
 > [!IMPORTANT]
 > **Required Action**:
 > Operator must review/test the preview video before any publish step is allowed.
@@ -268,8 +290,10 @@ ${reportSteps
   .map(
     (s, i) =>
       `| ${i + 1} | \`${s.stepName}\` | ${s.status === 'success' ? '✅ success' : s.status === 'failed' ? '❌ failed' : s.status === 'skipped' ? '⏭️ skipped' : '📝 dry_run'} | ${
-        s.expectedArtifacts.length > 0 ? s.expectedArtifacts.map((a: string) => `\`${a.split(/[\\/]/).pop()}\``).join(', ') : 'None'
-      } | ${s.guards.length > 0 ? s.guards.map((g: string) => `\`${g}\``).join(', ') : 'None'} |`
+        s.expectedArtifacts.length > 0
+          ? s.expectedArtifacts.map((a: string) => `\`${a.split(/[\\/]/).pop()}\``).join(', ')
+          : 'None'
+      } | ${s.guards.length > 0 ? s.guards.map((g: string) => `\`${g}\``).join(', ') : 'None'} |`,
   )
   .join('\n')}
 
@@ -277,20 +301,14 @@ ${reportSteps
 | Artifact | Path | Exists |
 |----------|------|--------|
 ${reportArtifacts
-  .map(
-    (a) =>
-      `| \`${a.name}\` | \`${a.path}\` | ${a.exists ? '🟢 Yes' : '🔴 No'} |`
-  )
+  .map((a) => `| \`${a.name}\` | \`${a.path}\` | ${a.exists ? '🟢 Yes' : '🔴 No'} |`)
   .join('\n')}
 
 ## Guards
 | Guard | Step | Blocking |
 |-------|------|----------|
 ${reportGuards
-  .map(
-    (g) =>
-      `| \`${g.guardName}\` | \`${g.stepName}\` | ${g.blocking ? 'Yes' : 'No'} |`
-  )
+  .map((g) => `| \`${g.guardName}\` | \`${g.stepName}\` | ${g.blocking ? 'Yes' : 'No'} |`)
   .join('\n')}
 
 ## Recommended Next Action
