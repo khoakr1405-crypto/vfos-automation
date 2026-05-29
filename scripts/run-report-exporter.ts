@@ -1,11 +1,11 @@
 /**
- * Run Report Exporter Utility — Round P14.
+ * Run Report Exporter Utility — Round P18.
  *
  * Compiles and exports structured run reports in JSON and Markdown formats
  * to capture pipeline execution status, quality guards, and artifacts.
  */
 
-import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 export interface ExportRunReportOpts {
@@ -109,14 +109,39 @@ export function exportRunReport(opts: ExportRunReportOpts): void {
     });
   });
 
-  // 3. Compute recommended next action
+  // 3. Determine if preview artifact exists and meets security constraints (only if render-video succeeded or we are in completed run)
+  const renderVideoStep = reportSteps.find((s: any) => s.stepName === 'demo:render-video');
+  const isRenderVideoSuccess = isDryRun ? false : (renderVideoStep ? renderVideoStep.status === 'success' : false);
+
+  const previewArtifactPath = join(outputDir, 'preview_artifact.json');
+  let isReadyForReview = false;
+  let previewMeta: any = null;
+
+  if (isRenderVideoSuccess && existsSync(previewArtifactPath)) {
+    try {
+      previewMeta = JSON.parse(readFileSync(previewArtifactPath, 'utf8'));
+      if (
+        previewMeta.requiresOperatorReview === true &&
+        previewMeta.readyForPublish === false &&
+        previewMeta.offlinePlaceholderOnly === true
+      ) {
+        isReadyForReview = true;
+      }
+    } catch (e) {}
+  }
+
+  // 4. Compute recommended next action
   let recommendedNextAction = 'Review plan summary before executing the run.';
   let overallStatus = 'dry_run';
 
   if (!isDryRun) {
     if (result.status === 'completed') {
       overallStatus = 'completed';
-      recommendedNextAction = 'Ready for production render pipeline.';
+      if (isReadyForReview) {
+        recommendedNextAction = 'Preview is ready for operator review. Test the video before any publish step.';
+      } else {
+        recommendedNextAction = 'Ready for production render pipeline.';
+      }
     } else {
       overallStatus = 'failed';
       // Determine if failed due to guard violation or generic command failure
@@ -129,7 +154,28 @@ export function exportRunReport(opts: ExportRunReportOpts): void {
     }
   }
 
-  // 4. Formulate JSON Report
+  // 5. Determine operator review state block
+  let operatorReviewState = 'NOT_READY';
+  if (isDryRun) {
+    operatorReviewState = 'DRY_RUN_PLAN_ONLY';
+  } else if (isReadyForReview) {
+    operatorReviewState = 'READY_FOR_OPERATOR_REVIEW';
+  }
+
+  const operatorReviewBlock = {
+    state: operatorReviewState,
+    requiresReview: isReadyForReview,
+    previewArtifactPath: isReadyForReview ? previewArtifactPath : null,
+    expectedPreviewPath: isReadyForReview ? (previewMeta?.expectedPreviewPath || null) : null,
+    readyForPublish: false,
+    message: isDryRun 
+      ? 'Dry-run plan only. No steps executed.'
+      : (isReadyForReview 
+          ? 'Preview is ready for operator review. Do not publish until explicitly approved.'
+          : 'Preview was not generated. Fix failed step before operator review.')
+  };
+
+  // 6. Formulate JSON Report
   const jsonReport = {
     reportVersion: 'v1',
     generatedAt,
@@ -139,6 +185,7 @@ export function exportRunReport(opts: ExportRunReportOpts): void {
       lane: plan.laneName || 'review_product',
       mode: targetMode,
       status: overallStatus,
+      operatorReviewState, // Added top-level field for backwards compatibility safety
       stepsCompleted: isDryRun ? 0 : result.steps_completed,
       stepsTotal: steps.length,
       failedStep: isDryRun ? null : (result.failed_step || null),
@@ -154,10 +201,44 @@ export function exportRunReport(opts: ExportRunReportOpts): void {
     steps: reportSteps,
     artifacts: reportArtifacts,
     guards: reportGuards,
+    operatorReview: operatorReviewBlock,
     recommendedNextAction,
   };
 
-  // 5. Formulate Markdown Report
+  // 7. Formulate Operator Review Markdown block
+  let operatorReviewMarkdown = '';
+  if (isDryRun) {
+    operatorReviewMarkdown = `
+## Operator Review
+**State**: DRY_RUN_PLAN_ONLY
+
+No steps were executed. Review the plan before running.
+`;
+  } else if (isReadyForReview) {
+    operatorReviewMarkdown = `
+## Operator Review
+**State**: READY_FOR_OPERATOR_REVIEW
+
+**Preview Artifact**: \`${previewArtifactPath}\`
+
+**Expected Preview Path**: \`${previewMeta?.expectedPreviewPath || 'None'}\`
+
+**Required Action**:
+Operator must review/test the preview video before any publish step is allowed.
+
+**Safety Rule**:
+Do not publish to Facebook automatically after render.
+`;
+  } else {
+    operatorReviewMarkdown = `
+## Operator Review
+**State**: NOT_READY
+
+Preview was not generated. Fix failed step before operator review.
+`;
+  }
+
+  // 8. Formulate Markdown Report
   const mdReport = `# VFOS Run Report
 
 ## Summary
@@ -176,7 +257,7 @@ export function exportRunReport(opts: ExportRunReportOpts): void {
 - **Runtime Manifest**: [runtime_manifest](${resolve(runtimeManifestPath)})
 - **Pipeline Plan**: [plan](${resolve(planPath)})
 - **Output Dir**: [output_dir](${resolve(outputDir)})
-
+${operatorReviewMarkdown}
 ## Steps
 | # | Step Name | Status | Artifacts | Guards |
 |---|-----------|--------|-----------|--------|
@@ -214,7 +295,7 @@ ${reportGuards
 > **${recommendedNextAction}**
 `;
 
-  // 6. Write reports to files
+  // 9. Write reports to files
   const jsonReportPath = join(outputDir, 'run_report.json');
   const mdReportPath = join(outputDir, 'run_report.md');
 

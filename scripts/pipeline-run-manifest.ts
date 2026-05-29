@@ -240,6 +240,31 @@ async function main() {
     console.log(`  - Error Detail:     ${result.error}`);
   }
 
+  // Check if preview artifact was created successfully and meets constraints
+  const previewArtifactPath = join(plan.outputDir, 'preview_artifact.json');
+  if (result.status === 'completed' && existsSync(previewArtifactPath)) {
+    try {
+      const previewMeta = JSON.parse(readFileSync(previewArtifactPath, 'utf8'));
+      if (
+        previewMeta.requiresOperatorReview === true &&
+        previewMeta.readyForPublish === false &&
+        previewMeta.offlinePlaceholderOnly === true
+      ) {
+        console.log('\n  ======================================================');
+        console.log('  📢  STATUS: READY_FOR_OPERATOR_REVIEW');
+        console.log('  ======================================================');
+        console.log(`  Preview Artifact: ${previewArtifactPath}`);
+        console.log(`  Expected Preview: ${previewMeta.expectedPreviewPath}`);
+        console.log(`  Run Report:       ${join(plan.outputDir, 'run_report.md')}`);
+        console.log('\n  Required Action:');
+        console.log('  Operator must review/test the preview before publish.');
+        console.log('\n  Safety:');
+        console.log('  No Facebook publish was performed.');
+        console.log('  ======================================================');
+      }
+    } catch (e) {}
+  }
+
   console.log('\n  To view complete historical reports:');
   console.log('    pnpm status -- --offline');
   console.log('  ======================================================\n');
