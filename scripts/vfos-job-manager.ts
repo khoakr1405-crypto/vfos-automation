@@ -58,6 +58,7 @@ interface JobManifest {
     captionedPreviewPath: string | null;
     operatorReviewPackPath: string | null;
     publishReadinessPath: string | null;
+    videoVisualAnalysisPath?: string | null;
   };
   state: JobState;
   review: {
