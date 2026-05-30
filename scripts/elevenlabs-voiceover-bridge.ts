@@ -36,6 +36,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { loadDotEnv } from '../packages/voice/src/load-env.js';
+import { calculateNormalizedHash } from './job-artifact-freshness.js';
 
 interface ScriptArtifact {
   hook3s?: string;
@@ -113,15 +114,16 @@ function writeArtifact(path: string, body: object): void {
   writeFileSync(path, JSON.stringify(body, null, 2) + '\n', 'utf8');
 }
 
-function buildBaseArtifact(runId: string, model: string, textSource: string, textLength: number) {
+function buildBaseArtifact(runId: string, model: string, textSource: string, textLength: number, textHash?: string) {
   return {
-    voiceArtifactVersion: 'v2',
+    voiceArtifactVersion: 'v3',
     runId,
     provider: 'elevenlabs',
     model,
     languageCode: 'vi',
     textSource,
     textLength,
+    scriptTextHash: textHash ?? null,
     generatedAt: new Date().toISOString(),
   };
 }
@@ -269,6 +271,25 @@ async function main(): Promise<void> {
   const wordCount = voiceText.split(/\s+/).filter(Boolean).length;
   const tooShort = voiceText.length < VOICE_TEXT_MIN_CHARS || wordCount < VOICE_TEXT_MIN_WORDS;
 
+  const currentScriptHash = calculateNormalizedHash(voiceText);
+
+  // Freshness check in dry-run/plan mode:
+  let freshnessStatus = 'NO_EXISTING_VOICE';
+  let existingHash = '';
+  if (existsSync(voiceArtifactPath)) {
+    try {
+      const existing = JSON.parse(readFileSync(voiceArtifactPath, 'utf8'));
+      existingHash = existing.scriptTextHash || '';
+      if (existingHash) {
+        freshnessStatus = (existingHash === currentScriptHash) ? '🟢 FRESH' : '⚠️ STALE';
+      } else {
+        freshnessStatus = '⚠️ LEGACY_NO_HASH';
+      }
+    } catch {
+      freshnessStatus = '⚠️ UNREADABLE_EXISTING_VOICE';
+    }
+  }
+
   const requestedModel = values.model ?? DEFAULT_MODEL;
   const wantsLive = !!values['confirm-api-call'] && !values['dry-run'];
 
@@ -284,6 +305,9 @@ async function main(): Promise<void> {
   console.log(`Text source:    ${textSource}`);
   console.log(`Text length:    ${voiceText.length} chars / ${wordCount} words`);
   console.log(`Text preview:   ${voiceText.slice(0, 100)}${voiceText.length > 100 ? '…' : ''}`);
+  console.log(`Current Hash:   ${currentScriptHash}`);
+  console.log(`Existing Hash:  ${existingHash || '(none)'}`);
+  console.log(`Freshness:      ${freshnessStatus}`);
   console.log(`Model request:  ${requestedModel}`);
   console.log(`Audio out:      ${audioPath}`);
   console.log(`Timing out:     ${timingArtifactPath}`);
@@ -294,7 +318,7 @@ async function main(): Promise<void> {
 
   if (tooShort && !values['allow-short-script']) {
     const artifact = {
-      ...buildBaseArtifact(effectiveRunId, requestedModel, textSource, voiceText.length),
+      ...buildBaseArtifact(effectiveRunId, requestedModel, textSource, voiceText.length, currentScriptHash),
       status: 'SCRIPT_TEXT_TOO_SHORT',
       apiCalled: false,
       tokensLogged: false,
@@ -310,12 +334,13 @@ async function main(): Promise<void> {
 
   if (!wantsLive) {
     const artifact = {
-      ...buildBaseArtifact(effectiveRunId, requestedModel, textSource, voiceText.length),
+      ...buildBaseArtifact(effectiveRunId, requestedModel, textSource, voiceText.length, currentScriptHash),
       status: 'DRY_RUN_PLAN_ONLY',
       apiCalled: false,
       tokensLogged: false,
       audioPath,
       timingArtifactPath,
+      freshnessStatus,
       fixtureSyncedPath: values['sync-fixture'] ? FIXTURE_AUDIO_PATH : null,
       notes: 'Dry-run plan only. No API call. Pass --confirm-api-call to generate audio.',
     };
@@ -402,11 +427,12 @@ async function main(): Promise<void> {
 
   // Persist timing artifact for caption sync round.
   const timingArtifact = {
-    timingVersion: 'v1',
+    timingVersion: 'v2',
     runId: effectiveRunId,
     provider: 'elevenlabs',
     model: modelUsed,
     alignmentType: 'character',
+    scriptTextHash: currentScriptHash,
     alignment: {
       characters: result.data.alignment.characters,
       characterStartTimesSeconds: result.data.alignment.character_start_times_seconds,
@@ -431,9 +457,10 @@ async function main(): Promise<void> {
   }
 
   const voiceArtifact = {
-    ...buildBaseArtifact(effectiveRunId, modelUsed, textSource, voiceText.length),
+    ...buildBaseArtifact(effectiveRunId, modelUsed, textSource, voiceText.length, currentScriptHash),
     voiceIdMasked: maskVoiceId(voiceId),
     status: 'SUCCESS',
+    freshnessStatus: 'FRESH',
     audioPath,
     timingArtifactPath,
     fixtureSyncedPath,

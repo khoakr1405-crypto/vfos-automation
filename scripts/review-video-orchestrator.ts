@@ -43,6 +43,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
+import { extractCombinedVoiceText, calculateNormalizedHash } from './job-artifact-freshness.js';
 import { parseArgs } from 'node:util';
 
 const DEFAULT_RUN_ID = 'run_review_product_p9';
@@ -734,6 +735,64 @@ async function main(): Promise<void> {
             console.log('Warnings during script quality validation:');
             for (const wrn of validation.warnings) {
               console.warn(`  ⚠️ ${wrn}`);
+            }
+          }
+        }
+
+        // --- FRESHNESS GATE (Round 43) ---
+        const currentScriptText = extractCombinedVoiceText(scriptPath);
+        if (currentScriptText) {
+          const currentScriptHash = calculateNormalizedHash(currentScriptText);
+
+          // 1. Check voice freshness
+          const voiceArtPath = join(jobOutputDir!, 'voice_artifact.json');
+          if (existsSync(voiceArtPath)) {
+            try {
+              const voiceArt = JSON.parse(readFileSync(voiceArtPath, 'utf8'));
+              if (!voiceArt.scriptTextHash || voiceArt.scriptTextHash !== currentScriptHash) {
+                console.error('\n🛑 STALE_JOB_VOICEOVER');
+                console.error('The generated voiceover is stale or missing hash compared to the current script.');
+                console.error('Operator action:');
+                console.error(`  pnpm voice:elevenlabs --job ${jobId} --confirm-api-call`);
+
+                if (jobManifest) {
+                  jobManifest.state = 'FAILED';
+                  jobManifest.lastError = 'STALE_JOB_VOICEOVER';
+                  saveJobManifest(jobManifest);
+                  updateRegistryFromManifest(jobManifest);
+                }
+
+                writeStatusArtifact({ ...baseArtifact, state: 'STALE_JOB_VOICEOVER' as any });
+                process.exit(12);
+              }
+            } catch (err: any) {
+              console.warn(`  ⚠️ Could not validate voice freshness: ${err.message}`);
+            }
+          }
+
+          // 2. Check timing freshness
+          const timingArtPath = join(jobOutputDir!, 'voice_timing_artifact.json');
+          if (existsSync(timingArtPath)) {
+            try {
+              const timingArt = JSON.parse(readFileSync(timingArtPath, 'utf8'));
+              if (!timingArt.scriptTextHash || timingArt.scriptTextHash !== currentScriptHash) {
+                console.error('\n🛑 STALE_JOB_TIMING_ARTIFACT');
+                console.error('The voice timing artifact is stale or missing hash compared to the current script.');
+                console.error('Operator action:');
+                console.error(`  pnpm voice:elevenlabs --job ${jobId} --confirm-api-call`);
+
+                if (jobManifest) {
+                  jobManifest.state = 'FAILED';
+                  jobManifest.lastError = 'STALE_JOB_TIMING_ARTIFACT';
+                  saveJobManifest(jobManifest);
+                  updateRegistryFromManifest(jobManifest);
+                }
+
+                writeStatusArtifact({ ...baseArtifact, state: 'STALE_JOB_TIMING_ARTIFACT' as any });
+                process.exit(13);
+              }
+            } catch (err: any) {
+              console.warn(`  ⚠️ Could not validate timing freshness: ${err.message}`);
             }
           }
         }

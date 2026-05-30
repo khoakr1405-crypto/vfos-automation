@@ -36,6 +36,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import { extractCombinedVoiceText, calculateNormalizedHash } from './job-artifact-freshness.js';
 
 interface TimingAlignment {
   characters: string[];
@@ -639,6 +640,30 @@ async function main(): Promise<void> {
   console.log(`Preset:         ${preset.name}`);
   console.log(`Mode:           ${values['dry-run'] ? '🔍 DRY-RUN' : '🎬 RENDER'}`);
   console.log('------------------------------------------------------');
+
+  if (jobId) {
+    const scriptPath = join(runDir, 'script_artifact.json');
+    if (existsSync(scriptPath)) {
+      const currentScriptText = extractCombinedVoiceText(scriptPath);
+      if (currentScriptText) {
+        const currentScriptHash = calculateNormalizedHash(currentScriptText);
+        if (existsSync(timingPath)) {
+          try {
+            const timingArt = JSON.parse(readFileSync(timingPath, 'utf8'));
+            if (!timingArt.scriptTextHash || timingArt.scriptTextHash !== currentScriptHash) {
+              console.error('🛑 STALE_JOB_TIMING_ARTIFACT');
+              console.error('The voice timing artifact is stale or missing hash compared to the current script.');
+              console.error('Please regenerate using:');
+              console.error(`  pnpm voice:elevenlabs --job ${jobId} --confirm-api-call`);
+              process.exit(14);
+            }
+          } catch (err: any) {
+            console.warn(`  ⚠️ Could not validate timing freshness: ${err.message}`);
+          }
+        }
+      }
+    }
+  }
 
   if (!existsSync(timingPath)) {
     if (jobId) {
