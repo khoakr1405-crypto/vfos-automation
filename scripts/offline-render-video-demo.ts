@@ -166,7 +166,14 @@ function main() {
           );
         }
         if (inputAudioPath && existsSync(inputAudioPath)) {
-          ffmpegArgs.push('-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-shortest');
+          ffmpegArgs.push(
+            '-map', '0:v:0',
+            '-map', '1:a:0',
+            '-c:v', 'libx264',
+            '-pix_fmt', 'yuv420p',
+            '-c:a', 'aac',
+            '-shortest'
+          );
         } else {
           ffmpegArgs.push('-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-an');
         }
