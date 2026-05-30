@@ -119,6 +119,12 @@ interface JobManifest {
   createdAt: string;
   updatedAt: string;
   lastError?: string | null;
+  duration?: {
+    sourceVideoDurationSec: number;
+    voiceDurationSec: number;
+    captionedPreviewDurationSec: number | null;
+    durationMatchStatus: 'PASS' | 'FAIL';
+  } | null;
 }
 
 interface Registry {
@@ -234,7 +240,135 @@ function updateRegistryFromManifest(manifest: JobManifest): void {
   saveRegistry(reg);
 }
 
-function validateAudioStream(filePath: string): { success: boolean; error?: string; reason?: string } {
+function getVideoDuration(filePath: string): number {
+  if (!existsSync(filePath)) return 0;
+  const args = [
+    '-v', 'error',
+    '-show_entries', 'format=duration',
+    '-of', 'default=noprint_wrappers=1:nokey=1',
+    filePath
+  ];
+  const result = spawnSync('ffprobe', args, { encoding: 'utf8' });
+  if (result.status === 0) {
+    const val = parseFloat(result.stdout.trim());
+    if (!isNaN(val)) return val;
+  }
+  return 0;
+}
+
+function getVoiceDuration(filePath: string): number {
+  return getVideoDuration(filePath);
+}
+
+interface ValidationResult {
+  passed: boolean;
+  errors: string[];
+  warnings: string[];
+  metrics: {
+    duplicateHookDetected: boolean;
+    repeatedProductNameCount: number;
+    tooLongForVideo: boolean;
+    ngramRepetitionDetected: boolean;
+  };
+}
+
+function validateScript(args: {
+  voiceoverText: string;
+  hook: string;
+  productName: string;
+  targetDurationSec: number;
+  estimatedSpeechDurationSec: number;
+}): ValidationResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const text = args.voiceoverText.trim();
+  const textLower = text.toLowerCase();
+  const hookLower = args.hook.trim().toLowerCase();
+  const prodLower = args.productName.trim().toLowerCase();
+
+  const words = text.split(/\s+/).filter(Boolean);
+  const wordCount = words.length;
+
+  let duplicateHookDetected = false;
+  let tooLongForVideo = false;
+  let ngramRepetitionDetected = false;
+
+  // 1. Duplicate hook validator:
+  let hookOccurrences = 0;
+  if (hookLower) {
+    let pos = 0;
+    while (true) {
+      const idx = textLower.indexOf(hookLower, pos);
+      if (idx === -1) break;
+      hookOccurrences += 1;
+      pos = idx + hookLower.length;
+    }
+  }
+  if (hookOccurrences > 1) {
+    duplicateHookDetected = true;
+    errors.push(`Duplicate hook detected: "${args.hook}" appears ${hookOccurrences} times in voiceoverText.`);
+  }
+
+  // 2. Product name repetition validator:
+  let prodOccurrences = 0;
+  if (prodLower) {
+    let pos = 0;
+    while (true) {
+      const idx = textLower.indexOf(prodLower, pos);
+      if (idx === -1) break;
+      prodOccurrences += 1;
+      pos = idx + prodLower.length;
+    }
+  }
+  if (prodOccurrences > 2) {
+    errors.push(`Product name "${args.productName}" appears ${prodOccurrences} times (max allowed: 2). Use a shorter name.`);
+  } else if (prodOccurrences > 1) {
+    warnings.push(`Product name appears ${prodOccurrences} times. Keep it to 1-2 times.`);
+  }
+
+  // 3. N-gram repetition (4-6 words):
+  const ngramSizes = [4, 5, 6];
+  for (const size of ngramSizes) {
+    if (words.length >= size) {
+      const seen = new Set<string>();
+      for (let i = 0; i <= words.length - size; i++) {
+        const ngram = words.slice(i, i + size).join(' ').toLowerCase();
+        if (seen.has(ngram)) {
+          ngramRepetitionDetected = true;
+          errors.push(`N-gram repetition detected (${size} words): "${ngram}"`);
+          break;
+        }
+        seen.add(ngram);
+      }
+    }
+    if (ngramRepetitionDetected) break;
+  }
+
+  // 4. Duration estimate:
+  if (args.estimatedSpeechDurationSec > args.targetDurationSec) {
+    tooLongForVideo = true;
+    errors.push(`Script is too long for the video: estimated speech duration (${args.estimatedSpeechDurationSec.toFixed(1)}s) exceeds target duration (${args.targetDurationSec.toFixed(1)}s).`);
+  }
+
+  // 5. Empty/too short:
+  if (wordCount < 15) {
+    errors.push(`Script is too short: got only ${wordCount} words (minimum required: 15).`);
+  }
+
+  return {
+    passed: errors.length === 0,
+    errors,
+    warnings,
+    metrics: {
+      duplicateHookDetected,
+      repeatedProductNameCount: prodOccurrences,
+      tooLongForVideo,
+      ngramRepetitionDetected,
+    }
+  };
+}
+
+function validateAudioStream(filePath: string): { success: boolean; error?: string; reason?: string; duration?: number } {
   if (!existsSync(filePath)) {
     return { success: false, error: 'FILE_NOT_FOUND', reason: `File not found at: ${filePath}` };
   }
@@ -279,7 +413,7 @@ function validateAudioStream(filePath: string): { success: boolean; error?: stri
       return { success: false, error: 'INVALID_CODEC', reason: `Audio codec is invalid or unknown: ${codec}` };
     }
 
-    return { success: true };
+    return { success: true, duration };
   } catch (err: any) {
     return { success: false, error: 'PARSE_FAILED', reason: `Failed to parse ffprobe output: ${err.message}` };
   }
@@ -480,9 +614,59 @@ async function main(): Promise<void> {
       console.log(`🛑 MISSING_JOB_SCRIPT_ARTIFACT`);
       console.log(`Job ${jobId} has no script artifact generated.`);
       console.log('Operator action:');
-      console.log(`  pnpm job:script --job ${jobId}`);
+      console.log(`  pnpm job:script --job ${jobId} --confirm-openai`);
       writeStatusArtifact({ ...baseArtifact, state: 'MISSING_JOB_SCRIPT_ARTIFACT' });
       process.exit(8);
+    }
+
+    // --- SCRIPT QUALITY GATE ---
+    const scriptPath = join(jobOutputDir!, 'script_artifact.json');
+    if (existsSync(scriptPath)) {
+      try {
+        const scriptData = JSON.parse(readFileSync(scriptPath, 'utf8'));
+        if (scriptData.quality?.templateFallback) {
+          console.log('⚠️  [Safe Mode] Script is a template fallback (TEMPLATE_FALLBACK_NOT_FINAL).');
+        }
+
+        let sourceVideoDurationSec = 30.58;
+        if (jobSourceVideoAbs && existsSync(jobSourceVideoAbs)) {
+          const dur = getVideoDuration(jobSourceVideoAbs);
+          if (dur > 0) sourceVideoDurationSec = dur;
+        }
+
+        const validation = validateScript({
+          voiceoverText: scriptData.voiceoverText,
+          hook: scriptData.hook,
+          productName: scriptData.productName,
+          targetDurationSec: scriptData.targetDurationSec || sourceVideoDurationSec,
+          estimatedSpeechDurationSec: scriptData.estimatedSpeechDurationSec || 26.5
+        });
+
+        if (!validation.passed) {
+          console.error('🛑 SCRIPT_QUALITY_VALIDATION_FAILED');
+          console.error('The existing script artifact failed the quality validator:');
+          for (const err of validation.errors) {
+            console.error(`  - ${err}`);
+          }
+          console.error('Please regenerate script with:');
+          console.error(`  pnpm job:script --job ${jobId} --confirm-openai`);
+
+          if (jobManifest) {
+            jobManifest.state = 'FAILED';
+            jobManifest.lastError = 'SCRIPT_QUALITY_VALIDATION_FAILED';
+            saveJobManifest(jobManifest);
+            updateRegistryFromManifest(jobManifest);
+          }
+
+          writeStatusArtifact({ ...baseArtifact, state: 'SCRIPT_QUALITY_VALIDATION_FAILED' as any });
+          process.exit(11);
+        } else {
+          console.log('🟢 Script quality validation PASSED.');
+        }
+      } catch (err: any) {
+        console.error(`🛑 FAILED_TO_PARSE_SCRIPT_ARTIFACT: ${err.message}`);
+        process.exit(12);
+      }
     }
   }
 
@@ -549,6 +733,68 @@ async function main(): Promise<void> {
         ? 'STEP 1/3 — Job voiceover + timing artifacts present, skipping ElevenLabs call. ✅'
         : 'STEP 1/3 — Voiceover fixture present, skipping ElevenLabs call. ✅'
     );
+  }
+
+  // --- VOICE DURATION GATE ---
+  if (jobId && jobSourceVideoAbs && existsSync(jobSourceVideoAbs)) {
+    const sourceVideoDurationSec = getVideoDuration(jobSourceVideoAbs);
+    const jobVoiceoverPath = join(jobOutputDir!, 'voiceover.mp3');
+    let voiceDurationSec = 0;
+    if (existsSync(jobVoiceoverPath)) {
+      voiceDurationSec = getVoiceDuration(jobVoiceoverPath);
+    }
+
+    console.log('\n======================================================');
+    console.log('⏱️  VFOS Duration Matching Gate');
+    console.log('======================================================');
+    console.log(`Source video duration: ${sourceVideoDurationSec.toFixed(2)}s`);
+    console.log(`Voiceover duration:    ${voiceDurationSec.toFixed(2)}s`);
+    
+    const maxAllowedVoiceSec = sourceVideoDurationSec - 0.5;
+    console.log(`Max allowed voice:     ${maxAllowedVoiceSec.toFixed(2)}s (video - 0.5s safety)`);
+    
+    let durationMatchStatus: 'PASS' | 'FAIL' = 'PASS';
+    if (voiceDurationSec > maxAllowedVoiceSec) {
+      durationMatchStatus = 'FAIL';
+      console.log('🛑 FAIL: VOICE_LONGER_THAN_VIDEO');
+      console.log(`Voice duration (${voiceDurationSec.toFixed(2)}s) exceeds max allowed (${maxAllowedVoiceSec.toFixed(2)}s).`);
+      console.log('To prevent cutting off speech at the end of render, rendering is BLOCKED.');
+      
+      if (jobManifest) {
+        jobManifest.duration = {
+          sourceVideoDurationSec,
+          voiceDurationSec,
+          captionedPreviewDurationSec: null,
+          durationMatchStatus
+        };
+        jobManifest.state = 'FAILED';
+        jobManifest.lastError = 'VOICE_LONGER_THAN_VIDEO';
+        saveJobManifest(jobManifest);
+        updateRegistryFromManifest(jobManifest);
+      }
+      
+      writeStatusArtifact({
+        ...baseArtifact,
+        elevenLabsApiCalled,
+        chayExecuted: false,
+        captionExecuted: false,
+        state: 'VOICE_LONGER_THAN_VIDEO' as any
+      });
+      process.exit(10);
+    } else {
+      console.log('🟢 PASS: Voiceover duration fits within source video duration.');
+      if (jobManifest) {
+        jobManifest.duration = {
+          sourceVideoDurationSec,
+          voiceDurationSec,
+          captionedPreviewDurationSec: null,
+          durationMatchStatus
+        };
+        saveJobManifest(jobManifest);
+        updateRegistryFromManifest(jobManifest);
+      }
+    }
+    console.log('======================================================\n');
   }
 
   // ---------- STEP 2: render preview ----------
@@ -684,6 +930,10 @@ async function main(): Promise<void> {
     process.exit(10);
   } else {
     console.log(`✅ [AudioGuard] Captioned output audio stream OK.`);
+    if (jobId && jobManifest && jobManifest.duration) {
+      jobManifest.duration.captionedPreviewDurationSec = captionedAudioCheck.duration || null;
+      saveJobManifest(jobManifest);
+    }
   }
 
   // Print successful guardrail check logs in the exact format requested

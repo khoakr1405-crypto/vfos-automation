@@ -21,6 +21,8 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import { spawnSync } from 'node:child_process';
+import { loadDotEnv } from '../packages/voice/src/load-env.js';
 
 const JOBS_ROOT = 'data/temp/jobs';
 const REGISTRY_PATH = 'data/temp/vfos_jobs_registry.json';
@@ -182,6 +184,134 @@ function extractProductId(productCard: Record<string, unknown>): string | null {
     if (typeof val === 'number') return String(val);
   }
   return null;
+}
+
+function getVideoDuration(filePath: string): number {
+  if (!existsSync(filePath)) return 0;
+  const args = [
+    '-v', 'error',
+    '-show_entries', 'format=duration',
+    '-of', 'default=noprint_wrappers=1:nokey=1',
+    filePath
+  ];
+  const result = spawnSync('ffprobe', args, { encoding: 'utf8' });
+  if (result.status === 0) {
+    const val = parseFloat(result.stdout.trim());
+    if (!isNaN(val)) return val;
+  }
+  return 0;
+}
+
+function getVoiceDuration(filePath: string): number {
+  return getVideoDuration(filePath); // Alias since ffprobe does both the same way
+}
+
+interface ValidationResult {
+  passed: boolean;
+  errors: string[];
+  warnings: string[];
+  metrics: {
+    duplicateHookDetected: boolean;
+    repeatedProductNameCount: number;
+    tooLongForVideo: boolean;
+    ngramRepetitionDetected: boolean;
+  };
+}
+
+function validateScript(args: {
+  voiceoverText: string;
+  hook: string;
+  productName: string;
+  targetDurationSec: number;
+  estimatedSpeechDurationSec: number;
+}): ValidationResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const text = args.voiceoverText.trim();
+  const textLower = text.toLowerCase();
+  const hookLower = args.hook.trim().toLowerCase();
+  const prodLower = args.productName.trim().toLowerCase();
+
+  const words = text.split(/\s+/).filter(Boolean);
+  const wordCount = words.length;
+
+  let duplicateHookDetected = false;
+  let tooLongForVideo = false;
+  let ngramRepetitionDetected = false;
+
+  // 1. Duplicate hook validator:
+  let hookOccurrences = 0;
+  if (hookLower) {
+    let pos = 0;
+    while (true) {
+      const idx = textLower.indexOf(hookLower, pos);
+      if (idx === -1) break;
+      hookOccurrences += 1;
+      pos = idx + hookLower.length;
+    }
+  }
+  if (hookOccurrences > 1) {
+    duplicateHookDetected = true;
+    errors.push(`Duplicate hook detected: "${args.hook}" appears ${hookOccurrences} times in voiceoverText.`);
+  }
+
+  // 2. Product name repetition validator:
+  let prodOccurrences = 0;
+  if (prodLower) {
+    let pos = 0;
+    while (true) {
+      const idx = textLower.indexOf(prodLower, pos);
+      if (idx === -1) break;
+      prodOccurrences += 1;
+      pos = idx + prodLower.length;
+    }
+  }
+  if (prodOccurrences > 2) {
+    errors.push(`Product name "${args.productName}" appears ${prodOccurrences} times (max allowed: 2). Use a shorter name.`);
+  } else if (prodOccurrences > 1) {
+    warnings.push(`Product name appears ${prodOccurrences} times. Keep it to 1-2 times.`);
+  }
+
+  // 3. N-gram repetition (4-6 words):
+  const ngramSizes = [4, 5, 6];
+  for (const size of ngramSizes) {
+    if (words.length >= size) {
+      const seen = new Set<string>();
+      for (let i = 0; i <= words.length - size; i++) {
+        const ngram = words.slice(i, i + size).join(' ').toLowerCase();
+        if (seen.has(ngram)) {
+          ngramRepetitionDetected = true;
+          errors.push(`N-gram repetition detected (${size} words): "${ngram}"`);
+          break;
+        }
+        seen.add(ngram);
+      }
+    }
+    if (ngramRepetitionDetected) break;
+  }
+
+  // 4. Duration estimate:
+  if (args.estimatedSpeechDurationSec > args.targetDurationSec) {
+    tooLongForVideo = true;
+    errors.push(`Script is too long for the video: estimated speech duration (${args.estimatedSpeechDurationSec.toFixed(1)}s) exceeds target duration (${args.targetDurationSec.toFixed(1)}s).`);
+  }
+
+  // 5. Empty/too short:
+  if (wordCount < 15) {
+    errors.push(`Script is too short: got only ${wordCount} words (minimum required: 15).`);
+  }
+
+  return {
+    passed: errors.length === 0,
+    errors,
+    warnings,
+    metrics: {
+      duplicateHookDetected,
+      repeatedProductNameCount: prodOccurrences,
+      tooLongForVideo,
+      ngramRepetitionDetected,
+    }
+  };
 }
 
 function upsertRegistryEntry(reg: Registry, entry: RegistryEntry): void {
@@ -499,19 +629,21 @@ function cmdList(_args: string[]): number {
   return 0;
 }
 
-// ---------- script (Round 39) ----------
+// ---------- script (Round 39/40) ----------
 function cmdScript(args: string[]): number {
   const parsed = parseArgs({
     args,
     options: {
       job: { type: 'string' },
       'dry-run': { type: 'boolean', default: false },
+      'confirm-openai': { type: 'boolean', default: false },
     },
     allowPositionals: false,
     strict: true,
   });
   const jobId = parsed.values.job as string | undefined;
   const dryRun = Boolean(parsed.values['dry-run']);
+  const confirmOpenai = Boolean(parsed.values['confirm-openai']);
 
   if (!jobId) {
     console.error('Error: --job <jobId> is required');
@@ -550,36 +682,30 @@ function cmdScript(args: string[]): number {
     ? (priceRaw >= 1000 ? `${Math.round(priceRaw / 1000)}K` : `${priceRaw}`)
     : typeof priceRaw === 'string' ? priceRaw : null;
 
-  const hook = `Ê khoan lướt qua nha, cái ${productName.slice(0, 50)} này siêu hot luôn!`;
-  const priceLine = priceStr ? `Giá chỉ ${priceStr} thôi, quá hời luôn.` : '';
-  const voiceoverBody = [
-    hook,
-    `Đây là sản phẩm ${productName} mà mình muốn review cho mọi người.`,
-    `Chất lượng thì xịn lắm, mình đã test thử rồi nè.`,
-    priceLine,
-    `Thiết kế nhỏ gọn, tiện lợi, dùng được ở mọi nơi.`,
-    `Nếu bạn đang tìm một sản phẩm tốt với giá hợp lý thì đây là lựa chọn đỉnh nhất.`,
-    `Bấm link bên dưới để mua ngay nha, số lượng có hạn!`,
-  ].filter(Boolean).join(' ');
+  // Probe source video duration using ffprobe
+  const sourceVideoAbs = manifest.source.sourceVideoPath
+    ? resolve(manifest.source.sourceVideoPath)
+    : null;
 
-  const captionDraft = `${productName} — Review nhanh! ${priceStr ? `Giá ${priceStr}` : ''} #vfos #review #dealhot`;
+  let sourceVideoDurationSec = 30.58; // Default fallback if not found
+  if (sourceVideoAbs && existsSync(sourceVideoAbs)) {
+    const dur = getVideoDuration(sourceVideoAbs);
+    if (dur > 0) {
+      sourceVideoDurationSec = dur;
+    }
+  }
 
-  const scriptArtifact = {
-    scriptArtifactVersion: 'v1',
-    jobId,
-    runId: manifest.runId,
-    productName,
-    language: 'vi',
-    style: 'young_fun_bold_review',
-    hook3s: hook,
-    voiceover: voiceoverBody,
-    voiceoverText: voiceoverBody,
-    captionDraft,
-    hashtags: ['#vfos', '#review', '#dealhot'],
-    source: 'job_product_card_template',
-    apiCalled: false,
-    generatedAt: isoNow(),
-  };
+  // Under 8s rule
+  if (sourceVideoDurationSec < 8) {
+    console.error('🛑 SOURCE_VIDEO_TOO_SHORT_FOR_REVIEW');
+    console.error(`  Source video duration (${sourceVideoDurationSec.toFixed(2)}s) is under 8 seconds.`);
+    return 5;
+  }
+
+  // Duration planning
+  const safetyBufferSec = 1.5;
+  const targetVoiceDurationSec = Math.max(5, sourceVideoDurationSec - safetyBufferSec);
+  const targetWordCount = Math.floor(targetVoiceDurationSec * 2.5);
 
   const scriptPath = resolve(JOBS_ROOT, jobId, 'script_artifact.json');
 
@@ -589,30 +715,261 @@ function cmdScript(args: string[]): number {
   console.log(`Job ID:            ${jobId}`);
   console.log(`Product name:      ${productName}`);
   console.log(`Price:             ${priceStr ?? '(unknown)'}`);
-  console.log(`Script source:     template (no API)`);
-  console.log(`Voiceover length:  ${voiceoverBody.length} chars / ${voiceoverBody.split(/\s+/).length} words`);
+  console.log(`Source Video:      ${manifest.source.sourceVideoPath ?? 'None'}`);
+  console.log(`Video duration:    ${sourceVideoDurationSec.toFixed(2)}s`);
+  console.log(`Target voice dur:  ${targetVoiceDurationSec.toFixed(2)}s`);
+  console.log(`Target word count: ${targetWordCount} words`);
   console.log(`Output:            ${JOBS_ROOT}/${jobId}/script_artifact.json`);
   console.log('------------------------------------------------------');
-  console.log(`Hook:              ${hook}`);
-  console.log(`Caption:           ${captionDraft}`);
-  console.log('------------------------------------------------------');
 
-  if (dryRun) {
-    console.log('Dry-run: no file written, no manifest mutation.');
+  if (confirmOpenai) {
+    loadDotEnv();
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      console.error('🛑 MISSING_OPENAI_CREDENTIALS');
+      console.error('  OPENAI_API_KEY environment variable is missing.');
+      return 1;
+    }
+
+    const prompt = `
+Bạn là một AI chuyên viết kịch bản review sản phẩm ngắn cho kênh TikTok/Reels triệu view của VFOS.
+Hãy viết kịch bản cho sản phẩm sau đây:
+- Tên sản phẩm: "${productName}"
+- Thời lượng video nguồn: ${sourceVideoDurationSec.toFixed(1)} giây.
+- Thời lượng lời thoại mục tiêu (targetDurationSec): ${targetVoiceDurationSec.toFixed(1)} giây.
+- Số từ mục tiêu (targetWordCount): khoảng ${targetWordCount} từ.
+
+Yêu cầu kịch bản bắt buộc:
+1. Ngôn ngữ: Tiếng Việt tự nhiên, hài hước, vui vẻ, táo bạo vừa phải, bắt trend giới trẻ tự nhiên. Không dùng câu từ sáo rỗng hoặc quá máy móc.
+2. Không nói quá sự thật, không mang tính phản cảm.
+3. Không lặp hook hoặc các câu nói/cụm từ lặp lại.
+4. Tránh lặp lại tên sản phẩm đầy đủ quá nhiều lần. Thay vào đó hãy đặt ra một tên ngắn thông minh (shortProductName) và dùng tên ngắn này trong lời thoại.
+5. Số từ của toàn bộ lời thoại (hook + voiceoverText) PHẢI khớp với mục tiêu targetWordCount (khoảng ${targetWordCount} từ), sao cho khi đọc lên ở tốc độ bình thường (khoảng 2.5 từ mỗi giây), tổng thời lượng đọc (estimatedSpeechDurationSec) sẽ dưới targetDurationSec (${targetVoiceDurationSec.toFixed(1)} giây) để không bị cắt video.
+6. Lời thoại kết thúc bằng một câu kêu gọi hành động (CTA) nhẹ nhàng, tự nhiên (ví dụ: "link bio nha", "ghé giỏ hàng/bio mình nhé").
+7. Tránh dùng emoji trong văn bản lời thoại.
+
+Hãy trả về duy nhất một đối tượng JSON có định dạng chính xác sau đây (không được có markdown trần hay bất cứ chữ gì ngoài JSON):
+{
+  "shortProductName": "tên ngắn gọn, thông minh của sản phẩm",
+  "hook": "câu hook mở đầu dài từ 10-15 từ gây ấn tượng mạnh",
+  "voiceoverText": "toàn bộ kịch bản lời thoại, bao gồm cả câu hook ở đầu và câu CTA ở cuối, tạo thành một đoạn văn liền mạch",
+  "captionDraft": "caption ngắn gọn cho video kèm hashtag",
+  "hashtags": ["#vfos", "#review", "#dealhot"],
+  "estimatedSpeechDurationSec": thời_gian_đọc_ước_tính_bằng_giây,
+  "notes": ["các lưu ý ngắn gọn của bạn"]
+}
+`;
+
+    if (dryRun) {
+      console.log('🔍 [Dry-Run Plan Only]');
+      console.log('Would call OpenAI API (gpt-4o-mini) with prompt:');
+      console.log(prompt);
+      console.log('------------------------------------------------------');
+      return 0;
+    }
+
+    let validation: ValidationResult | null = null;
+    let aiData: any = null;
+    const maxRetries = 2;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      console.log(`Calling OpenAI API (Attempt ${attempt}/${maxRetries})...`);
+      try {
+        const response = spawnSync('node', ['-e', `
+          fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer ' + process.env.OPENAI_API_KEY
+            },
+            body: JSON.stringify({
+              model: 'gpt-4o-mini',
+              response_format: { type: 'json_object' },
+              messages: [
+                { role: 'system', content: 'You are an AI assistant that only outputs JSON.' },
+                { role: 'user', content: ${JSON.stringify(prompt)} }
+              ],
+              temperature: 0.7
+            })
+          })
+          .then(r => r.json())
+          .then(d => console.log(JSON.stringify(d)))
+          .catch(e => console.error(e));
+        `], { env: { ...process.env, OPENAI_API_KEY: apiKey }, encoding: 'utf8' });
+
+        if (response.status !== 0) {
+          throw new Error(`OpenAI process exited with code ${response.status}: ${response.stderr}`);
+        }
+
+        const resObj = JSON.parse(response.stdout.trim());
+        if (resObj.error) {
+          throw new Error(`OpenAI API error: ${resObj.error.message}`);
+        }
+
+        const choice = resObj.choices?.[0];
+        const contentStr = choice?.message?.content;
+        if (!contentStr) {
+          throw new Error('OpenAI returned empty message content.');
+        }
+
+        aiData = JSON.parse(contentStr.trim());
+        const voiceoverText = aiData.voiceoverText || '';
+        const hook = aiData.hook || '';
+        const estimatedSpeechDurationSec = typeof aiData.estimatedSpeechDurationSec === 'number'
+          ? aiData.estimatedSpeechDurationSec
+          : parseFloat(aiData.estimatedSpeechDurationSec || '26.5');
+
+        // Run validation
+        validation = validateScript({
+          voiceoverText,
+          hook,
+          productName,
+          targetDurationSec: targetVoiceDurationSec,
+          estimatedSpeechDurationSec,
+        });
+
+        if (validation.passed) {
+          console.log('🟢 AI script successfully generated and validation PASSED.');
+          break;
+        } else {
+          console.warn(`⚠️  Validation failed on attempt ${attempt}:`);
+          for (const err of validation.errors) {
+            console.warn(`  - ${err}`);
+          }
+        }
+      } catch (err: any) {
+        console.error(`Attempt ${attempt} failed: ${err.message}`);
+        if (attempt === maxRetries) {
+          console.error('🛑 OPENAI_API_FAILURE');
+          return 6;
+        }
+      }
+    }
+
+    if (!validation || !validation.passed) {
+      console.error('🛑 SCRIPT_QUALITY_VALIDATION_FAILED');
+      console.error('Generated script failed all generation attempts.');
+      return 7;
+    }
+
+    // Persist AI generated script version v2
+    const scriptArtifact = {
+      scriptArtifactVersion: 'v2',
+      jobId,
+      runId: manifest.runId,
+      productName,
+      language: 'vi',
+      style: 'young_fun_bold_review',
+      targetDurationSec: targetVoiceDurationSec,
+      estimatedSpeechDurationSec: aiData.estimatedSpeechDurationSec,
+      targetWordCount,
+      hook: aiData.hook,
+      hook3s: aiData.hook, // alias
+      voiceover: aiData.voiceoverText, // alias
+      voiceoverText: aiData.voiceoverText,
+      captionDraft: aiData.captionDraft || `${productName} #vfos #review #dealhot`,
+      hashtags: aiData.hashtags || ['#vfos', '#review', '#dealhot'],
+      quality: {
+        duplicateHookDetected: validation.metrics.duplicateHookDetected,
+        repeatedProductNameCount: validation.metrics.repeatedProductNameCount,
+        tooLongForVideo: validation.metrics.tooLongForVideo,
+        templateFallback: false,
+        aiGenerated: true,
+      },
+      source: 'openai_responses_api',
+      apiCalled: true,
+      generatedAt: isoNow(),
+    };
+
+    if (dryRun) {
+      console.log('Dry-run: no file written, no manifest mutation.');
+      return 0;
+    }
+
+    mkdirSync(dirname(scriptPath), { recursive: true });
+    writeFileSync(scriptPath, `${JSON.stringify(scriptArtifact, null, 2)}\n`, 'utf8');
+
+    manifest.artifacts.scriptArtifactPath = `${JOBS_ROOT}/${jobId}/script_artifact.json`;
+    saveManifest(manifest);
+
+    console.log(`✅ Script artifact written.`);
+    return 0;
+  } else {
+    // Safe mode fallback template
+    if (existsSync(scriptPath)) {
+      console.log('ℹ️  Script artifact already exists in job folder:');
+      try {
+        const existing = JSON.parse(readFileSync(scriptPath, 'utf8'));
+        console.log(`  Source:     ${existing.source}`);
+        console.log(`  Hook:       ${existing.hook}`);
+        console.log(`  Voiceover:  ${existing.voiceoverText?.slice(0, 100)}...`);
+        console.log(`  AI Gen:     ${existing.quality?.aiGenerated ? 'Yes' : 'No'}`);
+      } catch (err: any) {
+        console.warn(`  (Could not parse existing script artifact: ${err.message})`);
+      }
+      return 0;
+    }
+
+    console.log('⚠️  [Safe ModeFallback] TEMPLATE_FALLBACK_NOT_FINAL');
+    console.log('OpenAI API confirm flag missing. Writing default template fallback script...');
+
+    const hook = `Ê khoan lướt qua nha, cái ${productName.slice(0, 50)} này siêu hot luôn!`;
+    const priceLine = priceStr ? `Giá chỉ ${priceStr} thôi, quá hời luôn.` : '';
+    const voiceoverBody = [
+      hook,
+      `Đây là sản phẩm ${productName} mà mình muốn review cho mọi người.`,
+      `Chất lượng thì xịn lắm, mình đã test thử rồi nè.`,
+      priceLine,
+      `Thiết kế nhỏ gọn, tiện lợi, dùng được ở mọi nơi.`,
+      `Nếu bạn đang tìm một sản phẩm tốt với giá hợp lý thì đây là lựa chọn đỉnh nhất.`,
+      `Bấm link bên dưới để mua ngay nha, số lượng có hạn!`,
+    ].filter(Boolean).join(' ');
+
+    const captionDraft = `${productName} — Review nhanh! ${priceStr ? `Giá ${priceStr}` : ''} #vfos #review #dealhot`;
+
+    const scriptArtifact = {
+      scriptArtifactVersion: 'v2',
+      jobId,
+      runId: manifest.runId,
+      productName,
+      language: 'vi',
+      style: 'young_fun_bold_review',
+      targetDurationSec: targetVoiceDurationSec,
+      estimatedSpeechDurationSec: 26.5,
+      targetWordCount,
+      hook,
+      hook3s: hook, // alias
+      voiceover: voiceoverBody, // alias
+      voiceoverText: voiceoverBody,
+      captionDraft,
+      hashtags: ['#vfos', '#review', '#dealhot'],
+      quality: {
+        duplicateHookDetected: false,
+        repeatedProductNameCount: 1,
+        tooLongForVideo: false,
+        templateFallback: true,
+        aiGenerated: false,
+      },
+      source: 'job_product_card_template_fallback',
+      apiCalled: false,
+      generatedAt: isoNow(),
+    };
+
+    if (dryRun) {
+      console.log('Dry-run: no file written, no manifest mutation.');
+      return 0;
+    }
+
+    mkdirSync(dirname(scriptPath), { recursive: true });
+    writeFileSync(scriptPath, `${JSON.stringify(scriptArtifact, null, 2)}\n`, 'utf8');
+
+    manifest.artifacts.scriptArtifactPath = `${JOBS_ROOT}/${jobId}/script_artifact.json`;
+    saveManifest(manifest);
+
+    console.log(`✅ Default template fallback script written.`);
+    console.log('------------------------------------------------------');
     return 0;
   }
-
-  mkdirSync(dirname(scriptPath), { recursive: true });
-  writeFileSync(scriptPath, `${JSON.stringify(scriptArtifact, null, 2)}\n`, 'utf8');
-
-  manifest.artifacts.scriptArtifactPath = `${JOBS_ROOT}/${jobId}/script_artifact.json`;
-  saveManifest(manifest);
-
-  console.log(`✅ Script artifact written.`);
-  console.log(`Next steps:`);
-  console.log(`  pnpm voice:elevenlabs --job ${jobId} --dry-run`);
-  console.log(`  pnpm voice:elevenlabs --job ${jobId} --confirm-api-call`);
-  return 0;
 }
 
 // ---------- entry ----------
