@@ -270,6 +270,7 @@ interface ValidationResult {
     repeatedProductNameCount: number;
     tooLongForVideo: boolean;
     ngramRepetitionDetected: boolean;
+    visionGrounded?: boolean;
   };
 }
 
@@ -279,6 +280,7 @@ function validateScript(args: {
   productName: string;
   targetDurationSec: number;
   estimatedSpeechDurationSec: number;
+  visionAnalysis?: any;
 }): ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -293,6 +295,7 @@ function validateScript(args: {
   let duplicateHookDetected = false;
   let tooLongForVideo = false;
   let ngramRepetitionDetected = false;
+  let visionGrounded = false;
 
   // 1. Duplicate hook validator:
   let hookOccurrences = 0;
@@ -356,6 +359,50 @@ function validateScript(args: {
     errors.push(`Script is too short: got only ${wordCount} words (minimum required: 15).`);
   }
 
+  // 6. Vision Grounding Rules (Round 42):
+  if (args.visionAnalysis && args.visionAnalysis.analysis) {
+    visionGrounded = true;
+    const analysis = args.visionAnalysis.analysis;
+
+    // 6a. Product visibility low -> Warning only (does not fail)
+    if (analysis.mainProductVisible === false || (analysis.productConfidence ?? 1.0) < 0.5) {
+      warnings.push(`LOW_PRODUCT_VISIBILITY: Main product visibility is low or confidence is under 50% (${(analysis.productConfidence ?? 1.0) * 100}%). Review source video.`);
+    }
+
+    // 6b. Mismatch warnings check: if script mentions items in mismatchWarnings, add warning
+    const mismatchWarnings = analysis.mismatchWarnings || [];
+    const mismatchFound: string[] = [];
+    for (const w of mismatchWarnings) {
+      const wWords = w.toLowerCase().split(/\s+/).filter((x: string) => x.length > 2);
+      if (wWords.length > 0) {
+        const found = wWords.some((wd: string) => textLower.includes(wd));
+        if (found) {
+          mismatchFound.push(w);
+        }
+      }
+    }
+    if (mismatchFound.length > 0) {
+      warnings.push(`Script mentions features flagged in video mismatch warnings: "${mismatchFound.join(', ')}".`);
+    }
+
+    // 6c. Demonstrated features check: script should ideally mention at least some keyword from demonstratedFeatures
+    const demonstratedFeatures = analysis.demonstratedFeatures || [];
+    if (demonstratedFeatures.length > 0) {
+      let matchedFeature = false;
+      for (const feature of demonstratedFeatures) {
+        const keywords = feature.toLowerCase().split(/[\s,]+/);
+        const hasMatch = keywords.some((kw: string) => kw.length >= 3 && textLower.includes(kw));
+        if (hasMatch) {
+          matchedFeature = true;
+          break;
+        }
+      }
+      if (!matchedFeature) {
+        warnings.push(`Script does not mention any demonstrated features from source video analysis: "${demonstratedFeatures.join(', ')}".`);
+      }
+    }
+  }
+
   return {
     passed: errors.length === 0,
     errors,
@@ -365,6 +412,7 @@ function validateScript(args: {
       repeatedProductNameCount: prodOccurrences,
       tooLongForVideo,
       ngramRepetitionDetected,
+      visionGrounded
     }
   };
 }
@@ -615,6 +663,7 @@ async function main(): Promise<void> {
       console.log(`🛑 MISSING_JOB_SCRIPT_ARTIFACT`);
       console.log(`Job ${jobId} has no script artifact generated.`);
       console.log('Operator action:');
+      console.log(`  pnpm job:vision --job ${jobId} --confirm-openai  (optional, recommended)`);
       console.log(`  pnpm job:script --job ${jobId} --confirm-openai`);
       writeStatusArtifact({ ...baseArtifact, state: 'MISSING_JOB_SCRIPT_ARTIFACT' });
       process.exit(8);
@@ -629,6 +678,23 @@ async function main(): Promise<void> {
           console.log('⚠️  [Safe Mode] Script is a template fallback (TEMPLATE_FALLBACK_NOT_FINAL).');
         }
 
+        const visionPath = join(jobOutputDir!, 'video_visual_analysis.json');
+        let visionArtifact: any = null;
+        if (existsSync(visionPath)) {
+          try {
+            visionArtifact = JSON.parse(readFileSync(visionPath, 'utf8'));
+          } catch (e) {
+            console.warn(`  ⚠️ Could not parse video_visual_analysis.json: ${(e as Error).message}`);
+          }
+        }
+
+        // Warning: SCRIPT_NOT_VISION_GROUNDED (Round 42)
+        if (visionArtifact && (!scriptData.visualContext || !scriptData.visualContext.used)) {
+          console.warn('⚠️  [Warning] SCRIPT_NOT_VISION_GROUNDED: Vision analysis exists but this script was not generated with vision grounding.');
+          console.warn('   Consider regenerating the script using:');
+          console.warn(`     pnpm job:script --job ${jobId} --confirm-openai`);
+        }
+
         let sourceVideoDurationSec = 30.58;
         if (jobSourceVideoAbs && existsSync(jobSourceVideoAbs)) {
           const dur = getVideoDuration(jobSourceVideoAbs);
@@ -640,7 +706,8 @@ async function main(): Promise<void> {
           hook: scriptData.hook,
           productName: scriptData.productName,
           targetDurationSec: scriptData.targetDurationSec || sourceVideoDurationSec,
-          estimatedSpeechDurationSec: scriptData.estimatedSpeechDurationSec || 26.5
+          estimatedSpeechDurationSec: scriptData.estimatedSpeechDurationSec || 26.5,
+          visionAnalysis: visionArtifact
         });
 
         if (!validation.passed) {
@@ -663,6 +730,12 @@ async function main(): Promise<void> {
           process.exit(11);
         } else {
           console.log('🟢 Script quality validation PASSED.');
+          if (validation.warnings.length > 0) {
+            console.log('Warnings during script quality validation:');
+            for (const wrn of validation.warnings) {
+              console.warn(`  ⚠️ ${wrn}`);
+            }
+          }
         }
       } catch (err: any) {
         console.error(`🛑 FAILED_TO_PARSE_SCRIPT_ARTIFACT: ${err.message}`);

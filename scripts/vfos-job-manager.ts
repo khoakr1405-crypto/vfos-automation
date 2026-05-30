@@ -225,6 +225,7 @@ function validateScript(args: {
   productName: string;
   targetDurationSec: number;
   estimatedSpeechDurationSec: number;
+  visionAnalysis?: any;
 }): ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -239,6 +240,7 @@ function validateScript(args: {
   let duplicateHookDetected = false;
   let tooLongForVideo = false;
   let ngramRepetitionDetected = false;
+  let visionGrounded = false;
 
   // 1. Duplicate hook validator:
   let hookOccurrences = 0;
@@ -302,6 +304,50 @@ function validateScript(args: {
     errors.push(`Script is too short: got only ${wordCount} words (minimum required: 15).`);
   }
 
+  // 6. Vision Grounding Rules (Round 42):
+  if (args.visionAnalysis && args.visionAnalysis.analysis) {
+    visionGrounded = true;
+    const analysis = args.visionAnalysis.analysis;
+
+    // 6a. Product visibility low -> Warning only (does not fail)
+    if (analysis.mainProductVisible === false || (analysis.productConfidence ?? 1.0) < 0.5) {
+      warnings.push(`LOW_PRODUCT_VISIBILITY: Main product visibility is low or confidence is under 50% (${(analysis.productConfidence ?? 1.0) * 100}%). Review source video.`);
+    }
+
+    // 6b. Mismatch warnings check: if script mentions items in mismatchWarnings, add warning
+    const mismatchWarnings = analysis.mismatchWarnings || [];
+    const mismatchFound: string[] = [];
+    for (const w of mismatchWarnings) {
+      const wWords = w.toLowerCase().split(/\s+/).filter((x: string) => x.length > 2);
+      if (wWords.length > 0) {
+        const found = wWords.some((wd: string) => textLower.includes(wd));
+        if (found) {
+          mismatchFound.push(w);
+        }
+      }
+    }
+    if (mismatchFound.length > 0) {
+      warnings.push(`Script mentions features flagged in video mismatch warnings: "${mismatchFound.join(', ')}".`);
+    }
+
+    // 6c. Demonstrated features check: script should ideally mention at least some keyword from demonstratedFeatures
+    const demonstratedFeatures = analysis.demonstratedFeatures || [];
+    if (demonstratedFeatures.length > 0) {
+      let matchedFeature = false;
+      for (const feature of demonstratedFeatures) {
+        const keywords = feature.toLowerCase().split(/[\s,]+/);
+        const hasMatch = keywords.some((kw: string) => kw.length >= 3 && textLower.includes(kw));
+        if (hasMatch) {
+          matchedFeature = true;
+          break;
+        }
+      }
+      if (!matchedFeature) {
+        warnings.push(`Script does not mention any demonstrated features from source video analysis: "${demonstratedFeatures.join(', ')}".`);
+      }
+    }
+  }
+
   return {
     passed: errors.length === 0,
     errors,
@@ -311,6 +357,7 @@ function validateScript(args: {
       repeatedProductNameCount: prodOccurrences,
       tooLongForVideo,
       ngramRepetitionDetected,
+      visionGrounded
     }
   };
 }
@@ -710,6 +757,17 @@ function cmdScript(args: string[]): number {
 
   const scriptPath = resolve(JOBS_ROOT, jobId, 'script_artifact.json');
 
+  // Load Video Visual Analysis if available (Round 42)
+  const visionPath = resolve(JOBS_ROOT, jobId, 'video_visual_analysis.json');
+  let visionArtifact: any = null;
+  if (existsSync(visionPath)) {
+    try {
+      visionArtifact = JSON.parse(readFileSync(visionPath, 'utf8'));
+    } catch (e) {
+      console.warn(`  ⚠️ Could not parse video_visual_analysis.json: ${(e as Error).message}`);
+    }
+  }
+
   console.log('======================================================');
   console.log(`📝  VFOS Job Manager — script  ${dryRun ? '🔍 DRY-RUN' : '⚡ EXECUTE'}`);
   console.log('======================================================');
@@ -721,6 +779,18 @@ function cmdScript(args: string[]): number {
   console.log(`Target voice dur:  ${targetVoiceDurationSec.toFixed(2)}s`);
   console.log(`Target word count: ${targetWordCount} words`);
   console.log(`Output:            ${JOBS_ROOT}/${jobId}/script_artifact.json`);
+
+  // Log Vision-awareness status
+  if (visionArtifact) {
+    console.log(`Vision Context:    🟢 PRESENT (Script will be vision-grounded)`);
+    const analysis = visionArtifact.analysis || {};
+    if (analysis.mainProductVisible === false || (analysis.productConfidence ?? 1.0) < 0.5) {
+      console.log(`⚠️  LOW_PRODUCT_VISIBILITY: Product visibility is low in source video!`);
+    }
+  } else {
+    console.log(`Vision Context:    ⚠️ VISION_ANALYSIS_MISSING_SCRIPT_WILL_USE_PRODUCT_CARD_ONLY`);
+    console.log(`  Suggestion:      pnpm job:vision --job ${jobId} --confirm-openai`);
+  }
   console.log('------------------------------------------------------');
 
   if (confirmOpenai) {
@@ -732,6 +802,53 @@ function cmdScript(args: string[]): number {
       return 1;
     }
 
+    // Build visual prompts context (Round 42)
+    let visionPromptContext = '';
+    if (visionArtifact && visionArtifact.analysis) {
+      const analysis = visionArtifact.analysis;
+      const visibleScenes = (analysis.visibleScenes || []).join(', ');
+      const keyFeatures = (analysis.keyVisualFeatures || []).join(', ');
+      const demonstratedFeatures = (analysis.demonstratedFeatures || []).join(', ');
+      const scriptHints = (analysis.scriptHints || []).join(', ');
+      const mismatchWarnings = (analysis.mismatchWarnings || []).join(', ');
+      const lowQuality = (analysis.unsafeOrLowQualitySignals || []).join(', ');
+      const productConfidence = analysis.productConfidence ?? 1.0;
+      const mainProductVisible = analysis.mainProductVisible ?? true;
+
+      visionPromptContext = `
+--- THÔNG TIN HÌNH ẢNH THỰC TẾ TRONG VIDEO NGUỒN (VIDEO VISUAL ANALYSIS) ---
+- Sản phẩm chính hiển thị rõ trong video? ${mainProductVisible ? 'Có' : 'Không (Độ tin cậy: ' + productConfidence + ')'}
+- Cảnh quay thực tế được nhìn thấy (visibleScenes): ${visibleScenes}
+- Các đặc điểm hình ảnh chính (keyVisualFeatures): ${keyFeatures}
+- Các tính năng đang được demo trực quan (demonstratedFeatures): ${demonstratedFeatures}
+- Các lưu ý/hints viết kịch bản từ hình ảnh (scriptHints): ${scriptHints}
+- Cảnh báo lỗi/không đồng nhất (mismatchWarnings): ${mismatchWarnings}
+- Tín hiệu chất lượng kém/low quality (unsafeOrLowQualitySignals): ${lowQuality}
+
+YÊU CẦU GROUNDING VỚI HÌNH ẢNH:
+${
+  !mainProductVisible || productConfidence < 0.5
+    ? `* CẢNH BÁO: Độ hiển thị sản phẩm rất thấp trong video! Bạn KHÔNG được viết kịch bản quá phóng đại kiểu "nhìn là mê ngay", "đây là chiếc quạt" mà hãy tập trung viết lời thoại khéo léo, mang tính mô tả chung chung.`
+    : ''
+}
+${
+  mismatchWarnings.trim()
+    ? `* KHÔNG ĐƯỢC nhấn mạnh hay nói quá sâu về các tính năng sau đây vì chúng KHÔNG có thực tế hoặc bị không đồng nhất trong video: ${mismatchWarnings}`
+    : ''
+}
+${
+  demonstratedFeatures.trim()
+    ? `* ƯU TIÊN nhắc đến và nói nổi bật về các tính năng đang được demo trực quan này: ${demonstratedFeatures}`
+    : ''
+}
+${
+  scriptHints.trim()
+    ? `* Hãy cố gắng kết hợp các ý hints viết kịch bản này vào nội dung lời thoại: ${scriptHints}`
+    : ''
+}
+`;
+    }
+
     const prompt = `
 Bạn là một AI chuyên viết kịch bản review sản phẩm ngắn cho kênh TikTok/Reels triệu view của VFOS.
 Hãy viết kịch bản cho sản phẩm sau đây:
@@ -739,6 +856,7 @@ Hãy viết kịch bản cho sản phẩm sau đây:
 - Thời lượng video nguồn: ${sourceVideoDurationSec.toFixed(1)} giây.
 - Thời lượng lời thoại mục tiêu (targetDurationSec): ${targetVoiceDurationSec.toFixed(1)} giây.
 - Số từ mục tiêu (targetWordCount): khoảng ${targetWordCount} từ.
+${visionPromptContext}
 
 Yêu cầu kịch bản bắt buộc:
 1. Ngôn ngữ: Tiếng Việt tự nhiên, hài hước, vui vẻ, táo bạo vừa phải, bắt trend giới trẻ tự nhiên. Không dùng câu từ sáo rỗng hoặc quá máy móc.
@@ -820,13 +938,14 @@ Hãy trả về duy nhất một đối tượng JSON có định dạng chính 
           ? aiData.estimatedSpeechDurationSec
           : parseFloat(aiData.estimatedSpeechDurationSec || '26.5');
 
-        // Run validation
+        // Run validation with Vision analysis (Round 42)
         validation = validateScript({
           voiceoverText,
           hook,
           productName,
           targetDurationSec: targetVoiceDurationSec,
           estimatedSpeechDurationSec,
+          visionAnalysis: visionArtifact
         });
 
         if (validation.passed) {
@@ -853,12 +972,13 @@ Hãy trả về duy nhất một đối tượng JSON có định dạng chính 
       return 7;
     }
 
-    // Persist AI generated script version v2
+    // Persist AI generated script version v3 (Round 42)
     const scriptArtifact = {
-      scriptArtifactVersion: 'v2',
+      scriptArtifactVersion: 'v3',
       jobId,
       runId: manifest.runId,
       productName,
+      shortProductName: aiData.shortProductName || productName,
       language: 'vi',
       style: 'young_fun_bold_review',
       targetDurationSec: targetVoiceDurationSec,
@@ -870,14 +990,24 @@ Hãy trả về duy nhất một đối tượng JSON có định dạng chính 
       voiceoverText: aiData.voiceoverText,
       captionDraft: aiData.captionDraft || `${productName} #vfos #review #dealhot`,
       hashtags: aiData.hashtags || ['#vfos', '#review', '#dealhot'],
+      visualContext: {
+        used: Boolean(visionArtifact),
+        sourcePath: visionArtifact ? `data/temp/jobs/${jobId}/video_visual_analysis.json` : null,
+        mainProductVisible: visionArtifact ? Boolean(visionArtifact.analysis?.mainProductVisible) : false,
+        demonstratedFeaturesUsed: visionArtifact ? (visionArtifact.analysis?.demonstratedFeatures || []) : [],
+        scriptHintsUsed: visionArtifact ? (visionArtifact.analysis?.scriptHints || []) : [],
+        mismatchWarningsConsidered: visionArtifact ? (visionArtifact.analysis?.mismatchWarnings || []) : [],
+        unsafeOrLowQualitySignals: visionArtifact ? (visionArtifact.analysis?.unsafeOrLowQualitySignals || []) : [],
+      },
       quality: {
         duplicateHookDetected: validation.metrics.duplicateHookDetected,
         repeatedProductNameCount: validation.metrics.repeatedProductNameCount,
         tooLongForVideo: validation.metrics.tooLongForVideo,
         templateFallback: false,
         aiGenerated: true,
+        visionGrounded: Boolean(visionArtifact),
       },
-      source: 'openai_responses_api',
+      source: visionArtifact ? 'openai_responses_api_with_vision_context' : 'openai_responses_api',
       apiCalled: true,
       generatedAt: isoNow(),
     };
@@ -929,10 +1059,11 @@ Hãy trả về duy nhất một đối tượng JSON có định dạng chính 
     const captionDraft = `${productName} — Review nhanh! ${priceStr ? `Giá ${priceStr}` : ''} #vfos #review #dealhot`;
 
     const scriptArtifact = {
-      scriptArtifactVersion: 'v2',
+      scriptArtifactVersion: 'v3',
       jobId,
       runId: manifest.runId,
       productName,
+      shortProductName: productName.slice(0, 30),
       language: 'vi',
       style: 'young_fun_bold_review',
       targetDurationSec: targetVoiceDurationSec,
@@ -944,12 +1075,22 @@ Hãy trả về duy nhất một đối tượng JSON có định dạng chính 
       voiceoverText: voiceoverBody,
       captionDraft,
       hashtags: ['#vfos', '#review', '#dealhot'],
+      visualContext: {
+        used: false,
+        sourcePath: null,
+        mainProductVisible: false,
+        demonstratedFeaturesUsed: [],
+        scriptHintsUsed: [],
+        mismatchWarningsConsidered: [],
+        unsafeOrLowQualitySignals: [],
+      },
       quality: {
         duplicateHookDetected: false,
         repeatedProductNameCount: 1,
         tooLongForVideo: false,
         templateFallback: true,
         aiGenerated: false,
+        visionGrounded: false,
       },
       source: 'job_product_card_template_fallback',
       apiCalled: false,
