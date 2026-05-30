@@ -1,33 +1,42 @@
 /**
- * VFOS Review Video Orchestrator — Round 35.
+ * VFOS Review Video Orchestrator — Round 35 / extended Round 37.
  *
  * Thin orchestration layer that wires together the existing commands:
  *   - pnpm voice:elevenlabs    (Round 33, ElevenLabs v3 bridge)
  *   - pnpm chay                (Round P21, manifest-driven render)
  *   - pnpm caption:kinetic     (Round 34A/34B, ASS subtitle burn)
  *
- * Goal: let the Operator run a single command to produce the captioned
- * review video, while keeping safety gates strict:
- *   - never call ElevenLabs API without --confirm-elevenlabs
- *   - never render or burn captions when the real product video fixture
- *     is missing (avoids generating a misleading placeholder preview)
- *   - never publish, upload, or click anything
- *
- * Safe default mode:
+ * Modes
+ * -----
  *   pnpm chay:review
- *     -> uses existing voiceover fixture if present, no API calls
+ *     Default (no-job) mode. Uses the shared fixtures:
+ *       production/fixtures/sample_hero_video.mp4
+ *       production/fixtures/sample_voiceover.mp3
  *
- * With ElevenLabs allowed:
- *   pnpm chay:review --confirm-elevenlabs
- *     -> generates voice via existing bridge if fixture missing
+ *   pnpm chay:review --job <jobId>
+ *     Job mode (Round 37). Reads
+ *       data/temp/jobs/<jobId>/job_manifest.json
+ *     and uses the job's attached source_video as the video source.
+ *     Bridges the job source into production/fixtures/sample_hero_video.mp4
+ *     so the existing render manifest can pick it up. The voice still
+ *     comes from the shared voice fixture in this round (per-job voice
+ *     is intentionally out of scope and BLOCKED if --confirm-elevenlabs
+ *     is combined with --job).
  *
- * Dry-run plan:
- *   pnpm chay:review --dry-run
- *     -> prints the plan without touching anything
+ *   pnpm chay:review [--job <jobId>] --dry-run
+ *     Prints the plan only — no API calls, no render, no caption,
+ *     no manifest/registry mutation.
+ *
+ * Safety gates
+ * ------------
+ *   - never call ElevenLabs API without --confirm-elevenlabs
+ *   - in --job mode, never call ElevenLabs (per-job voice not yet wired)
+ *   - never render against the placeholder testsrc
+ *   - never publish, upload, or click anything
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 
@@ -38,10 +47,16 @@ const VIDEO_FIXTURE_PATH = 'production/fixtures/sample_hero_video.mp4';
 const VOICE_FIXTURE_PATH = 'production/fixtures/sample_voiceover.mp3';
 const STATUS_ARTIFACT_PATH = 'data/temp/review_video_orchestrator_status.json';
 
+const JOBS_ROOT = 'data/temp/jobs';
+const JOBS_REGISTRY_PATH = 'data/temp/vfos_jobs_registry.json';
+
 type OrchestratorState =
   | 'READY_FOR_OPERATOR_VIDEO_REVIEW'
   | 'MISSING_REAL_PRODUCT_VIDEO_FIXTURE'
   | 'MISSING_VOICEOVER_FIXTURE'
+  | 'MISSING_JOB_SOURCE_VIDEO'
+  | 'UNKNOWN_JOB'
+  | 'JOB_LOCAL_VOICE_NOT_IMPLEMENTED'
   | 'REAL_FIXTURE_NOT_USED'
   | 'VOICE_GENERATION_FAILED'
   | 'RENDER_FAILED'
@@ -51,9 +66,11 @@ type OrchestratorState =
 interface StatusArtifact {
   statusVersion: 'v1';
   runId: string;
+  jobId: string | null;
   state: OrchestratorState;
   videoFixturePresent: boolean;
   voiceFixturePresent: boolean;
+  jobSourceVideoPresent: boolean | null;
   elevenLabsApiCalled: boolean;
   chayExecuted: boolean;
   captionExecuted: boolean;
@@ -71,6 +88,46 @@ interface StatusArtifact {
     operatorReviewRequired: true;
   };
   generatedAt: string;
+}
+
+interface JobManifest {
+  jobVersion: 'v1';
+  jobId: string;
+  runId: string;
+  productId: string | null;
+  source: { productCardPath: string; sourceVideoPath: string | null };
+  artifacts: {
+    scriptArtifactPath: string | null;
+    voiceArtifactPath: string | null;
+    voiceTimingArtifactPath: string | null;
+    bgmArtifactPath: string | null;
+    previewVideoPath: string | null;
+    captionedPreviewPath: string | null;
+    operatorReviewPackPath: string | null;
+    publishReadinessPath: string | null;
+  };
+  state: string;
+  review: { operatorDecision: string; approvedAt: string | null; rejectedAt: string | null; notes: string | null };
+  safety: { facebookApiCalled: boolean; uploaded: boolean; published: boolean; requiresOperatorReview: boolean };
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface Registry {
+  registryVersion: 'v1';
+  updatedAt: string;
+  jobs: Array<{
+    jobId: string;
+    runId: string;
+    state: string;
+    productName: string | null;
+    productCardPath: string;
+    sourceVideoPath: string | null;
+    captionedPreviewPath: string | null;
+    operatorDecision: string;
+    createdAt: string;
+    updatedAt: string;
+  }>;
 }
 
 function printHeader(title: string): void {
@@ -112,11 +169,65 @@ function readPreviewArtifact(runId: string): StatusArtifact['previewArtifact'] {
   }
 }
 
+function jobManifestPath(jobId: string): string {
+  return resolve(JOBS_ROOT, jobId, 'job_manifest.json');
+}
+
+function loadJobManifest(jobId: string): JobManifest | null {
+  const path = jobManifestPath(jobId);
+  if (!existsSync(path)) return null;
+  try {
+    return JSON.parse(readFileSync(path, 'utf8')) as JobManifest;
+  } catch {
+    return null;
+  }
+}
+
+function saveJobManifest(manifest: JobManifest): void {
+  const path = jobManifestPath(manifest.jobId);
+  mkdirSync(dirname(path), { recursive: true });
+  manifest.updatedAt = new Date().toISOString();
+  writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+}
+
+function loadRegistry(): Registry {
+  const path = resolve(JOBS_REGISTRY_PATH);
+  if (!existsSync(path)) return { registryVersion: 'v1', updatedAt: new Date().toISOString(), jobs: [] };
+  try {
+    return JSON.parse(readFileSync(path, 'utf8')) as Registry;
+  } catch {
+    return { registryVersion: 'v1', updatedAt: new Date().toISOString(), jobs: [] };
+  }
+}
+
+function saveRegistry(reg: Registry): void {
+  const path = resolve(JOBS_REGISTRY_PATH);
+  mkdirSync(dirname(path), { recursive: true });
+  reg.updatedAt = new Date().toISOString();
+  writeFileSync(path, `${JSON.stringify(reg, null, 2)}\n`, 'utf8');
+}
+
+function updateRegistryFromManifest(manifest: JobManifest): void {
+  const reg = loadRegistry();
+  const idx = reg.jobs.findIndex((j) => j.jobId === manifest.jobId);
+  if (idx < 0) return;
+  reg.jobs[idx] = {
+    ...reg.jobs[idx],
+    state: manifest.state,
+    sourceVideoPath: manifest.source.sourceVideoPath,
+    captionedPreviewPath: manifest.artifacts.captionedPreviewPath,
+    operatorDecision: manifest.review.operatorDecision,
+    updatedAt: manifest.updatedAt,
+  };
+  saveRegistry(reg);
+}
+
 async function main(): Promise<void> {
   const parsed = parseArgs({
     options: {
       run: { type: 'string', default: DEFAULT_RUN_ID },
       preset: { type: 'string', default: DEFAULT_CAPTION_PRESET },
+      job: { type: 'string' },
       'dry-run': { type: 'boolean', default: false },
       'confirm-elevenlabs': { type: 'boolean', default: false },
     },
@@ -127,10 +238,10 @@ async function main(): Promise<void> {
 
   const runId = values.run as string;
   const preset = values.preset as string;
+  const jobId = (values.job as string | undefined) ?? null;
   const dryRun = Boolean(values['dry-run']);
   const confirmElevenLabs = Boolean(values['confirm-elevenlabs']);
 
-  const videoFixturePresent = existsSync(resolve(VIDEO_FIXTURE_PATH));
   const voiceFixturePresent = existsSync(resolve(VOICE_FIXTURE_PATH));
 
   const runDir = resolve('data/temp/pipeline-p9-demo', runId);
@@ -138,22 +249,52 @@ async function main(): Promise<void> {
   const expectedOutputV1 = join(runDir, 'preview_with_captions.mp4');
   const expectedOutput = preset === 'viral_review_v2' ? expectedOutputV2 : expectedOutputV1;
 
+  let jobManifest: JobManifest | null = null;
+  let jobSourceVideoAbs: string | null = null;
+  let jobSourceVideoPresent: boolean | null = null;
+
+  if (jobId) {
+    jobManifest = loadJobManifest(jobId);
+    if (jobManifest) {
+      const rel = jobManifest.source.sourceVideoPath;
+      jobSourceVideoAbs = rel ? resolve(rel) : null;
+      jobSourceVideoPresent = Boolean(jobSourceVideoAbs && existsSync(jobSourceVideoAbs));
+    }
+  }
+
+  // In job mode the video source is the job's attached source, not the shared fixture.
+  const sharedVideoFixturePresent = existsSync(resolve(VIDEO_FIXTURE_PATH));
+  const effectiveVideoPresent = jobId ? Boolean(jobSourceVideoPresent) : sharedVideoFixturePresent;
+
   printHeader('🎬  VFOS Review Video Orchestrator');
+  console.log(`Mode:                   ${jobId ? `JOB (${jobId})` : 'NO-JOB (shared fixtures)'}`);
   console.log(`Run ID:                 ${runId}`);
   console.log(`Caption preset:         ${preset}`);
-  console.log(`Mode:                   ${dryRun ? '🔍 DRY-RUN' : '⚡ EXECUTE'}`);
+  console.log(`Action:                 ${dryRun ? '🔍 DRY-RUN' : '⚡ EXECUTE'}`);
   console.log(`Allow ElevenLabs API:   ${confirmElevenLabs ? '✅ YES' : '❌ NO (default safe)'}`);
   printDivider();
-  console.log(`Video fixture:          ${VIDEO_FIXTURE_PATH}  ${videoFixturePresent ? '✅' : '❌'}`);
-  console.log(`Voice fixture:          ${VOICE_FIXTURE_PATH}  ${voiceFixturePresent ? '✅' : '❌'}`);
+  if (jobId) {
+    if (!jobManifest) {
+      console.log(`Job manifest:           ${JOBS_ROOT}/${jobId}/job_manifest.json  ❌`);
+    } else {
+      console.log(`Job manifest:           ${JOBS_ROOT}/${jobId}/job_manifest.json  ✅`);
+      console.log(`Job state (current):    ${jobManifest.state}`);
+      console.log(`Job source video:       ${jobManifest.source.sourceVideoPath ?? '(none)'}  ${jobSourceVideoPresent ? '✅' : '❌'}`);
+    }
+  } else {
+    console.log(`Video fixture:          ${VIDEO_FIXTURE_PATH}  ${sharedVideoFixturePresent ? '✅' : '❌'}`);
+  }
+  console.log(`Voice fixture (shared): ${VOICE_FIXTURE_PATH}  ${voiceFixturePresent ? '✅' : '❌'}`);
   printDivider();
 
   const baseArtifact: StatusArtifact = {
     statusVersion: 'v1',
     runId,
+    jobId,
     state: 'READY_FOR_OPERATOR_VIDEO_REVIEW',
-    videoFixturePresent,
+    videoFixturePresent: sharedVideoFixturePresent,
     voiceFixturePresent,
+    jobSourceVideoPresent,
     elevenLabsApiCalled: false,
     chayExecuted: false,
     captionExecuted: false,
@@ -172,23 +313,44 @@ async function main(): Promise<void> {
   // ---------- DRY-RUN: print plan, touch nothing ----------
   if (dryRun) {
     console.log('PLAN:');
-    console.log(`  1. Check video fixture          -> ${videoFixturePresent ? 'PRESENT' : 'MISSING'}`);
-    console.log(`  2. Check voice fixture          -> ${voiceFixturePresent ? 'PRESENT' : 'MISSING'}`);
-    const willCallVoice = !voiceFixturePresent && confirmElevenLabs;
-    const willRunChay = videoFixturePresent && (voiceFixturePresent || confirmElevenLabs);
-    const willRunCaption = willRunChay;
-    console.log(`  3. Will call ElevenLabs API?    -> ${willCallVoice ? 'YES (with --confirm-api-call)' : 'NO'}`);
-    console.log(`  4. Will run pnpm chay?          -> ${willRunChay ? 'YES' : 'NO'}`);
-    console.log(`  5. Will run kinetic caption?    -> ${willRunCaption ? `YES (preset=${preset})` : 'NO'}`);
-    console.log(`  6. Expected output video        -> ${expectedOutput}`);
-    if (!videoFixturePresent) {
+    if (jobId) {
+      console.log(`  1. Job manifest present?        -> ${jobManifest ? 'YES' : 'NO (UNKNOWN_JOB)'}`);
+      console.log(`  2. Job source video present?    -> ${jobSourceVideoPresent ? 'YES' : 'NO'}`);
+    } else {
+      console.log(`  1. Shared video fixture?        -> ${sharedVideoFixturePresent ? 'PRESENT' : 'MISSING'}`);
+    }
+    console.log(`  3. Voice fixture (shared)?      -> ${voiceFixturePresent ? 'PRESENT' : 'MISSING'}`);
+
+    const jobBlockedVoice = Boolean(jobId && confirmElevenLabs);
+    const willCallVoice = !jobId && !voiceFixturePresent && confirmElevenLabs;
+    const willBridgeSource = Boolean(jobId && jobSourceVideoPresent);
+    const canProceed = effectiveVideoPresent && voiceFixturePresent && !jobBlockedVoice;
+
+    console.log(`  4. Will bridge job→fixture?     -> ${willBridgeSource ? `YES (copy to ${VIDEO_FIXTURE_PATH})` : 'NO'}`);
+    console.log(`  5. Will call ElevenLabs API?    -> ${willCallVoice ? 'YES (with --confirm-api-call)' : 'NO'}`);
+    console.log(`  6. Will run pnpm chay?          -> ${canProceed ? 'YES' : 'NO'}`);
+    console.log(`  7. Will run kinetic caption?    -> ${canProceed ? `YES (preset=${preset})` : 'NO'}`);
+    console.log(`  8. Will update job manifest?    -> ${canProceed && jobId ? 'YES' : 'NO'}`);
+    console.log(`  9. Expected output video        -> ${expectedOutput}`);
+
+    if (jobId && !jobManifest) {
+      console.log('\nBlocker: UNKNOWN_JOB');
+      console.log(`  Action: pnpm job:list   then verify --job <jobId>`);
+    } else if (jobId && !jobSourceVideoPresent) {
+      console.log('\nBlocker: MISSING_JOB_SOURCE_VIDEO');
+      console.log(`  Action: pnpm job:attach-source --job ${jobId} --file "<path-to-video>"`);
+    } else if (!jobId && !sharedVideoFixturePresent) {
       console.log('\nBlocker: MISSING_REAL_PRODUCT_VIDEO_FIXTURE');
       console.log(`  Action: copy real product video to ${VIDEO_FIXTURE_PATH}`);
     }
-    if (videoFixturePresent && !voiceFixturePresent && !confirmElevenLabs) {
+    if (jobBlockedVoice) {
+      console.log('\nBlocker: JOB_LOCAL_VOICE_NOT_IMPLEMENTED');
+      console.log('  Per-job voice generation is intentionally out of scope this round.');
+      console.log('  Drop --confirm-elevenlabs when using --job, or use the shared voice fixture.');
+    } else if (effectiveVideoPresent && !voiceFixturePresent && !confirmElevenLabs) {
       console.log('\nBlocker: MISSING_VOICEOVER_FIXTURE');
-      console.log(`  Action: either rerun with --confirm-elevenlabs,`);
-      console.log(`          or run: pnpm voice:elevenlabs --run ${runId} --confirm-api-call --sync-fixture`);
+      console.log('  Action: either rerun without --job and with --confirm-elevenlabs,');
+      console.log(`          or pre-generate via: pnpm voice:elevenlabs --run ${runId} --confirm-api-call --sync-fixture`);
     }
     printDivider();
     console.log('Dry-run complete. No commands executed, no files modified.');
@@ -196,8 +358,36 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  // ---------- GATE 1: real product video fixture must exist ----------
-  if (!videoFixturePresent) {
+  // ---------- GATE 0: --job sanity ----------
+  if (jobId) {
+    if (!jobManifest) {
+      console.log(`🛑 UNKNOWN_JOB: ${jobId}`);
+      console.log('Run `pnpm job:list` to see existing jobs.');
+      writeStatusArtifact({ ...baseArtifact, state: 'UNKNOWN_JOB' });
+      process.exit(5);
+    }
+    if (!jobSourceVideoPresent || !jobSourceVideoAbs) {
+      console.log(`🛑 MISSING_JOB_SOURCE_VIDEO`);
+      console.log(`Job ${jobId} has no attached source video.`);
+      console.log('Operator action:');
+      console.log(`  pnpm job:attach-source --job ${jobId} --file "C:\\path\\to\\video.mp4"`);
+      writeStatusArtifact({ ...baseArtifact, state: 'MISSING_JOB_SOURCE_VIDEO' });
+      process.exit(6);
+    }
+    if (confirmElevenLabs) {
+      console.log('🛑 JOB_LOCAL_VOICE_NOT_IMPLEMENTED');
+      console.log('--confirm-elevenlabs is not allowed in --job mode this round.');
+      console.log('Per-job voice/script wiring is out of scope; using shared voice fixture only.');
+      console.log('Either drop --confirm-elevenlabs, or pre-generate the shared voice via:');
+      console.log(`  pnpm voice:elevenlabs --run ${runId} --confirm-api-call --sync-fixture`);
+      writeStatusArtifact({ ...baseArtifact, state: 'JOB_LOCAL_VOICE_NOT_IMPLEMENTED' });
+      process.exit(7);
+    }
+  }
+
+  // ---------- GATE 1: video source (shared fixture or job source) ----------
+  if (!effectiveVideoPresent) {
+    // Only reachable in no-job mode here (job mode handled above).
     console.log('🛑 MISSING_REAL_PRODUCT_VIDEO_FIXTURE');
     console.log('');
     console.log('The real product video fixture is required before render.');
@@ -212,7 +402,7 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
-  // ---------- GATE 2: voiceover fixture (or explicit ElevenLabs consent) ----------
+  // ---------- GATE 2: voiceover fixture (or ElevenLabs consent in no-job mode) ----------
   let elevenLabsApiCalled = false;
   if (!voiceFixturePresent) {
     if (!confirmElevenLabs) {
@@ -221,11 +411,11 @@ async function main(): Promise<void> {
       console.log('Voiceover fixture not present and ElevenLabs API not authorized.');
       console.log('Operator action — either:');
       console.log(`  a) pnpm voice:elevenlabs --run ${runId} --confirm-api-call --sync-fixture`);
-      console.log('  b) pnpm chay:review --confirm-elevenlabs');
+      console.log('  b) pnpm chay:review --confirm-elevenlabs   (no-job mode only)');
       writeStatusArtifact({ ...baseArtifact, state: 'MISSING_VOICEOVER_FIXTURE' });
       process.exit(3);
     }
-
+    // job mode + confirm-elevenlabs is already blocked at GATE 0 above.
     const voiceStatus = runCommand(
       'STEP 1/3 — Generate voiceover via ElevenLabs (authorized)',
       'pnpm',
@@ -241,10 +431,26 @@ async function main(): Promise<void> {
     console.log('STEP 1/3 — Voiceover fixture present, skipping ElevenLabs call. ✅');
   }
 
+  // ---------- BRIDGE: in job mode, sync job source video into shared fixture path ----------
+  if (jobId && jobSourceVideoAbs) {
+    const fixtureAbs = resolve(VIDEO_FIXTURE_PATH);
+    mkdirSync(dirname(fixtureAbs), { recursive: true });
+    console.log(`\n>>> BRIDGE — copying job source video into shared fixture (compatibility bridge)`);
+    console.log(`    from: ${jobSourceVideoAbs}`);
+    console.log(`      to: ${VIDEO_FIXTURE_PATH}`);
+    console.log(`    note: fixture is gitignored; this is a runtime bridge, not a commit.`);
+    copyFileSync(jobSourceVideoAbs, fixtureAbs);
+  }
+
   // ---------- STEP 2: render via existing pnpm chay (local-preview) ----------
   const chayStatus = runCommand('STEP 2/3 — Render preview via pnpm chay', 'pnpm', ['chay']);
   if (chayStatus !== 0) {
     console.log('🛑 RENDER_FAILED');
+    if (jobId && jobManifest) {
+      jobManifest.state = 'FAILED';
+      saveJobManifest(jobManifest);
+      updateRegistryFromManifest(jobManifest);
+    }
     writeStatusArtifact({
       ...baseArtifact,
       elevenLabsApiCalled,
@@ -263,6 +469,11 @@ async function main(): Promise<void> {
   ]);
   if (captionStatus !== 0) {
     console.log('🛑 CAPTION_FAILED');
+    if (jobId && jobManifest) {
+      jobManifest.state = 'FAILED';
+      saveJobManifest(jobManifest);
+      updateRegistryFromManifest(jobManifest);
+    }
     writeStatusArtifact({
       ...baseArtifact,
       elevenLabsApiCalled,
@@ -280,6 +491,11 @@ async function main(): Promise<void> {
     console.log('🛑 REAL_FIXTURE_NOT_USED');
     console.log('Render completed but preview_artifact.json still indicates placeholder mode.');
     console.log('Operator should verify that pipeline-run-manifest picked up sample_hero_video.mp4.');
+    if (jobId && jobManifest) {
+      jobManifest.state = 'FAILED';
+      saveJobManifest(jobManifest);
+      updateRegistryFromManifest(jobManifest);
+    }
     writeStatusArtifact({
       ...baseArtifact,
       elevenLabsApiCalled,
@@ -293,6 +509,17 @@ async function main(): Promise<void> {
   }
 
   // ---------- SUCCESS ----------
+  const previewVideoRelative = `data/temp/pipeline-p9-demo/${runId}/preview.mp4`;
+  const captionedRelative = `data/temp/pipeline-p9-demo/${runId}/preview_with_captions${preset === 'viral_review_v2' ? '_v2' : ''}.mp4`;
+
+  if (jobId && jobManifest) {
+    jobManifest.artifacts.previewVideoPath = previewVideoRelative;
+    jobManifest.artifacts.captionedPreviewPath = captionedRelative;
+    jobManifest.state = 'READY_FOR_OPERATOR_REVIEW';
+    saveJobManifest(jobManifest);
+    updateRegistryFromManifest(jobManifest);
+  }
+
   writeStatusArtifact({
     ...baseArtifact,
     elevenLabsApiCalled,
@@ -305,11 +532,13 @@ async function main(): Promise<void> {
 
   console.log('');
   printHeader('🎬 VFOS REVIEW VIDEO READY');
+  if (jobId) console.log(`Job ID:           ${jobId}`);
   console.log(`Run ID:           ${runId}`);
-  console.log(`Video source:     ${VIDEO_FIXTURE_PATH}`);
+  console.log(`Video source:     ${jobId && jobSourceVideoAbs ? jobSourceVideoAbs : VIDEO_FIXTURE_PATH}`);
   console.log(`Voice source:     ${VOICE_FIXTURE_PATH}`);
   console.log(`Caption preset:   ${preset}`);
   console.log(`Output:           ${expectedOutput}`);
+  if (jobId) console.log(`Job state:        READY_FOR_OPERATOR_REVIEW`);
   console.log('');
   console.log('Required action:');
   console.log('Operator must watch this video before publish readiness.');
