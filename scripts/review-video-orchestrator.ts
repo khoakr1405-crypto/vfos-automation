@@ -42,7 +42,7 @@
 
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 
 const DEFAULT_RUN_ID = 'run_review_product_p9';
@@ -66,7 +66,9 @@ type OrchestratorState =
   | 'VOICE_GENERATION_FAILED'
   | 'RENDER_FAILED'
   | 'CAPTION_FAILED'
-  | 'DRY_RUN_PLAN_ONLY';
+  | 'DRY_RUN_PLAN_ONLY'
+  | 'REVIEW_PREVIEW_AUDIO_MISSING'
+  | 'CAPTIONED_PREVIEW_AUDIO_MISSING';
 
 interface StatusArtifact {
   statusVersion: 'v1';
@@ -116,6 +118,7 @@ interface JobManifest {
   safety: { facebookApiCalled: boolean; uploaded: boolean; published: boolean; requiresOperatorReview: boolean };
   createdAt: string;
   updatedAt: string;
+  lastError?: string | null;
 }
 
 interface Registry {
@@ -229,6 +232,57 @@ function updateRegistryFromManifest(manifest: JobManifest): void {
     updatedAt: manifest.updatedAt,
   };
   saveRegistry(reg);
+}
+
+function validateAudioStream(filePath: string): { success: boolean; error?: string; reason?: string } {
+  if (!existsSync(filePath)) {
+    return { success: false, error: 'FILE_NOT_FOUND', reason: `File not found at: ${filePath}` };
+  }
+
+  const args = [
+    '-v', 'error',
+    '-show_entries', 'stream=index,codec_type,codec_name,duration',
+    '-show_format',
+    '-of', 'json',
+    filePath
+  ];
+
+  const result = spawnSync('ffprobe', args, { encoding: 'utf8' });
+  if (result.status !== 0) {
+    return {
+      success: false,
+      error: 'FFPROBE_FAILED',
+      reason: `ffprobe exited with status ${result.status}. Stderr: ${result.stderr}`
+    };
+  }
+
+  try {
+    const data = JSON.parse(result.stdout || '{}');
+    const streams = data.streams || [];
+    const audioStream = streams.find((s: any) => s.codec_type === 'audio');
+
+    if (!audioStream) {
+      return { success: false, error: 'NO_AUDIO_STREAM', reason: 'No audio stream found in the file.' };
+    }
+
+    const duration = parseFloat(audioStream.duration || data.format?.duration || '0');
+    if (isNaN(duration) || duration <= 0) {
+      return {
+        success: false,
+        error: 'INVALID_DURATION',
+        reason: `Audio duration is invalid or zero: ${audioStream.duration || data.format?.duration}`
+      };
+    }
+
+    const codec = audioStream.codec_name;
+    if (!codec || codec === 'unknown') {
+      return { success: false, error: 'INVALID_CODEC', reason: `Audio codec is invalid or unknown: ${codec}` };
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    return { success: false, error: 'PARSE_FAILED', reason: `Failed to parse ffprobe output: ${err.message}` };
+  }
 }
 
 async function main(): Promise<void> {
@@ -544,6 +598,34 @@ async function main(): Promise<void> {
     chayExecuted = true;
   }
 
+  // Validate preview audio stream
+  const previewPathToCheck = jobId ? jobPreviewPath! : join(runDir, 'preview.mp4');
+  console.log(`\n🔍 [AudioGuard] Running audio stream check on preview: ${previewPathToCheck}...`);
+  const previewAudioCheck = validateAudioStream(previewPathToCheck);
+  if (!previewAudioCheck.success) {
+    console.log(`🛑 Audio check failed: REVIEW_PREVIEW_AUDIO_MISSING`);
+    console.log(`Reason: ${previewAudioCheck.reason || 'No audio stream or duration is 0'}`);
+    console.log(`Suggestion: run the following command to diagnose the video:`);
+    console.log(`  ffprobe -v error -show_entries stream=index,codec_type,codec_name,duration -show_format -of json "${previewPathToCheck}"`);
+    
+    if (jobId && jobManifest) {
+      jobManifest.state = 'FAILED';
+      jobManifest.lastError = 'REVIEW_PREVIEW_AUDIO_MISSING';
+      saveJobManifest(jobManifest);
+      updateRegistryFromManifest(jobManifest);
+    }
+    
+    writeStatusArtifact({
+      ...baseArtifact,
+      elevenLabsApiCalled,
+      chayExecuted,
+      state: 'REVIEW_PREVIEW_AUDIO_MISSING'
+    });
+    process.exit(9);
+  } else {
+    console.log(`✅ [AudioGuard] Preview audio stream OK.`);
+  }
+
   // ---------- STEP 3: burn kinetic captions ----------
   let captionExecuted = false;
   if (jobId && jobPreviewPath && jobCaptionedPath && jobCaptionPlanPath && jobAssPath) {
@@ -575,6 +657,39 @@ async function main(): Promise<void> {
     }
     captionExecuted = true;
   }
+
+  // Validate captioned preview audio stream
+  console.log(`\n🔍 [AudioGuard] Running audio stream check on captioned output: ${expectedOutput}...`);
+  const captionedAudioCheck = validateAudioStream(expectedOutput);
+  if (!captionedAudioCheck.success) {
+    console.log(`🛑 Audio check failed: CAPTIONED_PREVIEW_AUDIO_MISSING`);
+    console.log(`Reason: ${captionedAudioCheck.reason || 'No audio stream or duration is 0'}`);
+    console.log(`Suggestion: run the following command to diagnose the video:`);
+    console.log(`  ffprobe -v error -show_entries stream=index,codec_type,codec_name,duration -show_format -of json "${expectedOutput}"`);
+    
+    if (jobId && jobManifest) {
+      jobManifest.state = 'FAILED';
+      jobManifest.lastError = 'CAPTIONED_PREVIEW_AUDIO_MISSING';
+      saveJobManifest(jobManifest);
+      updateRegistryFromManifest(jobManifest);
+    }
+    
+    writeStatusArtifact({
+      ...baseArtifact,
+      elevenLabsApiCalled,
+      chayExecuted,
+      captionExecuted,
+      state: 'CAPTIONED_PREVIEW_AUDIO_MISSING'
+    });
+    process.exit(10);
+  } else {
+    console.log(`✅ [AudioGuard] Captioned output audio stream OK.`);
+  }
+
+  // Print successful guardrail check logs in the exact format requested
+  console.log('\nAudio check:');
+  console.log(`- preview.mp4: AUDIO PRESENT`);
+  console.log(`- ${basename(expectedOutput)}: AUDIO PRESENT`);
 
   // ---------- VERIFY artifact reflects real fixture, not placeholder ----------
   let previewArtifact: StatusArtifact['previewArtifact'];

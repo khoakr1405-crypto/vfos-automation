@@ -72,6 +72,7 @@ interface JobManifest {
   };
   createdAt: string;
   updatedAt: string;
+  lastError?: string | null;
 }
 
 interface RegistryEntry {
