@@ -71,7 +71,8 @@
     "job:attach-source": "tsx scripts/vfos-job-manager.ts attach-source",
     "job:script": "tsx scripts/vfos-job-manager.ts script",
     "job:list": "tsx scripts/vfos-job-manager.ts list",
-    "job:vision": "tsx scripts/job-video-vision-analyzer.ts"
+    "job:vision": "tsx scripts/job-video-vision-analyzer.ts",
+    "job:qa": "tsx scripts/job-final-qa-gate.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

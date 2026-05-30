@@ -1138,6 +1138,10 @@ async function main(): Promise<void> {
   console.log('');
   console.log('Required action:');
   console.log('Operator must watch this video before publish readiness.');
+  if (jobId) {
+    console.log(`To run final STT QA verification, execute:`);
+    console.log(`  pnpm job:qa --job ${jobId} --confirm-openai`);
+  }
   printDivider();
   process.exit(0);
 }

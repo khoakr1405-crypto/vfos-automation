@@ -59,6 +59,7 @@ interface JobManifest {
     operatorReviewPackPath: string | null;
     publishReadinessPath: string | null;
     videoVisualAnalysisPath?: string | null;
+    finalQaReportPath?: string | null;
   };
   state: JobState;
   review: {
@@ -76,6 +77,7 @@ interface JobManifest {
   createdAt: string;
   updatedAt: string;
   lastError?: string | null;
+  qaStatus?: 'PASS' | 'FAIL' | 'PENDING' | null;
 }
 
 interface RegistryEntry {
@@ -626,6 +628,8 @@ function cmdStatus(args: string[]): number {
     ? resolve(manifest.artifacts.voiceArtifactPath)
     : null;
 
+  const qaReportPath = manifest.artifacts.finalQaReportPath ? resolve(manifest.artifacts.finalQaReportPath) : null;
+
   console.log('======================================================');
   console.log(`🧾  VFOS Job Status — ${jobId}`);
   console.log('======================================================');
@@ -634,11 +638,13 @@ function cmdStatus(args: string[]): number {
   console.log(`Product ID:        ${manifest.productId ?? '(unknown)'}`);
   console.log(`State:             ${manifest.state}`);
   console.log(`Operator decision: ${manifest.review.operatorDecision}`);
+  console.log(`Final QA:          ${manifest.qaStatus ?? 'MISSING'}`);
   console.log('------------------------------------------------------');
   console.log(`Source video:      ${manifest.source.sourceVideoPath ?? '(none)'}  ${srcPath && exists(srcPath) ? '✅' : '❌'}`);
   console.log(`Voice artifact:    ${manifest.artifacts.voiceArtifactPath ?? '(none)'}  ${voicePath && exists(voicePath) ? '✅' : '❌'}`);
   console.log(`Preview video:     ${manifest.artifacts.previewVideoPath ?? '(none)'}  ${previewPath && exists(previewPath) ? '✅' : '❌'}`);
   console.log(`Captioned preview: ${manifest.artifacts.captionedPreviewPath ?? '(none)'}  ${captionedPath && exists(captionedPath) ? '✅' : '❌'}`);
+  console.log(`QA Report:         ${manifest.artifacts.finalQaReportPath ?? '(none)'}  ${qaReportPath && exists(qaReportPath) ? '✅' : '❌'}`);
   console.log(`Created at:        ${manifest.createdAt}`);
   console.log(`Updated at:        ${manifest.updatedAt}`);
   return 0;
