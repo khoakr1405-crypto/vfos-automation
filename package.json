@@ -65,7 +65,11 @@
     "shopee:audit": "tsx scripts/shopee-link-audit-demo.ts",
     "commerce:intake": "tsx scripts/commerce-intake-orchestrator.ts",
     "vfos:daily": "tsx scripts/vfos-daily-dashboard.ts",
-    "vfos:sync-check": "tsx scripts/vfos-git-sync-guard.ts"
+    "vfos:sync-check": "tsx scripts/vfos-git-sync-guard.ts",
+    "job:create": "tsx scripts/vfos-job-manager.ts create",
+    "job:status": "tsx scripts/vfos-job-manager.ts status",
+    "job:attach-source": "tsx scripts/vfos-job-manager.ts attach-source",
+    "job:list": "tsx scripts/vfos-job-manager.ts list"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
