@@ -7,6 +7,8 @@ const options = {
   render: { type: 'string' as const },
   output: { type: 'string' as const },
   mode: { type: 'string' as const },
+  'input-video': { type: 'string' as const },
+  'input-audio': { type: 'string' as const },
 };
 
 const { values } = parseArgs({ options, strict: false });
@@ -67,12 +69,21 @@ function main() {
   const fadeOutStart = Math.max(0.5, estimatedDuration - 2.0);
 
   if (mode === 'local-preview') {
+    const cliInputVideo = values['input-video'] as string | undefined;
+    const cliInputAudio = values['input-audio'] as string | undefined;
+
     const manifestInputPath = 'apps/kernel/config/manifests/media_input_manifest.json';
     let inputVideoPath = '';
     let inputAudioPath = '';
     let hasFixtureFiles = false;
 
-    if (existsSync(manifestInputPath)) {
+    if (cliInputVideo) {
+      // CLI override — skip manifest lookup entirely.
+      inputVideoPath = cliInputVideo;
+      inputAudioPath = cliInputAudio || '';
+      hasFixtureFiles = inputVideoPath && existsSync(inputVideoPath) ? true : false;
+      console.log(`[OfflineRenderVideo] Using CLI-provided input paths (manifest bypassed).`);
+    } else if (existsSync(manifestInputPath)) {
       try {
         const mediaInput = JSON.parse(readFileSync(manifestInputPath, 'utf8'));
         inputVideoPath = mediaInput.inputVideoPath || '';

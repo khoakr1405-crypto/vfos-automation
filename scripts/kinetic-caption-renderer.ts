@@ -580,6 +580,9 @@ async function main(): Promise<void> {
       run: { type: 'string' },
       input: { type: 'string' },
       output: { type: 'string' },
+      timing: { type: 'string' },
+      'plan-output': { type: 'string' },
+      'ass-output': { type: 'string' },
       preset: { type: 'string', default: 'viral_review_v1' },
       'dry-run': { type: 'boolean', default: false },
     },
@@ -601,13 +604,17 @@ async function main(): Promise<void> {
   }
 
   const runDir = resolve('data/temp/pipeline-p9-demo', runId);
-  const timingPath = join(runDir, 'voice_timing_artifact.json');
-  const inputVideo = values.input ? resolve(values.input) : join(runDir, 'preview.mp4');
+  const timingPath = values.timing ? resolve(values.timing as string) : join(runDir, 'voice_timing_artifact.json');
+  const inputVideo = values.input ? resolve(values.input as string) : join(runDir, 'preview.mp4');
   const outputVideo = values.output
-    ? resolve(values.output)
+    ? resolve(values.output as string)
     : withSuffix(join(runDir, 'preview_with_captions.mp4'), preset.outputSuffix);
-  const assPath = withSuffix(join(runDir, 'kinetic_captions.ass'), preset.outputSuffix);
-  const planPath = withSuffix(join(runDir, 'kinetic_caption_plan.json'), preset.outputSuffix);
+  const assPath = values['ass-output']
+    ? resolve(values['ass-output'] as string)
+    : withSuffix(join(runDir, 'kinetic_captions.ass'), preset.outputSuffix);
+  const planPath = values['plan-output']
+    ? resolve(values['plan-output'] as string)
+    : withSuffix(join(runDir, 'kinetic_caption_plan.json'), preset.outputSuffix);
 
   console.log('======================================================');
   console.log(`💬  VFOS Kinetic Caption Renderer (${preset.name})`);

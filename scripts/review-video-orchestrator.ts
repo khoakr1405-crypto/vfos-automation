@@ -1,9 +1,10 @@
 /**
- * VFOS Review Video Orchestrator — Round 35 / extended Round 37.
+ * VFOS Review Video Orchestrator — Round 35 / Round 37 / Round 38.
  *
  * Thin orchestration layer that wires together the existing commands:
  *   - pnpm voice:elevenlabs    (Round 33, ElevenLabs v3 bridge)
- *   - pnpm chay                (Round P21, manifest-driven render)
+ *   - pnpm chay                (Round P21, manifest-driven render — no-job only)
+ *   - offline-render-video     (Round 38, direct invocation — job mode)
  *   - pnpm caption:kinetic     (Round 34A/34B, ASS subtitle burn)
  *
  * Modes
@@ -12,14 +13,18 @@
  *     Default (no-job) mode. Uses the shared fixtures:
  *       production/fixtures/sample_hero_video.mp4
  *       production/fixtures/sample_voiceover.mp3
+ *     Renders via `pnpm chay` (full pipeline).
  *
  *   pnpm chay:review --job <jobId>
- *     Job mode (Round 37). Reads
+ *     Job mode (Round 38). Reads
  *       data/temp/jobs/<jobId>/job_manifest.json
- *     and uses the job's attached source_video as the video source.
- *     Bridges the job source into production/fixtures/sample_hero_video.mp4
- *     so the existing render manifest can pick it up. The voice still
- *     comes from the shared voice fixture in this round (per-job voice
+ *     and renders directly into the job folder:
+ *       data/temp/jobs/<jobId>/preview.mp4
+ *       data/temp/jobs/<jobId>/preview_with_captions_v2.mp4
+ *     Does NOT copy source to production/fixtures/ (no shared fixture bridge).
+ *     Calls offline-render-video and caption:kinetic directly with
+ *     job-specific input/output paths.
+ *     Voice still comes from the shared voice fixture (per-job voice
  *     is intentionally out of scope and BLOCKED if --confirm-elevenlabs
  *     is combined with --job).
  *
@@ -36,7 +41,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 
@@ -156,9 +161,13 @@ function runCommand(label: string, command: string, args: string[]): number {
 
 function readPreviewArtifact(runId: string): StatusArtifact['previewArtifact'] {
   const path = resolve('data/temp/pipeline-p9-demo', runId, 'preview_artifact.json');
-  if (!existsSync(path)) return null;
+  return readPreviewArtifactFromPath(path);
+}
+
+function readPreviewArtifactFromPath(artifactPath: string): StatusArtifact['previewArtifact'] {
+  if (!existsSync(artifactPath)) return null;
   try {
-    const raw = JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown>;
+    const raw = JSON.parse(readFileSync(artifactPath, 'utf8')) as Record<string, unknown>;
     return {
       rendered: Boolean(raw.rendered),
       hasRealFixture: Boolean(raw.hasRealFixture),
@@ -247,7 +256,24 @@ async function main(): Promise<void> {
   const runDir = resolve('data/temp/pipeline-p9-demo', runId);
   const expectedOutputV2 = join(runDir, 'preview_with_captions_v2.mp4');
   const expectedOutputV1 = join(runDir, 'preview_with_captions.mp4');
-  const expectedOutput = preset === 'viral_review_v2' ? expectedOutputV2 : expectedOutputV1;
+  const expectedOutputShared = preset === 'viral_review_v2' ? expectedOutputV2 : expectedOutputV1;
+
+  // Job-folder output paths (Round 38). Only used in job mode.
+  const jobOutputDir = jobId ? resolve(JOBS_ROOT, jobId) : null;
+  const jobPreviewPath = jobOutputDir ? join(jobOutputDir, 'preview.mp4') : null;
+  const jobCaptionedPath = jobOutputDir
+    ? join(jobOutputDir, `preview_with_captions${preset === 'viral_review_v2' ? '_v2' : ''}.mp4`)
+    : null;
+  const jobRenderManifestPath = jobOutputDir ? join(jobOutputDir, 'render_manifest.json') : null;
+  const jobPreviewArtifactPath = jobOutputDir ? join(jobOutputDir, 'preview_artifact.json') : null;
+  const jobCaptionPlanPath = jobOutputDir
+    ? join(jobOutputDir, `kinetic_caption_plan${preset === 'viral_review_v2' ? '_v2' : ''}.json`)
+    : null;
+  const jobAssPath = jobOutputDir
+    ? join(jobOutputDir, `kinetic_captions${preset === 'viral_review_v2' ? '_v2' : ''}.ass`)
+    : null;
+
+  const expectedOutput = jobId ? jobCaptionedPath! : expectedOutputShared;
 
   let jobManifest: JobManifest | null = null;
   let jobSourceVideoAbs: string | null = null;
@@ -323,15 +349,17 @@ async function main(): Promise<void> {
 
     const jobBlockedVoice = Boolean(jobId && confirmElevenLabs);
     const willCallVoice = !jobId && !voiceFixturePresent && confirmElevenLabs;
-    const willBridgeSource = Boolean(jobId && jobSourceVideoPresent);
     const canProceed = effectiveVideoPresent && voiceFixturePresent && !jobBlockedVoice;
 
-    console.log(`  4. Will bridge job→fixture?     -> ${willBridgeSource ? `YES (copy to ${VIDEO_FIXTURE_PATH})` : 'NO'}`);
-    console.log(`  5. Will call ElevenLabs API?    -> ${willCallVoice ? 'YES (with --confirm-api-call)' : 'NO'}`);
-    console.log(`  6. Will run pnpm chay?          -> ${canProceed ? 'YES' : 'NO'}`);
-    console.log(`  7. Will run kinetic caption?    -> ${canProceed ? `YES (preset=${preset})` : 'NO'}`);
-    console.log(`  8. Will update job manifest?    -> ${canProceed && jobId ? 'YES' : 'NO'}`);
-    console.log(`  9. Expected output video        -> ${expectedOutput}`);
+    console.log(`  4. Will use shared fixture bridge? -> ${jobId ? 'NO (native job render — Round 38)' : 'N/A (no-job mode)'}`);
+    console.log(`  5. Native job output dir?       -> ${jobOutputDir ?? 'N/A (no-job mode)'}`);
+    console.log(`  6. Will call ElevenLabs API?    -> ${willCallVoice ? 'YES (with --confirm-api-call)' : 'NO'}`);
+    console.log(`  7. Will run pnpm chay?          -> ${!jobId && canProceed ? 'YES (no-job pipeline)' : 'NO'}`);
+    console.log(`  8. Will run offline-render-video? -> ${jobId && canProceed ? 'YES (direct, job mode)' : 'NO'}`);
+    console.log(`  9. Will run kinetic caption?    -> ${canProceed ? `YES (preset=${preset})` : 'NO'}`);
+    console.log(` 10. Will update job manifest?    -> ${canProceed && jobId ? 'YES' : 'NO'}`);
+    console.log(` 11. Expected preview path        -> ${jobId ? (jobPreviewPath ?? '?') : `${runDir}/preview.mp4`}`);
+    console.log(` 12. Expected captioned path       -> ${expectedOutput}`);
 
     if (jobId && !jobManifest) {
       console.log('\nBlocker: UNKNOWN_JOB');
@@ -431,103 +459,136 @@ async function main(): Promise<void> {
     console.log('STEP 1/3 — Voiceover fixture present, skipping ElevenLabs call. ✅');
   }
 
-  // ---------- BRIDGE: in job mode, sync job source video into shared fixture path ----------
-  if (jobId && jobSourceVideoAbs) {
-    const fixtureAbs = resolve(VIDEO_FIXTURE_PATH);
-    mkdirSync(dirname(fixtureAbs), { recursive: true });
-    console.log(`\n>>> BRIDGE — copying job source video into shared fixture (compatibility bridge)`);
-    console.log(`    from: ${jobSourceVideoAbs}`);
-    console.log(`      to: ${VIDEO_FIXTURE_PATH}`);
-    console.log(`    note: fixture is gitignored; this is a runtime bridge, not a commit.`);
-    copyFileSync(jobSourceVideoAbs, fixtureAbs);
-  }
+  // ---------- STEP 2: render preview ----------
+  let chayExecuted = false;
+  if (jobId && jobSourceVideoAbs && jobOutputDir && jobRenderManifestPath && jobPreviewArtifactPath && jobPreviewPath) {
+    // ---- JOB MODE: direct offline-render-video into job folder (Round 38) ----
+    mkdirSync(jobOutputDir, { recursive: true });
 
-  // ---------- STEP 2: render via existing pnpm chay (local-preview) ----------
-  const chayStatus = runCommand('STEP 2/3 — Render preview via pnpm chay', 'pnpm', ['chay']);
-  if (chayStatus !== 0) {
-    console.log('🛑 RENDER_FAILED');
-    if (jobId && jobManifest) {
-      jobManifest.state = 'FAILED';
-      saveJobManifest(jobManifest);
-      updateRegistryFromManifest(jobManifest);
+    // Write a minimal render manifest for offline-render-video.
+    const jobRenderManifest = {
+      renderVersion: 'v1',
+      jobId,
+      runId,
+      output: { expectedPreviewPath: jobPreviewPath },
+      renderOptions: { estimatedDurationSec: 28, resolution: '1080x1920', aspectRatio: '9:16' },
+      assets: { bgm: null },
+      generatedAt: new Date().toISOString(),
+    };
+    writeFileSync(jobRenderManifestPath, `${JSON.stringify(jobRenderManifest, null, 2)}\n`, 'utf8');
+
+    const renderArgs = [
+      'tsx', 'scripts/offline-render-video-demo.ts',
+      '--render', jobRenderManifestPath,
+      '--output', jobPreviewArtifactPath,
+      '--mode', 'local-preview',
+      '--input-video', jobSourceVideoAbs,
+      '--input-audio', resolve(VOICE_FIXTURE_PATH),
+    ];
+    const renderStatus = runCommand('STEP 2/3 — Render preview (job-native, no shared fixture bridge)', 'npx', renderArgs);
+    if (renderStatus !== 0) {
+      console.log('🛑 RENDER_FAILED');
+      jobManifest!.state = 'FAILED';
+      saveJobManifest(jobManifest!);
+      updateRegistryFromManifest(jobManifest!);
+      writeStatusArtifact({ ...baseArtifact, elevenLabsApiCalled, state: 'RENDER_FAILED' });
+      process.exit(renderStatus);
     }
-    writeStatusArtifact({
-      ...baseArtifact,
-      elevenLabsApiCalled,
-      state: 'RENDER_FAILED',
-    });
-    process.exit(chayStatus);
+    chayExecuted = true;
+  } else {
+    // ---- NO-JOB MODE: use pnpm chay (full pipeline, unchanged) ----
+    const chayStatus = runCommand('STEP 2/3 — Render preview via pnpm chay', 'pnpm', ['chay']);
+    if (chayStatus !== 0) {
+      console.log('🛑 RENDER_FAILED');
+      writeStatusArtifact({ ...baseArtifact, elevenLabsApiCalled, state: 'RENDER_FAILED' });
+      process.exit(chayStatus);
+    }
+    chayExecuted = true;
   }
 
   // ---------- STEP 3: burn kinetic captions ----------
-  const captionStatus = runCommand('STEP 3/3 — Burn kinetic captions', 'pnpm', [
-    'caption:kinetic',
-    '--run',
-    runId,
-    '--preset',
-    preset,
-  ]);
-  if (captionStatus !== 0) {
-    console.log('🛑 CAPTION_FAILED');
-    if (jobId && jobManifest) {
-      jobManifest.state = 'FAILED';
-      saveJobManifest(jobManifest);
-      updateRegistryFromManifest(jobManifest);
+  let captionExecuted = false;
+  if (jobId && jobPreviewPath && jobCaptionedPath && jobCaptionPlanPath && jobAssPath) {
+    // ---- JOB MODE: direct caption:kinetic with job-local paths ----
+    const captionArgs = [
+      'caption:kinetic',
+      '--run', runId,
+      '--preset', preset,
+      '--input', jobPreviewPath,
+      '--output', jobCaptionedPath,
+      '--plan-output', jobCaptionPlanPath,
+      '--ass-output', jobAssPath,
+    ];
+    const captionStatus = runCommand('STEP 3/3 — Burn kinetic captions (job-native)', 'pnpm', captionArgs);
+    if (captionStatus !== 0) {
+      console.log('🛑 CAPTION_FAILED');
+      jobManifest!.state = 'FAILED';
+      saveJobManifest(jobManifest!);
+      updateRegistryFromManifest(jobManifest!);
+      writeStatusArtifact({ ...baseArtifact, elevenLabsApiCalled, chayExecuted, state: 'CAPTION_FAILED' });
+      process.exit(captionStatus);
     }
-    writeStatusArtifact({
-      ...baseArtifact,
-      elevenLabsApiCalled,
-      chayExecuted: true,
-      state: 'CAPTION_FAILED',
-    });
-    process.exit(captionStatus);
+    captionExecuted = true;
+  } else {
+    // ---- NO-JOB MODE: use standard caption:kinetic (unchanged) ----
+    const captionStatus = runCommand('STEP 3/3 — Burn kinetic captions', 'pnpm', [
+      'caption:kinetic', '--run', runId, '--preset', preset,
+    ]);
+    if (captionStatus !== 0) {
+      console.log('🛑 CAPTION_FAILED');
+      writeStatusArtifact({ ...baseArtifact, elevenLabsApiCalled, chayExecuted, state: 'CAPTION_FAILED' });
+      process.exit(captionStatus);
+    }
+    captionExecuted = true;
   }
 
   // ---------- VERIFY artifact reflects real fixture, not placeholder ----------
-  const previewArtifact = readPreviewArtifact(runId);
+  let previewArtifact: StatusArtifact['previewArtifact'];
+  if (jobId && jobPreviewArtifactPath) {
+    // Job mode: read from job folder.
+    previewArtifact = readPreviewArtifactFromPath(jobPreviewArtifactPath);
+  } else {
+    previewArtifact = readPreviewArtifact(runId);
+  }
   const outputExists = existsSync(expectedOutput);
 
   if (!previewArtifact || !previewArtifact.hasRealFixture || previewArtifact.offlinePlaceholderOnly) {
     console.log('🛑 REAL_FIXTURE_NOT_USED');
     console.log('Render completed but preview_artifact.json still indicates placeholder mode.');
-    console.log('Operator should verify that pipeline-run-manifest picked up sample_hero_video.mp4.');
+    if (jobId) {
+      console.log('Operator should verify that source video is a real product video.');
+    } else {
+      console.log('Operator should verify that pipeline-run-manifest picked up sample_hero_video.mp4.');
+    }
     if (jobId && jobManifest) {
       jobManifest.state = 'FAILED';
       saveJobManifest(jobManifest);
       updateRegistryFromManifest(jobManifest);
     }
     writeStatusArtifact({
-      ...baseArtifact,
-      elevenLabsApiCalled,
-      chayExecuted: true,
-      captionExecuted: true,
+      ...baseArtifact, elevenLabsApiCalled, chayExecuted, captionExecuted,
       outputVideoPath: outputExists ? expectedOutput : null,
-      previewArtifact,
-      state: 'REAL_FIXTURE_NOT_USED',
+      previewArtifact, state: 'REAL_FIXTURE_NOT_USED',
     });
     process.exit(4);
   }
 
   // ---------- SUCCESS ----------
-  const previewVideoRelative = `data/temp/pipeline-p9-demo/${runId}/preview.mp4`;
-  const captionedRelative = `data/temp/pipeline-p9-demo/${runId}/preview_with_captions${preset === 'viral_review_v2' ? '_v2' : ''}.mp4`;
-
   if (jobId && jobManifest) {
-    jobManifest.artifacts.previewVideoPath = previewVideoRelative;
-    jobManifest.artifacts.captionedPreviewPath = captionedRelative;
+    // Job mode: paths point to job folder.
+    const previewRel = `${JOBS_ROOT}/${jobId}/preview.mp4`;
+    const captionedRel = `${JOBS_ROOT}/${jobId}/preview_with_captions${preset === 'viral_review_v2' ? '_v2' : ''}.mp4`;
+    jobManifest.artifacts.previewVideoPath = previewRel;
+    jobManifest.artifacts.captionedPreviewPath = captionedRel;
     jobManifest.state = 'READY_FOR_OPERATOR_REVIEW';
     saveJobManifest(jobManifest);
     updateRegistryFromManifest(jobManifest);
   }
 
   writeStatusArtifact({
-    ...baseArtifact,
-    elevenLabsApiCalled,
-    chayExecuted: true,
-    captionExecuted: true,
+    ...baseArtifact, elevenLabsApiCalled, chayExecuted, captionExecuted,
     outputVideoPath: outputExists ? expectedOutput : null,
-    previewArtifact,
-    state: 'READY_FOR_OPERATOR_VIDEO_REVIEW',
+    previewArtifact, state: 'READY_FOR_OPERATOR_VIDEO_REVIEW',
   });
 
   console.log('');
@@ -538,7 +599,10 @@ async function main(): Promise<void> {
   console.log(`Voice source:     ${VOICE_FIXTURE_PATH}`);
   console.log(`Caption preset:   ${preset}`);
   console.log(`Output:           ${expectedOutput}`);
-  if (jobId) console.log(`Job state:        READY_FOR_OPERATOR_REVIEW`);
+  if (jobId) {
+    console.log(`Job state:        READY_FOR_OPERATOR_REVIEW`);
+    console.log(`Render mode:      NATIVE_JOB_FOLDER (no shared fixture bridge)`);
+  }
   console.log('');
   console.log('Required action:');
   console.log('Operator must watch this video before publish readiness.');
