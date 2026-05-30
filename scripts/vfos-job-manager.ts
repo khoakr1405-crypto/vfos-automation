@@ -498,6 +498,122 @@ function cmdList(_args: string[]): number {
   return 0;
 }
 
+// ---------- script (Round 39) ----------
+function cmdScript(args: string[]): number {
+  const parsed = parseArgs({
+    args,
+    options: {
+      job: { type: 'string' },
+      'dry-run': { type: 'boolean', default: false },
+    },
+    allowPositionals: false,
+    strict: true,
+  });
+  const jobId = parsed.values.job as string | undefined;
+  const dryRun = Boolean(parsed.values['dry-run']);
+
+  if (!jobId) {
+    console.error('Error: --job <jobId> is required');
+    return 1;
+  }
+
+  const manifest = loadManifest(jobId);
+  if (!manifest) {
+    console.error(`🛑 UNKNOWN_JOB: ${jobId}`);
+    return 2;
+  }
+
+  const productCardPath = resolve(manifest.source.productCardPath);
+  if (!existsSync(productCardPath)) {
+    console.error(`🛑 MISSING_PRODUCT_CARD: ${manifest.source.productCardPath}`);
+    return 3;
+  }
+
+  let productCard: Record<string, unknown>;
+  try {
+    productCard = JSON.parse(readFileSync(productCardPath, 'utf8'));
+  } catch (e) {
+    console.error(`🛑 INVALID_PRODUCT_CARD_JSON: ${(e as Error).message}`);
+    return 3;
+  }
+
+  const productName = extractProductName(productCard);
+  if (!productName) {
+    console.error('🛑 MISSING_PRODUCT_NAME');
+    console.error('  Product card must have "name", "productName", or "title" field.');
+    return 4;
+  }
+
+  const priceRaw = productCard['price'] ?? productCard['price_min'] ?? productCard['priceMin'];
+  const priceStr = typeof priceRaw === 'number'
+    ? (priceRaw >= 1000 ? `${Math.round(priceRaw / 1000)}K` : `${priceRaw}`)
+    : typeof priceRaw === 'string' ? priceRaw : null;
+
+  const hook = `Ê khoan lướt qua nha, cái ${productName.slice(0, 50)} này siêu hot luôn!`;
+  const priceLine = priceStr ? `Giá chỉ ${priceStr} thôi, quá hời luôn.` : '';
+  const voiceoverBody = [
+    hook,
+    `Đây là sản phẩm ${productName} mà mình muốn review cho mọi người.`,
+    `Chất lượng thì xịn lắm, mình đã test thử rồi nè.`,
+    priceLine,
+    `Thiết kế nhỏ gọn, tiện lợi, dùng được ở mọi nơi.`,
+    `Nếu bạn đang tìm một sản phẩm tốt với giá hợp lý thì đây là lựa chọn đỉnh nhất.`,
+    `Bấm link bên dưới để mua ngay nha, số lượng có hạn!`,
+  ].filter(Boolean).join(' ');
+
+  const captionDraft = `${productName} — Review nhanh! ${priceStr ? `Giá ${priceStr}` : ''} #vfos #review #dealhot`;
+
+  const scriptArtifact = {
+    scriptArtifactVersion: 'v1',
+    jobId,
+    runId: manifest.runId,
+    productName,
+    language: 'vi',
+    style: 'young_fun_bold_review',
+    hook3s: hook,
+    voiceover: voiceoverBody,
+    voiceoverText: voiceoverBody,
+    captionDraft,
+    hashtags: ['#vfos', '#review', '#dealhot'],
+    source: 'job_product_card_template',
+    apiCalled: false,
+    generatedAt: isoNow(),
+  };
+
+  const scriptPath = resolve(JOBS_ROOT, jobId, 'script_artifact.json');
+
+  console.log('======================================================');
+  console.log(`📝  VFOS Job Manager — script  ${dryRun ? '🔍 DRY-RUN' : '⚡ EXECUTE'}`);
+  console.log('======================================================');
+  console.log(`Job ID:            ${jobId}`);
+  console.log(`Product name:      ${productName}`);
+  console.log(`Price:             ${priceStr ?? '(unknown)'}`);
+  console.log(`Script source:     template (no API)`);
+  console.log(`Voiceover length:  ${voiceoverBody.length} chars / ${voiceoverBody.split(/\s+/).length} words`);
+  console.log(`Output:            ${JOBS_ROOT}/${jobId}/script_artifact.json`);
+  console.log('------------------------------------------------------');
+  console.log(`Hook:              ${hook}`);
+  console.log(`Caption:           ${captionDraft}`);
+  console.log('------------------------------------------------------');
+
+  if (dryRun) {
+    console.log('Dry-run: no file written, no manifest mutation.');
+    return 0;
+  }
+
+  mkdirSync(dirname(scriptPath), { recursive: true });
+  writeFileSync(scriptPath, `${JSON.stringify(scriptArtifact, null, 2)}\n`, 'utf8');
+
+  manifest.artifacts.scriptArtifactPath = `${JOBS_ROOT}/${jobId}/script_artifact.json`;
+  saveManifest(manifest);
+
+  console.log(`✅ Script artifact written.`);
+  console.log(`Next steps:`);
+  console.log(`  pnpm voice:elevenlabs --job ${jobId} --dry-run`);
+  console.log(`  pnpm voice:elevenlabs --job ${jobId} --confirm-api-call`);
+  return 0;
+}
+
 // ---------- entry ----------
 function main(): number {
   const argv = process.argv.slice(2);
@@ -509,6 +625,8 @@ function main(): number {
       return cmdCreate(rest);
     case 'attach-source':
       return cmdAttachSource(rest);
+    case 'script':
+      return cmdScript(rest);
     case 'status':
       return cmdStatus(rest);
     case 'list':
@@ -517,6 +635,7 @@ function main(): number {
       console.error('Usage:');
       console.error('  pnpm job:create        --from-product <path> [--dry-run]');
       console.error('  pnpm job:attach-source --job <jobId> --file <path> [--dry-run]');
+      console.error('  pnpm job:script        --job <jobId> [--dry-run]');
       console.error('  pnpm job:status        --job <jobId>');
       console.error('  pnpm job:list');
       return 1;

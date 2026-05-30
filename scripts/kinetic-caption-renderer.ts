@@ -578,6 +578,7 @@ async function main(): Promise<void> {
   const parsed = parseArgs({
     options: {
       run: { type: 'string' },
+      job: { type: 'string' },
       input: { type: 'string' },
       output: { type: 'string' },
       timing: { type: 'string' },
@@ -591,9 +592,11 @@ async function main(): Promise<void> {
   });
   const values = parsed.values;
 
-  const runId = values.run;
-  if (!runId) {
-    console.error('Error: --run <runId> is required');
+  const jobId = (values.job as string | undefined) ?? null;
+  const runId = jobId ? null : (values.run as string | undefined) ?? null;
+
+  if (!jobId && !runId) {
+    console.error('Error: --run <runId> or --job <jobId> is required');
     process.exit(1);
   }
 
@@ -603,7 +606,10 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const runDir = resolve('data/temp/pipeline-p9-demo', runId);
+  const JOBS_ROOT = 'data/temp/jobs';
+  const effectiveRunId = jobId ? `run_${jobId}` : runId!;
+  const runDir = jobId ? resolve(JOBS_ROOT, jobId) : resolve('data/temp/pipeline-p9-demo', runId!);
+
   const timingPath = values.timing ? resolve(values.timing as string) : join(runDir, 'voice_timing_artifact.json');
   const inputVideo = values.input ? resolve(values.input as string) : join(runDir, 'preview.mp4');
   const outputVideo = values.output
@@ -619,7 +625,11 @@ async function main(): Promise<void> {
   console.log('======================================================');
   console.log(`💬  VFOS Kinetic Caption Renderer (${preset.name})`);
   console.log('======================================================');
-  console.log(`Run:            ${runId}`);
+  if (jobId) {
+    console.log(`Job ID:         ${jobId}`);
+  } else {
+    console.log(`Run:            ${runId}`);
+  }
   console.log(`Run dir:        ${runDir}`);
   console.log(`Timing:         ${timingPath}`);
   console.log(`Input video:    ${inputVideo}`);
@@ -631,16 +641,24 @@ async function main(): Promise<void> {
   console.log('------------------------------------------------------');
 
   if (!existsSync(timingPath)) {
+    if (jobId) {
+      console.error('🛑 MISSING_JOB_TIMING_ARTIFACT');
+      console.error(`  Timing artifact not found in job folder: ${timingPath}`);
+      console.error(`  Generate first via: pnpm voice:elevenlabs --job ${jobId} --confirm-api-call`);
+    } else {
+      console.error('MISSING_TIMING_ARTIFACT — no timing artifact found.');
+      console.error(`  Suggested: pnpm voice:elevenlabs --run ${runId} --confirm-api-call --sync-fixture`);
+    }
     const artifact = {
       captionPlanVersion: 'v1',
-      runId,
+      runId: effectiveRunId,
       status: 'MISSING_TIMING_ARTIFACT',
       timingPath,
-      notes: `voice_timing_artifact.json not found. Run: pnpm voice:elevenlabs --run ${runId} --confirm-api-call --sync-fixture`,
+      notes: jobId
+        ? `voice_timing_artifact.json not found in job folder. Run: pnpm voice:elevenlabs --job ${jobId} --confirm-api-call`
+        : `voice_timing_artifact.json not found. Run: pnpm voice:elevenlabs --run ${runId} --confirm-api-call --sync-fixture`,
     };
     writeArtifact(planPath, artifact);
-    console.error('MISSING_TIMING_ARTIFACT — no timing artifact found.');
-    console.error(`  Suggested: pnpm voice:elevenlabs --run ${runId} --confirm-api-call --sync-fixture`);
     process.exit(1);
   }
 
@@ -681,7 +699,7 @@ async function main(): Promise<void> {
 
   const plan = {
     captionPlanVersion: preset.outputSuffix === '_v2' ? 'v2' : 'v1',
-    runId,
+    runId: effectiveRunId,
     sourceTimingPath: timingPath,
     inputVideoPath: inputVideo,
     outputVideoPath: outputVideo,
@@ -721,10 +739,16 @@ async function main(): Promise<void> {
   }
 
   if (!existsSync(inputVideo)) {
+    if (jobId) {
+      console.error('🛑 MISSING_JOB_PREVIEW_VIDEO');
+      console.error(`  Preview video not found in job folder: ${inputVideo}`);
+      console.error('  Render first via review-video-orchestrator.');
+    } else {
+      console.error('MISSING_INPUT_VIDEO — input video not found.');
+      console.error(`  Suggested: pnpm chay (to generate preview)`);
+    }
     const failPlan = { ...plan, status: 'MISSING_INPUT_VIDEO' };
     writeArtifact(planPath, failPlan);
-    console.error('MISSING_INPUT_VIDEO — input video not found.');
-    console.error(`  Suggested: pnpm chay (to generate preview)`);
     process.exit(1);
   }
 
@@ -782,6 +806,32 @@ async function main(): Promise<void> {
 
   const successPlan = { ...plan, status: 'SUCCESS', completedAt: new Date().toISOString() };
   writeArtifact(planPath, successPlan);
+
+  if (jobId) {
+    const manifestPath = join(runDir, 'job_manifest.json');
+    if (existsSync(manifestPath)) {
+      try {
+        const jobManifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+        const suffix = preset.outputSuffix;
+        const captionedRel = `${JOBS_ROOT}/${jobId}/preview_with_captions${suffix}.mp4`;
+        jobManifest.artifacts.captionedPreviewPath = captionedRel;
+        jobManifest.updatedAt = new Date().toISOString();
+        writeFileSync(manifestPath, JSON.stringify(jobManifest, null, 2) + '\n', 'utf8');
+
+        // Also update vfos_jobs_registry.json so list command works
+        const registryPath = resolve('data/temp/vfos_jobs_registry.json');
+        if (existsSync(registryPath)) {
+          const reg = JSON.parse(readFileSync(registryPath, 'utf8'));
+          const idx = reg.jobs.findIndex((j: any) => j.jobId === jobId);
+          if (idx >= 0) {
+            reg.jobs[idx].captionedPreviewPath = captionedRel;
+            reg.jobs[idx].updatedAt = jobManifest.updatedAt;
+            writeFileSync(registryPath, JSON.stringify(reg, null, 2) + '\n', 'utf8');
+          }
+        }
+      } catch {}
+    }
+  }
 
   console.log('======================================================');
   console.log('SUCCESS — captioned video written.');

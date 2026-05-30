@@ -28,6 +28,8 @@
  *   pnpm voice:elevenlabs --run run_review_product_p9 --dry-run
  *   pnpm voice:elevenlabs --run run_review_product_p9 --confirm-api-call
  *   pnpm voice:elevenlabs --run run_review_product_p9 --confirm-api-call --sync-fixture
+ *   pnpm voice:elevenlabs --job job_20260530_001 --dry-run          (Round 39)
+ *   pnpm voice:elevenlabs --job job_20260530_001 --confirm-api-call (Round 39)
  */
 
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
@@ -194,6 +196,7 @@ async function main(): Promise<void> {
   const parsed = parseArgs({
     options: {
       run: { type: 'string' },
+      job: { type: 'string' },
       'dry-run': { type: 'boolean', default: false },
       'confirm-api-call': { type: 'boolean', default: false },
       'sync-fixture': { type: 'boolean', default: false },
@@ -205,25 +208,66 @@ async function main(): Promise<void> {
   });
   const values = parsed.values;
 
-  const runId = values.run;
-  if (!runId) {
-    console.error('Error: --run <runId> is required');
+  const jobId = (values.job as string | undefined) ?? null;
+  const runId = jobId ? null : (values.run as string | undefined) ?? null;
+
+  if (!jobId && !runId) {
+    console.error('Error: --run <runId> or --job <jobId> is required');
     process.exit(1);
   }
 
-  const runDir = resolveRunDir(runId);
-  const scriptRead = readScriptText(runDir);
+  // Resolve paths: job mode reads/writes in job folder; run mode in pipeline run dir.
+  const JOBS_ROOT = 'data/temp/jobs';
+  let workDir: string;
+  let audioPath: string;
+  let timingArtifactPath: string;
+  let voiceArtifactPath: string;
+  let effectiveRunId: string;
+
+  // Job manifest for job mode updates.
+  let jobManifest: Record<string, any> | null = null;
+
+  if (jobId) {
+    workDir = resolve(JOBS_ROOT, jobId);
+    audioPath = join(workDir, 'voiceover.mp3');
+    timingArtifactPath = join(workDir, 'voice_timing_artifact.json');
+    voiceArtifactPath = join(workDir, 'voice_artifact.json');
+    effectiveRunId = `run_${jobId}`;
+    // Load job manifest.
+    const manifestPath = join(workDir, 'job_manifest.json');
+    if (!existsSync(manifestPath)) {
+      console.error(`🛑 UNKNOWN_JOB: ${jobId}`);
+      console.error(`  Manifest not found: ${manifestPath}`);
+      process.exit(5);
+    }
+    try {
+      jobManifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    } catch (err) {
+      console.error(`🛑 INVALID_JOB_MANIFEST: ${(err as Error).message}`);
+      process.exit(5);
+    }
+  } else {
+    workDir = resolveRunDir(runId!);
+    audioPath = join(workDir, 'voiceover.mp3');
+    timingArtifactPath = join(workDir, 'voice_timing_artifact.json');
+    voiceArtifactPath = join(workDir, 'voice_artifact.json');
+    effectiveRunId = runId!;
+  }
+
+  const scriptRead = readScriptText(workDir);
   if ('error' in scriptRead) {
-    console.error(`Error: ${scriptRead.error}`);
+    if (jobId) {
+      console.error(`🛑 MISSING_JOB_SCRIPT_ARTIFACT`);
+      console.error(`  ${scriptRead.error}`);
+      console.error(`  Generate first: pnpm job:script --job ${jobId}`);
+    } else {
+      console.error(`Error: ${scriptRead.error}`);
+    }
     process.exit(1);
   }
   const { text: voiceText, source: textSource } = scriptRead;
   const wordCount = voiceText.split(/\s+/).filter(Boolean).length;
   const tooShort = voiceText.length < VOICE_TEXT_MIN_CHARS || wordCount < VOICE_TEXT_MIN_WORDS;
-
-  const audioPath = join(runDir, 'voiceover.mp3');
-  const timingArtifactPath = join(runDir, 'voice_timing_artifact.json');
-  const voiceArtifactPath = join(runDir, 'voice_artifact.json');
 
   const requestedModel = values.model ?? DEFAULT_MODEL;
   const wantsLive = !!values['confirm-api-call'] && !values['dry-run'];
@@ -231,8 +275,12 @@ async function main(): Promise<void> {
   console.log('======================================================');
   console.log('🎙️  VFOS ElevenLabs v3 Voiceover Bridge');
   console.log('======================================================');
-  console.log(`Run:            ${runId}`);
-  console.log(`Run dir:        ${runDir}`);
+  if (jobId) {
+    console.log(`Job ID:         ${jobId}`);
+  } else {
+    console.log(`Run:            ${runId}`);
+  }
+  console.log(`Work dir:       ${workDir}`);
   console.log(`Text source:    ${textSource}`);
   console.log(`Text length:    ${voiceText.length} chars / ${wordCount} words`);
   console.log(`Text preview:   ${voiceText.slice(0, 100)}${voiceText.length > 100 ? '…' : ''}`);
@@ -246,7 +294,7 @@ async function main(): Promise<void> {
 
   if (tooShort && !values['allow-short-script']) {
     const artifact = {
-      ...buildBaseArtifact(runId, requestedModel, textSource, voiceText.length),
+      ...buildBaseArtifact(effectiveRunId, requestedModel, textSource, voiceText.length),
       status: 'SCRIPT_TEXT_TOO_SHORT',
       apiCalled: false,
       tokensLogged: false,
@@ -262,7 +310,7 @@ async function main(): Promise<void> {
 
   if (!wantsLive) {
     const artifact = {
-      ...buildBaseArtifact(runId, requestedModel, textSource, voiceText.length),
+      ...buildBaseArtifact(effectiveRunId, requestedModel, textSource, voiceText.length),
       status: 'DRY_RUN_PLAN_ONLY',
       apiCalled: false,
       tokensLogged: false,
@@ -288,7 +336,7 @@ async function main(): Promise<void> {
     if (!apiKey) missing.push('ELEVENLABS_API_KEY');
     if (!voiceId) missing.push('ELEVENLABS_VOICE_ID');
     const artifact = {
-      ...buildBaseArtifact(runId, requestedModel, textSource, voiceText.length),
+      ...buildBaseArtifact(effectiveRunId, requestedModel, textSource, voiceText.length),
       status: 'MISSING_CREDENTIALS',
       apiCalled: false,
       tokensLogged: false,
@@ -329,7 +377,7 @@ async function main(): Promise<void> {
     const status =
       isModelUnsupportedError(result.status, result.reason) ? 'MODEL_NOT_AVAILABLE' : 'API_ERROR';
     const artifact = {
-      ...buildBaseArtifact(runId, modelUsed, textSource, voiceText.length),
+      ...buildBaseArtifact(effectiveRunId, modelUsed, textSource, voiceText.length),
       status,
       apiCalled: true,
       tokensLogged: false,
@@ -355,7 +403,7 @@ async function main(): Promise<void> {
   // Persist timing artifact for caption sync round.
   const timingArtifact = {
     timingVersion: 'v1',
-    runId,
+    runId: effectiveRunId,
     provider: 'elevenlabs',
     model: modelUsed,
     alignmentType: 'character',
@@ -383,7 +431,7 @@ async function main(): Promise<void> {
   }
 
   const voiceArtifact = {
-    ...buildBaseArtifact(runId, modelUsed, textSource, voiceText.length),
+    ...buildBaseArtifact(effectiveRunId, modelUsed, textSource, voiceText.length),
     voiceIdMasked: maskVoiceId(voiceId),
     status: 'SUCCESS',
     audioPath,
@@ -398,6 +446,27 @@ async function main(): Promise<void> {
         : `Voiceover generated using fallback model ${modelUsed} after ${requestedModel} unavailable.`,
   };
   writeArtifact(voiceArtifactPath, voiceArtifact);
+
+  if (jobId && jobManifest) {
+    jobManifest.artifacts.voiceArtifactPath = `${JOBS_ROOT}/${jobId}/voice_artifact.json`;
+    jobManifest.artifacts.voiceTimingArtifactPath = `${JOBS_ROOT}/${jobId}/voice_timing_artifact.json`;
+    jobManifest.updatedAt = new Date().toISOString();
+    const manifestPath = join(workDir, 'job_manifest.json');
+    writeFileSync(manifestPath, JSON.stringify(jobManifest, null, 2) + '\n', 'utf8');
+
+    // Also update vfos_jobs_registry.json so the CLI listing reflects the correct updated state!
+    const registryPath = resolve('data/temp/vfos_jobs_registry.json');
+    if (existsSync(registryPath)) {
+      try {
+        const reg = JSON.parse(readFileSync(registryPath, 'utf8'));
+        const idx = reg.jobs.findIndex((j: any) => j.jobId === jobId);
+        if (idx >= 0) {
+          reg.jobs[idx].updatedAt = jobManifest.updatedAt;
+          writeFileSync(registryPath, JSON.stringify(reg, null, 2) + '\n', 'utf8');
+        }
+      } catch {}
+    }
+  }
 
   console.log('SUCCESS — voiceover.mp3 + timing artifact written.');
   console.log(`  model used: ${modelUsed}`);
