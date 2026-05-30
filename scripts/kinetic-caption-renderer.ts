@@ -1,17 +1,23 @@
 #!/usr/bin/env tsx
 
 /**
- * VFOS Kinetic Caption Renderer v1 — Round 34A.
+ * VFOS Kinetic Caption Renderer — Rounds 34A + 34B.
  *
  * Đọc voice_timing_artifact.json (character-level alignment từ Round 33),
- * group chars → words → caption chunks (3–5 từ, ≤2.2s, ≤28 chars), phân
- * loại HOOK/BODY/CTA, generate ASS subtitle với active-word highlight,
- * burn vào video bằng FFmpeg.
+ * group chars → words → caption chunks theo preset, phân loại
+ * HOOK/BODY/CTA, generate ASS subtitle với active-word highlight, burn
+ * vào video bằng FFmpeg.
  *
- * Outputs trong data/temp/pipeline-p9-demo/<runId>/:
- *   - kinetic_caption_plan.json   (plan + chunks + words timing)
- *   - kinetic_captions.ass        (ASS subtitle file, UTF-8 BOM)
- *   - preview_with_captions.mp4   (final captioned video)
+ * Presets:
+ *   - viral_review_v1 (Round 34A baseline, backward-compatible default)
+ *   - viral_review_v2 (Round 34B viral polish: hook pop-in, uppercase
+ *     hook/CTA, keyword emphasis, tighter chunking)
+ *
+ * Outputs trong data/temp/pipeline-p9-demo/<runId>/ (v1 mặc định, v2 có
+ * suffix _v2 để không ghi đè v1):
+ *   - kinetic_caption_plan[_v2].json   (plan + chunks + words timing)
+ *   - kinetic_captions[_v2].ass        (ASS subtitle file, UTF-8 BOM)
+ *   - preview_with_captions[_v2].mp4   (final captioned video)
  *
  * Safety:
  *   - KHÔNG gọi API (ElevenLabs/OpenAI/Shopee/Facebook).
@@ -22,12 +28,13 @@
  *
  * Usage:
  *   pnpm caption:kinetic --run run_review_product_p9 [--dry-run]
+ *   pnpm caption:kinetic --run <id> --preset viral_review_v2
  *   pnpm caption:kinetic --run <id> --input <video> --output <out.mp4>
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, extname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 
 interface TimingAlignment {
@@ -61,6 +68,52 @@ interface Chunk {
   words: Word[];
 }
 
+interface StyleDef {
+  name: string;
+  fontname: string;
+  fontsize: number;
+  primaryColour: string;
+  secondaryColour: string;
+  outlineColour: string;
+  bold: number;
+  outline: number;
+  shadow: number;
+  alignment: number;
+  marginV: number;
+}
+
+interface ChunkingThresholds {
+  maxWords: number;
+  maxChars: number;
+  maxDurationSec: number;
+}
+
+interface Preset {
+  name: string;
+  outputSuffix: string;
+  hookWindowSec: number;
+  chunkingHook: ChunkingThresholds;
+  chunkingBody: ChunkingThresholds;
+  softFlushMinWords: number;
+  styles: {
+    hook: StyleDef;
+    body: StyleDef;
+    cta: StyleDef;
+  };
+  activeColorInline: {
+    hook: string;
+    body: string;
+    cta: string;
+  };
+  effects: {
+    hookPopIn: boolean;
+    uppercaseHook: boolean;
+    uppercaseCTA: boolean;
+    keywordEmphasis: boolean;
+  };
+  keywordEmphasisColorInline: string;
+}
+
 const HOOK_KEYWORDS = ['ê', 'khoan', 'đừng lướt', 'lướt qua', 'siêu phẩm', 'hot'];
 const CTA_KEYWORDS = [
   'link',
@@ -74,10 +127,160 @@ const CTA_KEYWORDS = [
   'click',
 ];
 
-const MAX_WORDS_PER_CHUNK = 5;
-const MAX_CHARS_PER_CHUNK = 28;
-const MAX_CHUNK_DURATION_SEC = 2.2;
-const HOOK_TIME_THRESHOLD_SEC = 2.5;
+// v2 emphasis keyword set — Vietnamese review/marketing power words.
+const EMPHASIS_KEYWORDS = new Set([
+  'siêu',
+  'cực',
+  'hot',
+  'đỉnh',
+  'mát',
+  'rẻ',
+  'pin',
+  'khủng',
+  'xịn',
+  'ngon',
+  'hời',
+  'mạnh',
+  'bảo',
+  'bảo bối',
+]);
+// Price-like tokens (200K, 50K, 1M).
+const EMPHASIS_PRICE_RE = /^\d+[kKmM]$/;
+
+const PRESET_V1: Preset = {
+  name: 'viral_review_v1',
+  outputSuffix: '',
+  hookWindowSec: 2.5,
+  chunkingHook: { maxWords: 5, maxChars: 28, maxDurationSec: 2.2 },
+  chunkingBody: { maxWords: 5, maxChars: 28, maxDurationSec: 2.2 },
+  softFlushMinWords: 3,
+  styles: {
+    hook: {
+      name: 'HookStyle',
+      fontname: 'Arial Black',
+      fontsize: 96,
+      primaryColour: '&H00FFFFFF',
+      secondaryColour: '&H000019FF',
+      outlineColour: '&H00000000',
+      bold: 1,
+      outline: 6,
+      shadow: 3,
+      alignment: 2,
+      marginV: 440,
+    },
+    body: {
+      name: 'BodyStyle',
+      fontname: 'Arial Black',
+      fontsize: 78,
+      primaryColour: '&H00FFFFFF',
+      secondaryColour: '&H00FFFF00',
+      outlineColour: '&H00000000',
+      bold: 1,
+      outline: 5,
+      shadow: 2,
+      alignment: 2,
+      marginV: 420,
+    },
+    cta: {
+      name: 'CTAStyle',
+      fontname: 'Arial Black',
+      fontsize: 88,
+      primaryColour: '&H0000FFFF',
+      secondaryColour: '&H00FFFFFF',
+      outlineColour: '&H00000000',
+      bold: 1,
+      outline: 6,
+      shadow: 3,
+      alignment: 2,
+      marginV: 420,
+    },
+  },
+  activeColorInline: {
+    hook: '&H00FFFF&',
+    body: '&HFFFF00&',
+    cta: '&HFFFFFF&',
+  },
+  effects: {
+    hookPopIn: false,
+    uppercaseHook: false,
+    uppercaseCTA: false,
+    keywordEmphasis: false,
+  },
+  keywordEmphasisColorInline: '&H0080FF&',
+};
+
+const PRESET_V2: Preset = {
+  name: 'viral_review_v2',
+  outputSuffix: '_v2',
+  hookWindowSec: 3.0,
+  // HOOK in v2 chunks tightly so visually punchy: max 2 từ, ≤14 chars, ≤1.2s.
+  chunkingHook: { maxWords: 2, maxChars: 14, maxDurationSec: 1.2 },
+  // BODY in v2 also tighter than v1: 4 từ, ≤24 chars, ≤1.8s.
+  chunkingBody: { maxWords: 4, maxChars: 24, maxDurationSec: 1.8 },
+  softFlushMinWords: 2,
+  styles: {
+    hook: {
+      name: 'HookStyleV2',
+      fontname: 'Arial Black',
+      fontsize: 112,
+      primaryColour: '&H00FFFFFF',
+      secondaryColour: '&H00FFFFFF',
+      outlineColour: '&H00000000',
+      bold: 1,
+      outline: 8,
+      shadow: 4,
+      alignment: 2,
+      marginV: 460,
+    },
+    body: {
+      name: 'BodyStyleV2',
+      fontname: 'Arial Black',
+      fontsize: 84,
+      primaryColour: '&H00FFFFFF',
+      secondaryColour: '&H00FFFFFF',
+      outlineColour: '&H00000000',
+      bold: 1,
+      outline: 6,
+      shadow: 2,
+      alignment: 2,
+      marginV: 420,
+    },
+    cta: {
+      name: 'CTAStyleV2',
+      fontname: 'Arial Black',
+      fontsize: 98,
+      primaryColour: '&H0000FFFF', // yellow (BGR for #FFFF00)
+      secondaryColour: '&H00FFFFFF',
+      outlineColour: '&H000000FF', // red outline (BGR for #FF0000)
+      bold: 1,
+      outline: 8,
+      shadow: 4,
+      alignment: 2,
+      marginV: 420,
+    },
+  },
+  activeColorInline: {
+    hook: '&H00FFFF&', // yellow active highlight
+    body: '&HFFFF00&', // cyan active highlight
+    cta: '&HFFFFFF&', // white on yellow base
+  },
+  effects: {
+    hookPopIn: true,
+    uppercaseHook: true,
+    uppercaseCTA: true,
+    keywordEmphasis: true,
+  },
+  keywordEmphasisColorInline: '&H0080FF&', // orange (BGR for #FF8000)
+};
+
+const PRESETS: Record<string, Preset> = {
+  viral_review_v1: PRESET_V1,
+  viral_review_v2: PRESET_V2,
+};
+
+function resolvePreset(name: string): Preset | null {
+  return PRESETS[name] ?? null;
+}
 
 function formatAssTime(sec: number): string {
   if (sec < 0) sec = 0;
@@ -91,6 +294,20 @@ function formatAssTime(sec: number): string {
 
 function escapeAssText(text: string): string {
   return text.replace(/\\/g, '\\\\').replace(/\{/g, '\\{').replace(/\}/g, '\\}');
+}
+
+function stripPunct(word: string): string {
+  return word
+    .toLowerCase()
+    .replace(/^[.,!?;:'"]+/g, '')
+    .replace(/[.,!?;:'"]+$/g, '');
+}
+
+function isEmphasisKeyword(word: string): boolean {
+  const clean = stripPunct(word);
+  if (EMPHASIS_KEYWORDS.has(clean)) return true;
+  if (EMPHASIS_PRICE_RE.test(clean)) return true;
+  return false;
 }
 
 // Group character-level alignment into words by whitespace. A "word" includes
@@ -108,11 +325,7 @@ function groupWords(align: TimingAlignment): Word[] {
     const ch = chars[i] ?? '';
     if (/\s/.test(ch)) {
       if (buf.length > 0 && wordStart >= 0) {
-        words.push({
-          text: buf.join(''),
-          startSec: wordStart,
-          endSec: lastNonSpaceEnd,
-        });
+        words.push({ text: buf.join(''), startSec: wordStart, endSec: lastNonSpaceEnd });
       }
       buf = [];
       wordStart = -1;
@@ -128,11 +341,17 @@ function groupWords(align: TimingAlignment): Word[] {
   return words;
 }
 
-function classifyIntent(text: string, startSec: number, isFirst: boolean): ChunkIntent {
+function classifyIntent(
+  text: string,
+  startSec: number,
+  isFirst: boolean,
+  hookWindowSec: number,
+): ChunkIntent {
   const lower = text.toLowerCase();
   if (CTA_KEYWORDS.some((kw) => lower.includes(kw))) return 'CTA';
-  if (isFirst || startSec < HOOK_TIME_THRESHOLD_SEC) return 'HOOK';
-  if (HOOK_KEYWORDS.some((kw) => lower.includes(kw)) && startSec < 4.0) return 'HOOK';
+  if (isFirst || startSec < hookWindowSec) return 'HOOK';
+  if (HOOK_KEYWORDS.some((kw) => lower.includes(kw)) && startSec < hookWindowSec + 1.5)
+    return 'HOOK';
   return 'BODY';
 }
 
@@ -144,7 +363,10 @@ function endsClause(word: string): boolean {
   return /[,;:]$/.test(word);
 }
 
-function groupChunks(words: Word[]): Chunk[] {
+// Group words into chunks using preset thresholds. Thresholds adapt per
+// chunk: if the chunk's first word starts within hookWindowSec, use the
+// tighter HOOK thresholds; otherwise use BODY.
+function groupChunks(words: Word[], preset: Preset): Chunk[] {
   const chunks: Chunk[] = [];
   let bufWords: Word[] = [];
 
@@ -157,7 +379,7 @@ function groupChunks(words: Word[]): Chunk[] {
     const isFirst = idx === 0;
     chunks.push({
       index: idx,
-      intent: classifyIntent(text, startSec, isFirst),
+      intent: classifyIntent(text, startSec, isFirst, preset.hookWindowSec),
       text,
       startSec,
       endSec,
@@ -170,15 +392,19 @@ function groupChunks(words: Word[]): Chunk[] {
     bufWords.push(w);
     const chunkText = bufWords.map((x) => x.text).join(' ');
     const chunkChars = chunkText.length;
-    const chunkDur = w.endSec - bufWords[0]!.startSec;
+    const chunkStart = bufWords[0]!.startSec;
+    const chunkDur = w.endSec - chunkStart;
+
+    const thresholds =
+      chunkStart < preset.hookWindowSec ? preset.chunkingHook : preset.chunkingBody;
 
     const hardFlush =
-      bufWords.length >= MAX_WORDS_PER_CHUNK ||
-      chunkChars >= MAX_CHARS_PER_CHUNK ||
-      chunkDur >= MAX_CHUNK_DURATION_SEC ||
+      bufWords.length >= thresholds.maxWords ||
+      chunkChars >= thresholds.maxChars ||
+      chunkDur >= thresholds.maxDurationSec ||
       endsSentence(w.text);
 
-    const softFlush = bufWords.length >= 3 && endsClause(w.text);
+    const softFlush = bufWords.length >= preset.softFlushMinWords && endsClause(w.text);
 
     if (hardFlush || softFlush) flushChunk();
   }
@@ -186,82 +412,25 @@ function groupChunks(words: Word[]): Chunk[] {
   return chunks;
 }
 
-interface StyleDef {
-  name: string;
-  fontname: string;
-  fontsize: number;
-  primaryColour: string;
-  secondaryColour: string;
-  outlineColour: string;
-  bold: number;
-  outline: number;
-  shadow: number;
-  alignment: number;
-  marginV: number;
-}
-
-const STYLE_HOOK: StyleDef = {
-  name: 'HookStyle',
-  fontname: 'Arial Black',
-  fontsize: 96,
-  primaryColour: '&H00FFFFFF', // white
-  secondaryColour: '&H000019FF', // unused for active highlight (we override inline)
-  outlineColour: '&H00000000', // black
-  bold: 1,
-  outline: 6,
-  shadow: 3,
-  alignment: 2,
-  marginV: 440,
-};
-
-const STYLE_BODY: StyleDef = {
-  name: 'BodyStyle',
-  fontname: 'Arial Black',
-  fontsize: 78,
-  primaryColour: '&H00FFFFFF', // white
-  secondaryColour: '&H00FFFF00', // unused
-  outlineColour: '&H00000000', // black
-  bold: 1,
-  outline: 5,
-  shadow: 2,
-  alignment: 2,
-  marginV: 420,
-};
-
-const STYLE_CTA: StyleDef = {
-  name: 'CTAStyle',
-  fontname: 'Arial Black',
-  fontsize: 88,
-  primaryColour: '&H0000FFFF', // yellow (BGR for #FFFF00)
-  secondaryColour: '&H00FFFFFF', // white
-  outlineColour: '&H00000000', // black
-  bold: 1,
-  outline: 6,
-  shadow: 3,
-  alignment: 2,
-  marginV: 420,
-};
-
-// Active-word highlight color per intent (ASS &HBBGGRR&).
-function activeColorForIntent(intent: ChunkIntent): string {
+function styleForIntent(preset: Preset, intent: ChunkIntent): StyleDef {
   switch (intent) {
     case 'HOOK':
-      return '&H00FFFF&'; // yellow (BGR for #FFFF00)
+      return preset.styles.hook;
     case 'CTA':
-      return '&HFFFFFF&'; // white on yellow base
+      return preset.styles.cta;
     default:
-      return '&HFFFF00&'; // cyan (BGR for #00FFFF)
+      return preset.styles.body;
   }
 }
 
-function styleNameForIntent(intent: ChunkIntent): string {
+function activeColorForIntent(preset: Preset, intent: ChunkIntent): string {
   switch (intent) {
     case 'HOOK':
-      return STYLE_HOOK.name;
+      return preset.activeColorInline.hook;
     case 'CTA':
-      return STYLE_CTA.name;
+      return preset.activeColorInline.cta;
     default:
-      return STYLE_BODY.name;
+      return preset.activeColorInline.body;
   }
 }
 
@@ -281,33 +450,64 @@ function buildStyleLine(s: StyleDef): string {
       s.outlineColour,
       '&H00000000', // BackColour
       s.bold,
-      0, // Italic
-      0, // Underline
-      0, // StrikeOut
-      100, // ScaleX
-      100, // ScaleY
-      0, // Spacing
-      0, // Angle
+      0,
+      0,
+      0,
+      100,
+      100,
+      0,
+      0,
       1, // BorderStyle (1 = outline+shadow)
       s.outline,
       s.shadow,
       s.alignment,
-      40, // MarginL
-      40, // MarginR
+      40,
+      40,
       s.marginV,
-      1, // Encoding (1 = default)
+      1,
     ].join(','),
   ].join(' ');
 }
 
-// Build ASS file content. For each chunk, emit one Dialogue event per word:
-// shows the whole chunk text with the current word highlighted in the active
-// color (inline {\1c&...&}word{\r}). Event spans from word.startSec to the
-// next word's startSec (or chunk.endSec for the last word) so the highlight
-// "slides" through the chunk.
-function buildAssContent(chunks: Chunk[]): string {
+// Render a single word for a chunk event. Three exclusive layers:
+//   1. If word is the active one → wrap in active color (highest priority).
+//   2. Else if keywordEmphasis enabled and word matches emphasis set →
+//      wrap in emphasis color.
+//   3. Else use plain style primary color.
+// Optionally uppercase per preset rules for HOOK/CTA intents.
+function renderWordForEvent(
+  word: Word,
+  isActive: boolean,
+  intent: ChunkIntent,
+  preset: Preset,
+): string {
+  let text = word.text;
+  if (
+    (intent === 'HOOK' && preset.effects.uppercaseHook) ||
+    (intent === 'CTA' && preset.effects.uppercaseCTA)
+  ) {
+    text = text.toLocaleUpperCase('vi-VN');
+  }
+  const escaped = escapeAssText(text);
+  if (isActive) {
+    const color = activeColorForIntent(preset, intent);
+    return `{\\1c${color}}${escaped}{\\r}`;
+  }
+  if (preset.effects.keywordEmphasis && isEmphasisKeyword(word.text)) {
+    return `{\\1c${preset.keywordEmphasisColorInline}}${escaped}{\\r}`;
+  }
+  return escaped;
+}
+
+// Optional intro override added at the start of HOOK events when popIn is on.
+// Scale: 80% → 110% in 120ms → 100% in next 100ms. Pure ASS \t() transform.
+const HOOK_POP_IN_PREFIX =
+  '{\\fscx80\\fscy80\\t(0,120,\\fscx110\\fscy110)\\t(120,220,\\fscx100\\fscy100)}';
+
+function buildAssContent(chunks: Chunk[], preset: Preset): string {
   const header = [
     '[Script Info]',
+    `; Generated by VFOS Kinetic Caption Renderer — preset=${preset.name}`,
     'ScriptType: v4.00+',
     'PlayResX: 1080',
     'PlayResY: 1920',
@@ -317,9 +517,9 @@ function buildAssContent(chunks: Chunk[]): string {
     '',
     '[V4+ Styles]',
     'Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding',
-    buildStyleLine(STYLE_HOOK),
-    buildStyleLine(STYLE_BODY),
-    buildStyleLine(STYLE_CTA),
+    buildStyleLine(preset.styles.hook),
+    buildStyleLine(preset.styles.body),
+    buildStyleLine(preset.styles.cta),
     '',
     '[Events]',
     'Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text',
@@ -327,8 +527,9 @@ function buildAssContent(chunks: Chunk[]): string {
 
   const events: string[] = [];
   for (const chunk of chunks) {
-    const styleName = styleNameForIntent(chunk.intent);
-    const activeColor = activeColorForIntent(chunk.intent);
+    const style = styleForIntent(preset, chunk.intent);
+    const popInPrefix =
+      chunk.intent === 'HOOK' && preset.effects.hookPopIn ? HOOK_POP_IN_PREFIX : '';
     for (let i = 0; i < chunk.words.length; i++) {
       const word = chunk.words[i]!;
       const start = word.startSec;
@@ -338,13 +539,11 @@ function buildAssContent(chunks: Chunk[]): string {
           : Math.max(chunk.endSec, word.endSec);
       if (end <= start) continue;
       const parts = chunk.words.map((w, j) =>
-        j === i
-          ? `{\\1c${activeColor}}${escapeAssText(w.text)}{\\r}`
-          : escapeAssText(w.text),
+        renderWordForEvent(w, j === i, chunk.intent, preset),
       );
-      const text = parts.join(' ');
+      const text = popInPrefix + parts.join(' ');
       events.push(
-        `Dialogue: 0,${formatAssTime(start)},${formatAssTime(end)},${styleName},,0,0,0,,${text}`,
+        `Dialogue: 0,${formatAssTime(start)},${formatAssTime(end)},${style.name},,0,0,0,,${text}`,
       );
     }
   }
@@ -367,6 +566,14 @@ function writeArtifact(path: string, obj: object): void {
   writeFileSync(path, JSON.stringify(obj, null, 2) + '\n', 'utf8');
 }
 
+function withSuffix(path: string, suffix: string): string {
+  if (!suffix) return path;
+  const ext = extname(path);
+  const dir = dirname(path);
+  const base = basename(path, ext);
+  return join(dir, base + suffix + ext);
+}
+
 async function main(): Promise<void> {
   const parsed = parseArgs({
     options: {
@@ -387,17 +594,23 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
+  const preset = resolvePreset(values.preset ?? 'viral_review_v1');
+  if (!preset) {
+    console.error(`Error: unknown preset "${values.preset}". Available: ${Object.keys(PRESETS).join(', ')}`);
+    process.exit(1);
+  }
+
   const runDir = resolve('data/temp/pipeline-p9-demo', runId);
   const timingPath = join(runDir, 'voice_timing_artifact.json');
   const inputVideo = values.input ? resolve(values.input) : join(runDir, 'preview.mp4');
   const outputVideo = values.output
     ? resolve(values.output)
-    : join(runDir, 'preview_with_captions.mp4');
-  const assPath = join(runDir, 'kinetic_captions.ass');
-  const planPath = join(runDir, 'kinetic_caption_plan.json');
+    : withSuffix(join(runDir, 'preview_with_captions.mp4'), preset.outputSuffix);
+  const assPath = withSuffix(join(runDir, 'kinetic_captions.ass'), preset.outputSuffix);
+  const planPath = withSuffix(join(runDir, 'kinetic_caption_plan.json'), preset.outputSuffix);
 
   console.log('======================================================');
-  console.log('💬  VFOS Kinetic Caption Renderer v1');
+  console.log(`💬  VFOS Kinetic Caption Renderer (${preset.name})`);
   console.log('======================================================');
   console.log(`Run:            ${runId}`);
   console.log(`Run dir:        ${runDir}`);
@@ -406,7 +619,7 @@ async function main(): Promise<void> {
   console.log(`Output video:   ${outputVideo}`);
   console.log(`ASS out:        ${assPath}`);
   console.log(`Plan out:       ${planPath}`);
-  console.log(`Preset:         ${values.preset}`);
+  console.log(`Preset:         ${preset.name}`);
   console.log(`Mode:           ${values['dry-run'] ? '🔍 DRY-RUN' : '🎬 RENDER'}`);
   console.log('------------------------------------------------------');
 
@@ -437,34 +650,39 @@ async function main(): Promise<void> {
   }
 
   const words = groupWords(timing.alignment);
-  const chunks = groupChunks(words);
+  const chunks = groupChunks(words, preset);
   console.log(`Words:          ${words.length}`);
-  console.log(`Chunks:         ${chunks.length} (HOOK=${chunks.filter((c) => c.intent === 'HOOK').length}, BODY=${chunks.filter((c) => c.intent === 'BODY').length}, CTA=${chunks.filter((c) => c.intent === 'CTA').length})`);
+  console.log(
+    `Chunks:         ${chunks.length} (HOOK=${chunks.filter((c) => c.intent === 'HOOK').length}, BODY=${chunks.filter((c) => c.intent === 'BODY').length}, CTA=${chunks.filter((c) => c.intent === 'CTA').length})`,
+  );
   if (chunks.length > 0) {
     const lastChunk = chunks[chunks.length - 1]!;
     console.log(`Caption span:   ${chunks[0]!.startSec.toFixed(2)}s → ${lastChunk.endSec.toFixed(2)}s`);
+  }
+  if (preset.effects.keywordEmphasis) {
+    const emphasized = words.filter((w) => isEmphasisKeyword(w.text)).length;
+    console.log(`Emphasis words: ${emphasized} (orange highlight when not currently active)`);
   }
 
   const isPlaceholder = checkVideoIsPlaceholder(runDir);
   if (isPlaceholder) {
     console.warn('⚠️  INPUT_VIDEO_MAY_BE_PLACEHOLDER_DO_NOT_APPROVE');
-    console.warn('  preview_artifact.json indicates placeholder/testsrc render.');
-    console.warn('  Captions will be burned for technical test only.');
+    console.warn(
+      '  This caption preview is for text style testing only. Do not approve/publish until real product footage is provided.',
+    );
   }
 
-  // Always write plan (even dry-run).
   const plan = {
-    captionPlanVersion: 'v1',
+    captionPlanVersion: preset.outputSuffix === '_v2' ? 'v2' : 'v1',
     runId,
     sourceTimingPath: timingPath,
     inputVideoPath: inputVideo,
     outputVideoPath: outputVideo,
     assPath,
-    stylePreset: values.preset,
+    stylePreset: preset.name,
+    presetEffects: preset.effects,
     isPlaceholderInput: isPlaceholder,
-    placeholderWarning: isPlaceholder
-      ? 'INPUT_VIDEO_MAY_BE_PLACEHOLDER_DO_NOT_APPROVE'
-      : null,
+    placeholderWarning: isPlaceholder ? 'INPUT_VIDEO_MAY_BE_PLACEHOLDER_DO_NOT_APPROVE' : null,
     chunks: chunks.map((c) => ({
       index: c.index,
       intent: c.intent,
@@ -475,6 +693,7 @@ async function main(): Promise<void> {
         text: w.text,
         startSec: Number(w.startSec.toFixed(3)),
         endSec: Number(w.endSec.toFixed(3)),
+        emphasis: preset.effects.keywordEmphasis ? isEmphasisKeyword(w.text) : false,
       })),
     })),
     safety: {
@@ -502,14 +721,14 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // Write ASS file with UTF-8 BOM (libass benefits from explicit BOM).
-  const assContent = buildAssContent(chunks);
+  const assContent = buildAssContent(chunks, preset);
   mkdirSync(dirname(assPath), { recursive: true });
+  // UTF-8 BOM for libass non-ASCII robustness.
   writeFileSync(assPath, '﻿' + assContent, 'utf8');
-  console.log(`ASS written:    ${assPath} (${chunks.reduce((n, c) => n + c.words.length, 0)} events)`);
+  console.log(
+    `ASS written:    ${assPath} (${chunks.reduce((n, c) => n + c.words.length, 0)} events)`,
+  );
 
-  // Run FFmpeg from runDir cwd so the `subtitles=` filter can reference the
-  // ASS by filename (avoids Windows drive-letter escaping pain).
   const inputRel = inputVideo.startsWith(runDir)
     ? basename(inputVideo)
     : inputVideo.replace(/\\/g, '/');
@@ -539,10 +758,7 @@ async function main(): Promise<void> {
 
   console.log(`FFmpeg cwd:     ${runDir}`);
   console.log(`FFmpeg cmd:     ffmpeg ${ffmpegArgs.join(' ')}`);
-  const ff = spawnSync('ffmpeg', ffmpegArgs, {
-    cwd: runDir,
-    encoding: 'utf-8',
-  });
+  const ff = spawnSync('ffmpeg', ffmpegArgs, { cwd: runDir, encoding: 'utf-8' });
 
   if (ff.status !== 0) {
     const failPlan = {
@@ -557,11 +773,7 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const successPlan = {
-    ...plan,
-    status: 'SUCCESS',
-    completedAt: new Date().toISOString(),
-  };
+  const successPlan = { ...plan, status: 'SUCCESS', completedAt: new Date().toISOString() };
   writeArtifact(planPath, successPlan);
 
   console.log('======================================================');
