@@ -20,6 +20,8 @@
     "caption:kinetic": "tsx scripts/kinetic-caption-renderer.ts",
     "bgm:mix": "tsx packages/voice/scripts/bgm-mix.ts",
     "bgm:check": "tsx scripts/job-bgm-selector.ts --check",
+    "bgm:gen": "tsx scripts/bgm-generate-candidates.ts",
+    "bgm:validate": "tsx scripts/bgm-validate-library.ts",
     "script:generate": "tsx packages/script-writer/scripts/generate.ts",
     "facebook:test": "tsx packages/facebook/scripts/test-connection.ts",
     "facebook:test-post": "tsx packages/facebook/scripts/test-post.ts",
