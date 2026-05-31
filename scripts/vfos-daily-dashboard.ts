@@ -481,7 +481,7 @@ async function main() {
 - **Expected result**: ${expectedResult}
 
 ## 3. Safety Preconditions
-- Cốc Cốc or Chrome must be started with remote debugging enabled on port 9222 (\`--remote-debugging-port=9222\`).
+- Cốc Cốc (the only supported browser for the Shopee Affiliate flow) must be started with remote debugging enabled on port 9222 (\`--remote-debugging-port=9222\`).
 - The browser must be actively navigated to the Shopee Affiliate Product Offer catalog tab.
 - Absolutely **never** input passwords or bypass automated OTP prompts inside CDP automation.
 - Do not bypass or manually click security overlay layers or CAPTCHA blockers when automated scripts are connected.

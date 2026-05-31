@@ -22,7 +22,7 @@ Orchestrator spawn chuỗi:
 Driver thuần CDP của package:
 - `pnpm shopee:extract-links-cdp` — `packages/shopee/scripts/extract-links-cdp.ts` (Round 27 CLI)
 
-Browser auto-launch (Round 27B): `packages/shopee/src/cdp-bootstrap.ts` tự spawn Cốc Cốc/Chrome với `--remote-debugging-port=9222` khi port đóng + `VFOS_BROWSER_USER_DATA_DIR` đã set.
+Browser auto-launch (Round 27B): `packages/shopee/src/cdp-bootstrap.ts` tự spawn **Cốc Cốc** (chỉ Cốc Cốc — không Chrome/Edge) với `--remote-debugging-port=9222` khi port đóng + `VFOS_BROWSER_USER_DATA_DIR` đã set.
 
 Affiliate owner bắt buộc: `an_17376660568`. Mọi link mismatch → fail safe.
 

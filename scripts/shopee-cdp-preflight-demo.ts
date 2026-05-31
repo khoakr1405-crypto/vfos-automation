@@ -50,7 +50,7 @@ async function main() {
       },
       preflightPassed: false,
       error:
-        'Could not connect to browser debug port 127.0.0.1:9222. Please ensure Cốc Cốc or Chrome is running with --remote-debugging-port=9222.',
+        'Could not connect to browser debug port 127.0.0.1:9222. Please ensure Cốc Cốc (the only supported browser for the Shopee Affiliate flow) is running with --remote-debugging-port=9222.',
       generatedAt: new Date().toISOString(),
     };
 
@@ -111,13 +111,28 @@ async function main() {
 
     // Perform read-only evaluations of target DOM structure
     const diagnostics = await targetPage.evaluate(() => {
-      // Find "Lấy link" or "Get link" text buttons
+      // NOTE: no named helper functions inside evaluate — esbuild (tsx) injects a
+      // `__name(...)` wrapper for named/const-assigned functions which is undefined
+      // in the serialized browser context. Visibility is checked inline below.
+
+      // Find "Lấy link" or "Get link" leaf buttons — only present on the
+      // authenticated affiliate catalog, so a strong "logged-in" signal.
       const buttons = Array.from(document.querySelectorAll('*')).filter((el) => {
         const text = (el.textContent || '').trim();
         return (text === 'Lấy link' || text === 'Get link') && el.children.length === 0;
       });
 
-      // Detect potential CAPTCHA verification overlays
+      // Product cards present on the catalog (positive authenticated signal).
+      const productCardCount = document.querySelectorAll(
+        '[class*="product-card"], [class*="offer-item"], [class*="product-item"], [data-sqe="item"]',
+      ).length;
+
+      // Account / avatar visible (best-effort positive signal).
+      const accountVisible = !!document.querySelector(
+        '[class*="avatar"], [class*="account"], [class*="user-info"], img[src*="avatar"]',
+      );
+
+      // Detect potential CAPTCHA verification overlays.
       const hasCaptchaClass = !!document.querySelector(
         '.shopee-captcha, .captcha-modal, iframe[src*="captcha"]',
       );
@@ -127,31 +142,88 @@ async function main() {
         bodyText.includes('Mã xác minh') ||
         bodyText.includes('Xác minh bảo mật');
 
-      // Detect active login requirement prompts
-      const hasLoginPrompt = !!document.querySelector(
-        '.login-modal, .shopee-login, [href*="/login"]',
-      );
+      // Detect a REAL login wall only: a *visible* login modal / login form, or a
+      // redirect to a login URL. A stray `[href*="/login"]` link (footer, nav menu)
+      // still exists on logged-in pages and must NOT count as a login requirement.
+      const loginModal = document.querySelector(
+        '.login-modal, .shopee-login, [class*="login-modal"], [class*="login-page"]',
+      ) as HTMLElement | null;
+      let visibleLoginModal = false;
+      if (loginModal) {
+        const s = window.getComputedStyle(loginModal);
+        const r = loginModal.getBoundingClientRect();
+        visibleLoginModal =
+          s.display !== 'none' &&
+          s.visibility !== 'hidden' &&
+          Number.parseFloat(s.opacity || '1') !== 0 &&
+          r.width > 0 &&
+          r.height > 0;
+      }
+      let visiblePasswordInput = false;
+      for (const inp of Array.from(document.querySelectorAll('input[type="password"]'))) {
+        const s = window.getComputedStyle(inp as HTMLElement);
+        const r = (inp as HTMLElement).getBoundingClientRect();
+        if (
+          s.display !== 'none' &&
+          s.visibility !== 'hidden' &&
+          Number.parseFloat(s.opacity || '1') !== 0 &&
+          r.width > 0 &&
+          r.height > 0
+        ) {
+          visiblePasswordInput = true;
+          break;
+        }
+      }
+      const onLoginUrl =
+        location.pathname.includes('/login') ||
+        location.href.includes('/buyer/login') ||
+        location.href.includes('/seller/login');
+      const hasLoginWall = visibleLoginModal || visiblePasswordInput || onLoginUrl;
+
+      // Payment / Tax banner — informational warning only, never a login block.
+      const paymentTaxBanner =
+        bodyText.includes('Thanh toán') ||
+        bodyText.includes('Thuế') ||
+        bodyText.includes('thuế') ||
+        bodyText.includes('Payment') ||
+        bodyText.includes('Tax information');
 
       return {
         getLinkButtonCount: buttons.length,
+        productCardCount,
+        accountVisible,
         hasCaptcha: hasCaptchaClass || containsCaptchaKeywords,
-        hasLoginRequired: hasLoginPrompt,
+        hasLoginWall,
+        paymentTaxBanner,
       };
     });
 
+    // An authenticated catalog (Lấy link buttons present, or product cards + account
+    // visible) must never be treated as a login wall — fixes the false positive where
+    // a logged-in page with product cards still reported Login requirement: YES.
+    const authenticatedCatalog =
+      diagnostics.getLinkButtonCount > 0 ||
+      (diagnostics.productCardCount > 0 && diagnostics.accountVisible);
+    const loginRequired = diagnostics.hasLoginWall && !authenticatedCatalog;
+
     const preflightPassed =
-      diagnostics.getLinkButtonCount > 0 &&
-      !diagnostics.hasCaptcha &&
-      !diagnostics.hasLoginRequired;
+      diagnostics.getLinkButtonCount > 0 && !diagnostics.hasCaptcha && !loginRequired;
 
     const successfulDiagnosticArtifact = {
       cdpConnected: true,
       shopeeTabFound: true,
       pageHydrated: diagnostics.getLinkButtonCount > 0,
       getLinkButtonPresent: diagnostics.getLinkButtonCount > 0,
+      productCardsDetected: diagnostics.productCardCount > 0,
+      productCardCount: diagnostics.productCardCount,
+      accountVisible: diagnostics.accountVisible,
+      authenticatedCatalog,
       obstaclesDetected: {
         captcha: diagnostics.hasCaptcha,
-        loginRequired: diagnostics.hasLoginRequired,
+        loginRequired,
+      },
+      warnings: {
+        paymentTaxBanner: diagnostics.paymentTaxBanner,
       },
       preflightPassed,
       generatedAt: new Date().toISOString(),
@@ -164,10 +236,14 @@ async function main() {
     console.log('- Connection: connected');
     console.log('- Tab target: found');
     console.log(`- Button presence: ${diagnostics.getLinkButtonCount > 0 ? 'found' : 'not found'}`);
+    console.log(`- Product cards: ${diagnostics.productCardCount} detected`);
+    console.log(`- Account visible: ${diagnostics.accountVisible ? 'yes' : 'no'}`);
+    console.log(`- Authenticated catalog: ${authenticatedCatalog ? 'yes' : 'no'}`);
     console.log(`- CAPTCHA obstacle: ${diagnostics.hasCaptcha ? 'YES (action blocked)' : 'no'}`);
-    console.log(
-      `- Login requirement: ${diagnostics.hasLoginRequired ? 'YES (action blocked)' : 'no'}`,
-    );
+    console.log(`- Login requirement: ${loginRequired ? 'YES (action blocked)' : 'no'}`);
+    if (diagnostics.paymentTaxBanner) {
+      console.log('- Payment/Tax banner: present (⚠️ warning only — does NOT block)');
+    }
     console.log(`[CDPPreflight] Exported diagnostics to: ${outputPath}`);
 
     await browser.close();

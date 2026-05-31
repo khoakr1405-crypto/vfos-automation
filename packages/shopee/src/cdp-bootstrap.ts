@@ -1,12 +1,12 @@
 /**
  * Shopee CDP browser bootstrap (Round 27B).
  *
- * Wraps the operator pre-requisite of "open Cốc Cốc/Chrome with
+ * Wraps the operator pre-requisite of "open Cốc Cốc with
  * --remote-debugging-port=9222". When invoked by the CDP extraction CLI:
  *
  *   1. Probe 127.0.0.1:9222. If already listening → skip launch.
- *   2. Otherwise resolve a browser executable (Cốc Cốc → Chrome) by
- *      VFOS_BROWSER_PATH env override or a list of standard Windows paths.
+ *   2. Otherwise resolve the Cốc Cốc executable (Cốc Cốc only — never Chrome/
+ *      Edge) by VFOS_BROWSER_PATH env override or standard Windows paths.
  *   3. Refuse to launch unless a safe user-data-dir is configured
  *      (VFOS_BROWSER_USER_DATA_DIR) — we will never silently spawn a fresh
  *      profile that drops the user's Shopee login session.
@@ -121,17 +121,17 @@ export const MIN_CAPTCHA_WAIT_SECONDS = 10;
 export const MAX_CAPTCHA_WAIT_SECONDS = 60;
 
 /**
- * Default browser-executable search order. Cốc Cốc first (operator's preferred
- * browser per Round 26B), then Chrome. We deliberately do NOT include Edge
- * here — operator should pick a primary affiliate browser explicitly.
+ * Default browser-executable search order. Cốc Cốc ONLY — the operator's single
+ * designated browser for the Shopee Affiliate workflow (Round 26B). We do NOT
+ * fall back to Chrome or Edge: a different browser would not carry the Shopee
+ * affiliate login session and would land on a login wall. Set VFOS_BROWSER_PATH
+ * if Cốc Cốc is installed at a non-standard location.
  */
 export const DEFAULT_BROWSER_PATHS_WIN32 = [
   "C:\\Program Files\\CocCoc\\Browser\\Application\\browser.exe",
   "C:\\Program Files (x86)\\CocCoc\\Browser\\Application\\browser.exe",
   // %LOCALAPPDATA% expansion happens at runtime in resolveBrowserPath()
   "%LOCALAPPDATA%\\CocCoc\\Browser\\Application\\browser.exe",
-  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
-  "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
 ] as const;
 
 /**
@@ -237,7 +237,7 @@ export function resolveBrowserPath(
 
   throw new CdpBootstrapError(
     "ERR_CDP_BROWSER_NOT_FOUND_ON_DISK",
-    `Could not find any browser executable. Set VFOS_BROWSER_PATH or install Cốc Cốc / Chrome. Tried: ${candidates.join(", ")}`,
+    `Could not find Cốc Cốc. Install Cốc Cốc or set VFOS_BROWSER_PATH to its browser.exe. (Cốc Cốc is the only supported browser for the Shopee Affiliate flow.) Tried: ${candidates.join(", ")}`,
   );
 }
 
@@ -260,7 +260,7 @@ export function resolveUserDataDir(config: BootstrapConfig, deps: BootstrapDeps)
   if (envDir && envDir.trim() !== "") return envDir;
   throw new CdpBootstrapError(
     "ERR_CDP_USER_DATA_DIR_REQUIRED",
-    "Set VFOS_BROWSER_USER_DATA_DIR to a Cốc Cốc/Chrome profile path that already has Shopee logged in. We never spawn a blank profile (login wall) or silently reuse a default profile that may be locked by an open browser window.",
+    "Set VFOS_BROWSER_USER_DATA_DIR to a Cốc Cốc profile path that already has Shopee logged in. We never spawn a blank profile (login wall) or silently reuse a default profile that may be locked by an open browser window.",
   );
 }
 

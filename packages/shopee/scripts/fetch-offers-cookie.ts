@@ -128,7 +128,7 @@ function loadCookieFile(): string {
     console.error(`   ${COOKIE_PATH}`);
     console.error();
     console.error("   → Tạo file này với nội dung cookie từ browser DevTools:");
-    console.error("     1. Mở https://affiliate.shopee.vn trong Chrome/Edge");
+    console.error("     1. Mở https://affiliate.shopee.vn trong Cốc Cốc");
     console.error("     2. Login tài khoản Shopee Affiliate");
     console.error("     3. Mở DevTools (F12) → Network tab");
     console.error("     4. Reload page, click bất kỳ XHR request nào");

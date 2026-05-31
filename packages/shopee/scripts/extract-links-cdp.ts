@@ -8,8 +8,8 @@
  * implements the Round 26B BROWSER_CDP_TARGETED_CLICK flow + Link Registry.
  *
  * Round 27B additions:
- *   - CDP Browser Bootstrap: auto-launches Cốc Cốc/Chrome with
- *     --remote-debugging-port=9222 when the port is not already listening.
+ *   - CDP Browser Bootstrap: auto-launches Cốc Cốc (only — never Chrome/Edge)
+ *     with --remote-debugging-port=9222 when the port is not already listening.
  *   - CAPTCHA / login-wall human-assist guard: pauses extraction when
  *     verification screen is detected, waits for operator to resolve.
  *
@@ -129,15 +129,16 @@ Batch mode (target_count > 1) only activates with an explicit --target-count fla
 
 Bootstrap behaviour (Round 27B):
   - If 127.0.0.1:9222 is already listening, the CLI attaches to that browser.
-  - If not, it launches Cốc Cốc / Chrome with --remote-debugging-port=9222 and
-    your existing profile (VFOS_BROWSER_USER_DATA_DIR). It NEVER spawns a blank
-    profile and NEVER types your password / OTP / CAPTCHA.
+  - If not, it launches Cốc Cốc (only — never Chrome/Edge) with
+    --remote-debugging-port=9222 and your existing profile
+    (VFOS_BROWSER_USER_DATA_DIR). It NEVER spawns a blank profile and NEVER
+    types your password / OTP / CAPTCHA.
   - When a CAPTCHA / login wall is detected on the page, the CLI pauses
     --captcha-wait-seconds and re-checks each second. Solve it in the browser
     yourself; the run continues automatically when the overlay clears.
 
 Operator env (required for auto-launch):
-  VFOS_BROWSER_USER_DATA_DIR  Path to your Cốc Cốc/Chrome profile already
+  VFOS_BROWSER_USER_DATA_DIR  Path to your Cốc Cốc profile already
                               logged into Shopee Affiliate. Required because
                               we refuse to spawn a fresh profile and hit a
                               login wall on your behalf.

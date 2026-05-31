@@ -17,6 +17,10 @@ import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { spawnSync } from 'node:child_process';
+import { bootstrapBrowser, CdpBootstrapError } from '../packages/shopee/src/cdp-bootstrap.js';
+
+const AFFILIATE_OWNER_ID = 'an_17376660568';
+const LINK_REGISTRY_PATH = 'production/_commerce/shopee_link_registry.json';
 
 const options = {
   'dry-run': { type: 'boolean' as const, default: false },
@@ -26,6 +30,31 @@ const options = {
 };
 
 const { values } = parseArgs({ options, strict: false });
+
+interface RegistryEntryLite {
+  product_name: string;
+  shopid: string | null;
+  itemid: string | null;
+  short_link: string | null;
+  canonical_url: string | null;
+  affiliate_owner_id: string | null;
+  last_seen_at?: string;
+}
+
+/** Return the most recently seen entry in the Shopee link registry, or null. */
+function newestRegistryEntry(): RegistryEntryLite | null {
+  const p = resolve(LINK_REGISTRY_PATH);
+  if (!existsSync(p)) return null;
+  try {
+    const reg = JSON.parse(readFileSync(p, 'utf8')) as { entries?: RegistryEntryLite[] };
+    if (!Array.isArray(reg.entries) || reg.entries.length === 0) return null;
+    return [...reg.entries].sort((a, b) =>
+      String(b.last_seen_at ?? '').localeCompare(String(a.last_seen_at ?? '')),
+    )[0];
+  } catch {
+    return null;
+  }
+}
 
 async function main() {
   const confirmTargetedClick = !!values['confirm-targeted-click'];
@@ -82,6 +111,31 @@ async function main() {
   } catch {}
 
   // ======================================================
+  // STEP 0: Cốc Cốc CDP Bootstrap (auto-open if port closed)
+  // ======================================================
+  // Cốc Cốc is the ONLY supported browser for the Shopee Affiliate flow.
+  // bootstrapBrowser probes 127.0.0.1:9222 first: if Cốc Cốc is already running
+  // it simply attaches (no relaunch); if the port is closed it auto-opens Cốc Cốc
+  // using the operator's logged-in profile (VFOS_BROWSER_USER_DATA_DIR). It never
+  // spawns a blank profile, never types credentials/OTP, never touches Chrome/Edge.
+  console.log('\n[Intake] Step 0: Cốc Cốc CDP bootstrap (probe port 9222, auto-open if closed)...');
+  try {
+    const boot = await bootstrapBrowser({ host: '127.0.0.1', port: 9222 });
+    if (boot.status === 'launched') {
+      console.log(`[Intake] Auto-opened Cốc Cốc (profile: ${boot.user_data_dir}) — waited ${boot.waited_ms_after_launch}ms for port.`);
+    } else {
+      console.log('[Intake] Cốc Cốc already running on port 9222 — attaching (no relaunch).');
+    }
+  } catch (err: any) {
+    const reason = err instanceof CdpBootstrapError ? `${err.reason_code}: ${err.message}` : err?.message;
+    console.warn(`[Intake] Cốc Cốc auto-open unavailable — ${reason}`);
+    console.warn('[Intake] Open Cốc Cốc manually with remote debugging enabled, then re-run:');
+    console.warn('  "C:\\Program Files\\CocCoc\\Browser\\Application\\browser.exe" --remote-debugging-port=9222');
+    console.warn('  Navigate to: https://affiliate.shopee.vn/offer/product_offer');
+    console.warn('  (Or set VFOS_BROWSER_USER_DATA_DIR to your logged-in Cốc Cốc profile to enable auto-open.)');
+  }
+
+  // ======================================================
   // STEP 1: Shopee CDP Browser Preflight Diagnostics
   // ======================================================
   console.log('\n[Intake] Step 1: Initiating Shopee CDP browser preflight check...');
@@ -103,9 +157,11 @@ async function main() {
 
   if (!preflightPassed) {
     console.warn('\n⚠️  [Intake] Preflight diagnostic check FAILED.');
-    console.warn('- Ensure Cốc Cốc or Chrome is open with remote debugging port 9222 enabled:');
-    console.warn('  `chrome.exe --remote-debugging-port=9222`');
-    console.warn('- Navigate browser to active Shopee Affiliate Product Offer catalog:');
+    console.warn('- Cốc Cốc is the ONLY supported browser for the Shopee Affiliate flow.');
+    console.warn('- Cốc Cốc CDP bootstrap is available: re-run `pnpm commerce:intake` (it auto-opens');
+    console.warn('  Cốc Cốc when VFOS_BROWSER_USER_DATA_DIR points at your logged-in profile), or open it manually:');
+    console.warn('  "C:\\Program Files\\CocCoc\\Browser\\Application\\browser.exe" --remote-debugging-port=9222');
+    console.warn('- Navigate Cốc Cốc to the active Shopee Affiliate Product Offer catalog:');
     console.warn('  https://affiliate.shopee.vn/offer/product_offer');
     console.warn('- Ensure no security block overlays (CAPTCHA or Login required) are present.');
     
@@ -134,30 +190,84 @@ async function main() {
   // ======================================================
   // STEP 2: Controlled Shopee Link Extraction
   // ======================================================
-  console.log('\n[Intake] Step 2: Running controlled Shopee link extraction agent...');
-  const extractorRes = spawnSync('npx', ['tsx', 'scripts/shopee-link-extractor-demo.ts'], {
-    shell: true,
-    stdio: 'inherit',
-  });
+  console.log(
+    '\n[Intake] Step 2: Running controlled Shopee link extraction (dedup + next-product, target_count=1)...',
+  );
+  // Round 27 CDP extractor: bootstraps Cốc Cốc, performs a targeted click on each
+  // visible product card's "Lấy link" button, and on a duplicate SKIPS to the next
+  // valid product (max_clicks=5 safety ceiling — never random click). New links are
+  // written to the link registry with affiliate-owner verification.
+  const extractorRes = spawnSync(
+    'npx',
+    [
+      'tsx',
+      'packages/shopee/scripts/extract-links-cdp.ts',
+      '--target-count',
+      '1',
+      '--max-clicks',
+      '5',
+      '--owner-id',
+      AFFILIATE_OWNER_ID,
+    ],
+    { shell: true, stdio: 'inherit' },
+  );
 
-  let extractorSuccess = false;
-  let extractorStatusStr = 'FAIL';
-  if (existsSync(extractorStatusPath)) {
-    try {
-      const extractorContent = JSON.parse(readFileSync(extractorStatusPath, 'utf8'));
-      extractorStatusStr = extractorContent.status;
-      extractorSuccess = extractorStatusStr === 'SUCCESS';
-      intakeStatus.steps.extractor.status = extractorStatusStr;
-    } catch (err: any) {
-      console.error(`[Intake] Error reading link extractor status artifact: ${err.message}`);
+  // Exit 0 = a NEW non-duplicate link was extracted into the registry.
+  // Exit 1 = SUSPENDED (all visible cards duplicate/exhausted, or no products).
+  // Exit 2 = browser/CDP error.
+  const extractorExit = extractorRes.status ?? 1;
+  let extractorSuccess = extractorExit === 0;
+  let extractorStatusStr =
+    extractorExit === 0 ? 'SUCCESS' : extractorExit === 2 ? 'CDP_ERROR' : 'SUSPENDED';
+
+  // On success, lift the newest registry entry into the link-artifact shape the
+  // downstream card builder reads (data/temp/shopee_affiliate_link_artifact.json).
+  if (extractorSuccess) {
+    const entry = newestRegistryEntry();
+    const ownerVerified = !!entry && entry.affiliate_owner_id === AFFILIATE_OWNER_ID;
+    if (!entry || !ownerVerified) {
+      extractorSuccess = false;
+      extractorStatusStr = 'OWNER_MISMATCH';
+      console.error(
+        `\n❌  [Intake] Extracted link owner mismatch — expected ${AFFILIATE_OWNER_ID}, got ${entry?.affiliate_owner_id ?? '(none)'}.`,
+      );
+    } else {
+      writeFileSync(
+        extractorStatusPath,
+        JSON.stringify(
+          {
+            status: 'SUCCESS',
+            productName: entry.product_name,
+            shopid: entry.shopid,
+            itemid: entry.itemid,
+            shortLink: entry.short_link,
+            canonicalUrl: entry.canonical_url,
+            affiliateOwnerId: entry.affiliate_owner_id,
+            ownerVerified: true,
+            source: 'extract-links-cdp (registry)',
+            generatedAt: new Date().toISOString(),
+          },
+          null,
+          2,
+        ),
+        'utf8',
+      );
+      console.log(
+        `[Intake] New link extracted: ${entry.short_link ?? entry.canonical_url} (owner ${entry.affiliate_owner_id} ✅)`,
+      );
     }
   }
+  intakeStatus.steps.extractor.status = extractorStatusStr;
 
   if (!extractorSuccess) {
-    console.warn(`\n⚠️  [Intake] Extraction agent completed without SUCCESS status: ${extractorStatusStr}`);
-    
-    intakeStatus.status = extractorStatusStr === 'SUSPENDED' ? 'SUSPENDED' : 'FAIL';
-    intakeStatus.recommendedNextAction = 'Address extraction block (e.g. duplicates, CAPTCHA) or verify browser page state.';
+    console.warn(`\n⚠️  [Intake] Extraction did not yield a new link: ${extractorStatusStr}`);
+    intakeStatus.status = extractorStatusStr === 'CDP_ERROR' ? 'FAIL' : 'SUSPENDED';
+    intakeStatus.recommendedNextAction =
+      extractorStatusStr === 'SUSPENDED'
+        ? 'All visible product cards were duplicates or exhausted. Scroll the Cốc Cốc catalog to surface unused products, then re-run with --confirm-targeted-click.'
+        : extractorStatusStr === 'OWNER_MISMATCH'
+          ? `Extracted link did not match required affiliate owner ${AFFILIATE_OWNER_ID}.`
+          : 'Verify Cốc Cốc is open and logged in on the Shopee Affiliate Product Offer page.';
     writeFileSync(statusOutputPath, JSON.stringify(intakeStatus, null, 2), 'utf8');
     process.exit(0);
   }
