@@ -114,12 +114,26 @@ async function main() {
       // NOTE: no named helper functions inside evaluate — esbuild (tsx) injects a
       // `__name(...)` wrapper for named/const-assigned functions which is undefined
       // in the serialized browser context. Visibility is checked inline below.
+      // NOTE: do NOT declare const/named arrow helpers inside evaluate — esbuild
+      // wraps them in `__name(...)`, undefined in the browser context. Inline.
+      const bodyText = document.body ? document.body.textContent || '' : '';
 
-      // Find "Lấy link" or "Get link" leaf buttons — only present on the
-      // authenticated affiliate catalog, so a strong "logged-in" signal.
-      const buttons = Array.from(document.querySelectorAll('*')).filter((el) => {
-        const text = (el.textContent || '').trim();
-        return (text === 'Lấy link' || text === 'Get link') && el.children.length === 0;
+      // Per-card "Lấy link" / "Get link" leaf buttons (case-insensitive — the
+      // English catalog renders "Get Link" with a capital L). Strong logged-in
+      // signal, but NOT required: the batch button + catalog chrome below are
+      // sufficient on their own.
+      const getLinkButtonCount = Array.from(document.querySelectorAll('*')).filter((el) => {
+        const t = (el.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+        return (t === 'lấy link' || t === 'get link') && el.children.length === 0;
+      }).length;
+
+      // Catalog-level "Batch Get Link" / "Lấy link hàng loạt" button — only
+      // rendered on the authenticated Product Offer catalog.
+      const batchGetLinkPresent = Array.from(
+        document.querySelectorAll('button, a, span, div'),
+      ).some((el) => {
+        const t = (el.textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+        return t === 'batch get link' || t === 'lấy link hàng loạt';
       });
 
       // Product cards present on the catalog (positive authenticated signal).
@@ -127,7 +141,17 @@ async function main() {
         '[class*="product-card"], [class*="offer-item"], [class*="product-item"], [data-sqe="item"]',
       ).length;
 
-      // Account / avatar visible (best-effort positive signal).
+      // Catalog chrome that only the authenticated Product Offer page renders
+      // (English or Vietnamese): the section heading, the "N / M selected"
+      // counter, and the product search box.
+      const productOfferHeading = /product offer|sản phẩm đề xuất/i.test(bodyText);
+      const selectedCounterPresent = /\d+\s*\/\s*\d+\s*(selected|đã chọn)/i.test(bodyText);
+      const searchBoxPresent = !!document.querySelector(
+        'input[placeholder*="Shopee"], input[placeholder*="Search for all"], input[placeholder*="Tìm"]',
+      );
+
+      // Account / avatar visible (best-effort positive signal; often misses the
+      // top-bar account dropdown, so it must not be required).
       const accountVisible = !!document.querySelector(
         '[class*="avatar"], [class*="account"], [class*="user-info"], img[src*="avatar"]',
       );
@@ -136,15 +160,15 @@ async function main() {
       const hasCaptchaClass = !!document.querySelector(
         '.shopee-captcha, .captcha-modal, iframe[src*="captcha"]',
       );
-      const bodyText = document.body ? document.body.textContent || '' : '';
       const containsCaptchaKeywords =
         bodyText.includes('CAPTCHA') ||
         bodyText.includes('Mã xác minh') ||
         bodyText.includes('Xác minh bảo mật');
 
-      // Detect a REAL login wall only: a *visible* login modal / login form, or a
-      // redirect to a login URL. A stray `[href*="/login"]` link (footer, nav menu)
-      // still exists on logged-in pages and must NOT count as a login requirement.
+      // Login-wall components, returned separately so the gate can let an
+      // accessible catalog override a soft/stray login-modal selector. A stray
+      // `[href*="/login"]` link (footer, nav menu) still exists on logged-in
+      // pages and must NOT count.
       const loginModal = document.querySelector(
         '.login-modal, .shopee-login, [class*="login-modal"], [class*="login-page"]',
       ) as HTMLElement | null;
@@ -178,7 +202,6 @@ async function main() {
         location.pathname.includes('/login') ||
         location.href.includes('/buyer/login') ||
         location.href.includes('/seller/login');
-      const hasLoginWall = visibleLoginModal || visiblePasswordInput || onLoginUrl;
 
       // Payment / Tax banner — informational warning only, never a login block.
       const paymentTaxBanner =
@@ -189,33 +212,61 @@ async function main() {
         bodyText.includes('Tax information');
 
       return {
-        getLinkButtonCount: buttons.length,
+        getLinkButtonCount,
+        batchGetLinkPresent,
         productCardCount,
+        productOfferHeading,
+        selectedCounterPresent,
+        searchBoxPresent,
         accountVisible,
         hasCaptcha: hasCaptchaClass || containsCaptchaKeywords,
-        hasLoginWall,
+        visibleLoginModal,
+        visiblePasswordInput,
+        onLoginUrl,
         paymentTaxBanner,
       };
     });
 
-    // An authenticated catalog (Lấy link buttons present, or product cards + account
-    // visible) must never be treated as a login wall — fixes the false positive where
-    // a logged-in page with product cards still reported Login requirement: YES.
+    // An authenticated, accessible catalog must never be treated as a login
+    // wall. Recognise it from ANY strong signal set — including the English UI
+    // where the per-card "Get Link" leaf buttons and the avatar selector are
+    // missed: the "Batch Get Link" button together with product cards / the
+    // "N / M selected" counter, or the Product Offer heading + search box, are
+    // sufficient on their own.
+    const catalogChrome =
+      diagnostics.productOfferHeading ||
+      diagnostics.selectedCounterPresent ||
+      diagnostics.searchBoxPresent;
     const authenticatedCatalog =
       diagnostics.getLinkButtonCount > 0 ||
-      (diagnostics.productCardCount > 0 && diagnostics.accountVisible);
-    const loginRequired = diagnostics.hasLoginWall && !authenticatedCatalog;
+      (diagnostics.batchGetLinkPresent &&
+        (diagnostics.productCardCount > 0 || diagnostics.selectedCounterPresent)) ||
+      (diagnostics.productCardCount > 0 && (diagnostics.accountVisible || catalogChrome)) ||
+      (diagnostics.batchGetLinkPresent && catalogChrome);
 
-    const preflightPassed =
-      diagnostics.getLinkButtonCount > 0 && !diagnostics.hasCaptcha && !loginRequired;
+    // A hard login wall (real login page or a visible password field) always
+    // blocks and is never overridden. A soft/stray login-modal selector only
+    // blocks when the catalog is otherwise inaccessible.
+    const hardLoginWall = diagnostics.visiblePasswordInput || diagnostics.onLoginUrl;
+    const loginRequired =
+      hardLoginWall || (diagnostics.visibleLoginModal && !authenticatedCatalog);
+
+    // Pass when the catalog is accessible and no CAPTCHA / login wall blocks it.
+    // The per-card "Get link" leaf button is no longer mandatory.
+    const preflightPassed = authenticatedCatalog && !diagnostics.hasCaptcha && !loginRequired;
 
     const successfulDiagnosticArtifact = {
       cdpConnected: true,
       shopeeTabFound: true,
-      pageHydrated: diagnostics.getLinkButtonCount > 0,
-      getLinkButtonPresent: diagnostics.getLinkButtonCount > 0,
+      pageHydrated: authenticatedCatalog,
+      getLinkButtonPresent: diagnostics.getLinkButtonCount > 0 || diagnostics.batchGetLinkPresent,
+      getLinkButtonCount: diagnostics.getLinkButtonCount,
+      batchGetLinkPresent: diagnostics.batchGetLinkPresent,
       productCardsDetected: diagnostics.productCardCount > 0,
       productCardCount: diagnostics.productCardCount,
+      productOfferHeading: diagnostics.productOfferHeading,
+      selectedCounterPresent: diagnostics.selectedCounterPresent,
+      searchBoxPresent: diagnostics.searchBoxPresent,
       accountVisible: diagnostics.accountVisible,
       authenticatedCatalog,
       obstaclesDetected: {
@@ -235,8 +286,13 @@ async function main() {
     );
     console.log('- Connection: connected');
     console.log('- Tab target: found');
-    console.log(`- Button presence: ${diagnostics.getLinkButtonCount > 0 ? 'found' : 'not found'}`);
+    console.log(
+      `- Get-link buttons: ${diagnostics.getLinkButtonCount} per-card${diagnostics.batchGetLinkPresent ? ' + Batch Get Link' : ''}`,
+    );
     console.log(`- Product cards: ${diagnostics.productCardCount} detected`);
+    console.log(
+      `- Catalog chrome: heading=${diagnostics.productOfferHeading ? 'yes' : 'no'}, selectedCounter=${diagnostics.selectedCounterPresent ? 'yes' : 'no'}, search=${diagnostics.searchBoxPresent ? 'yes' : 'no'}`,
+    );
     console.log(`- Account visible: ${diagnostics.accountVisible ? 'yes' : 'no'}`);
     console.log(`- Authenticated catalog: ${authenticatedCatalog ? 'yes' : 'no'}`);
     console.log(`- CAPTCHA obstacle: ${diagnostics.hasCaptcha ? 'YES (action blocked)' : 'no'}`);
