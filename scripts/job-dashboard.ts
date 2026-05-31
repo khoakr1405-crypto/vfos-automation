@@ -168,11 +168,10 @@ function inferRecommendedCommand(jobId: string, audit: any): { command: string; 
 
   // 11. PACKAGED
   if (audit.state === 'PACKAGED') {
-    const isDryRunPreflightReady = audit.facebookPublish.preflightPassed === true;
     return {
-      command: `pnpm job:publish-facebook --job ${jobId} --dry-run`,
-      reason: 'Job is packaged and ready for pre-flight testing.',
-      expected: 'Performs preflight checks and outputs dry-run publication plan.',
+      command: `pnpm job:launch-check --job ${jobId}`,
+      reason: 'Job is packaged. Run the pre-live launch rehearsal checklist to verify all gates.',
+      expected: 'Performs physical file, package, audio stream, and safety gate verification.',
       warning: `💡 EXPLICIT LIVE ACTION ONLY:\n   To publish live reels to Facebook, run:\n   pnpm job:publish-facebook --job ${jobId} --confirm-live-publish`,
     };
   }

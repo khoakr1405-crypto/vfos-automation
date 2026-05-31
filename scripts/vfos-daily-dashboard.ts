@@ -734,7 +734,15 @@ ${recommendedNextCommand}
       if (reg && Array.isArray(reg.jobs) && reg.jobs.length > 0) {
         console.log('\n[3.5] Active Jobs Registry Status');
         for (const job of reg.jobs) {
-          console.log(`- Job: ${job.jobId} | State: ${job.state} | Review: ${job.operatorDecision}`);
+          const checkPath = `data/temp/jobs/${job.jobId}/launch_check_report.json`;
+          let launchStatus = 'PENDING ⚪';
+          if (existsSync(checkPath)) {
+            try {
+              const rep = JSON.parse(readFileSync(checkPath, 'utf8'));
+              launchStatus = rep.decision === 'READY_FOR_OPERATOR_GO_DECISION' ? 'READY 🟢' : 'NO_GO 🔴';
+            } catch {}
+          }
+          console.log(`- Job: ${job.jobId} | State: ${job.state} | Review: ${job.operatorDecision} | Pre-live: ${launchStatus}`);
         }
       }
     } catch {}
