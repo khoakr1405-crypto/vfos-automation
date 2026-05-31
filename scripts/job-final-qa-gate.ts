@@ -1,9 +1,13 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
-import { dirname, join, resolve, basename } from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { loadDotEnv } from '../packages/voice/src/load-env.js';
-import { calculateNormalizedHash, extractCombinedVoiceText } from './job-artifact-freshness.js';
+import {
+  calculateNormalizedHash,
+  detectOpeningRepetition,
+  extractCombinedVoiceText,
+} from './job-artifact-freshness.js';
 
 // Safe exit wrapper to prevent Windows libuv UV_HANDLE_CLOSING assertion crash in Node.js
 const originalExit = process.exit;
@@ -87,17 +91,29 @@ function updateRegistryFromManifest(manifest: JobManifest): void {
   } catch {}
 }
 
-function validateAudioStream(filePath: string): { success: boolean; error?: string; reason?: string; duration?: number } {
+function validateAudioStream(filePath: string): {
+  success: boolean;
+  error?: string;
+  reason?: string;
+  duration?: number;
+} {
   if (!existsSync(filePath)) {
-    return { success: false, error: 'FINAL_VIDEO_MISSING', reason: `File not found at: ${filePath}` };
+    return {
+      success: false,
+      error: 'FINAL_VIDEO_MISSING',
+      reason: `File not found at: ${filePath}`,
+    };
   }
 
   const args = [
-    '-v', 'error',
-    '-show_entries', 'stream=index,codec_type,codec_name,duration',
+    '-v',
+    'error',
+    '-show_entries',
+    'stream=index,codec_type,codec_name,duration',
     '-show_format',
-    '-of', 'json',
-    filePath
+    '-of',
+    'json',
+    filePath,
   ];
 
   const result = spawnSync('ffprobe', args, { encoding: 'utf8' });
@@ -105,7 +121,7 @@ function validateAudioStream(filePath: string): { success: boolean; error?: stri
     return {
       success: false,
       error: 'FFPROBE_FAILED',
-      reason: `ffprobe exited with status ${result.status}. Stderr: ${result.stderr}`
+      reason: `ffprobe exited with status ${result.status}. Stderr: ${result.stderr}`,
     };
   }
 
@@ -115,21 +131,29 @@ function validateAudioStream(filePath: string): { success: boolean; error?: stri
     const audioStream = streams.find((s: any) => s.codec_type === 'audio');
 
     if (!audioStream) {
-      return { success: false, error: 'FINAL_VIDEO_AUDIO_MISSING', reason: 'No audio stream found in the final video.' };
+      return {
+        success: false,
+        error: 'FINAL_VIDEO_AUDIO_MISSING',
+        reason: 'No audio stream found in the final video.',
+      };
     }
 
-    const duration = parseFloat(audioStream.duration || data.format?.duration || '0');
+    const duration = Number.parseFloat(audioStream.duration || data.format?.duration || '0');
     if (isNaN(duration) || duration <= 0) {
       return {
         success: false,
         error: 'INVALID_DURATION',
-        reason: `Audio duration is invalid or zero: ${audioStream.duration || data.format?.duration}`
+        reason: `Audio duration is invalid or zero: ${audioStream.duration || data.format?.duration}`,
       };
     }
 
     return { success: true, duration };
   } catch (err: any) {
-    return { success: false, error: 'PARSE_FAILED', reason: `Failed to parse ffprobe output: ${err.message}` };
+    return {
+      success: false,
+      error: 'PARSE_FAILED',
+      reason: `Failed to parse ffprobe output: ${err.message}`,
+    };
   }
 }
 
@@ -144,9 +168,9 @@ function normalizeText(text: string): string {
 function computeOverlap(normalizedScript: string, normalizedTranscript: string): number {
   const scriptWords = normalizedScript.split(' ').filter(Boolean);
   const transcriptWords = normalizedTranscript.split(' ').filter(Boolean);
-  
+
   if (scriptWords.length === 0) return 0;
-  
+
   const transcriptSet = new Set(transcriptWords);
   let matches = 0;
   for (const word of scriptWords) {
@@ -154,23 +178,23 @@ function computeOverlap(normalizedScript: string, normalizedTranscript: string):
       matches++;
     }
   }
-  
+
   return matches / scriptWords.length;
 }
 
 function checkVoiceCutoff(normalizedScript: string, normalizedTranscript: string): boolean {
   const scriptWords = normalizedScript.split(' ').filter(Boolean);
   const transcriptWords = normalizedTranscript.split(' ').filter(Boolean);
-  
+
   if (scriptWords.length < 10) return false;
-  
+
   // Get last 12 words of the script
   const endingWords = scriptWords.slice(-12);
-  
+
   // Look at the last 20 words of the transcript
   const transcriptEnding = transcriptWords.slice(-20);
   const transcriptEndingSet = new Set(transcriptEnding);
-  
+
   // Count matches
   let matches = 0;
   for (const word of endingWords) {
@@ -178,7 +202,7 @@ function checkVoiceCutoff(normalizedScript: string, normalizedTranscript: string
       matches++;
     }
   }
-  
+
   // If less than 4 matches out of 12 ending words are found in the final section,
   // then the voice is likely cut off!
   return matches < 4;
@@ -222,7 +246,7 @@ async function main() {
   const jobOutputDir = resolve(JOBS_ROOT, jobId);
   const videoV2Path = join(jobOutputDir, 'preview_with_captions_v2.mp4');
   const videoV1Path = join(jobOutputDir, 'preview_with_captions.mp4');
-  let finalVideoPath = existsSync(videoV2Path) ? videoV2Path : videoV1Path;
+  const finalVideoPath = existsSync(videoV2Path) ? videoV2Path : videoV1Path;
 
   const videoFilePresent = existsSync(finalVideoPath);
   let audioStreamPresent = false;
@@ -269,7 +293,9 @@ async function main() {
 
   if (dryRun) {
     console.log('---- PLAN --------------------------------------------');
-    console.log(`OpenAI API call:  ${confirmOpenai ? 'Will be executed (Whisper STT)' : 'Skipped (needs --confirm-openai)'}`);
+    console.log(
+      `OpenAI API call:  ${confirmOpenai ? 'Will be executed (Whisper STT)' : 'Skipped (needs --confirm-openai)'}`,
+    );
     console.log(`Report path:      ${qaReportPath}`);
     console.log(`Mutation:         None (dry-run mode)`);
     console.log('------------------------------------------------------');
@@ -322,7 +348,16 @@ async function main() {
   // 1. Extract audio track from video to temp mp3 file using FFmpeg
   const tempAudioPath = join(jobOutputDir, 'temp_qa_audio.mp3');
   console.log(`Extracting audio for transcription...`);
-  const extractRes = spawnSync('ffmpeg', ['-y', '-i', finalVideoPath, '-q:a', '0', '-map', 'a', tempAudioPath]);
+  const extractRes = spawnSync('ffmpeg', [
+    '-y',
+    '-i',
+    finalVideoPath,
+    '-q:a',
+    '0',
+    '-map',
+    'a',
+    tempAudioPath,
+  ]);
   if (extractRes.status !== 0) {
     console.error(`🛑 FAILED_TO_EXTRACT_AUDIO: ${extractRes.stderr?.toString()}`);
     process.exit(1);
@@ -343,7 +378,7 @@ async function main() {
     const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
       },
       body: formData,
     });
@@ -378,7 +413,7 @@ async function main() {
   const estimatedSimilarity = computeOverlap(normalizedScript, normalizedTranscript);
   const voiceLikelyCutOff = checkVoiceCutoff(normalizedScript, normalizedTranscript);
   const missingEndingDetected = voiceLikelyCutOff;
-  const majorMismatchDetected = estimatedSimilarity < 0.70;
+  const majorMismatchDetected = estimatedSimilarity < 0.7;
 
   const warnings: string[] = [];
   const violations: string[] = [];
@@ -386,14 +421,30 @@ async function main() {
 
   if (voiceLikelyCutOff) {
     status = 'FAIL';
-    violations.push('VOICE_CUTOFF_DETECTED: Ending words of script not spoken at the end of audio.');
+    violations.push(
+      'VOICE_CUTOFF_DETECTED: Ending words of script not spoken at the end of audio.',
+    );
     console.error('🛑 VOICE_CUTOFF_DETECTED');
   }
 
   if (majorMismatchDetected) {
     status = 'FAIL';
-    violations.push(`FINAL_AUDIO_SCRIPT_MISMATCH: Script text mismatch detected (Similarity = ${estimatedSimilarity.toFixed(2)}).`);
+    violations.push(
+      `FINAL_AUDIO_SCRIPT_MISMATCH: Script text mismatch detected (Similarity = ${estimatedSimilarity.toFixed(2)}).`,
+    );
     console.error(`🛑 FINAL_AUDIO_SCRIPT_MISMATCH: Similarity = ${estimatedSimilarity.toFixed(2)}`);
+  }
+
+  // Round 56: transcript-level opening repeat detection (hook said twice).
+  const openingRepeat = detectOpeningRepetition(transcriptText);
+  const transcriptOpeningRepeatDetected = openingRepeat.repeated;
+  if (transcriptOpeningRepeatDetected) {
+    status = 'FAIL';
+    violations.push(
+      `FINAL_QA_DUPLICATE_OPENING_DETECTED: Transcript opening is repeated (${openingRepeat.reason}).`,
+    );
+    console.error('🛑 FINAL_QA_DUPLICATE_OPENING_DETECTED');
+    if (openingRepeat.phrase) console.error(`  Repeated phrase: "${openingRepeat.phrase}"`);
   }
 
   const qaReport = {
@@ -406,7 +457,7 @@ async function main() {
       provider: 'openai',
       model: 'whisper-1',
       text: transcriptText,
-      durationSec: audioDuration
+      durationSec: audioDuration,
     },
     checks: {
       videoFilePresent: true,
@@ -416,13 +467,15 @@ async function main() {
       estimatedSimilarity,
       missingEndingDetected,
       voiceLikelyCutOff,
-      majorMismatchDetected
+      majorMismatchDetected,
+      transcriptOpeningRepeatDetected,
+      openingRepeatedPhrase: openingRepeat.phrase ?? null,
     },
     status,
     warnings,
     violations,
     apiCalled,
-    generatedAt: new Date().toISOString()
+    generatedAt: new Date().toISOString(),
   };
 
   writeFileSync(qaReportPath, JSON.stringify(qaReport, null, 2) + '\n', 'utf8');
@@ -433,7 +486,11 @@ async function main() {
 
   if (status === 'FAIL') {
     manifest.state = 'FAILED';
-    manifest.lastError = voiceLikelyCutOff ? 'VOICE_CUTOFF_DETECTED' : 'FINAL_AUDIO_SCRIPT_MISMATCH';
+    manifest.lastError = voiceLikelyCutOff
+      ? 'VOICE_CUTOFF_DETECTED'
+      : transcriptOpeningRepeatDetected
+        ? 'FINAL_QA_DUPLICATE_OPENING_DETECTED'
+        : 'FINAL_AUDIO_SCRIPT_MISMATCH';
   } else {
     // Keep standard state READY_FOR_OPERATOR_REVIEW, just mark qaStatus as PASS
     console.log('🟢 FINAL_VIDEO_QA_PASS');

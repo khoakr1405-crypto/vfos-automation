@@ -36,11 +36,13 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { loadDotEnv } from '../packages/voice/src/load-env.js';
-import { calculateNormalizedHash } from './job-artifact-freshness.js';
+import { buildTtsText, calculateNormalizedHash } from './job-artifact-freshness.js';
 
 interface ScriptArtifact {
+  hook?: string;
   hook3s?: string;
   voiceover?: string;
+  voiceoverText?: string;
   captionDraft?: string;
   script?: string;
 }
@@ -85,9 +87,11 @@ function readScriptText(runDir: string): { text: string; source: string } | { er
     try {
       const raw = readFileSync(scriptArtifactPath, 'utf8');
       const artifact = JSON.parse(raw) as ScriptArtifact;
-      const hook = (artifact.hook3s ?? '').trim();
-      const voiceover = (artifact.voiceover ?? '').trim();
-      const combined = [hook, voiceover].filter(Boolean).join(' ').trim();
+      // Round 56: dedupe-aware — never duplicate a hook that the voiceover
+      // already contains. voiceover/voiceoverText is the source of truth.
+      const hook = artifact.hook3s ?? artifact.hook ?? '';
+      const voiceover = artifact.voiceover ?? artifact.voiceoverText ?? '';
+      const combined = buildTtsText(hook, voiceover);
       if (combined) return { text: combined, source: 'script_artifact.json' };
     } catch (err) {
       return { error: `Failed to parse script_artifact.json: ${(err as Error).message}` };
@@ -98,9 +102,9 @@ function readScriptText(runDir: string): { text: string; source: string } | { er
     try {
       const raw = readFileSync(reviewPackPath, 'utf8');
       const pack = JSON.parse(raw) as OperatorReviewPack;
-      const hook = (pack.script?.hook3s ?? pack.hook ?? '').trim();
-      const voiceover = (pack.script?.voiceover ?? pack.voiceover ?? '').trim();
-      const combined = [hook, voiceover].filter(Boolean).join(' ').trim();
+      const hook = pack.script?.hook3s ?? pack.hook ?? '';
+      const voiceover = pack.script?.voiceover ?? pack.voiceover ?? '';
+      const combined = buildTtsText(hook, voiceover);
       if (combined) return { text: combined, source: 'operator_review_pack.json' };
     } catch (err) {
       return { error: `Failed to parse operator_review_pack.json: ${(err as Error).message}` };

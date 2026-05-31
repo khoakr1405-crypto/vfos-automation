@@ -44,7 +44,11 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { calculateNormalizedHash, extractCombinedVoiceText } from './job-artifact-freshness.js';
+import {
+  calculateNormalizedHash,
+  detectOpeningRepetition,
+  extractCombinedVoiceText,
+} from './job-artifact-freshness.js';
 import { selectBgmForJob } from './job-bgm-selector.js';
 
 const DEFAULT_RUN_ID = 'run_review_product_p9';
@@ -86,6 +90,7 @@ type OrchestratorState =
   | 'SCRIPT_GENERATION_FAILED'
   | 'BGM_VOICE_DIRECTION_STALE'
   | 'VOICE_DIRECTION_NOT_APPLIED'
+  | 'DUPLICATE_OPENING_HOOK'
   | 'VOICE_REQUIRED_BUT_CONFIRM_ELEVENLABS_MISSING'
   | 'FINAL_QA_REQUIRED_BUT_CONFIRM_OPENAI_MISSING'
   | 'FINAL_QA_NOT_PASSING';
@@ -891,6 +896,28 @@ async function main(): Promise<void> {
           );
           console.warn('   Consider regenerating the script using:');
           console.warn(`     pnpm job:script --job ${jobId} --confirm-openai`);
+        }
+
+        // --- DUPLICATE OPENING HOOK GUARD (Round 56) ---
+        // Runs before the general validator so opening repetition gets a specific
+        // code and is caught before any TTS/render.
+        const ttsTextForGuard = extractCombinedVoiceText(scriptPath) ?? '';
+        const dup = detectOpeningRepetition(ttsTextForGuard, scriptData.hook ?? scriptData.hook3s);
+        if (dup.repeated) {
+          console.error('🛑 DUPLICATE_OPENING_HOOK');
+          console.error(`The voiceover opening is repeated (${dup.reason}).`);
+          if (dup.phrase) console.error(`  Repeated phrase: "${dup.phrase}"`);
+          console.error('This usually means the hook was concatenated onto a voiceover that');
+          console.error('already contains it. Regenerate the script so the opening is said once:');
+          console.error(`  pnpm job:script --job ${jobId} --confirm-openai`);
+          if (jobManifest) {
+            jobManifest.state = 'FAILED';
+            jobManifest.lastError = 'DUPLICATE_OPENING_HOOK';
+            saveJobManifest(jobManifest);
+            updateRegistryFromManifest(jobManifest);
+          }
+          writeStatusArtifact({ ...baseArtifact, state: 'DUPLICATE_OPENING_HOOK' });
+          process.exit(24);
         }
 
         let sourceVideoDurationSec = 30.58;
