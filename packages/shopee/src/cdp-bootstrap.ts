@@ -397,6 +397,7 @@ export interface CaptchaDetection {
 const CAPTCHA_URL_PATTERNS = [
   "verify.shopee.vn",
   "shopee.vn/security",
+  "shopee.vn/verify",
   "/buyer/login",
   "shopee.vn/account/login",
 ] as const;

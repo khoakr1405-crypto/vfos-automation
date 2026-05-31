@@ -13,11 +13,11 @@
  * Command: pnpm commerce:intake [--dry-run] [--confirm-targeted-click] [--run-review] [--output <path>]
  */
 
-import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { spawnSync } from 'node:child_process';
-import { bootstrapBrowser, CdpBootstrapError } from '../packages/shopee/src/cdp-bootstrap.js';
+import { CdpBootstrapError, bootstrapBrowser } from '../packages/shopee/src/cdp-bootstrap.js';
 
 const AFFILIATE_OWNER_ID = 'an_17376660568';
 const LINK_REGISTRY_PATH = 'production/_commerce/shopee_link_registry.json';
@@ -65,7 +65,9 @@ async function main() {
   console.log('======================================================');
   console.log('📦   VFOS Commerce Product Intake Orchestrator');
   console.log('======================================================');
-  console.log(`- Mode:              ${isDryRun ? '🔍 DRY-RUN (Preflight check only)' : '⚡ CONFIRMED EXTRACTION'}`);
+  console.log(
+    `- Mode:              ${isDryRun ? '🔍 DRY-RUN (Preflight check only)' : '⚡ CONFIRMED EXTRACTION'}`,
+  );
   console.log(`- Auto Run Review:   ${runReview ? '✅ ENABLED' : '❌ DISABLED'}`);
   console.log(`- Output Status:     ${statusOutputPath}`);
   console.log('------------------------------------------------------');
@@ -122,17 +124,24 @@ async function main() {
   try {
     const boot = await bootstrapBrowser({ host: '127.0.0.1', port: 9222 });
     if (boot.status === 'launched') {
-      console.log(`[Intake] Auto-opened Cốc Cốc (profile: ${boot.user_data_dir}) — waited ${boot.waited_ms_after_launch}ms for port.`);
+      console.log(
+        `[Intake] Auto-opened Cốc Cốc (profile: ${boot.user_data_dir}) — waited ${boot.waited_ms_after_launch}ms for port.`,
+      );
     } else {
       console.log('[Intake] Cốc Cốc already running on port 9222 — attaching (no relaunch).');
     }
   } catch (err: any) {
-    const reason = err instanceof CdpBootstrapError ? `${err.reason_code}: ${err.message}` : err?.message;
+    const reason =
+      err instanceof CdpBootstrapError ? `${err.reason_code}: ${err.message}` : err?.message;
     console.warn(`[Intake] Cốc Cốc auto-open unavailable — ${reason}`);
     console.warn('[Intake] Open Cốc Cốc manually with remote debugging enabled, then re-run:');
-    console.warn('  "C:\\Program Files\\CocCoc\\Browser\\Application\\browser.exe" --remote-debugging-port=9222');
+    console.warn(
+      '  "C:\\Program Files\\CocCoc\\Browser\\Application\\browser.exe" --remote-debugging-port=9222',
+    );
     console.warn('  Navigate to: https://affiliate.shopee.vn/offer/product_offer');
-    console.warn('  (Or set VFOS_BROWSER_USER_DATA_DIR to your logged-in Cốc Cốc profile to enable auto-open.)');
+    console.warn(
+      '  (Or set VFOS_BROWSER_USER_DATA_DIR to your logged-in Cốc Cốc profile to enable auto-open.)',
+    );
   }
 
   // ======================================================
@@ -158,15 +167,22 @@ async function main() {
   if (!preflightPassed) {
     console.warn('\n⚠️  [Intake] Preflight diagnostic check FAILED.');
     console.warn('- Cốc Cốc is the ONLY supported browser for the Shopee Affiliate flow.');
-    console.warn('- Cốc Cốc CDP bootstrap is available: re-run `pnpm commerce:intake` (it auto-opens');
-    console.warn('  Cốc Cốc when VFOS_BROWSER_USER_DATA_DIR points at your logged-in profile), or open it manually:');
-    console.warn('  "C:\\Program Files\\CocCoc\\Browser\\Application\\browser.exe" --remote-debugging-port=9222');
+    console.warn(
+      '- Cốc Cốc CDP bootstrap is available: re-run `pnpm commerce:intake` (it auto-opens',
+    );
+    console.warn(
+      '  Cốc Cốc when VFOS_BROWSER_USER_DATA_DIR points at your logged-in profile), or open it manually:',
+    );
+    console.warn(
+      '  "C:\\Program Files\\CocCoc\\Browser\\Application\\browser.exe" --remote-debugging-port=9222',
+    );
     console.warn('- Navigate Cốc Cốc to the active Shopee Affiliate Product Offer catalog:');
     console.warn('  https://affiliate.shopee.vn/offer/product_offer');
     console.warn('- Ensure no security block overlays (CAPTCHA or Login required) are present.');
-    
+
     intakeStatus.status = 'SUSPENDED';
-    intakeStatus.recommendedNextAction = 'Please open the browser on debugging port 9222 and navigate to Shopee Product Offer page.';
+    intakeStatus.recommendedNextAction =
+      'Please open the browser on debugging port 9222 and navigate to Shopee Product Offer page.';
     writeFileSync(statusOutputPath, JSON.stringify(intakeStatus, null, 2), 'utf8');
     process.exit(0);
   }
@@ -177,12 +193,15 @@ async function main() {
   if (isDryRun) {
     console.log('------------------------------------------------------');
     console.log('👍 READY FOR TARGETED EXTRACTION!');
-    console.log('To perform exactly 1 controlled click and generate the product card, re-run with:');
+    console.log(
+      'To perform exactly 1 controlled click and generate the product card, re-run with:',
+    );
     console.log('👉  pnpm commerce:intake --confirm-targeted-click');
     console.log('------------------------------------------------------');
 
     intakeStatus.status = 'READY';
-    intakeStatus.recommendedNextAction = 'Ready for targeted extraction. Re-run with --confirm-targeted-click to extract exactly 1 link.';
+    intakeStatus.recommendedNextAction =
+      'Ready for targeted extraction. Re-run with --confirm-targeted-click to extract exactly 1 link.';
     writeFileSync(statusOutputPath, JSON.stringify(intakeStatus, null, 2), 'utf8');
     process.exit(0);
   }
@@ -244,6 +263,8 @@ async function main() {
             canonicalUrl: entry.canonical_url,
             affiliateOwnerId: entry.affiliate_owner_id,
             ownerVerified: true,
+            score: (entry as any).score || 'unknown',
+            criteria: (entry as any).criteria || 'unknown',
             source: 'extract-links-cdp (registry)',
             generatedAt: new Date().toISOString(),
           },
@@ -288,7 +309,7 @@ async function main() {
 
   if (!cardBuilt) {
     console.error('\n❌  [Intake] Product card builder adapter FAILED.');
-    
+
     intakeStatus.status = 'FAIL';
     intakeStatus.recommendedNextAction = 'Review Card Builder scripts/logs for adapter errors.';
     writeFileSync(statusOutputPath, JSON.stringify(intakeStatus, null, 2), 'utf8');
@@ -318,17 +339,21 @@ async function main() {
   }
 
   if (auditStatusStr === 'FAIL') {
-    console.error('\n❌  [Intake] Shopee Affiliate Link Audit FAILED. Product Card is unsafe for pipeline ingestion!');
-    
+    console.error(
+      '\n❌  [Intake] Shopee Affiliate Link Audit FAILED. Product Card is unsafe for pipeline ingestion!',
+    );
+
     intakeStatus.status = 'FAIL';
-    intakeStatus.recommendedNextAction = 'Resolve audit safety/compliance warnings or owner ID tracking mismatch in extracted details.';
+    intakeStatus.recommendedNextAction =
+      'Resolve audit safety/compliance warnings or owner ID tracking mismatch in extracted details.';
     writeFileSync(statusOutputPath, JSON.stringify(intakeStatus, null, 2), 'utf8');
     process.exit(0);
   }
 
   console.log(`\n[Intake] Shopee Affiliate Link Audit completed with status: ${auditStatusStr} 🟢`);
   intakeStatus.status = 'SUCCESS';
-  intakeStatus.recommendedNextAction = 'Run pnpm chay to generate review preview after operator verifies the product card.';
+  intakeStatus.recommendedNextAction =
+    'Run pnpm chay to generate review preview after operator verifies the product card.';
   writeFileSync(statusOutputPath, JSON.stringify(intakeStatus, null, 2), 'utf8');
 
   // Load and display card summary for operator convenience
@@ -348,7 +373,9 @@ async function main() {
   // STEP 5: Optional Human Review Pipeline Execution
   // ======================================================
   if (runReview) {
-    console.log('\n[Intake] Step 5: Operator requested automatic Human Review Pipeline execution...');
+    console.log(
+      '\n[Intake] Step 5: Operator requested automatic Human Review Pipeline execution...',
+    );
     spawnSync('npx', ['tsx', 'scripts/chay.ts', '--offline'], {
       shell: true,
       stdio: 'inherit',

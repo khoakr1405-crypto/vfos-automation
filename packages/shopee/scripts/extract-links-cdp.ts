@@ -45,44 +45,40 @@
  *   - Never call Facebook / Shopee private APIs / HAR endpoints.
  */
 
-import { parseArgs } from "node:util";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import type { Browser, Page } from "playwright";
+import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { parseArgs } from 'node:util';
+import type { Browser, Page } from 'playwright';
 
 import {
-  upsertEntry,
-  appendRejected,
-  type LinkRegistryConfig,
-} from "../src/link-registry.js";
-import {
-  bootstrapBrowser,
   CdpBootstrapError,
+  bootstrapBrowser,
+  clampCaptchaWaitSeconds,
   detectCaptchaGuard,
   waitForCaptchaResolution,
-  clampCaptchaWaitSeconds,
-} from "../src/cdp-bootstrap.js";
+} from '../src/cdp-bootstrap.js';
 import {
+  CdpBootstrapError,
+  bootstrapBrowser,
+  detectCaptchaGuard,
+  waitForCaptchaResolution,
+} from '../src/cdp-bootstrap.js';
+import {
+  type ParsedCliArgs,
   classifyResolvedLink,
   extractShopidItemid,
   parseCliValues,
   resolveShortLink,
   shouldSkipPreClick,
-  type ParsedCliArgs,
-} from "../src/cdp-extract-helpers.js";
-import {
-  bootstrapBrowser,
-  CdpBootstrapError,
-  detectCaptchaGuard,
-  waitForCaptchaResolution,
-} from "../src/cdp-bootstrap.js";
+} from '../src/cdp-extract-helpers.js';
+import { type LinkRegistryConfig, appendRejected, upsertEntry } from '../src/link-registry.js';
 
 // ── workspace + env ─────────────────────────────────────────────────────────
 
 function findWorkspaceRoot(start: string): string {
   let dir = start;
   for (let i = 0; i < 8; i++) {
-    if (existsSync(join(dir, "pnpm-workspace.yaml"))) return dir;
+    if (existsSync(join(dir, 'pnpm-workspace.yaml'))) return dir;
     const parent = dirname(dir);
     if (parent === dir) break;
     dir = parent;
@@ -91,16 +87,19 @@ function findWorkspaceRoot(start: string): string {
 }
 
 function loadEnv(rootDir: string): void {
-  const envPath = join(rootDir, ".env");
+  const envPath = join(rootDir, '.env');
   if (!existsSync(envPath)) return;
-  const text = readFileSync(envPath, "utf8");
-  for (const raw of text.split("\n")) {
+  const text = readFileSync(envPath, 'utf8');
+  for (const raw of text.split('\n')) {
     const line = raw.trim();
-    if (!line || line.startsWith("#")) continue;
-    const eq = line.indexOf("=");
+    if (!line || line.startsWith('#')) continue;
+    const eq = line.indexOf('=');
     if (eq === -1) continue;
     const key = line.slice(0, eq).trim();
-    const val = line.slice(eq + 1).trim().replace(/^["']|["']$/g, "");
+    const val = line
+      .slice(eq + 1)
+      .trim()
+      .replace(/^["']|["']$/g, '');
     if (!(key in process.env)) process.env[key] = val;
   }
 }
@@ -158,23 +157,28 @@ interface ProductCard {
   index: number;
   name: string;
   href: string | null;
+  price_vnd: number | 'unknown';
+  commission_pct: string | 'unknown';
+  sales_count: string | 'unknown';
+  score?: number;
+  criteria?: string;
 }
 
 async function discoverProductCards(page: Page): Promise<ProductCard[]> {
   return page.evaluate(() => {
     // 1. Tìm tất cả các phần tử chứa text "lấy link"/"get link" (case-insensitive,
     //    giới hạn độ dài để né nút "Lấy link hàng loạt" / "Get link batch")
-    const buttons = Array.from(document.querySelectorAll<HTMLElement>("*")).filter((el) => {
-      const t = (el.textContent ?? "").trim().toLowerCase();
+    const buttons = Array.from(document.querySelectorAll<HTMLElement>('*')).filter((el) => {
+      const t = (el.textContent ?? '').trim().toLowerCase();
 
-      if (!t.includes("lấy link") && !t.includes("get link")) return false;
+      if (!t.includes('lấy link') && !t.includes('get link')) return false;
       if (t.length > 15) return false; // Loại trừ nút "Lấy link hàng loạt"
 
       // Leaf-Node by substring: bỏ qua thẻ cha nếu có thẻ con bên trong
       // cũng chứa cùng cụm từ — chỉ lấy thẻ sâu nhất sát chữ thực tế.
       const hasChildWithSameText = Array.from(el.children).some((child) => {
-        const ct = (child.textContent ?? "").trim().toLowerCase();
-        return ct.includes("lấy link") || ct.includes("get link");
+        const ct = (child.textContent ?? '').trim().toLowerCase();
+        return ct.includes('lấy link') || ct.includes('get link');
       });
       return !hasChildWithSameText;
     });
@@ -185,15 +189,15 @@ async function discoverProductCards(page: Page): Promise<ProductCard[]> {
       let card: Element | null = btn;
       for (let i = 0; i < 12 && card; i++) {
         // Ô sản phẩm chuẩn bắt buộc phải chứa ảnh thumbnail và có hiển thị giá tiền ₫
-        if (card.querySelector("img") && card.textContent?.includes("₫")) {
+        if (card.querySelector('img') && card.textContent?.includes('₫')) {
           break;
         }
         card = card.parentElement;
       }
 
       // Tách lấy tên sản phẩm bằng cách cắt bỏ phần text từ ký tự ₫ trở đi
-      const rawText = (card?.textContent ?? "").trim();
-      const name = (rawText.match(/^[^₫]+/)?.[0] ?? "").trim().slice(0, 120);
+      const rawText = (card?.textContent ?? '').trim();
+      const name = (rawText.match(/^[^₫]+/)?.[0] ?? '').trim().slice(0, 120);
 
       // Tìm link gốc của sản phẩm nếu có sẵn trên thẻ
       let href: string | null = null;
@@ -202,7 +206,33 @@ async function discoverProductCards(page: Page): Promise<ProductCard[]> {
       );
       if (a?.href) href = a.href;
 
-      return { index: idx, name, href };
+      let price_vnd: number | 'unknown' = 'unknown';
+      let commission_pct = 'unknown';
+      let sales_count = 'unknown';
+
+      if (card) {
+        // Price: find text with ₫
+        const priceMatch = card.textContent?.match(/₫\s*([\d.,\s]+)/);
+        if (priceMatch?.[1]) {
+          price_vnd = Number.parseInt(priceMatch[1].replace(/[.,\s]/g, ''), 10) || 'unknown';
+        }
+
+        // Commission Pct: find text containing %
+        const pctMatches = card.textContent?.match(/(\d+(?:[.,]\d+)?)\s*%/g);
+        if (pctMatches && pctMatches.length > 0) {
+          commission_pct = pctMatches[0].trim();
+        }
+
+        // Sales count: find text with "đã bán" or "sold"
+        const salesMatch = card.textContent?.match(
+          /(?:đã bán|sold|đã\s+bán)\s*([\d.,\s]+[kK]?\+?)/i,
+        );
+        if (salesMatch?.[1]) {
+          sales_count = salesMatch[1].trim();
+        }
+      }
+
+      return { index: idx, name, href, price_vnd, commission_pct, sales_count };
     });
   });
 }
@@ -211,15 +241,15 @@ async function clickGetLinkButton(page: Page, index: number): Promise<boolean> {
   return page.evaluate((idx) => {
     // Đồng bộ tuyệt đối thuật toán tìm nút "Lấy link" sát chữ thực tế nhất
     // (case-insensitive + giới hạn độ dài, khớp với discoverProductCards)
-    const buttons = Array.from(document.querySelectorAll<HTMLElement>("*")).filter((el) => {
-      const t = (el.textContent ?? "").trim().toLowerCase();
+    const buttons = Array.from(document.querySelectorAll<HTMLElement>('*')).filter((el) => {
+      const t = (el.textContent ?? '').trim().toLowerCase();
 
-      if (!t.includes("lấy link") && !t.includes("get link")) return false;
+      if (!t.includes('lấy link') && !t.includes('get link')) return false;
       if (t.length > 15) return false; // Loại trừ nút "Lấy link hàng loạt"
 
       const hasChildWithSameText = Array.from(el.children).some((child) => {
-        const ct = (child.textContent ?? "").trim().toLowerCase();
-        return ct.includes("lấy link") || ct.includes("get link");
+        const ct = (child.textContent ?? '').trim().toLowerCase();
+        return ct.includes('lấy link') || ct.includes('get link');
       });
       return !hasChildWithSameText;
     });
@@ -232,22 +262,175 @@ async function clickGetLinkButton(page: Page, index: number): Promise<boolean> {
   }, index);
 }
 
+async function inspectModalDetails(page: Page): Promise<any> {
+  return page.evaluate(() => {
+    const details: any = {
+      inputs: [],
+      links: [],
+      buttons: [],
+      textSnippet: '',
+    };
+
+    // Grab inputs/textareas
+    const inputs = Array.from(
+      document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input, textarea'),
+    );
+    details.inputs = inputs.map((i) => ({
+      tag: i.tagName,
+      id: i.id,
+      name: i.name,
+      value: i.value,
+    }));
+
+    // Grab anchors
+    const anchors = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href]'));
+    details.links = anchors
+      .slice(0, 10)
+      .map((a) => ({ text: a.textContent?.trim(), href: a.href }));
+
+    // Grab buttons
+    const buttons = Array.from(document.querySelectorAll<HTMLButtonElement>('button'));
+    details.buttons = buttons.slice(0, 10).map((b) => b.textContent?.trim());
+
+    // Grab modal-like elements text
+    const modals = Array.from(
+      document.querySelectorAll(
+        '[class*="modal"], [class*="popup"], [class*="dialog"], [role="dialog"]',
+      ),
+    );
+    details.textSnippet = modals.map((m) => m.textContent?.trim().slice(0, 300)).join(' | ');
+
+    return details;
+  });
+}
+
 async function extractShortLinkFromModal(page: Page): Promise<string | null> {
   return page.evaluate(() => {
-    const SHOPEE_RE = /^https?:\/\/(s\.)?shopee\.vn\//;
+    const SHOPEE_RE = /https?:\/\/(?:[a-zA-Z0-9-]+\.)*shopee\.vn\/[^\s'"]+/;
+
+    // 1. Check all inputs and textareas
     const inputs = Array.from(
-      document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input, textarea"),
+      document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input, textarea'),
     );
     for (const i of inputs) {
-      if (i.value && SHOPEE_RE.test(i.value)) return i.value;
+      if (i.value && SHOPEE_RE.test(i.value)) {
+        const match = i.value.match(SHOPEE_RE);
+        if (match) return match[0];
+      }
     }
+
+    // 2. Check all links (anchor tags) inside any visible modal
+    const anchors = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href]'));
+    for (const a of anchors) {
+      if (a.href && SHOPEE_RE.test(a.href)) {
+        return a.href;
+      }
+    }
+
+    // 3. Search for any elements containing the text "shopee.vn" or "s.shopee.vn" inside the modal
+    const modalElements = Array.from(
+      document.querySelectorAll(
+        '[class*="modal"], [class*="popup"], [class*="dialog"], [role="dialog"], .shopee-popup__container',
+      ),
+    );
+    for (const modal of modalElements) {
+      const text = modal.textContent || '';
+      const match = text.match(SHOPEE_RE);
+      if (match) {
+        return match[0];
+      }
+    }
+
+    // 4. Fallback: Search the entire body for a Shopee link
+    const bodyText = document.body ? document.body.textContent || '' : '';
+    const bodyMatch = bodyText.match(SHOPEE_RE);
+    if (bodyMatch) {
+      return bodyMatch[0];
+    }
+
     return null;
   });
 }
 
 async function closeModal(page: Page): Promise<void> {
-  await page.keyboard.press("Escape");
+  await page.keyboard.press('Escape');
   await page.waitForTimeout(800);
+}
+
+function scoreCard(card: ProductCard): { score: number; criteria: string } {
+  let score = 0;
+  const criteriaParts: string[] = [];
+
+  // 1. Commission Score
+  if (card.commission_pct && card.commission_pct !== 'unknown') {
+    const pctVal = Number.parseFloat(card.commission_pct.replace('%', ''));
+    if (Number.isFinite(pctVal)) {
+      if (pctVal >= 15) {
+        score += 4;
+        criteriaParts.push(`commission_high(${pctVal}%)`);
+      } else if (pctVal >= 10) {
+        score += 3;
+        criteriaParts.push(`commission_mid(${pctVal}%)`);
+      } else if (pctVal >= 5) {
+        score += 2;
+        criteriaParts.push(`commission_low(${pctVal}%)`);
+      } else if (pctVal >= 2) {
+        score += 1;
+        criteriaParts.push(`commission_min(${pctVal}%)`);
+      } else {
+        criteriaParts.push(`commission_negligible(${pctVal}%)`);
+      }
+    }
+  } else {
+    criteriaParts.push('commission_unknown');
+  }
+
+  // 2. Price Sweet Spot (20k - 200k VN sweet spot)
+  if (card.price_vnd && card.price_vnd !== 'unknown' && typeof card.price_vnd === 'number') {
+    const p = card.price_vnd;
+    if (p >= 20000 && p <= 200000) {
+      score += 3;
+      criteriaParts.push(`price_sweet(${p}đ)`);
+    } else if (p >= 5000 && p <= 500000) {
+      score += 2;
+      criteriaParts.push(`price_acceptable(${p}đ)`);
+    } else if (p >= 1000 && p <= 1000000) {
+      score += 1;
+      criteriaParts.push(`price_edge(${p}đ)`);
+    } else {
+      criteriaParts.push(`price_outside_band(${p}đ)`);
+    }
+  } else {
+    criteriaParts.push('price_unknown');
+  }
+
+  // 3. Sales Count (Social Proof)
+  if (card.sales_count && card.sales_count !== 'unknown') {
+    const sc = card.sales_count.toLowerCase();
+    if (sc.includes('k')) {
+      score += 3;
+      criteriaParts.push(`sales_excellent(${card.sales_count})`);
+    } else {
+      const num = Number.parseInt(sc.replace(/[^\d]/g, ''), 10);
+      if (Number.isFinite(num)) {
+        if (num >= 100) {
+          score += 2;
+          criteriaParts.push(`sales_moderate(${num})`);
+        } else if (num >= 10) {
+          score += 1;
+          criteriaParts.push(`sales_minimal(${num})`);
+        } else {
+          criteriaParts.push(`sales_poor(${num})`);
+        }
+      } else {
+        criteriaParts.push(`sales_format_unrecognized(${card.sales_count})`);
+      }
+    }
+  } else {
+    criteriaParts.push('sales_unknown');
+  }
+
+  return { score, criteria: criteriaParts.join(', ') };
 }
 
 // ── main ────────────────────────────────────────────────────────────────────
@@ -259,18 +442,18 @@ function sleep(ms: number): Promise<void> {
 async function main(): Promise<number> {
   const rawArgs = parseArgs({
     options: {
-      "target-count": { type: "string" },
-      "max-clicks": { type: "string" },
-      "owner-id": { type: "string" },
-      "registry-path": { type: "string" },
-      "cdp-endpoint": { type: "string" },
-      "cdp-retries": { type: "string" },
-      "captcha-wait-seconds": { type: "string" },
-      "browser-path": { type: "string" },
-      "browser-user-data-dir": { type: "string" },
-      "no-auto-launch": { type: "boolean", default: false },
-      "dry-run": { type: "boolean", default: false },
-      help: { type: "boolean", default: false },
+      'target-count': { type: 'string' },
+      'max-clicks': { type: 'string' },
+      'owner-id': { type: 'string' },
+      'registry-path': { type: 'string' },
+      'cdp-endpoint': { type: 'string' },
+      'cdp-retries': { type: 'string' },
+      'captcha-wait-seconds': { type: 'string' },
+      'browser-path': { type: 'string' },
+      'browser-user-data-dir': { type: 'string' },
+      'no-auto-launch': { type: 'boolean', default: false },
+      'dry-run': { type: 'boolean', default: false },
+      help: { type: 'boolean', default: false },
     },
     allowPositionals: false,
     strict: true,
@@ -287,8 +470,8 @@ async function main(): Promise<number> {
   let cli: ParsedCliArgs;
   try {
     cli = parseCliValues(rawArgs.values, {
-      owner: process.env["SHOPEE_AFFILIATE_OWNER_ID"] ?? "an_17376660568",
-      registry_path: resolve(workspaceRoot, "production", "_commerce", "shopee_link_registry.json"),
+      owner: process.env.SHOPEE_AFFILIATE_OWNER_ID ?? 'an_17376660568',
+      registry_path: resolve(workspaceRoot, 'production', '_commerce', 'shopee_link_registry.json'),
     });
   } catch (e) {
     process.stderr.write(`ERR_INVALID_ARGS: ${(e as Error).message}\n`);
@@ -306,7 +489,7 @@ async function main(): Promise<number> {
     mkdirSync(dirname(registryConfig.registry_path), { recursive: true });
   }
 
-  process.stdout.write("=== Shopee CDP Extraction (Round 27 + 27B bootstrap) ===\n");
+  process.stdout.write('=== Shopee CDP Extraction (Round 27 + 27B bootstrap) ===\n');
   process.stdout.write(`  target_count        : ${cli.target_count}\n`);
   process.stdout.write(`  max_clicks          : ${cli.max_clicks} (safety ceiling)\n`);
   process.stdout.write(`  owner_id            : ${cli.expected_owner}\n`);
@@ -320,9 +503,9 @@ async function main(): Promise<number> {
   // ── CDP bootstrap (Round 27B) — probe port, auto-launch if needed ────────
 
   const endpointUrl = new URL(cli.cdp_endpoint);
-  const cdpPort = parseInt(endpointUrl.port, 10) || 9222;
-  const cdpHost = endpointUrl.hostname || "127.0.0.1";
-  const bootstrapLogPath = resolve(workspaceRoot, "production", "_commerce", "cdp_bootstrap.log");
+  const cdpPort = Number.parseInt(endpointUrl.port, 10) || 9222;
+  const cdpHost = endpointUrl.hostname || '127.0.0.1';
+  const bootstrapLogPath = resolve(workspaceRoot, 'production', '_commerce', 'cdp_bootstrap.log');
 
   let bootstrappedNewBrowser = false;
   try {
@@ -331,19 +514,17 @@ async function main(): Promise<number> {
       port: cdpPort,
       no_auto_launch: cli.no_auto_launch,
       ...(cli.browser_path ? { browser_path_override: cli.browser_path } : {}),
-      ...(cli.browser_user_data_dir
-        ? { user_data_dir_override: cli.browser_user_data_dir }
-        : {}),
+      ...(cli.browser_user_data_dir ? { user_data_dir_override: cli.browser_user_data_dir } : {}),
       log_path: bootstrapLogPath,
     });
     process.stdout.write(`  bootstrap_status    : ${bootstrap.status}\n`);
-    if (bootstrap.status === "launched") {
+    if (bootstrap.status === 'launched') {
       bootstrappedNewBrowser = true;
       process.stdout.write(`  browser_path        : ${bootstrap.browser_path}\n`);
       process.stdout.write(`  user_data_dir       : ${bootstrap.user_data_dir}\n`);
       process.stdout.write(`  waited_after_launch : ${bootstrap.waited_ms_after_launch}ms\n`);
     }
-    process.stdout.write("\n");
+    process.stdout.write('\n');
   } catch (e) {
     if (e instanceof CdpBootstrapError) {
       process.stderr.write(`${e.reason_code}\n  ${e.message}\n`);
@@ -355,11 +536,11 @@ async function main(): Promise<number> {
 
   // ── CDP connect (post-bootstrap, port is verified open) ───────────────────
 
-  let chromium: typeof import("playwright").chromium;
+  let chromium: typeof import('playwright').chromium;
   try {
-    chromium = (await import("playwright")).chromium;
+    chromium = (await import('playwright')).chromium;
   } catch {
-    process.stderr.write("ERR_PLAYWRIGHT_NOT_INSTALLED\n  Install with: pnpm add -D playwright\n");
+    process.stderr.write('ERR_PLAYWRIGHT_NOT_INSTALLED\n  Install with: pnpm add -D playwright\n');
     return 2;
   }
 
@@ -372,13 +553,13 @@ async function main(): Promise<number> {
     try {
       process.stdout.write(`  CDP connect attempt ${attempt}/${effectiveRetries}…\n`);
       browser = await chromium.connectOverCDP(cli.cdp_endpoint);
-      process.stdout.write("  CDP connected.\n");
+      process.stdout.write('  CDP connected.\n');
       break;
     } catch (e) {
       process.stderr.write(`  CDP connect failed: ${(e as Error).message.slice(0, 100)}\n`);
       if (attempt === effectiveRetries) {
         process.stderr.write(
-          "ERR_CDP_BROWSER_NOT_FOUND\n  Bootstrap reported port open but Playwright still cannot attach.\n",
+          'ERR_CDP_BROWSER_NOT_FOUND\n  Bootstrap reported port open but Playwright still cannot attach.\n',
         );
         return 2;
       }
@@ -393,7 +574,14 @@ async function main(): Promise<number> {
   let page: Page | null = null;
   for (const ctx of browser.contexts()) {
     for (const p of ctx.pages()) {
-      if (p.url().includes("affiliate.shopee.vn/offer/product_offer")) {
+      const url = p.url();
+      if (
+        url.includes("affiliate.shopee.vn") ||
+        url.includes("verify.shopee.vn") ||
+        url.includes("shopee.vn/security") ||
+        url.includes("buyer/login") ||
+        url.includes("shopee.vn/account/login")
+      ) {
         page = p;
         break;
       }
@@ -402,7 +590,7 @@ async function main(): Promise<number> {
   }
   if (!page) {
     process.stderr.write(
-      "ERR_CDP_TARGET_TAB_NOT_FOUND\n  Open https://affiliate.shopee.vn/offer/product_offer in the logged-in browser.\n",
+      'ERR_CDP_TARGET_TAB_NOT_FOUND\n  Open https://affiliate.shopee.vn/offer/product_offer in the logged-in browser.\n',
     );
     await browser.close();
     return 2;
@@ -414,7 +602,7 @@ async function main(): Promise<number> {
   const initialDetection = await detectCaptchaGuard(page);
   if (initialDetection.detected) {
     process.stdout.write(
-      `\n⚠️  VFOS WARNING: phát hiện CAPTCHA/Login/Xác minh — signals=[${initialDetection.signals.join(", ")}]\n` +
+      `\n⚠️  VFOS WARNING: phát hiện CAPTCHA/Login/Xác minh — signals=[${initialDetection.signals.join(', ')}]\n` +
         `   Hệ thống tạm dừng chờ tối đa ${cli.captcha_wait_seconds}s. Hãy giải thủ công trên cửa sổ browser.\n`,
     );
     const wait = await waitForCaptchaResolution(page, {
@@ -430,15 +618,21 @@ async function main(): Promise<number> {
     });
     if (!wait.cleared) {
       process.stderr.write(
-        `\n${wait.reason_code}\n  Captcha/login overlay still present after ${wait.waited_seconds}s.\n` +
-          `  Resolve in browser manually then rerun /chay shopee-cdp-test.\n`,
+        `\n${wait.reason_code}\n  Captcha/login overlay still present after ${wait.waited_seconds}s.\n  Resolve in browser manually then rerun /chay shopee-cdp-test.\n`,
       );
       await browser.close();
       return 2;
     }
     process.stdout.write(`   captcha guard cleared after ${wait.waited_seconds}s — continuing.\n`);
   }
-  process.stdout.write("\n");
+
+  // Ensure page navigates to target offer catalog page if not there yet
+  if (!page.url().includes("offer/product_offer")) {
+    process.stdout.write("  [CDP] Navigating tab to active Shopee Affiliate Product Offer catalog...\n");
+    await page.goto("https://affiliate.shopee.vn/offer/product_offer");
+    await page.waitForTimeout(3000);
+  }
+  process.stdout.write('\n');
 
   // ── extraction loop ───────────────────────────────────────────────────────
 
@@ -446,8 +640,8 @@ async function main(): Promise<number> {
   let clicks = 0;
   let consecutivePostResolveDuplicates = 0;
   const attemptedNames = new Set<string>();
-  let finalStatus: "SUCCESS" | "SUSPENDED" | "FAIL" = "FAIL";
-  let finalReason = "";
+  let finalStatus: 'SUCCESS' | 'SUSPENDED' | 'FAIL' = 'FAIL';
+  let finalReason = '';
 
   while (extracted < cli.target_count && clicks < cli.max_clicks) {
     process.stdout.write(
@@ -458,30 +652,31 @@ async function main(): Promise<number> {
     // Predicate khớp filter của discoverProductCards (case-insensitive + length<15)
     // để tránh false-positive với button "Lấy link hàng loạt".
     try {
-      process.stdout.write("  [CDP] Chờ danh sách sản phẩm hiển thị (SPA Hydration)...\n");
+      process.stdout.write('  [CDP] Chờ danh sách sản phẩm hiển thị (SPA Hydration)...\n');
       await page.waitForFunction(
         () => {
-          const els = Array.from(document.querySelectorAll("*"));
+          const els = Array.from(document.querySelectorAll('*'));
           return els.some((el) => {
-            const t = (el.textContent ?? "").trim().toLowerCase();
-            return (t.includes("lấy link") || t.includes("get link")) && t.length < 15;
+            const t = (el.textContent ?? '').trim().toLowerCase();
+            return (t.includes('lấy link') || t.includes('get link')) && t.length < 15;
           });
         },
         { timeout: 15000 },
       );
     } catch {
-      process.stdout.write("  [CDP] Timeout chờ sản phẩm, tiến hành scan trực tiếp...\n");
+      process.stdout.write('  [CDP] Timeout chờ sản phẩm, tiến hành scan trực tiếp...\n');
     }
 
     const cards = await discoverProductCards(page);
     process.stdout.write(`  visible cards: ${cards.length}\n`);
     if (cards.length === 0) {
-      finalStatus = "SUSPENDED";
-      finalReason = "no visible product cards";
+      finalStatus = 'SUSPENDED';
+      finalReason = 'no visible product cards';
       break;
     }
 
-    let target: ProductCard | null = null;
+    // Evaluate and score all visible non-duplicate cards
+    const candidates: ProductCard[] = [];
     for (const card of cards) {
       if (attemptedNames.has(card.name)) continue;
 
@@ -500,16 +695,49 @@ async function main(): Promise<number> {
         attemptedNames.add(card.name);
         continue;
       }
-      target = card;
-      break;
+
+      const evaluation = scoreCard(card);
+      card.score = evaluation.score;
+      card.criteria = evaluation.criteria;
+      candidates.push(card);
     }
-    if (!target) {
-      finalStatus = "SUSPENDED";
-      finalReason = "all visible cards exhausted (attempted or pre-click duplicates)";
+
+    if (candidates.length === 0) {
+      finalStatus = 'SUSPENDED';
+      finalReason = 'all visible cards exhausted (attempted or pre-click duplicates)';
       break;
     }
 
-    process.stdout.write(`  [${target.index}] click "Lấy link" — ${target.name.slice(0, 60)}\n`);
+    // Sort candidates by score descending
+    candidates.sort((a, b) => (b.score ?? 0) - (a.score ?? 0));
+
+    process.stdout.write('  Scored candidates:\n');
+    for (const cand of candidates) {
+      process.stdout.write(
+        `    - [${cand.index}] score=${cand.score}/10 | name=${cand.name.slice(0, 45)}... | price=${cand.price_vnd}đ | comm=${cand.commission_pct} | sales=${cand.sales_count} | criteria: ${cand.criteria}\n`,
+      );
+    }
+
+    const target = candidates[0];
+    if (!target) {
+      finalStatus = 'SUSPENDED';
+      finalReason = 'no valid candidate selected';
+      break;
+    }
+
+    // Skip card if its quality score is below the minimum acceptable threshold
+    const minAcceptableScore = 2;
+    if ((target.score ?? 0) < minAcceptableScore) {
+      process.stdout.write(
+        `  ⚠️ Best candidate [${target.index}] has score=${target.score} < threshold=${minAcceptableScore}. Skipping iteration.\n`,
+      );
+      attemptedNames.add(target.name);
+      continue;
+    }
+
+    process.stdout.write(
+      `  Selected [${target.index}] score=${target.score}/10 — click "Lấy link" — ${target.name.slice(0, 60)}\n`,
+    );
     attemptedNames.add(target.name);
     clicks++;
 
@@ -524,17 +752,20 @@ async function main(): Promise<number> {
     const shortLink = await extractShortLinkFromModal(page);
 
     if (!shortLink) {
-      process.stderr.write("  ERR_MODAL_UNRECOGNIZED — no Shopee URL in modal\n");
+      process.stderr.write('  ERR_MODAL_UNRECOGNIZED — no Shopee URL in modal\n');
+      const details = await inspectModalDetails(page);
+      process.stderr.write(`  [Inspection Details]: ${JSON.stringify(details, null, 2)}\n`);
+
       if (cli.dry_run) {
-        process.stdout.write("  [dry-run] would appendRejected ERR_MODAL_UNRECOGNIZED\n");
+        process.stdout.write('  [dry-run] would appendRejected ERR_MODAL_UNRECOGNIZED\n');
       } else {
         await appendRejected(registryConfig, {
           short_link: null,
           canonical_url: null,
-          reason_code: "ERR_MODAL_UNRECOGNIZED",
-          notes: `modal missing Shopee URL for: ${target.name.slice(0, 80)}`,
+          reason_code: 'ERR_MODAL_UNRECOGNIZED',
+          notes: `modal missing Shopee URL for: ${target.name.slice(0, 80)} | inspect: ${JSON.stringify(details).slice(0, 200)}`,
         });
-        process.stdout.write("  appendRejected (ERR_MODAL_UNRECOGNIZED)\n");
+        process.stdout.write('  appendRejected (ERR_MODAL_UNRECOGNIZED)\n');
       }
       await closeModal(page);
       continue;
@@ -544,10 +775,10 @@ async function main(): Promise<number> {
     await closeModal(page);
 
     const canonical = await resolveShortLink(shortLink, fetch);
-    process.stdout.write(`  canonical : ${canonical ?? "(resolve failed)"}\n`);
+    process.stdout.write(`  canonical : ${canonical ?? '(resolve failed)'}\n`);
 
     const { shopid, itemid } = extractShopidItemid(canonical);
-    process.stdout.write(`  ids       : ${shopid ?? "null"} / ${itemid ?? "null"}\n`);
+    process.stdout.write(`  ids       : ${shopid ?? 'null'} / ${itemid ?? 'null'}\n`);
 
     const postProbe = {
       shopid,
@@ -561,8 +792,8 @@ async function main(): Promise<number> {
       process.stdout.write(`  POST-RESOLVE DUPLICATE (${postDedup.match_field}) — try next\n`);
       consecutivePostResolveDuplicates++;
       if (consecutivePostResolveDuplicates >= 3) {
-        finalStatus = "SUSPENDED";
-        finalReason = "3 consecutive post-resolve duplicates";
+        finalStatus = 'SUSPENDED';
+        finalReason = '3 consecutive post-resolve duplicates';
         break;
       }
       continue;
@@ -572,7 +803,7 @@ async function main(): Promise<number> {
     const outcome = classifyResolvedLink(canonical, cli.expected_owner);
     process.stdout.write(`  validation: ${outcome.kind} — ${outcome.notes}\n`);
 
-    if (outcome.kind === "REJECT") {
+    if (outcome.kind === 'REJECT') {
       if (cli.dry_run) {
         process.stdout.write(`  [dry-run] would appendRejected ${outcome.reason_code}\n`);
       } else {
@@ -588,7 +819,7 @@ async function main(): Promise<number> {
     }
 
     const linkStatus = outcome.status;
-    const verifiedOwner = outcome.kind === "ACCEPT" ? cli.expected_owner : null;
+    const verifiedOwner = outcome.kind === 'ACCEPT' ? cli.expected_owner : null;
 
     if (cli.dry_run) {
       process.stdout.write(
@@ -607,9 +838,12 @@ async function main(): Promise<number> {
       canonical_url: canonical,
       affiliate_owner_id: verifiedOwner,
       affiliate_link_status: linkStatus,
-      source: "cdp_browser_targeted_click",
-      notes: `round_27 cli — ${outcome.notes}`,
-    });
+      source: 'cdp_browser_targeted_click',
+      notes: `score: ${target.score}/10 | criteria: ${target.criteria} | round_27 cli — ${outcome.notes}`,
+      // Extra fields for downstream coordinate parsing
+      score: target.score,
+      criteria: target.criteria,
+    } as any);
     process.stdout.write(
       `  upsert: inserted=${upsert.inserted} duplicate=${upsert.duplicate} times_seen=${upsert.entry.times_seen}\n`,
     );
@@ -617,26 +851,26 @@ async function main(): Promise<number> {
       extracted++;
       process.stdout.write(`  ✓ NEW LINK (${extracted}/${cli.target_count})\n`);
     } else {
-      process.stdout.write("  duplicate (race with concurrent writer) — try next\n");
+      process.stdout.write('  duplicate (race with concurrent writer) — try next\n');
     }
   }
 
   if (extracted >= cli.target_count) {
-    finalStatus = "SUCCESS";
-  } else if (finalStatus === "FAIL") {
+    finalStatus = 'SUCCESS';
+  } else if (finalStatus === 'FAIL') {
     if (clicks === 0) {
-      finalStatus = "SUSPENDED";
-      finalReason = "no clickable products";
+      finalStatus = 'SUSPENDED';
+      finalReason = 'no clickable products';
     } else if (clicks >= cli.max_clicks) {
-      finalStatus = "SUSPENDED";
+      finalStatus = 'SUSPENDED';
       finalReason = `reached max_clicks=${cli.max_clicks} without reaching target_count`;
     } else {
-      finalStatus = "SUSPENDED";
-      finalReason = finalReason || "exhausted visible products";
+      finalStatus = 'SUSPENDED';
+      finalReason = finalReason || 'exhausted visible products';
     }
   }
 
-  process.stdout.write("\n=== RESULT ===\n");
+  process.stdout.write('\n=== RESULT ===\n');
   process.stdout.write(`  status    : ${finalStatus}\n`);
   process.stdout.write(`  extracted : ${extracted}/${cli.target_count}\n`);
   process.stdout.write(`  clicks    : ${clicks}/${cli.max_clicks}\n`);
@@ -645,7 +879,7 @@ async function main(): Promise<number> {
   process.stdout.write(`  dry_run   : ${cli.dry_run}\n`);
 
   await browser.close();
-  return finalStatus === "SUCCESS" ? 0 : 1;
+  return finalStatus === 'SUCCESS' ? 0 : 1;
 }
 
 main()

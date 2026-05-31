@@ -9,7 +9,7 @@
  * Command: tsx scripts/shopee-product-card-builder.ts [--input <path>] [--output <path>]
  */
 
-import { writeFileSync, mkdirSync, readFileSync, existsSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 
@@ -47,7 +47,9 @@ async function main() {
 
   // Step 2: Validate extraction state status
   if (!rawArtifact || rawArtifact.status !== 'SUCCESS') {
-    console.warn(`[CardBuilder] HALTED: Raw extraction state was not 'SUCCESS'. Target status: ${rawArtifact?.status || 'UNKNOWN'}`);
+    console.warn(
+      `[CardBuilder] HALTED: Raw extraction state was not 'SUCCESS'. Target status: ${rawArtifact?.status || 'UNKNOWN'}`,
+    );
     process.exit(0);
   }
 
@@ -72,13 +74,17 @@ async function main() {
     affiliateOwnerId: EXPECTED_OWNER,
     source: 'shopee_affiliate_cdp',
     validationStatus: 'VERIFIED',
+    score: rawArtifact.score || 'unknown',
+    scoringCriteria: rawArtifact.criteria || 'unknown',
     createdAt: new Date().toISOString(),
   };
 
   // Ensure output directory buffer exists
   mkdirSync(dirname(outputPath), { recursive: true });
   writeFileSync(outputPath, JSON.stringify(productCard, null, 2), 'utf8');
-  console.log(`[CardBuilder] Successfully exported normalized Selected Product Card to: ${outputPath}`);
+  console.log(
+    `[CardBuilder] Successfully exported normalized Selected Product Card to: ${outputPath}`,
+  );
 
   // Step 5: Optionally update central Shopee link registry database
   try {
@@ -90,7 +96,7 @@ async function main() {
         const isAlreadyRegistered = registry.entries.some(
           (entry: any) =>
             entry.short_link === shortLink ||
-            (shopid && itemid && entry.shopid === shopid && entry.itemid === itemid)
+            (shopid && itemid && entry.shopid === shopid && entry.itemid === itemid),
         );
 
         if (!isAlreadyRegistered) {
