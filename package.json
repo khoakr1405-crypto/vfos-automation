@@ -76,7 +76,8 @@
     "job:list": "tsx scripts/vfos-job-manager.ts list",
     "job:vision": "tsx scripts/job-video-vision-analyzer.ts",
     "job:qa": "tsx scripts/job-final-qa-gate.ts",
-    "job:publish-facebook": "tsx scripts/job-facebook-publish-command.ts"
+    "job:publish-facebook": "tsx scripts/job-facebook-publish-command.ts",
+    "job:dashboard": "tsx scripts/job-dashboard.ts"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

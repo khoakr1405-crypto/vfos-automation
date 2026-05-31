@@ -727,6 +727,19 @@ ${recommendedNextCommand}
   console.log(`- Production Pack:   ${packageStatus === 'FOUND' ? 'PACKED 🟢' : 'MISSING ⚪'}`);
   console.log(`- Next Step:         ${publishAction}`);
 
+  const registryPath = 'data/temp/vfos_jobs_registry.json';
+  if (existsSync(registryPath)) {
+    try {
+      const reg = JSON.parse(readFileSync(registryPath, 'utf8'));
+      if (reg && Array.isArray(reg.jobs) && reg.jobs.length > 0) {
+        console.log('\n[3.5] Active Jobs Registry Status');
+        for (const job of reg.jobs) {
+          console.log(`- Job: ${job.jobId} | State: ${job.state} | Review: ${job.operatorDecision}`);
+        }
+      }
+    } catch {}
+  }
+
   console.log('\n[4] Safety Lock Status');
   console.log('- Browser clicked:     false 🔒');
   console.log('- Facebook API called: false 🔒');
