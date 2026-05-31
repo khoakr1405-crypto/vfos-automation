@@ -72,6 +72,7 @@
     "job:script": "tsx scripts/vfos-job-manager.ts script",
     "job:approve": "tsx scripts/vfos-job-manager.ts approve",
     "job:reject": "tsx scripts/vfos-job-manager.ts reject",
+    "job:package": "tsx scripts/vfos-job-manager.ts package",
     "job:list": "tsx scripts/vfos-job-manager.ts list",
     "job:vision": "tsx scripts/job-video-vision-analyzer.ts",
     "job:qa": "tsx scripts/job-final-qa-gate.ts"
