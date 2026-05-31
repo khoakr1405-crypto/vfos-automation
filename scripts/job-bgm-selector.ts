@@ -46,40 +46,40 @@ export interface VoiceDirection {
 
 const VOICE_DIRECTION_BY_MOOD: Record<string, VoiceDirection> = {
   upbeat_review: {
-    style: 'vui tươi, sáng',
-    pace: 'nhanh vừa',
+    style: 'bright_product_review',
+    pace: 'medium_fast',
     energy: 'high',
-    delivery: 'energetic friendly, rõ lời',
+    delivery: 'young, cheerful, natural Vietnamese product review, punchy but clear',
     clarityPriority: true,
   },
   lofi_lifestyle: {
-    style: 'mềm mại, tự nhiên',
-    pace: 'vừa phải',
+    style: 'soft_lifestyle_review',
+    pace: 'medium',
     energy: 'medium',
-    delivery: 'calm warm, không buồn, rõ lời',
+    delivery: 'friendly, relaxed, clear Vietnamese review, warm but still engaging',
     clarityPriority: true,
   },
   funky_tiktok: {
-    style: 'năng động, dí dỏm',
-    pace: 'nhanh vừa',
+    style: 'playful_tiktok_review',
+    pace: 'medium_fast',
     energy: 'high',
-    delivery: 'playful punchy, rõ lời',
+    delivery: 'fun, youthful, lightly humorous Vietnamese review, expressive but not chaotic',
     clarityPriority: true,
   },
   clean_tech: {
-    style: 'gọn, rõ, tự tin',
-    pace: 'vừa',
+    style: 'clean_modern_review',
+    pace: 'medium',
     energy: 'medium',
-    delivery: 'crisp modern confident, rõ lời',
+    delivery: 'clear, modern, confident Vietnamese product review, precise and natural',
     clarityPriority: true,
   },
 };
 
 const DEFAULT_VOICE_DIRECTION: VoiceDirection = {
-  style: 'rõ ràng, tự nhiên',
-  pace: 'vừa',
+  style: 'clean_modern_review',
+  pace: 'medium',
   energy: 'medium',
-  delivery: 'neutral friendly, rõ lời',
+  delivery: 'clear, natural Vietnamese product review',
   clarityPriority: true,
 };
 

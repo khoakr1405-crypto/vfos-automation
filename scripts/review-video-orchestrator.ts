@@ -85,6 +85,7 @@ type OrchestratorState =
   | 'SCRIPT_REQUIRED_BUT_CONFIRM_OPENAI_MISSING'
   | 'SCRIPT_GENERATION_FAILED'
   | 'BGM_VOICE_DIRECTION_STALE'
+  | 'VOICE_DIRECTION_NOT_APPLIED'
   | 'VOICE_REQUIRED_BUT_CONFIRM_ELEVENLABS_MISSING'
   | 'FINAL_QA_REQUIRED_BUT_CONFIRM_OPENAI_MISSING'
   | 'FINAL_QA_NOT_PASSING';
@@ -1025,6 +1026,20 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
+  // ---------- PRE-SELECT BGM (Round 53) ----------
+  // Select the BGM (sticky) BEFORE voice generation so the ElevenLabs bridge can
+  // read the mood and apply the matching voice direction on the very first take.
+  // Policy enforcement (missing files / --allow-no-bgm) still happens at the
+  // BGM Selection Gate below; here we only ensure the artifact exists.
+  if (jobId && jobOutputDir) {
+    const pre = selectBgmForJob({ jobId, jobOutputDir });
+    if (pre.status === 'OK' && pre.selection) {
+      console.log(
+        `🎵 BGM pre-selected for voice direction: ${pre.selection.trackId} (${pre.selection.mood})${pre.reused ? ' [sticky]' : ''}`,
+      );
+    }
+  }
+
   // ---------- GATE 2: voiceover fixture (or ElevenLabs consent) ----------
   let elevenLabsApiCalled = false;
   if (!effectiveVoicePresent) {
@@ -1187,62 +1202,45 @@ async function main(): Promise<void> {
       jobManifest.bgmPolicy = 'BGM_REQUIRED';
       saveJobManifest(jobManifest);
 
-      // ---- Voice ↔ BGM coupling (Round 52) ----
-      // BGM leads the mood; the voiceover must match the BGM voice direction.
-      // A link file records which BGM mood the current voice was made for.
-      // - no link yet  → adopt the current BGM (voice was made for this script).
-      // - link mismatch (BGM mood changed) → voice is stale; regenerate (with
-      //   ElevenLabs consent) or block.
-      const linkPath = join(jobOutputDir, 'voice_bgm_link.json');
-      const scriptArtPath = join(jobOutputDir, 'script_artifact.json');
-      const scriptText = existsSync(scriptArtPath) ? extractCombinedVoiceText(scriptArtPath) : '';
-      const scriptHash = scriptText ? calculateNormalizedHash(scriptText) : null;
-      const writeLink = () =>
-        writeFileSync(
-          linkPath,
-          `${JSON.stringify(
-            {
-              voiceBgmLinkVersion: 'v1',
-              bgmTrackId: sel.trackId,
-              bgmMood: sel.mood,
-              voiceDirectionHash: sel.voiceDirectionHash,
-              scriptTextHash: scriptHash,
-              linkedAt: new Date().toISOString(),
-            },
-            null,
-            2,
-          )}\n`,
-          'utf8',
-        );
-
-      let link: { voiceDirectionHash?: string } | null = null;
-      if (existsSync(linkPath)) {
+      // ---- Voice ↔ BGM coupling (Round 53) ----
+      // BGM leads the mood; the voiceover must be generated WITH the matching
+      // voice direction. The voice artifact records which direction it was made
+      // for (voiceDirectionApplied + voiceDirectionHash). Coupling is fresh only
+      // when the voice was direction-applied for the current BGM mood.
+      const readVoiceCoupling = (): { applied: boolean; hash: string } => {
+        const vp = join(jobOutputDir, 'voice_artifact.json');
+        if (!existsSync(vp)) return { applied: false, hash: '' };
         try {
-          link = JSON.parse(readFileSync(linkPath, 'utf8'));
+          const va = JSON.parse(readFileSync(vp, 'utf8'));
+          return { applied: va.voiceDirectionApplied === true, hash: va.voiceDirectionHash ?? '' };
         } catch {
-          link = null;
+          return { applied: false, hash: '' };
         }
-      }
+      };
 
-      const bgmStale = Boolean(
-        link?.voiceDirectionHash && link.voiceDirectionHash !== sel.voiceDirectionHash,
-      );
-      if (!link) {
-        // Adopt: the existing voice was made for this script; record the pairing.
-        writeLink();
-        console.log('Voice/BGM coupling:    adopted (voice linked to current BGM mood).');
-      } else if (bgmStale) {
-        console.log('🛑 BGM_VOICE_DIRECTION_STALE');
-        console.log('BGM mood changed since the voiceover was generated — the voice direction');
-        console.log('no longer matches the BGM. Voice must be regenerated for the new mood.');
+      const vc = readVoiceCoupling();
+      const directionFresh = vc.applied && vc.hash === sel.voiceDirectionHash;
+      if (directionFresh) {
+        console.log('Voice/BGM coupling:    fresh (voice direction matches current BGM mood). ✅');
+      } else {
+        const reason: 'VOICE_DIRECTION_NOT_APPLIED' | 'BGM_VOICE_DIRECTION_STALE' = vc.applied
+          ? 'BGM_VOICE_DIRECTION_STALE'
+          : 'VOICE_DIRECTION_NOT_APPLIED';
+        console.log(`🛑 ${reason}`);
+        console.log(
+          vc.applied
+            ? 'BGM mood changed since the voiceover was generated — voice direction no longer matches.'
+            : 'The voiceover was not generated with BGM voice direction (legacy/plain voice).',
+        );
         if (confirmElevenLabs) {
-          const reStatus = runCommand('STEP 4b — Regenerate voiceover for new BGM mood', 'pnpm', [
-            'voice:elevenlabs',
-            '--job',
-            jobId,
-            '--confirm-api-call',
-          ]);
-          if (reStatus !== 0) {
+          const reStatus = runCommand(
+            'STEP 4b — Regenerate voiceover with BGM voice direction',
+            'pnpm',
+            ['voice:elevenlabs', '--job', jobId, '--confirm-api-call'],
+          );
+          const after = readVoiceCoupling();
+          if (reStatus !== 0 || !after.applied || after.hash !== sel.voiceDirectionHash) {
+            console.log('🛑 VOICE_GENERATION_FAILED (direction not applied after regen)');
             jobManifest.state = 'FAILED';
             jobManifest.lastError = 'VOICE_GENERATION_FAILED';
             saveJobManifest(jobManifest);
@@ -1255,8 +1253,7 @@ async function main(): Promise<void> {
             process.exit(14);
           }
           elevenLabsApiCalled = true;
-          writeLink();
-          console.log('Voice/BGM coupling:    voice regenerated + relinked to new BGM mood. ✅');
+          console.log('Voice/BGM coupling:    voice regenerated WITH BGM voice direction. ✅');
         } else {
           console.log('Operator action:');
           console.log(
@@ -1266,18 +1263,12 @@ async function main(): Promise<void> {
             `  or: pnpm chay:review --job ${jobId} --allow-no-bgm     (drop BGM intentionally)`,
           );
           jobManifest.state = 'FAILED';
-          jobManifest.lastError = 'BGM_VOICE_DIRECTION_STALE';
+          jobManifest.lastError = reason;
           saveJobManifest(jobManifest);
           updateRegistryFromManifest(jobManifest);
-          writeStatusArtifact({
-            ...baseArtifact,
-            elevenLabsApiCalled,
-            state: 'BGM_VOICE_DIRECTION_STALE',
-          });
+          writeStatusArtifact({ ...baseArtifact, elevenLabsApiCalled, state: reason });
           process.exit(15);
         }
-      } else {
-        console.log('Voice/BGM coupling:    fresh (voice matches current BGM mood). ✅');
       }
     } else {
       // No real BGM file available (library metadata may still exist).

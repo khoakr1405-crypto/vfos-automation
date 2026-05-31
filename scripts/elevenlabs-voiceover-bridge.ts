@@ -106,7 +106,9 @@ function readScriptText(runDir: string): { text: string; source: string } | { er
       return { error: `Failed to parse operator_review_pack.json: ${(err as Error).message}` };
     }
   }
-  return { error: 'No script_artifact.json or operator_review_pack.json found with voiceover text' };
+  return {
+    error: 'No script_artifact.json or operator_review_pack.json found with voiceover text',
+  };
 }
 
 function writeArtifact(path: string, body: object): void {
@@ -114,9 +116,15 @@ function writeArtifact(path: string, body: object): void {
   writeFileSync(path, JSON.stringify(body, null, 2) + '\n', 'utf8');
 }
 
-function buildBaseArtifact(runId: string, model: string, textSource: string, textLength: number, textHash?: string) {
+function buildBaseArtifact(
+  runId: string,
+  model: string,
+  textSource: string,
+  textLength: number,
+  textHash?: string,
+) {
   return {
-    voiceArtifactVersion: 'v3',
+    voiceArtifactVersion: 'v4',
     runId,
     provider: 'elevenlabs',
     model,
@@ -128,22 +136,77 @@ function buildBaseArtifact(runId: string, model: string, textSource: string, tex
   };
 }
 
+// Round 53: BGM leads mood → the voiceover is generated to match. We read the
+// per-job BGM selection (written by job-bgm-selector) and map its mood to
+// concrete ElevenLabs voice_settings. clarityPriority means voice stays
+// intelligible: stability is kept moderate-high and style is capped.
+interface VoiceSettings {
+  stability: number;
+  similarity_boost: number;
+  style: number;
+  use_speaker_boost: boolean;
+}
+
+interface BgmDirection {
+  bgmTrackId: string;
+  bgmMood: string;
+  voiceDirectionHash: string;
+  voiceDirection: Record<string, unknown>;
+}
+
+function readBgmDirection(workDir: string): BgmDirection | null {
+  const p = join(workDir, 'bgm_selection_artifact.json');
+  if (!existsSync(p)) return null;
+  try {
+    const sel = JSON.parse(readFileSync(p, 'utf8'));
+    if (!sel?.voiceDirection || !sel?.voiceDirectionHash) return null;
+    return {
+      bgmTrackId: sel.trackId ?? 'unknown',
+      bgmMood: sel.mood ?? 'unknown',
+      voiceDirectionHash: sel.voiceDirectionHash,
+      voiceDirection: sel.voiceDirection,
+    };
+  } catch {
+    return null;
+  }
+}
+
+const DEFAULT_VOICE_SETTINGS: VoiceSettings = {
+  stability: 0.45,
+  similarity_boost: 0.75,
+  style: 0.35,
+  use_speaker_boost: true,
+};
+
+function ttsSettingsForMood(mood: string): VoiceSettings {
+  switch (mood) {
+    case 'upbeat_review':
+      return { stability: 0.4, similarity_boost: 0.75, style: 0.5, use_speaker_boost: true };
+    case 'funky_tiktok':
+      return { stability: 0.4, similarity_boost: 0.75, style: 0.55, use_speaker_boost: true };
+    case 'lofi_lifestyle':
+      return { stability: 0.55, similarity_boost: 0.78, style: 0.28, use_speaker_boost: true };
+    case 'clean_tech':
+      return { stability: 0.55, similarity_boost: 0.8, style: 0.3, use_speaker_boost: true };
+    default:
+      return DEFAULT_VOICE_SETTINGS;
+  }
+}
+
 async function callElevenLabsWithTimestamps(args: {
   apiKey: string;
   voiceId: string;
   model: string;
   text: string;
-}): Promise<{ ok: true; data: WithTimestampsResponse } | { ok: false; status: number; reason: string }> {
+  voiceSettings?: VoiceSettings;
+}): Promise<
+  { ok: true; data: WithTimestampsResponse } | { ok: false; status: number; reason: string }
+> {
   const url = `${ELEVENLABS_BASE}/text-to-speech/${args.voiceId}/with-timestamps`;
   const body = {
     text: args.text,
     model_id: args.model,
-    voice_settings: {
-      stability: 0.45,
-      similarity_boost: 0.75,
-      style: 0.35,
-      use_speaker_boost: true,
-    },
+    voice_settings: args.voiceSettings ?? DEFAULT_VOICE_SETTINGS,
   };
   let response: Response;
   try {
@@ -175,7 +238,11 @@ async function callElevenLabsWithTimestamps(args: {
   try {
     const data = (await response.json()) as WithTimestampsResponse;
     if (!data.audio_base64 || !data.alignment) {
-      return { ok: false, status: response.status, reason: 'response missing audio_base64 or alignment' };
+      return {
+        ok: false,
+        status: response.status,
+        reason: 'response missing audio_base64 or alignment',
+      };
     }
     return { ok: true, data };
   } catch (err) {
@@ -211,7 +278,7 @@ async function main(): Promise<void> {
   const values = parsed.values;
 
   const jobId = (values.job as string | undefined) ?? null;
-  const runId = jobId ? null : (values.run as string | undefined) ?? null;
+  const runId = jobId ? null : ((values.run as string | undefined) ?? null);
 
   if (!jobId && !runId) {
     console.error('Error: --run <runId> or --job <jobId> is required');
@@ -273,17 +340,33 @@ async function main(): Promise<void> {
 
   const currentScriptHash = calculateNormalizedHash(voiceText);
 
+  // Round 53: BGM-led voice direction. Read the per-job BGM selection so the
+  // voiceover is generated to match its mood, and so freshness considers the
+  // voice direction (not just the script text).
+  const bgmDir = readBgmDirection(workDir);
+  const ttsSettings = bgmDir ? ttsSettingsForMood(bgmDir.bgmMood) : DEFAULT_VOICE_SETTINGS;
+
   // Freshness check in dry-run/plan mode:
   let freshnessStatus = 'NO_EXISTING_VOICE';
   let existingHash = '';
+  let existingDirectionHash = '';
+  let existingDirectionApplied = false;
   if (existsSync(voiceArtifactPath)) {
     try {
       const existing = JSON.parse(readFileSync(voiceArtifactPath, 'utf8'));
       existingHash = existing.scriptTextHash || '';
-      if (existingHash) {
-        freshnessStatus = (existingHash === currentScriptHash) ? '🟢 FRESH' : '⚠️ STALE';
-      } else {
+      existingDirectionHash = existing.voiceDirectionHash || '';
+      existingDirectionApplied = existing.voiceDirectionApplied === true;
+      if (!existingHash) {
         freshnessStatus = '⚠️ LEGACY_NO_HASH';
+      } else if (existingHash !== currentScriptHash) {
+        freshnessStatus = '⚠️ STALE';
+      } else if (bgmDir && !existingDirectionApplied) {
+        freshnessStatus = '⚠️ LEGACY_NO_VOICE_DIRECTION';
+      } else if (bgmDir && existingDirectionHash !== bgmDir.voiceDirectionHash) {
+        freshnessStatus = '⚠️ STALE_VOICE_DIRECTION';
+      } else {
+        freshnessStatus = '🟢 FRESH';
       }
     } catch {
       freshnessStatus = '⚠️ UNREADABLE_EXISTING_VOICE';
@@ -308,17 +391,33 @@ async function main(): Promise<void> {
   console.log(`Current Hash:   ${currentScriptHash}`);
   console.log(`Existing Hash:  ${existingHash || '(none)'}`);
   console.log(`Freshness:      ${freshnessStatus}`);
+  if (bgmDir) {
+    console.log(`BGM mood:       ${bgmDir.bgmMood} (track ${bgmDir.bgmTrackId})`);
+    console.log(`Voice dir:      ${JSON.stringify(bgmDir.voiceDirection)}`);
+    console.log(`Voice dir hash: ${bgmDir.voiceDirectionHash}`);
+    console.log(`TTS settings:   ${JSON.stringify(ttsSettings)}`);
+  } else {
+    console.log('BGM mood:       (no bgm_selection_artifact — voice direction NOT applied)');
+  }
   console.log(`Model request:  ${requestedModel}`);
   console.log(`Audio out:      ${audioPath}`);
   console.log(`Timing out:     ${timingArtifactPath}`);
   console.log(`Artifact out:   ${voiceArtifactPath}`);
-  console.log(`Sync fixture:   ${values['sync-fixture'] ? `→ ${FIXTURE_AUDIO_PATH}` : 'NO (use --sync-fixture)'}`);
+  console.log(
+    `Sync fixture:   ${values['sync-fixture'] ? `→ ${FIXTURE_AUDIO_PATH}` : 'NO (use --sync-fixture)'}`,
+  );
   console.log(`Mode:           ${wantsLive ? '⚡ LIVE API' : '🔍 DRY-RUN'}`);
   console.log('------------------------------------------------------');
 
   if (tooShort && !values['allow-short-script']) {
     const artifact = {
-      ...buildBaseArtifact(effectiveRunId, requestedModel, textSource, voiceText.length, currentScriptHash),
+      ...buildBaseArtifact(
+        effectiveRunId,
+        requestedModel,
+        textSource,
+        voiceText.length,
+        currentScriptHash,
+      ),
       status: 'SCRIPT_TEXT_TOO_SHORT',
       apiCalled: false,
       tokensLogged: false,
@@ -334,7 +433,13 @@ async function main(): Promise<void> {
 
   if (!wantsLive) {
     const artifact = {
-      ...buildBaseArtifact(effectiveRunId, requestedModel, textSource, voiceText.length, currentScriptHash),
+      ...buildBaseArtifact(
+        effectiveRunId,
+        requestedModel,
+        textSource,
+        voiceText.length,
+        currentScriptHash,
+      ),
       status: 'DRY_RUN_PLAN_ONLY',
       apiCalled: false,
       tokensLogged: false,
@@ -382,10 +487,15 @@ async function main(): Promise<void> {
     voiceId,
     model: requestedModel,
     text: voiceText,
+    voiceSettings: ttsSettings,
   });
   let modelUsed = requestedModel;
 
-  if (!result.ok && isModelUnsupportedError(result.status, result.reason) && requestedModel === DEFAULT_MODEL) {
+  if (
+    !result.ok &&
+    isModelUnsupportedError(result.status, result.reason) &&
+    requestedModel === DEFAULT_MODEL
+  ) {
     console.warn(
       `Model ${requestedModel} not available for with-timestamps. Falling back to ${FALLBACK_MODEL}.`,
     );
@@ -394,13 +504,15 @@ async function main(): Promise<void> {
       voiceId,
       model: FALLBACK_MODEL,
       text: voiceText,
+      voiceSettings: ttsSettings,
     });
     modelUsed = FALLBACK_MODEL;
   }
 
   if (!result.ok) {
-    const status =
-      isModelUnsupportedError(result.status, result.reason) ? 'MODEL_NOT_AVAILABLE' : 'API_ERROR';
+    const status = isModelUnsupportedError(result.status, result.reason)
+      ? 'MODEL_NOT_AVAILABLE'
+      : 'API_ERROR';
     const artifact = {
       ...buildBaseArtifact(effectiveRunId, modelUsed, textSource, voiceText.length),
       status,
@@ -433,6 +545,7 @@ async function main(): Promise<void> {
     model: modelUsed,
     alignmentType: 'character',
     scriptTextHash: currentScriptHash,
+    voiceDirectionHash: bgmDir?.voiceDirectionHash ?? null,
     alignment: {
       characters: result.data.alignment.characters,
       characterStartTimesSeconds: result.data.alignment.character_start_times_seconds,
@@ -457,10 +570,23 @@ async function main(): Promise<void> {
   }
 
   const voiceArtifact = {
-    ...buildBaseArtifact(effectiveRunId, modelUsed, textSource, voiceText.length, currentScriptHash),
+    ...buildBaseArtifact(
+      effectiveRunId,
+      modelUsed,
+      textSource,
+      voiceText.length,
+      currentScriptHash,
+    ),
     voiceIdMasked: maskVoiceId(voiceId),
     status: 'SUCCESS',
     freshnessStatus: 'FRESH',
+    // Round 53: record the BGM-led voice direction that shaped this voiceover.
+    bgmTrackId: bgmDir?.bgmTrackId ?? null,
+    bgmMood: bgmDir?.bgmMood ?? null,
+    voiceDirectionHash: bgmDir?.voiceDirectionHash ?? null,
+    voiceDirectionApplied: bgmDir != null,
+    voiceDirection: bgmDir?.voiceDirection ?? null,
+    ttsSettings: { model: modelUsed, ...ttsSettings },
     audioPath,
     timingArtifactPath,
     fixtureSyncedPath,
@@ -468,9 +594,12 @@ async function main(): Promise<void> {
     apiCalled: true,
     tokensLogged: false,
     notes:
-      modelUsed === requestedModel
+      (modelUsed === requestedModel
         ? 'Voiceover generated successfully.'
-        : `Voiceover generated using fallback model ${modelUsed} after ${requestedModel} unavailable.`,
+        : `Voiceover generated using fallback model ${modelUsed} after ${requestedModel} unavailable.`) +
+      (bgmDir
+        ? ` Voice direction applied for BGM mood "${bgmDir.bgmMood}".`
+        : ' No BGM selection found — voice direction NOT applied.'),
   };
   writeArtifact(voiceArtifactPath, voiceArtifact);
 
