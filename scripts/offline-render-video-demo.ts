@@ -1,7 +1,7 @@
-import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
-import { parseArgs } from 'node:util';
 import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { parseArgs } from 'node:util';
 
 const options = {
   render: { type: 'string' as const },
@@ -106,7 +106,8 @@ function main() {
 
       // Check BGM selected and present
       const bgmMeta = renderMeta.assets?.bgm;
-      const hasBgmFile = bgmMeta?.selected && bgmMeta.localAudioPath && existsSync(bgmMeta.localAudioPath);
+      const hasBgmFile =
+        bgmMeta?.selected && bgmMeta.localAudioPath && existsSync(bgmMeta.localAudioPath);
 
       const ffmpegArgs = ['-y', '-i', inputVideoPath];
       if (inputAudioPath && existsSync(inputAudioPath)) {
@@ -114,12 +115,35 @@ function main() {
       }
 
       if (hasBgmFile) {
-        console.log(`[OfflineRenderVideo] Integrating BGM track: "${bgmMeta.title}" at: ${bgmMeta.localAudioPath}`);
+        console.log(
+          `[OfflineRenderVideo] Integrating BGM track: "${bgmMeta.title}" at: ${bgmMeta.localAudioPath}`,
+        );
         ffmpegArgs.push('-i', bgmMeta.localAudioPath);
 
+        // Round 55: BGM mix volume is driven by the selection artifact, not
+        // hardcoded. Resolve from render manifest (which the orchestrator copies
+        // from bgm_selection_artifact), fall back to the 0.40 default, and clamp
+        // to a safe range so BGM never overpowers the voice.
+        const BGM_VOLUME_DEFAULT = 0.4;
+        const BGM_VOLUME_MIN = 0.05;
+        const BGM_VOLUME_MAX = 0.45;
+        const rawVolume =
+          typeof bgmMeta.volumeMultiplier === 'number' ? bgmMeta.volumeMultiplier : null;
+        const volumeSource =
+          rawVolume != null ? 'render_manifest.assets.bgm.volumeMultiplier' : 'default_fallback';
+        const baseVolume = rawVolume != null ? rawVolume : BGM_VOLUME_DEFAULT;
+        const bgmVolume = Math.min(BGM_VOLUME_MAX, Math.max(BGM_VOLUME_MIN, baseVolume));
+        const volumeClampApplied = bgmVolume !== baseVolume;
+        if (volumeClampApplied) {
+          console.warn(
+            `[OfflineRenderVideo] WARNING: BGM volumeMultiplier ${baseVolume} out of range [${BGM_VOLUME_MIN}, ${BGM_VOLUME_MAX}] — clamped to ${bgmVolume}.`,
+          );
+        }
+        console.log(`[OfflineRenderVideo] BGM volume: ${bgmVolume} (source: ${volumeSource})`);
+
         // Mix voiceover (input 1) and BGM (input 2) with fade-in/out and peak limiter
-        const filterComplex = `[2:a]volume=0.12,afade=t=in:st=0:d=1.5,afade=t=out:st=${fadeOutStart}:d=2.0[bgm];[1:a][bgm]amix=inputs=2:duration=first,alimiter=level_in=1:level_out=0.9:limit=0.85:attack=5:release=50[a]`;
-        
+        const filterComplex = `[2:a]volume=${bgmVolume},afade=t=in:st=0:d=1.5,afade=t=out:st=${fadeOutStart}:d=2.0[bgm];[1:a][bgm]amix=inputs=2:duration=first,alimiter=level_in=1:level_out=0.9:limit=0.85:attack=5:release=50[a]`;
+
         ffmpegArgs.push(
           '-filter_complex',
           filterComplex,
@@ -145,7 +169,9 @@ function main() {
           voicePath: inputAudioPath,
           bgmPath: bgmMeta.localAudioPath,
           outputPath: actualPreviewPath,
-          bgmVolumeMultiplier: 0.12,
+          bgmVolumeMultiplier: bgmVolume,
+          volumeSource,
+          volumeClampApplied,
           voiceIncluded: Boolean(inputAudioPath && existsSync(inputAudioPath)),
           bgmIncluded: true,
           ffmpegMixMode: 'amix',
@@ -153,22 +179,28 @@ function main() {
           title: bgmMeta.title,
           mood: bgmMeta.mood,
           mixParameters: {
-            bgmVolumeMultiplier: 0.12,
-            bgmVolumeDb: "-18dB",
+            bgmVolumeMultiplier: bgmVolume,
+            bgmVolumeDb: `${(20 * Math.log10(bgmVolume)).toFixed(1)}dB`,
             fadeInSec: 1.5,
             fadeOutSec: 2.0,
             fadeOutStartSec: fadeOutStart,
             limiterLevelIn: 1.0,
             limiterLevelOut: 0.9,
-            limiterLimit: 0.85
+            limiterLimit: 0.85,
           },
-          generatedAt: new Date().toISOString()
+          generatedAt: new Date().toISOString(),
         };
         try {
-          writeFileSync(join(outputDir, 'bgm_mixing_report.json'), JSON.stringify(audioMixingReport, null, 2), 'utf8');
+          writeFileSync(
+            join(outputDir, 'bgm_mixing_report.json'),
+            JSON.stringify(audioMixingReport, null, 2),
+            'utf8',
+          );
           console.log(`[OfflineRenderVideo] Audio quality mixing statistics written successfully.`);
         } catch (err) {
-          console.warn(`[OfflineRenderVideo] Warning: Failed to write audio quality report: ${err}`);
+          console.warn(
+            `[OfflineRenderVideo] Warning: Failed to write audio quality report: ${err}`,
+          );
         }
       } else {
         if (bgmMeta?.selected) {
@@ -178,12 +210,17 @@ function main() {
         }
         if (inputAudioPath && existsSync(inputAudioPath)) {
           ffmpegArgs.push(
-            '-map', '0:v:0',
-            '-map', '1:a:0',
-            '-c:v', 'libx264',
-            '-pix_fmt', 'yuv420p',
-            '-c:a', 'aac',
-            '-shortest'
+            '-map',
+            '0:v:0',
+            '-map',
+            '1:a:0',
+            '-c:v',
+            'libx264',
+            '-pix_fmt',
+            'yuv420p',
+            '-c:a',
+            'aac',
+            '-shortest',
           );
         } else {
           ffmpegArgs.push('-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-an');

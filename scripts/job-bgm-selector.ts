@@ -30,7 +30,9 @@ import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 
 const DEFAULT_LIBRARY_PATH = 'production/_media/bgm_library.json';
-const BGM_VOLUME_MULTIPLIER = 0.12;
+// Round 55: Operator-chosen baseline after A/B listening. The renderer reads
+// this from the selection artifact (no hardcoded volume) and clamps it safely.
+const BGM_VOLUME_MULTIPLIER = 0.4;
 
 // Round 52: BGM leads mood; voice is the lead instrument and must stay clear.
 // Each mood group maps to a deterministic voice direction so the voiceover is
