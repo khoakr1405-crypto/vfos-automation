@@ -70,6 +70,8 @@
     "job:status": "tsx scripts/vfos-job-manager.ts status",
     "job:attach-source": "tsx scripts/vfos-job-manager.ts attach-source",
     "job:script": "tsx scripts/vfos-job-manager.ts script",
+    "job:approve": "tsx scripts/vfos-job-manager.ts approve",
+    "job:reject": "tsx scripts/vfos-job-manager.ts reject",
     "job:list": "tsx scripts/vfos-job-manager.ts list",
     "job:vision": "tsx scripts/job-video-vision-analyzer.ts",
     "job:qa": "tsx scripts/job-final-qa-gate.ts"

@@ -392,6 +392,32 @@ function exists(path: string): boolean {
   return existsSync(path);
 }
 
+function productNameFromManifest(manifest: JobManifest): string | null {
+  const cardPath = resolve(manifest.source.productCardPath);
+  if (!existsSync(cardPath)) return null;
+  try {
+    const card = JSON.parse(readFileSync(cardPath, 'utf8')) as Record<string, unknown>;
+    return extractProductName(card);
+  } catch {
+    return null;
+  }
+}
+
+// Read the authoritative final QA status from the report file itself (not just
+// the manifest mirror) so approve cannot pass on a stale/edited manifest.
+function readFinalQaStatus(manifest: JobManifest): 'PASS' | 'FAIL' | 'MISSING' {
+  const reportRel = manifest.artifacts.finalQaReportPath;
+  if (!reportRel) return 'MISSING';
+  const reportAbs = resolve(reportRel);
+  if (!existsSync(reportAbs)) return 'MISSING';
+  try {
+    const report = JSON.parse(readFileSync(reportAbs, 'utf8')) as { status?: string };
+    return report.status === 'PASS' ? 'PASS' : 'FAIL';
+  } catch {
+    return 'FAIL';
+  }
+}
+
 // ---------- create ----------
 function cmdCreate(args: string[]): number {
   const parsed = parseArgs({
@@ -638,6 +664,9 @@ function cmdStatus(args: string[]): number {
   console.log(`Product ID:        ${manifest.productId ?? '(unknown)'}`);
   console.log(`State:             ${manifest.state}`);
   console.log(`Operator decision: ${manifest.review.operatorDecision}`);
+  console.log(`Approved at:       ${manifest.review.approvedAt ?? '(none)'}`);
+  console.log(`Rejected at:       ${manifest.review.rejectedAt ?? '(none)'}`);
+  console.log(`Review notes:      ${manifest.review.notes ?? '(none)'}`);
   console.log(`Final QA:          ${manifest.qaStatus ?? 'MISSING'}`);
   console.log('------------------------------------------------------');
   console.log(`Source video:      ${manifest.source.sourceVideoPath ?? '(none)'}  ${srcPath && exists(srcPath) ? '✅' : '❌'}`);
@@ -680,6 +709,169 @@ function cmdList(_args: string[]): number {
   for (const row of rows) console.log(fmt(row));
   console.log('------------------------------------------------------');
   console.log(`Registry: ${REGISTRY_PATH}`);
+  return 0;
+}
+
+// ---------- approve (Round 45) ----------
+function cmdApprove(args: string[]): number {
+  const parsed = parseArgs({
+    args,
+    options: {
+      job: { type: 'string' },
+      notes: { type: 'string' },
+      'dry-run': { type: 'boolean', default: false },
+    },
+    allowPositionals: false,
+    strict: true,
+  });
+  const jobId = parsed.values.job as string | undefined;
+  const notes = ((parsed.values.notes as string | undefined) ?? '').trim() || null;
+  const dryRun = Boolean(parsed.values['dry-run']);
+
+  if (!jobId) {
+    console.error('Error: --job <jobId> is required');
+    return 1;
+  }
+
+  const manifest = loadManifest(jobId);
+  if (!manifest) {
+    console.error(`🛑 UNKNOWN_JOB: ${jobId}`);
+    return 2;
+  }
+
+  console.log('======================================================');
+  console.log(`✅  VFOS Job Manager — approve  ${dryRun ? '🔍 DRY-RUN' : '⚡ EXECUTE'}`);
+  console.log('======================================================');
+  console.log(`Job ID:            ${jobId}`);
+  console.log(`Current state:     ${manifest.state}`);
+  console.log(`Current decision:  ${manifest.review.operatorDecision}`);
+
+  // Gate 1: only a job awaiting operator review can be approved.
+  if (manifest.state !== 'READY_FOR_OPERATOR_REVIEW') {
+    if (manifest.state === 'APPROVED') {
+      console.error('🛑 ALREADY_APPROVED: job is already APPROVED.');
+    } else {
+      console.error(`🛑 INVALID_STATE_FOR_APPROVE: expected READY_FOR_OPERATOR_REVIEW, got ${manifest.state}.`);
+    }
+    return 3;
+  }
+
+  // Gate 2: a reviewable captioned preview must exist on disk.
+  const captionedRel = manifest.artifacts.captionedPreviewPath;
+  const captionedAbs = captionedRel ? resolve(captionedRel) : null;
+  if (!captionedAbs || !existsSync(captionedAbs)) {
+    console.error('🛑 CAPTIONED_PREVIEW_MISSING: no captioned preview artifact to review.');
+    console.error('  Run the review/caption flow before approving.');
+    return 4;
+  }
+
+  // Gate 3: final QA must exist and PASS — never approve unverified output.
+  const qa = readFinalQaStatus(manifest);
+  if (qa === 'MISSING') {
+    console.error('🛑 FINAL_QA_MISSING: no passing final_video_qa_report.json for this job.');
+    console.error(`  Run: pnpm job:qa --job ${jobId} --confirm-openai`);
+    return 5;
+  }
+  if (qa === 'FAIL') {
+    console.error('🛑 FINAL_QA_NOT_PASSING: final QA status is FAIL. Cannot approve.');
+    return 6;
+  }
+
+  console.log(`Captioned preview: ${captionedRel}  ✅`);
+  console.log(`Final QA:          PASS ✅`);
+  console.log(`Notes:             ${notes ?? '(none)'}`);
+  console.log(`New state:         APPROVED`);
+  console.log('------------------------------------------------------');
+
+  if (dryRun) {
+    console.log('Dry-run: no manifest mutation, no registry update. (No publish.)');
+    return 0;
+  }
+
+  manifest.state = 'APPROVED';
+  manifest.review = {
+    operatorDecision: 'APPROVED',
+    approvedAt: isoNow(),
+    rejectedAt: null,
+    notes,
+  };
+  saveManifest(manifest);
+
+  const reg = loadRegistry();
+  upsertRegistryEntry(reg, entryFromManifest(manifest, productNameFromManifest(manifest)));
+  saveRegistry(reg);
+
+  console.log('✅ Job APPROVED. (No publish — operator must publish manually.)');
+  return 0;
+}
+
+// ---------- reject (Round 45) ----------
+function cmdReject(args: string[]): number {
+  const parsed = parseArgs({
+    args,
+    options: {
+      job: { type: 'string' },
+      notes: { type: 'string' },
+      'dry-run': { type: 'boolean', default: false },
+    },
+    allowPositionals: false,
+    strict: true,
+  });
+  const jobId = parsed.values.job as string | undefined;
+  const notes = ((parsed.values.notes as string | undefined) ?? '').trim() || null;
+  const dryRun = Boolean(parsed.values['dry-run']);
+
+  if (!jobId) {
+    console.error('Error: --job <jobId> is required');
+    return 1;
+  }
+
+  const manifest = loadManifest(jobId);
+  if (!manifest) {
+    console.error(`🛑 UNKNOWN_JOB: ${jobId}`);
+    return 2;
+  }
+
+  // Reject must always carry an operator reason.
+  if (!notes) {
+    console.error('🛑 REJECT_NOTES_REQUIRED: --notes "<reason>" is required to reject a job.');
+    return 3;
+  }
+
+  // A packaged/published job is a downstream terminal state; do not unwind it here.
+  if (manifest.state === 'PACKAGED') {
+    console.error(`🛑 INVALID_STATE_FOR_REJECT: job is ${manifest.state}; cannot reject.`);
+    return 4;
+  }
+
+  console.log('======================================================');
+  console.log(`⛔  VFOS Job Manager — reject  ${dryRun ? '🔍 DRY-RUN' : '⚡ EXECUTE'}`);
+  console.log('======================================================');
+  console.log(`Job ID:            ${jobId}`);
+  console.log(`Current state:     ${manifest.state}`);
+  console.log(`Notes:             ${notes}`);
+  console.log(`New state:         REJECTED`);
+  console.log('------------------------------------------------------');
+
+  if (dryRun) {
+    console.log('Dry-run: no manifest mutation, no registry update. (Artifacts kept.)');
+    return 0;
+  }
+
+  manifest.state = 'REJECTED';
+  manifest.review = {
+    operatorDecision: 'REJECTED',
+    approvedAt: null,
+    rejectedAt: isoNow(),
+    notes,
+  };
+  saveManifest(manifest);
+
+  const reg = loadRegistry();
+  upsertRegistryEntry(reg, entryFromManifest(manifest, productNameFromManifest(manifest)));
+  saveRegistry(reg);
+
+  console.log('⛔ Job REJECTED. Artifacts kept (not deleted). No publish.');
   return 0;
 }
 
@@ -1133,6 +1325,10 @@ function main(): number {
       return cmdAttachSource(rest);
     case 'script':
       return cmdScript(rest);
+    case 'approve':
+      return cmdApprove(rest);
+    case 'reject':
+      return cmdReject(rest);
     case 'status':
       return cmdStatus(rest);
     case 'list':
@@ -1142,6 +1338,8 @@ function main(): number {
       console.error('  pnpm job:create        --from-product <path> [--dry-run]');
       console.error('  pnpm job:attach-source --job <jobId> --file <path> [--dry-run]');
       console.error('  pnpm job:script        --job <jobId> [--dry-run]');
+      console.error('  pnpm job:approve       --job <jobId> [--notes "..."] [--dry-run]');
+      console.error('  pnpm job:reject        --job <jobId> --notes "..." [--dry-run]');
       console.error('  pnpm job:status        --job <jobId>');
       console.error('  pnpm job:list');
       return 1;
