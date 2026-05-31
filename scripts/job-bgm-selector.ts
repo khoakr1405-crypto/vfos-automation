@@ -24,12 +24,73 @@
  *   pnpm bgm:check
  */
 
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 
 const DEFAULT_LIBRARY_PATH = 'production/_media/bgm_library.json';
 const BGM_VOLUME_MULTIPLIER = 0.12;
+
+// Round 52: BGM leads mood; voice is the lead instrument and must stay clear.
+// Each mood group maps to a deterministic voice direction so the voiceover is
+// generated to match the BGM bed (and so voice can be detected as stale when
+// the BGM mood changes). clarityPriority is always true — voice over BGM.
+export interface VoiceDirection {
+  style: string;
+  pace: string;
+  energy: 'low' | 'medium' | 'high';
+  delivery: string;
+  clarityPriority: true;
+}
+
+const VOICE_DIRECTION_BY_MOOD: Record<string, VoiceDirection> = {
+  upbeat_review: {
+    style: 'vui tươi, sáng',
+    pace: 'nhanh vừa',
+    energy: 'high',
+    delivery: 'energetic friendly, rõ lời',
+    clarityPriority: true,
+  },
+  lofi_lifestyle: {
+    style: 'mềm mại, tự nhiên',
+    pace: 'vừa phải',
+    energy: 'medium',
+    delivery: 'calm warm, không buồn, rõ lời',
+    clarityPriority: true,
+  },
+  funky_tiktok: {
+    style: 'năng động, dí dỏm',
+    pace: 'nhanh vừa',
+    energy: 'high',
+    delivery: 'playful punchy, rõ lời',
+    clarityPriority: true,
+  },
+  clean_tech: {
+    style: 'gọn, rõ, tự tin',
+    pace: 'vừa',
+    energy: 'medium',
+    delivery: 'crisp modern confident, rõ lời',
+    clarityPriority: true,
+  },
+};
+
+const DEFAULT_VOICE_DIRECTION: VoiceDirection = {
+  style: 'rõ ràng, tự nhiên',
+  pace: 'vừa',
+  energy: 'medium',
+  delivery: 'neutral friendly, rõ lời',
+  clarityPriority: true,
+};
+
+function voiceDirectionFor(mood: string): VoiceDirection {
+  return VOICE_DIRECTION_BY_MOOD[mood] ?? DEFAULT_VOICE_DIRECTION;
+}
+
+/** Stable short hash of the voice direction — used for voice/BGM coupling. */
+export function hashVoiceDirection(vd: VoiceDirection): string {
+  return createHash('sha256').update(JSON.stringify(vd)).digest('hex').slice(0, 16);
+}
 
 interface BgmLibraryEntry {
   id?: string;
@@ -50,7 +111,7 @@ interface BgmLibrary {
 }
 
 export interface BgmSelection {
-  bgmArtifactVersion: 'v1';
+  bgmArtifactVersion: 'v2';
   jobId: string;
   selected: true;
   trackId: string;
@@ -58,17 +119,23 @@ export interface BgmSelection {
   mood: string;
   localAudioPath: string;
   volumeMultiplier: number;
-  selectionPolicy: 'first_existing_or_rotation';
+  selectionPolicy: 'sticky_or_rotation';
+  selectionReason: string;
+  matchedMood: string;
+  energyLevel: 'low' | 'medium' | 'high';
+  voiceDirection: VoiceDirection;
+  voiceDirectionHash: string;
   generatedAt: string;
 }
 
 export interface BgmSelectResult {
-  status: 'OK' | 'BGM_LIBRARY_FILES_MISSING' | 'BGM_LIBRARY_NOT_FOUND';
+  status: 'OK' | 'BGM_LIBRARY_FILES_MISSING' | 'BGM_LIBRARY_NOT_FOUND' | 'BGM_SELECTION_FAILED';
   libraryPath: string;
   libraryEntryCount: number;
   existingFileCount: number;
   selection?: BgmSelection;
   artifactPath?: string;
+  reused?: boolean;
   reason?: string;
 }
 
@@ -129,9 +196,11 @@ export function selectBgmForJob(args: {
   jobId: string;
   jobOutputDir: string;
   libraryPath?: string;
+  forceReselect?: boolean;
 }): BgmSelectResult {
   const libraryPath = args.libraryPath ?? DEFAULT_LIBRARY_PATH;
   const absLibrary = resolve(libraryPath);
+  const artifactPath = resolve(args.jobOutputDir, 'bgm_selection_artifact.json');
 
   if (!existsSync(absLibrary)) {
     return {
@@ -141,6 +210,35 @@ export function selectBgmForJob(args: {
       existingFileCount: 0,
       reason: `BGM library metadata not found at ${libraryPath}.`,
     };
+  }
+
+  // Sticky per-job: reuse an existing valid selection so BGM (and therefore the
+  // coupled voice direction) stays stable across re-runs. Only re-rotate when
+  // forced or when no valid prior selection exists.
+  if (!args.forceReselect && existsSync(artifactPath)) {
+    try {
+      const prior = JSON.parse(readFileSync(artifactPath, 'utf8')) as Partial<BgmSelection>;
+      if (
+        prior.selected &&
+        prior.trackId &&
+        prior.localAudioPath &&
+        existsSync(resolve(prior.localAudioPath)) &&
+        prior.voiceDirectionHash &&
+        prior.bgmArtifactVersion === 'v2'
+      ) {
+        return {
+          status: 'OK',
+          libraryPath,
+          libraryEntryCount: 0,
+          existingFileCount: 1,
+          selection: prior as BgmSelection,
+          artifactPath,
+          reused: true,
+        };
+      }
+    } catch {
+      // fall through to fresh selection
+    }
   }
 
   const lib = JSON.parse(readFileSync(absLibrary, 'utf8')) as BgmLibrary;
@@ -176,23 +274,29 @@ export function selectBgmForJob(args: {
   const chosen = existing[0];
   const chosenEntry = chosen.entry;
   const trackId = chosenEntry.trackId ?? chosenEntry.id ?? 'bgm_unknown';
+  const mood = chosenEntry.mood ?? 'unknown';
   const generatedAt = new Date().toISOString();
+  const voiceDirection = voiceDirectionFor(mood);
 
   const selection: BgmSelection = {
-    bgmArtifactVersion: 'v1',
+    bgmArtifactVersion: 'v2',
     jobId: args.jobId,
     selected: true,
     trackId,
     title: chosenEntry.title ?? trackId,
-    mood: chosenEntry.mood ?? 'unknown',
+    mood,
     localAudioPath: chosen.audioPath as string,
     volumeMultiplier: BGM_VOLUME_MULTIPLIER,
-    selectionPolicy: 'first_existing_or_rotation',
+    selectionPolicy: 'sticky_or_rotation',
+    selectionReason: `Rotation pick (lowest usageCount=${chosenEntry.usageCount ?? 0}) among ${existing.length} available track(s); mood "${mood}" drives the coupled voice direction.`,
+    matchedMood: mood,
+    energyLevel: voiceDirection.energy,
+    voiceDirection,
+    voiceDirectionHash: hashVoiceDirection(voiceDirection),
     generatedAt,
   };
 
   // Persist the selection artifact into the job folder.
-  const artifactPath = resolve(args.jobOutputDir, 'bgm_selection_artifact.json');
   writeFileSync(artifactPath, `${JSON.stringify(selection, null, 2)}\n`, 'utf8');
 
   // Advance rotation: bump usageCount + lastUsedAt for the chosen track.

@@ -43,9 +43,9 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
-import { extractCombinedVoiceText, calculateNormalizedHash } from './job-artifact-freshness.js';
-import { selectBgmForJob } from './job-bgm-selector.js';
 import { parseArgs } from 'node:util';
+import { calculateNormalizedHash, extractCombinedVoiceText } from './job-artifact-freshness.js';
+import { selectBgmForJob } from './job-bgm-selector.js';
 
 const DEFAULT_RUN_ID = 'run_review_product_p9';
 const DEFAULT_CAPTION_PRESET = 'viral_review_v2';
@@ -78,7 +78,16 @@ type OrchestratorState =
   | 'REVIEW_PREVIEW_AUDIO_MISSING'
   | 'CAPTIONED_PREVIEW_AUDIO_MISSING'
   | 'BGM_LIBRARY_FILES_MISSING'
-  | 'BGM_MISSING_IN_MIX';
+  | 'BGM_MISSING_IN_MIX'
+  | 'BGM_SELECTION_FAILED'
+  | 'VISION_REQUIRED_BUT_CONFIRM_OPENAI_MISSING'
+  | 'VISION_FAILED'
+  | 'SCRIPT_REQUIRED_BUT_CONFIRM_OPENAI_MISSING'
+  | 'SCRIPT_GENERATION_FAILED'
+  | 'BGM_VOICE_DIRECTION_STALE'
+  | 'VOICE_REQUIRED_BUT_CONFIRM_ELEVENLABS_MISSING'
+  | 'FINAL_QA_REQUIRED_BUT_CONFIRM_OPENAI_MISSING'
+  | 'FINAL_QA_NOT_PASSING';
 
 interface StatusArtifact {
   statusVersion: 'v1';
@@ -125,8 +134,18 @@ interface JobManifest {
     videoVisualAnalysisPath?: string | null;
   };
   state: string;
-  review: { operatorDecision: string; approvedAt: string | null; rejectedAt: string | null; notes: string | null };
-  safety: { facebookApiCalled: boolean; uploaded: boolean; published: boolean; requiresOperatorReview: boolean };
+  review: {
+    operatorDecision: string;
+    approvedAt: string | null;
+    rejectedAt: string | null;
+    notes: string | null;
+  };
+  safety: {
+    facebookApiCalled: boolean;
+    uploaded: boolean;
+    published: boolean;
+    requiresOperatorReview: boolean;
+  };
   createdAt: string;
   updatedAt: string;
   lastError?: string | null;
@@ -222,7 +241,8 @@ function saveJobManifest(manifest: JobManifest): void {
 
 function loadRegistry(): Registry {
   const path = resolve(JOBS_REGISTRY_PATH);
-  if (!existsSync(path)) return { registryVersion: 'v1', updatedAt: new Date().toISOString(), jobs: [] };
+  if (!existsSync(path))
+    return { registryVersion: 'v1', updatedAt: new Date().toISOString(), jobs: [] };
   try {
     return JSON.parse(readFileSync(path, 'utf8')) as Registry;
   } catch {
@@ -255,14 +275,17 @@ function updateRegistryFromManifest(manifest: JobManifest): void {
 function getVideoDuration(filePath: string): number {
   if (!existsSync(filePath)) return 0;
   const args = [
-    '-v', 'error',
-    '-show_entries', 'format=duration',
-    '-of', 'default=noprint_wrappers=1:nokey=1',
-    filePath
+    '-v',
+    'error',
+    '-show_entries',
+    'format=duration',
+    '-of',
+    'default=noprint_wrappers=1:nokey=1',
+    filePath,
   ];
   const result = spawnSync('ffprobe', args, { encoding: 'utf8' });
   if (result.status === 0) {
-    const val = parseFloat(result.stdout.trim());
+    const val = Number.parseFloat(result.stdout.trim());
     if (!isNaN(val)) return val;
   }
   return 0;
@@ -321,7 +344,9 @@ function validateScript(args: {
   }
   if (hookOccurrences > 1) {
     duplicateHookDetected = true;
-    errors.push(`Duplicate hook detected: "${args.hook}" appears ${hookOccurrences} times in voiceoverText.`);
+    errors.push(
+      `Duplicate hook detected: "${args.hook}" appears ${hookOccurrences} times in voiceoverText.`,
+    );
   }
 
   // 2. Product name repetition validator:
@@ -336,7 +361,9 @@ function validateScript(args: {
     }
   }
   if (prodOccurrences > 2) {
-    errors.push(`Product name "${args.productName}" appears ${prodOccurrences} times (max allowed: 2). Use a shorter name.`);
+    errors.push(
+      `Product name "${args.productName}" appears ${prodOccurrences} times (max allowed: 2). Use a shorter name.`,
+    );
   } else if (prodOccurrences > 1) {
     warnings.push(`Product name appears ${prodOccurrences} times. Keep it to 1-2 times.`);
   }
@@ -347,7 +374,10 @@ function validateScript(args: {
     if (words.length >= size) {
       const seen = new Set<string>();
       for (let i = 0; i <= words.length - size; i++) {
-        const ngram = words.slice(i, i + size).join(' ').toLowerCase();
+        const ngram = words
+          .slice(i, i + size)
+          .join(' ')
+          .toLowerCase();
         if (seen.has(ngram)) {
           ngramRepetitionDetected = true;
           errors.push(`N-gram repetition detected (${size} words): "${ngram}"`);
@@ -362,7 +392,9 @@ function validateScript(args: {
   // 4. Duration estimate:
   if (args.estimatedSpeechDurationSec > args.targetDurationSec) {
     tooLongForVideo = true;
-    errors.push(`Script is too long for the video: estimated speech duration (${args.estimatedSpeechDurationSec.toFixed(1)}s) exceeds target duration (${args.targetDurationSec.toFixed(1)}s).`);
+    errors.push(
+      `Script is too long for the video: estimated speech duration (${args.estimatedSpeechDurationSec.toFixed(1)}s) exceeds target duration (${args.targetDurationSec.toFixed(1)}s).`,
+    );
   }
 
   // 5. Empty/too short:
@@ -377,14 +409,19 @@ function validateScript(args: {
 
     // 6a. Product visibility low -> Warning only (does not fail)
     if (analysis.mainProductVisible === false || (analysis.productConfidence ?? 1.0) < 0.5) {
-      warnings.push(`LOW_PRODUCT_VISIBILITY: Main product visibility is low or confidence is under 50% (${(analysis.productConfidence ?? 1.0) * 100}%). Review source video.`);
+      warnings.push(
+        `LOW_PRODUCT_VISIBILITY: Main product visibility is low or confidence is under 50% (${(analysis.productConfidence ?? 1.0) * 100}%). Review source video.`,
+      );
     }
 
     // 6b. Mismatch warnings check: if script mentions items in mismatchWarnings, add warning
     const mismatchWarnings = analysis.mismatchWarnings || [];
     const mismatchFound: string[] = [];
     for (const w of mismatchWarnings) {
-      const wWords = w.toLowerCase().split(/\s+/).filter((x: string) => x.length > 2);
+      const wWords = w
+        .toLowerCase()
+        .split(/\s+/)
+        .filter((x: string) => x.length > 2);
       if (wWords.length > 0) {
         const found = wWords.some((wd: string) => textLower.includes(wd));
         if (found) {
@@ -393,7 +430,9 @@ function validateScript(args: {
       }
     }
     if (mismatchFound.length > 0) {
-      warnings.push(`Script mentions features flagged in video mismatch warnings: "${mismatchFound.join(', ')}".`);
+      warnings.push(
+        `Script mentions features flagged in video mismatch warnings: "${mismatchFound.join(', ')}".`,
+      );
     }
 
     // 6c. Demonstrated features check: script should ideally mention at least some keyword from demonstratedFeatures
@@ -409,7 +448,9 @@ function validateScript(args: {
         }
       }
       if (!matchedFeature) {
-        warnings.push(`Script does not mention any demonstrated features from source video analysis: "${demonstratedFeatures.join(', ')}".`);
+        warnings.push(
+          `Script does not mention any demonstrated features from source video analysis: "${demonstratedFeatures.join(', ')}".`,
+        );
       }
     }
   }
@@ -423,22 +464,30 @@ function validateScript(args: {
       repeatedProductNameCount: prodOccurrences,
       tooLongForVideo,
       ngramRepetitionDetected,
-      visionGrounded
-    }
+      visionGrounded,
+    },
   };
 }
 
-function validateAudioStream(filePath: string): { success: boolean; error?: string; reason?: string; duration?: number } {
+function validateAudioStream(filePath: string): {
+  success: boolean;
+  error?: string;
+  reason?: string;
+  duration?: number;
+} {
   if (!existsSync(filePath)) {
     return { success: false, error: 'FILE_NOT_FOUND', reason: `File not found at: ${filePath}` };
   }
 
   const args = [
-    '-v', 'error',
-    '-show_entries', 'stream=index,codec_type,codec_name,duration',
+    '-v',
+    'error',
+    '-show_entries',
+    'stream=index,codec_type,codec_name,duration',
     '-show_format',
-    '-of', 'json',
-    filePath
+    '-of',
+    'json',
+    filePath,
   ];
 
   const result = spawnSync('ffprobe', args, { encoding: 'utf8' });
@@ -446,7 +495,7 @@ function validateAudioStream(filePath: string): { success: boolean; error?: stri
     return {
       success: false,
       error: 'FFPROBE_FAILED',
-      reason: `ffprobe exited with status ${result.status}. Stderr: ${result.stderr}`
+      reason: `ffprobe exited with status ${result.status}. Stderr: ${result.stderr}`,
     };
   }
 
@@ -456,26 +505,38 @@ function validateAudioStream(filePath: string): { success: boolean; error?: stri
     const audioStream = streams.find((s: any) => s.codec_type === 'audio');
 
     if (!audioStream) {
-      return { success: false, error: 'NO_AUDIO_STREAM', reason: 'No audio stream found in the file.' };
+      return {
+        success: false,
+        error: 'NO_AUDIO_STREAM',
+        reason: 'No audio stream found in the file.',
+      };
     }
 
-    const duration = parseFloat(audioStream.duration || data.format?.duration || '0');
+    const duration = Number.parseFloat(audioStream.duration || data.format?.duration || '0');
     if (isNaN(duration) || duration <= 0) {
       return {
         success: false,
         error: 'INVALID_DURATION',
-        reason: `Audio duration is invalid or zero: ${audioStream.duration || data.format?.duration}`
+        reason: `Audio duration is invalid or zero: ${audioStream.duration || data.format?.duration}`,
       };
     }
 
     const codec = audioStream.codec_name;
     if (!codec || codec === 'unknown') {
-      return { success: false, error: 'INVALID_CODEC', reason: `Audio codec is invalid or unknown: ${codec}` };
+      return {
+        success: false,
+        error: 'INVALID_CODEC',
+        reason: `Audio codec is invalid or unknown: ${codec}`,
+      };
     }
 
     return { success: true, duration };
   } catch (err: any) {
-    return { success: false, error: 'PARSE_FAILED', reason: `Failed to parse ffprobe output: ${err.message}` };
+    return {
+      success: false,
+      error: 'PARSE_FAILED',
+      reason: `Failed to parse ffprobe output: ${err.message}`,
+    };
   }
 }
 
@@ -487,6 +548,8 @@ async function main(): Promise<void> {
       job: { type: 'string' },
       'dry-run': { type: 'boolean', default: false },
       'confirm-elevenlabs': { type: 'boolean', default: false },
+      'confirm-openai': { type: 'boolean', default: false },
+      'confirm-ai': { type: 'boolean', default: false },
       'allow-no-bgm': { type: 'boolean', default: false },
     },
     allowPositionals: false,
@@ -498,7 +561,11 @@ async function main(): Promise<void> {
   const preset = values.preset as string;
   const jobId = (values.job as string | undefined) ?? null;
   const dryRun = Boolean(values['dry-run']);
-  const confirmElevenLabs = Boolean(values['confirm-elevenlabs']);
+  // --confirm-ai is the umbrella consent: it authorises OpenAI (vision/script/QA)
+  // AND ElevenLabs (voice). Individual flags can also be passed explicitly.
+  const confirmAi = Boolean(values['confirm-ai']);
+  const confirmOpenAi = Boolean(values['confirm-openai']) || confirmAi;
+  const confirmElevenLabs = Boolean(values['confirm-elevenlabs']) || confirmAi;
   const allowNoBgm = Boolean(values['allow-no-bgm']);
 
   const voiceFixturePresent = existsSync(resolve(VOICE_FIXTURE_PATH));
@@ -529,9 +596,10 @@ async function main(): Promise<void> {
   const jobVoiceTimingPath = jobId ? resolve(JOBS_ROOT, jobId, 'voice_timing_artifact.json') : null;
 
   const scriptPresent = jobScriptPath ? existsSync(jobScriptPath) : true;
-  const jobVoicePresent = jobVoicePath && jobVoiceTimingPath
-    ? (existsSync(jobVoicePath) && existsSync(jobVoiceTimingPath))
-    : false;
+  const jobVoicePresent =
+    jobVoicePath && jobVoiceTimingPath
+      ? existsSync(jobVoicePath) && existsSync(jobVoiceTimingPath)
+      : false;
 
   const expectedOutput = jobId ? jobCaptionedPath! : expectedOutputShared;
 
@@ -566,13 +634,23 @@ async function main(): Promise<void> {
     } else {
       console.log(`Job manifest:           ${JOBS_ROOT}/${jobId}/job_manifest.json  ✅`);
       console.log(`Job state (current):    ${jobManifest.state}`);
-      console.log(`Job source video:       ${jobManifest.source.sourceVideoPath ?? '(none)'}  ${jobSourceVideoPresent ? '✅' : '❌'}`);
-      console.log(`Job script:             ${JOBS_ROOT}/${jobId}/script_artifact.json  ${scriptPresent ? '✅' : '❌'}`);
-      console.log(`Job voiceover:          ${JOBS_ROOT}/${jobId}/voiceover.mp3  ${jobVoicePresent ? '✅' : '❌'}`);
+      console.log(
+        `Job source video:       ${jobManifest.source.sourceVideoPath ?? '(none)'}  ${jobSourceVideoPresent ? '✅' : '❌'}`,
+      );
+      console.log(
+        `Job script:             ${JOBS_ROOT}/${jobId}/script_artifact.json  ${scriptPresent ? '✅' : '❌'}`,
+      );
+      console.log(
+        `Job voiceover:          ${JOBS_ROOT}/${jobId}/voiceover.mp3  ${jobVoicePresent ? '✅' : '❌'}`,
+      );
     }
   } else {
-    console.log(`Video fixture:          ${VIDEO_FIXTURE_PATH}  ${sharedVideoFixturePresent ? '✅' : '❌'}`);
-    console.log(`Voice fixture (shared): ${VOICE_FIXTURE_PATH}  ${voiceFixturePresent ? '✅' : '❌'}`);
+    console.log(
+      `Video fixture:          ${VIDEO_FIXTURE_PATH}  ${sharedVideoFixturePresent ? '✅' : '❌'}`,
+    );
+    console.log(
+      `Voice fixture (shared): ${VOICE_FIXTURE_PATH}  ${voiceFixturePresent ? '✅' : '❌'}`,
+    );
   }
   printDivider();
 
@@ -601,30 +679,67 @@ async function main(): Promise<void> {
 
   // ---------- DRY-RUN: print plan, touch nothing ----------
   if (dryRun) {
-    console.log('PLAN:');
+    console.log('UNIFIED PLAN (Round 52 — Vision→Script→BGM→Voice→Render→Caption→Guards→QA):');
     if (jobId) {
-      console.log(`  1. Job manifest present?        -> ${jobManifest ? 'YES' : 'NO (UNKNOWN_JOB)'}`);
-      console.log(`  2. Job source video present?    -> ${jobSourceVideoPresent ? 'YES' : 'NO'}`);
-      console.log(`  2.5 Job script present?         -> ${scriptPresent ? 'YES' : 'NO'}`);
-      console.log(`  3. Job voice fixture present?   -> ${jobVoicePresent ? 'YES' : 'NO'}`);
+      const visionDryPresent = existsSync(join(JOBS_ROOT, jobId, 'video_visual_analysis.json'));
+      const bgmFilesPresent =
+        existsSync(resolve('production/fixtures/bgm')) &&
+        existsSync(resolve('production/fixtures/bgm/bgm_001.mp3'));
+      console.log(
+        `  Confirm flags                  -> OpenAI=${confirmOpenAi ? 'YES' : 'NO'} | ElevenLabs=${confirmElevenLabs ? 'YES' : 'NO'}`,
+      );
+      console.log(
+        `  0. Job manifest present?       -> ${jobManifest ? 'YES' : 'NO (UNKNOWN_JOB)'}`,
+      );
+      console.log(`  0. Job source video present?   -> ${jobSourceVideoPresent ? 'YES' : 'NO'}`);
+      console.log(
+        `  1. Vision present / will run?  -> ${visionDryPresent ? 'PRESENT' : confirmOpenAi ? 'WILL RUN (job:vision)' : 'BLOCK (needs --confirm-openai)'}`,
+      );
+      console.log(
+        `  2. Script present / will run?  -> ${scriptPresent ? 'PRESENT' : confirmOpenAi ? 'WILL RUN (job:script)' : 'BLOCK (needs --confirm-openai)'}`,
+      );
+      console.log(
+        `  3. BGM files / will select?    -> ${bgmFilesPresent ? 'WILL SELECT (mood→voiceDirection)' : 'BLOCK (BGM_LIBRARY_FILES_MISSING)'}`,
+      );
+      console.log(
+        `  4. Voice present / coupling?   -> ${jobVoicePresent ? 'PRESENT (BGM-coupled check)' : confirmElevenLabs ? 'WILL RUN (voice:elevenlabs)' : 'BLOCK (needs --confirm-elevenlabs)'}`,
+      );
+      console.log(
+        `  9. Final QA / STT?             -> ${confirmOpenAi ? 'WILL RUN (job:qa, must PASS)' : 'BLOCK (needs --confirm-openai)'}`,
+      );
+      console.log(`  Will publish?                  -> NO (never)`);
     } else {
-      console.log(`  1. Shared video fixture?        -> ${sharedVideoFixturePresent ? 'PRESENT' : 'MISSING'}`);
-      console.log(`  3. Voice fixture (shared)?      -> ${voiceFixturePresent ? 'PRESENT' : 'MISSING'}`);
+      console.log(
+        `  1. Shared video fixture?        -> ${sharedVideoFixturePresent ? 'PRESENT' : 'MISSING'}`,
+      );
+      console.log(
+        `  3. Voice fixture (shared)?      -> ${voiceFixturePresent ? 'PRESENT' : 'MISSING'}`,
+      );
     }
 
     const willCallVoice = jobId
-      ? (!jobVoicePresent && confirmElevenLabs)
-      : (!voiceFixturePresent && confirmElevenLabs);
+      ? !jobVoicePresent && confirmElevenLabs
+      : !voiceFixturePresent && confirmElevenLabs;
     const canProceed = effectiveVideoPresent && (effectiveVoicePresent || willCallVoice);
 
     console.log(`  4. Will use shared fixture bridge? -> NO (native job render — Round 38/39)`);
     console.log(`  5. Native job output dir?       -> ${jobOutputDir ?? 'N/A (no-job mode)'}`);
-    console.log(`  6. Will call ElevenLabs API?    -> ${willCallVoice ? 'YES (authorized via --confirm-elevenlabs)' : 'NO'}`);
-    console.log(`  7. Will run pnpm chay?          -> ${!jobId && canProceed ? 'YES (no-job pipeline)' : 'NO'}`);
-    console.log(`  8. Will run offline-render-video? -> ${jobId && canProceed ? 'YES (direct, job mode)' : 'NO'}`);
-    console.log(`  9. Will run kinetic caption?    -> ${canProceed ? `YES (preset=${preset})` : 'NO'}`);
+    console.log(
+      `  6. Will call ElevenLabs API?    -> ${willCallVoice ? 'YES (authorized via --confirm-elevenlabs)' : 'NO'}`,
+    );
+    console.log(
+      `  7. Will run pnpm chay?          -> ${!jobId && canProceed ? 'YES (no-job pipeline)' : 'NO'}`,
+    );
+    console.log(
+      `  8. Will run offline-render-video? -> ${jobId && canProceed ? 'YES (direct, job mode)' : 'NO'}`,
+    );
+    console.log(
+      `  9. Will run kinetic caption?    -> ${canProceed ? `YES (preset=${preset})` : 'NO'}`,
+    );
     console.log(` 10. Will update job manifest?    -> ${canProceed && jobId ? 'YES' : 'NO'}`);
-    console.log(` 11. Expected preview path        -> ${jobId ? (jobPreviewPath ?? '?') : `${runDir}/preview.mp4`}`);
+    console.log(
+      ` 11. Expected preview path        -> ${jobId ? (jobPreviewPath ?? '?') : `${runDir}/preview.mp4`}`,
+    );
     console.log(` 12. Expected captioned path       -> ${expectedOutput}`);
 
     if (jobId && !jobManifest) {
@@ -648,7 +763,9 @@ async function main(): Promise<void> {
     } else if (!jobId && !voiceFixturePresent && !confirmElevenLabs) {
       console.log('\nBlocker: MISSING_VOICEOVER_FIXTURE');
       console.log('  Action: rerun with --confirm-elevenlabs to generate shared voiceover');
-      console.log(`          or run: pnpm voice:elevenlabs --run ${runId} --confirm-api-call --sync-fixture`);
+      console.log(
+        `          or run: pnpm voice:elevenlabs --run ${runId} --confirm-api-call --sync-fixture`,
+      );
     }
     printDivider();
     console.log('Dry-run complete. No commands executed, no files modified.');
@@ -672,14 +789,77 @@ async function main(): Promise<void> {
       writeStatusArtifact({ ...baseArtifact, state: 'MISSING_JOB_SOURCE_VIDEO' });
       process.exit(6);
     }
-    if (!scriptPresent) {
-      console.log(`🛑 MISSING_JOB_SCRIPT_ARTIFACT`);
-      console.log(`Job ${jobId} has no script artifact generated.`);
-      console.log('Operator action:');
-      console.log(`  pnpm job:vision --job ${jobId} --confirm-openai  (optional, recommended)`);
-      console.log(`  pnpm job:script --job ${jobId} --confirm-openai`);
-      writeStatusArtifact({ ...baseArtifact, state: 'MISSING_JOB_SCRIPT_ARTIFACT' });
-      process.exit(8);
+    // ---------- STEP 1: Vision analysis (mandatory — Round 52) ----------
+    // Vision is no longer an optional warning. The script must be grounded in a
+    // real understanding of the source video.
+    const visionArtPath = join(jobOutputDir!, 'video_visual_analysis.json');
+    if (!existsSync(visionArtPath)) {
+      if (confirmOpenAi) {
+        const vStatus = runCommand('STEP 1 — OpenAI Vision analysis (job-native)', 'pnpm', [
+          'job:vision',
+          '--job',
+          jobId,
+          '--confirm-openai',
+        ]);
+        if (vStatus !== 0 || !existsSync(visionArtPath)) {
+          console.log('🛑 VISION_FAILED');
+          if (jobManifest) {
+            jobManifest.state = 'FAILED';
+            jobManifest.lastError = 'VISION_FAILED';
+            saveJobManifest(jobManifest);
+            updateRegistryFromManifest(jobManifest);
+          }
+          writeStatusArtifact({ ...baseArtifact, state: 'VISION_FAILED' });
+          process.exit(20);
+        }
+      } else {
+        console.log('🛑 VISION_REQUIRED_BUT_CONFIRM_OPENAI_MISSING');
+        console.log(`Job ${jobId} has no video_visual_analysis.json and OpenAI is not authorized.`);
+        console.log('Operator action:');
+        console.log(`  pnpm chay:review --job ${jobId} --confirm-openai`);
+        console.log(`  (or: pnpm job:vision --job ${jobId} --confirm-openai)`);
+        writeStatusArtifact({
+          ...baseArtifact,
+          state: 'VISION_REQUIRED_BUT_CONFIRM_OPENAI_MISSING',
+        });
+        process.exit(19);
+      }
+    }
+
+    // ---------- STEP 2: AI script (auto-run with consent — Round 52) ----------
+    let scriptNowPresent = scriptPresent;
+    if (!scriptNowPresent) {
+      if (confirmOpenAi) {
+        const sStatus = runCommand('STEP 2 — AI script (job-native)', 'pnpm', [
+          'job:script',
+          '--job',
+          jobId,
+          '--confirm-openai',
+        ]);
+        scriptNowPresent = existsSync(join(jobOutputDir!, 'script_artifact.json'));
+        if (sStatus !== 0 || !scriptNowPresent) {
+          console.log('🛑 SCRIPT_GENERATION_FAILED');
+          if (jobManifest) {
+            jobManifest.state = 'FAILED';
+            jobManifest.lastError = 'SCRIPT_GENERATION_FAILED';
+            saveJobManifest(jobManifest);
+            updateRegistryFromManifest(jobManifest);
+          }
+          writeStatusArtifact({ ...baseArtifact, state: 'SCRIPT_GENERATION_FAILED' });
+          process.exit(21);
+        }
+      } else {
+        console.log('🛑 SCRIPT_REQUIRED_BUT_CONFIRM_OPENAI_MISSING');
+        console.log(`Job ${jobId} has no script artifact and OpenAI is not authorized.`);
+        console.log('Operator action:');
+        console.log(`  pnpm chay:review --job ${jobId} --confirm-openai`);
+        console.log(`  (or: pnpm job:script --job ${jobId} --confirm-openai)`);
+        writeStatusArtifact({
+          ...baseArtifact,
+          state: 'SCRIPT_REQUIRED_BUT_CONFIRM_OPENAI_MISSING',
+        });
+        process.exit(8);
+      }
     }
 
     // --- SCRIPT QUALITY GATE ---
@@ -688,7 +868,9 @@ async function main(): Promise<void> {
       try {
         const scriptData = JSON.parse(readFileSync(scriptPath, 'utf8'));
         if (scriptData.quality?.templateFallback) {
-          console.log('⚠️  [Safe Mode] Script is a template fallback (TEMPLATE_FALLBACK_NOT_FINAL).');
+          console.log(
+            '⚠️  [Safe Mode] Script is a template fallback (TEMPLATE_FALLBACK_NOT_FINAL).',
+          );
         }
 
         const visionPath = join(jobOutputDir!, 'video_visual_analysis.json');
@@ -703,7 +885,9 @@ async function main(): Promise<void> {
 
         // Warning: SCRIPT_NOT_VISION_GROUNDED (Round 42)
         if (visionArtifact && (!scriptData.visualContext || !scriptData.visualContext.used)) {
-          console.warn('⚠️  [Warning] SCRIPT_NOT_VISION_GROUNDED: Vision analysis exists but this script was not generated with vision grounding.');
+          console.warn(
+            '⚠️  [Warning] SCRIPT_NOT_VISION_GROUNDED: Vision analysis exists but this script was not generated with vision grounding.',
+          );
           console.warn('   Consider regenerating the script using:');
           console.warn(`     pnpm job:script --job ${jobId} --confirm-openai`);
         }
@@ -720,7 +904,7 @@ async function main(): Promise<void> {
           productName: scriptData.productName,
           targetDurationSec: scriptData.targetDurationSec || sourceVideoDurationSec,
           estimatedSpeechDurationSec: scriptData.estimatedSpeechDurationSec || 26.5,
-          visionAnalysis: visionArtifact
+          visionAnalysis: visionArtifact,
         });
 
         if (!validation.passed) {
@@ -739,7 +923,10 @@ async function main(): Promise<void> {
             updateRegistryFromManifest(jobManifest);
           }
 
-          writeStatusArtifact({ ...baseArtifact, state: 'SCRIPT_QUALITY_VALIDATION_FAILED' as any });
+          writeStatusArtifact({
+            ...baseArtifact,
+            state: 'SCRIPT_QUALITY_VALIDATION_FAILED' as any,
+          });
           process.exit(11);
         } else {
           console.log('🟢 Script quality validation PASSED.');
@@ -763,7 +950,9 @@ async function main(): Promise<void> {
               const voiceArt = JSON.parse(readFileSync(voiceArtPath, 'utf8'));
               if (!voiceArt.scriptTextHash || voiceArt.scriptTextHash !== currentScriptHash) {
                 console.error('\n🛑 STALE_JOB_VOICEOVER');
-                console.error('The generated voiceover is stale or missing hash compared to the current script.');
+                console.error(
+                  'The generated voiceover is stale or missing hash compared to the current script.',
+                );
                 console.error('Operator action:');
                 console.error(`  pnpm voice:elevenlabs --job ${jobId} --confirm-api-call`);
 
@@ -789,7 +978,9 @@ async function main(): Promise<void> {
               const timingArt = JSON.parse(readFileSync(timingArtPath, 'utf8'));
               if (!timingArt.scriptTextHash || timingArt.scriptTextHash !== currentScriptHash) {
                 console.error('\n🛑 STALE_JOB_TIMING_ARTIFACT');
-                console.error('The voice timing artifact is stale or missing hash compared to the current script.');
+                console.error(
+                  'The voice timing artifact is stale or missing hash compared to the current script.',
+                );
                 console.error('Operator action:');
                 console.error(`  pnpm voice:elevenlabs --job ${jobId} --confirm-api-call`);
 
@@ -825,7 +1016,9 @@ async function main(): Promise<void> {
     console.log('— that would generate a misleading preview and false approval.');
     console.log('');
     console.log('Operator action:');
-    console.log(`  copy "C:\\Users\\Admin\\Downloads\\<your-video>.mp4" ${VIDEO_FIXTURE_PATH.replace(/\//g, '\\')}`);
+    console.log(
+      `  copy "C:\\Users\\Admin\\Downloads\\<your-video>.mp4" ${VIDEO_FIXTURE_PATH.replace(/\//g, '\\')}`,
+    );
     console.log('Then rerun:');
     console.log('  pnpm chay:review');
     writeStatusArtifact({ ...baseArtifact, state: 'MISSING_REAL_PRODUCT_VIDEO_FIXTURE' });
@@ -839,7 +1032,9 @@ async function main(): Promise<void> {
       if (jobId) {
         console.log('🛑 MISSING_JOB_VOICEOVER');
         console.log('');
-        console.log('Job voiceover or timing artifact not present and ElevenLabs API not authorized.');
+        console.log(
+          'Job voiceover or timing artifact not present and ElevenLabs API not authorized.',
+        );
         console.log('Operator action — either:');
         console.log(`  a) pnpm voice:elevenlabs --job ${jobId} --confirm-api-call`);
         console.log(`  b) pnpm chay:review --job ${jobId} --confirm-elevenlabs`);
@@ -876,7 +1071,7 @@ async function main(): Promise<void> {
     console.log(
       jobId
         ? 'STEP 1/3 — Job voiceover + timing artifacts present, skipping ElevenLabs call. ✅'
-        : 'STEP 1/3 — Voiceover fixture present, skipping ElevenLabs call. ✅'
+        : 'STEP 1/3 — Voiceover fixture present, skipping ElevenLabs call. ✅',
     );
   }
 
@@ -894,36 +1089,38 @@ async function main(): Promise<void> {
     console.log('======================================================');
     console.log(`Source video duration: ${sourceVideoDurationSec.toFixed(2)}s`);
     console.log(`Voiceover duration:    ${voiceDurationSec.toFixed(2)}s`);
-    
+
     const maxAllowedVoiceSec = sourceVideoDurationSec - 0.5;
     console.log(`Max allowed voice:     ${maxAllowedVoiceSec.toFixed(2)}s (video - 0.5s safety)`);
-    
+
     let durationMatchStatus: 'PASS' | 'FAIL' = 'PASS';
     if (voiceDurationSec > maxAllowedVoiceSec) {
       durationMatchStatus = 'FAIL';
       console.log('🛑 FAIL: VOICE_LONGER_THAN_VIDEO');
-      console.log(`Voice duration (${voiceDurationSec.toFixed(2)}s) exceeds max allowed (${maxAllowedVoiceSec.toFixed(2)}s).`);
+      console.log(
+        `Voice duration (${voiceDurationSec.toFixed(2)}s) exceeds max allowed (${maxAllowedVoiceSec.toFixed(2)}s).`,
+      );
       console.log('To prevent cutting off speech at the end of render, rendering is BLOCKED.');
-      
+
       if (jobManifest) {
         jobManifest.duration = {
           sourceVideoDurationSec,
           voiceDurationSec,
           captionedPreviewDurationSec: null,
-          durationMatchStatus
+          durationMatchStatus,
         };
         jobManifest.state = 'FAILED';
         jobManifest.lastError = 'VOICE_LONGER_THAN_VIDEO';
         saveJobManifest(jobManifest);
         updateRegistryFromManifest(jobManifest);
       }
-      
+
       writeStatusArtifact({
         ...baseArtifact,
         elevenLabsApiCalled,
         chayExecuted: false,
         captionExecuted: false,
-        state: 'VOICE_LONGER_THAN_VIDEO' as any
+        state: 'VOICE_LONGER_THAN_VIDEO' as any,
       });
       process.exit(10);
     } else {
@@ -933,7 +1130,7 @@ async function main(): Promise<void> {
           sourceVideoDurationSec,
           voiceDurationSec,
           captionedPreviewDurationSec: null,
-          durationMatchStatus
+          durationMatchStatus,
         };
         saveJobManifest(jobManifest);
         updateRegistryFromManifest(jobManifest);
@@ -967,8 +1164,15 @@ async function main(): Promise<void> {
 
     if (bgmResult.status === 'OK' && bgmResult.selection) {
       const sel = bgmResult.selection;
-      console.log(`Selected track:        ${sel.trackId} — "${sel.title}" (${sel.mood})`);
+      console.log(
+        `Selected track:        ${sel.trackId} — "${sel.title}" (${sel.mood})${bgmResult.reused ? ' [sticky reuse]' : ''}`,
+      );
       console.log(`BGM file:              ${sel.localAudioPath}`);
+      console.log(`Energy / mood:         ${sel.energyLevel} / ${sel.matchedMood}`);
+      const vd = sel.voiceDirection;
+      console.log(
+        `Voice direction:       ${vd.style} | pace ${vd.pace} | ${vd.delivery} (clarity-first)`,
+      );
       console.log(`BGM artifact:          ${bgmResult.artifactPath}`);
       bgmRequired = true;
       bgmRenderAsset = {
@@ -982,6 +1186,99 @@ async function main(): Promise<void> {
       jobManifest.artifacts.bgmArtifactPath = `${JOBS_ROOT}/${jobId}/bgm_selection_artifact.json`;
       jobManifest.bgmPolicy = 'BGM_REQUIRED';
       saveJobManifest(jobManifest);
+
+      // ---- Voice ↔ BGM coupling (Round 52) ----
+      // BGM leads the mood; the voiceover must match the BGM voice direction.
+      // A link file records which BGM mood the current voice was made for.
+      // - no link yet  → adopt the current BGM (voice was made for this script).
+      // - link mismatch (BGM mood changed) → voice is stale; regenerate (with
+      //   ElevenLabs consent) or block.
+      const linkPath = join(jobOutputDir, 'voice_bgm_link.json');
+      const scriptArtPath = join(jobOutputDir, 'script_artifact.json');
+      const scriptText = existsSync(scriptArtPath) ? extractCombinedVoiceText(scriptArtPath) : '';
+      const scriptHash = scriptText ? calculateNormalizedHash(scriptText) : null;
+      const writeLink = () =>
+        writeFileSync(
+          linkPath,
+          `${JSON.stringify(
+            {
+              voiceBgmLinkVersion: 'v1',
+              bgmTrackId: sel.trackId,
+              bgmMood: sel.mood,
+              voiceDirectionHash: sel.voiceDirectionHash,
+              scriptTextHash: scriptHash,
+              linkedAt: new Date().toISOString(),
+            },
+            null,
+            2,
+          )}\n`,
+          'utf8',
+        );
+
+      let link: { voiceDirectionHash?: string } | null = null;
+      if (existsSync(linkPath)) {
+        try {
+          link = JSON.parse(readFileSync(linkPath, 'utf8'));
+        } catch {
+          link = null;
+        }
+      }
+
+      const bgmStale = Boolean(
+        link?.voiceDirectionHash && link.voiceDirectionHash !== sel.voiceDirectionHash,
+      );
+      if (!link) {
+        // Adopt: the existing voice was made for this script; record the pairing.
+        writeLink();
+        console.log('Voice/BGM coupling:    adopted (voice linked to current BGM mood).');
+      } else if (bgmStale) {
+        console.log('🛑 BGM_VOICE_DIRECTION_STALE');
+        console.log('BGM mood changed since the voiceover was generated — the voice direction');
+        console.log('no longer matches the BGM. Voice must be regenerated for the new mood.');
+        if (confirmElevenLabs) {
+          const reStatus = runCommand('STEP 4b — Regenerate voiceover for new BGM mood', 'pnpm', [
+            'voice:elevenlabs',
+            '--job',
+            jobId,
+            '--confirm-api-call',
+          ]);
+          if (reStatus !== 0) {
+            jobManifest.state = 'FAILED';
+            jobManifest.lastError = 'VOICE_GENERATION_FAILED';
+            saveJobManifest(jobManifest);
+            updateRegistryFromManifest(jobManifest);
+            writeStatusArtifact({
+              ...baseArtifact,
+              elevenLabsApiCalled: true,
+              state: 'VOICE_GENERATION_FAILED',
+            });
+            process.exit(14);
+          }
+          elevenLabsApiCalled = true;
+          writeLink();
+          console.log('Voice/BGM coupling:    voice regenerated + relinked to new BGM mood. ✅');
+        } else {
+          console.log('Operator action:');
+          console.log(
+            `  pnpm chay:review --job ${jobId} --confirm-elevenlabs   (regenerate voice)`,
+          );
+          console.log(
+            `  or: pnpm chay:review --job ${jobId} --allow-no-bgm     (drop BGM intentionally)`,
+          );
+          jobManifest.state = 'FAILED';
+          jobManifest.lastError = 'BGM_VOICE_DIRECTION_STALE';
+          saveJobManifest(jobManifest);
+          updateRegistryFromManifest(jobManifest);
+          writeStatusArtifact({
+            ...baseArtifact,
+            elevenLabsApiCalled,
+            state: 'BGM_VOICE_DIRECTION_STALE',
+          });
+          process.exit(15);
+        }
+      } else {
+        console.log('Voice/BGM coupling:    fresh (voice matches current BGM mood). ✅');
+      }
     } else {
       // No real BGM file available (library metadata may still exist).
       console.log(`🛑 ${bgmResult.status}`);
@@ -1018,7 +1315,14 @@ async function main(): Promise<void> {
 
   // ---------- STEP 2: render preview ----------
   let chayExecuted = false;
-  if (jobId && jobSourceVideoAbs && jobOutputDir && jobRenderManifestPath && jobPreviewArtifactPath && jobPreviewPath) {
+  if (
+    jobId &&
+    jobSourceVideoAbs &&
+    jobOutputDir &&
+    jobRenderManifestPath &&
+    jobPreviewArtifactPath &&
+    jobPreviewPath
+  ) {
     // ---- JOB MODE: direct offline-render-video into job folder (Round 38) ----
     mkdirSync(jobOutputDir, { recursive: true });
 
@@ -1037,14 +1341,24 @@ async function main(): Promise<void> {
     writeFileSync(jobRenderManifestPath, `${JSON.stringify(jobRenderManifest, null, 2)}\n`, 'utf8');
 
     const renderArgs = [
-      'tsx', 'scripts/offline-render-video-demo.ts',
-      '--render', jobRenderManifestPath,
-      '--output', jobPreviewArtifactPath,
-      '--mode', 'local-preview',
-      '--input-video', jobSourceVideoAbs,
-      '--input-audio', jobVoicePath!,
+      'tsx',
+      'scripts/offline-render-video-demo.ts',
+      '--render',
+      jobRenderManifestPath,
+      '--output',
+      jobPreviewArtifactPath,
+      '--mode',
+      'local-preview',
+      '--input-video',
+      jobSourceVideoAbs,
+      '--input-audio',
+      jobVoicePath!,
     ];
-    const renderStatus = runCommand('STEP 2/3 — Render preview (job-native, no shared fixture bridge)', 'npx', renderArgs);
+    const renderStatus = runCommand(
+      'STEP 2/3 — Render preview (job-native, no shared fixture bridge)',
+      'npx',
+      renderArgs,
+    );
     if (renderStatus !== 0) {
       console.log('🛑 RENDER_FAILED');
       jobManifest!.state = 'FAILED';
@@ -1073,20 +1387,22 @@ async function main(): Promise<void> {
     console.log(`🛑 Audio check failed: REVIEW_PREVIEW_AUDIO_MISSING`);
     console.log(`Reason: ${previewAudioCheck.reason || 'No audio stream or duration is 0'}`);
     console.log(`Suggestion: run the following command to diagnose the video:`);
-    console.log(`  ffprobe -v error -show_entries stream=index,codec_type,codec_name,duration -show_format -of json "${previewPathToCheck}"`);
-    
+    console.log(
+      `  ffprobe -v error -show_entries stream=index,codec_type,codec_name,duration -show_format -of json "${previewPathToCheck}"`,
+    );
+
     if (jobId && jobManifest) {
       jobManifest.state = 'FAILED';
       jobManifest.lastError = 'REVIEW_PREVIEW_AUDIO_MISSING';
       saveJobManifest(jobManifest);
       updateRegistryFromManifest(jobManifest);
     }
-    
+
     writeStatusArtifact({
       ...baseArtifact,
       elevenLabsApiCalled,
       chayExecuted,
-      state: 'REVIEW_PREVIEW_AUDIO_MISSING'
+      state: 'REVIEW_PREVIEW_AUDIO_MISSING',
     });
     process.exit(9);
   } else {
@@ -1151,56 +1467,74 @@ async function main(): Promise<void> {
   let captionExecuted = false;
   if (jobId && jobPreviewPath && jobCaptionedPath && jobCaptionPlanPath && jobAssPath) {
     // ---- JOB MODE: direct caption:kinetic with job-local paths ----
-    const captionArgs = [
-      'caption:kinetic',
-      '--job', jobId,
-      '--preset', preset,
-    ];
-    const captionStatus = runCommand('STEP 3/3 — Burn kinetic captions (job-native)', 'pnpm', captionArgs);
+    const captionArgs = ['caption:kinetic', '--job', jobId, '--preset', preset];
+    const captionStatus = runCommand(
+      'STEP 3/3 — Burn kinetic captions (job-native)',
+      'pnpm',
+      captionArgs,
+    );
     if (captionStatus !== 0) {
       console.log('🛑 CAPTION_FAILED');
       jobManifest!.state = 'FAILED';
       saveJobManifest(jobManifest!);
       updateRegistryFromManifest(jobManifest!);
-      writeStatusArtifact({ ...baseArtifact, elevenLabsApiCalled, chayExecuted, state: 'CAPTION_FAILED' });
+      writeStatusArtifact({
+        ...baseArtifact,
+        elevenLabsApiCalled,
+        chayExecuted,
+        state: 'CAPTION_FAILED',
+      });
       process.exit(captionStatus);
     }
     captionExecuted = true;
   } else {
     // ---- NO-JOB MODE: use standard caption:kinetic (unchanged) ----
     const captionStatus = runCommand('STEP 3/3 — Burn kinetic captions', 'pnpm', [
-      'caption:kinetic', '--run', runId, '--preset', preset,
+      'caption:kinetic',
+      '--run',
+      runId,
+      '--preset',
+      preset,
     ]);
     if (captionStatus !== 0) {
       console.log('🛑 CAPTION_FAILED');
-      writeStatusArtifact({ ...baseArtifact, elevenLabsApiCalled, chayExecuted, state: 'CAPTION_FAILED' });
+      writeStatusArtifact({
+        ...baseArtifact,
+        elevenLabsApiCalled,
+        chayExecuted,
+        state: 'CAPTION_FAILED',
+      });
       process.exit(captionStatus);
     }
     captionExecuted = true;
   }
 
   // Validate captioned preview audio stream
-  console.log(`\n🔍 [AudioGuard] Running audio stream check on captioned output: ${expectedOutput}...`);
+  console.log(
+    `\n🔍 [AudioGuard] Running audio stream check on captioned output: ${expectedOutput}...`,
+  );
   const captionedAudioCheck = validateAudioStream(expectedOutput);
   if (!captionedAudioCheck.success) {
     console.log(`🛑 Audio check failed: CAPTIONED_PREVIEW_AUDIO_MISSING`);
     console.log(`Reason: ${captionedAudioCheck.reason || 'No audio stream or duration is 0'}`);
     console.log(`Suggestion: run the following command to diagnose the video:`);
-    console.log(`  ffprobe -v error -show_entries stream=index,codec_type,codec_name,duration -show_format -of json "${expectedOutput}"`);
-    
+    console.log(
+      `  ffprobe -v error -show_entries stream=index,codec_type,codec_name,duration -show_format -of json "${expectedOutput}"`,
+    );
+
     if (jobId && jobManifest) {
       jobManifest.state = 'FAILED';
       jobManifest.lastError = 'CAPTIONED_PREVIEW_AUDIO_MISSING';
       saveJobManifest(jobManifest);
       updateRegistryFromManifest(jobManifest);
     }
-    
+
     writeStatusArtifact({
       ...baseArtifact,
       elevenLabsApiCalled,
       chayExecuted,
       captionExecuted,
-      state: 'CAPTIONED_PREVIEW_AUDIO_MISSING'
+      state: 'CAPTIONED_PREVIEW_AUDIO_MISSING',
     });
     process.exit(10);
   } else {
@@ -1226,13 +1560,19 @@ async function main(): Promise<void> {
   }
   const outputExists = existsSync(expectedOutput);
 
-  if (!previewArtifact || !previewArtifact.hasRealFixture || previewArtifact.offlinePlaceholderOnly) {
+  if (
+    !previewArtifact ||
+    !previewArtifact.hasRealFixture ||
+    previewArtifact.offlinePlaceholderOnly
+  ) {
     console.log('🛑 REAL_FIXTURE_NOT_USED');
     console.log('Render completed but preview_artifact.json still indicates placeholder mode.');
     if (jobId) {
       console.log('Operator should verify that source video is a real product video.');
     } else {
-      console.log('Operator should verify that pipeline-run-manifest picked up sample_hero_video.mp4.');
+      console.log(
+        'Operator should verify that pipeline-run-manifest picked up sample_hero_video.mp4.',
+      );
     }
     if (jobId && jobManifest) {
       jobManifest.state = 'FAILED';
@@ -1240,11 +1580,74 @@ async function main(): Promise<void> {
       updateRegistryFromManifest(jobManifest);
     }
     writeStatusArtifact({
-      ...baseArtifact, elevenLabsApiCalled, chayExecuted, captionExecuted,
+      ...baseArtifact,
+      elevenLabsApiCalled,
+      chayExecuted,
+      captionExecuted,
       outputVideoPath: outputExists ? expectedOutput : null,
-      previewArtifact, state: 'REAL_FIXTURE_NOT_USED',
+      previewArtifact,
+      state: 'REAL_FIXTURE_NOT_USED',
     });
     process.exit(4);
+  }
+
+  // ---------- STEP 9: Final QA / STT (mandatory before READY — Round 52) ----------
+  // Final QA is no longer a printed suggestion. The job cannot reach
+  // READY_FOR_OPERATOR_REVIEW until STT QA confirms voice present, not cut off,
+  // and transcript matching the script.
+  if (jobId && jobManifest) {
+    console.log('\n======================================================');
+    console.log('🧪  VFOS Final QA / STT Gate (Round 52)');
+    console.log('======================================================');
+    if (!confirmOpenAi) {
+      console.log('🛑 FINAL_QA_REQUIRED_BUT_CONFIRM_OPENAI_MISSING');
+      console.log('Final STT QA must pass before the video is offered for operator review.');
+      console.log('Operator action:');
+      console.log(`  pnpm chay:review --job ${jobId} --confirm-openai`);
+      console.log(`  (or run standalone: pnpm job:qa --job ${jobId} --confirm-openai)`);
+      jobManifest.lastError = 'FINAL_QA_REQUIRED_BUT_CONFIRM_OPENAI_MISSING';
+      saveJobManifest(jobManifest);
+      writeStatusArtifact({
+        ...baseArtifact,
+        elevenLabsApiCalled,
+        chayExecuted,
+        captionExecuted,
+        outputVideoPath: outputExists ? expectedOutput : null,
+        state: 'FINAL_QA_REQUIRED_BUT_CONFIRM_OPENAI_MISSING',
+      });
+      process.exit(22);
+    }
+
+    const qaStatusCode = runCommand('STEP 9 — Final QA / STT', 'pnpm', [
+      'job:qa',
+      '--job',
+      jobId,
+      '--confirm-openai',
+    ]);
+    const qaManifest = loadJobManifest(jobId);
+    const qaPassed = qaStatusCode === 0 && qaManifest?.qaStatus === 'PASS';
+    if (!qaPassed) {
+      console.log('🛑 FINAL_QA_NOT_PASSING');
+      console.log(`QA exit code: ${qaStatusCode}, qaStatus: ${qaManifest?.qaStatus ?? 'unknown'}`);
+      if (qaManifest) {
+        qaManifest.state = 'FAILED';
+        qaManifest.lastError = 'FINAL_QA_NOT_PASSING';
+        saveJobManifest(qaManifest);
+        updateRegistryFromManifest(qaManifest);
+      }
+      writeStatusArtifact({
+        ...baseArtifact,
+        elevenLabsApiCalled,
+        chayExecuted,
+        captionExecuted,
+        outputVideoPath: outputExists ? expectedOutput : null,
+        state: 'FINAL_QA_NOT_PASSING',
+      });
+      process.exit(23);
+    }
+    console.log('✅ Final QA / STT PASSED.');
+    // Reload manifest so downstream READY write keeps qa fields.
+    if (qaManifest) jobManifest = qaManifest;
   }
 
   // ---------- SUCCESS ----------
@@ -1260,16 +1663,22 @@ async function main(): Promise<void> {
   }
 
   writeStatusArtifact({
-    ...baseArtifact, elevenLabsApiCalled, chayExecuted, captionExecuted,
+    ...baseArtifact,
+    elevenLabsApiCalled,
+    chayExecuted,
+    captionExecuted,
     outputVideoPath: outputExists ? expectedOutput : null,
-    previewArtifact, state: 'READY_FOR_OPERATOR_VIDEO_REVIEW',
+    previewArtifact,
+    state: 'READY_FOR_OPERATOR_VIDEO_REVIEW',
   });
 
   console.log('');
   printHeader('🎬 VFOS REVIEW VIDEO READY');
   if (jobId) console.log(`Job ID:           ${jobId}`);
   console.log(`Run ID:           ${runId}`);
-  console.log(`Video source:     ${jobId && jobSourceVideoAbs ? jobSourceVideoAbs : VIDEO_FIXTURE_PATH}`);
+  console.log(
+    `Video source:     ${jobId && jobSourceVideoAbs ? jobSourceVideoAbs : VIDEO_FIXTURE_PATH}`,
+  );
   console.log(`Voice source:     ${jobId ? jobVoicePath : VOICE_FIXTURE_PATH}`);
   console.log(`Caption preset:   ${preset}`);
   console.log(`Output:           ${expectedOutput}`);
@@ -1281,8 +1690,8 @@ async function main(): Promise<void> {
   console.log('Required action:');
   console.log('Operator must watch this video before publish readiness.');
   if (jobId) {
-    console.log(`To run final STT QA verification, execute:`);
-    console.log(`  pnpm job:qa --job ${jobId} --confirm-openai`);
+    console.log('Unified pipeline gates passed: Vision → Script → BGM → Voice(coupled) →');
+    console.log('Render → Caption → AudioGuard → BgmGuard → Final QA/STT. ✅');
   }
   printDivider();
   process.exit(0);
