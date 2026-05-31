@@ -136,8 +136,19 @@ function main() {
           '-shortest',
         );
 
-        // Save audio quality report
+        // Save BGM mixing report (Round 51A schema). The top-level
+        // voiceIncluded/bgmIncluded flags are what the orchestrator's BgmGuard
+        // checks, since ffprobe cannot distinguish a post-amix single stream.
         const audioMixingReport = {
+          bgmMixingVersion: 'v1',
+          jobId: renderMeta.jobId ?? null,
+          voicePath: inputAudioPath,
+          bgmPath: bgmMeta.localAudioPath,
+          outputPath: actualPreviewPath,
+          bgmVolumeMultiplier: 0.12,
+          voiceIncluded: Boolean(inputAudioPath && existsSync(inputAudioPath)),
+          bgmIncluded: true,
+          ffmpegMixMode: 'amix',
           trackId: bgmMeta.trackId,
           title: bgmMeta.title,
           mood: bgmMeta.mood,

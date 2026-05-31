@@ -44,10 +44,17 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { extractCombinedVoiceText, calculateNormalizedHash } from './job-artifact-freshness.js';
+import { selectBgmForJob } from './job-bgm-selector.js';
 import { parseArgs } from 'node:util';
 
 const DEFAULT_RUN_ID = 'run_review_product_p9';
 const DEFAULT_CAPTION_PRESET = 'viral_review_v2';
+
+// Round 51A: BGM is part of the mandatory job render framework. Job-local
+// review videos must carry a BGM bed mixed under the voiceover unless the
+// operator explicitly opts out with --allow-no-bgm.
+const BGM_REQUIRED_BY_DEFAULT = true;
+const BGM_VOLUME_MULTIPLIER = 0.12;
 
 const VIDEO_FIXTURE_PATH = 'production/fixtures/sample_hero_video.mp4';
 const VOICE_FIXTURE_PATH = 'production/fixtures/sample_voiceover.mp3';
@@ -69,7 +76,9 @@ type OrchestratorState =
   | 'CAPTION_FAILED'
   | 'DRY_RUN_PLAN_ONLY'
   | 'REVIEW_PREVIEW_AUDIO_MISSING'
-  | 'CAPTIONED_PREVIEW_AUDIO_MISSING';
+  | 'CAPTIONED_PREVIEW_AUDIO_MISSING'
+  | 'BGM_LIBRARY_FILES_MISSING'
+  | 'BGM_MISSING_IN_MIX';
 
 interface StatusArtifact {
   statusVersion: 'v1';
@@ -121,6 +130,7 @@ interface JobManifest {
   createdAt: string;
   updatedAt: string;
   lastError?: string | null;
+  bgmPolicy?: 'BGM_REQUIRED' | 'ALLOW_NO_BGM_OPERATOR_OVERRIDE' | null;
   duration?: {
     sourceVideoDurationSec: number;
     voiceDurationSec: number;
@@ -477,6 +487,7 @@ async function main(): Promise<void> {
       job: { type: 'string' },
       'dry-run': { type: 'boolean', default: false },
       'confirm-elevenlabs': { type: 'boolean', default: false },
+      'allow-no-bgm': { type: 'boolean', default: false },
     },
     allowPositionals: false,
     strict: true,
@@ -488,6 +499,7 @@ async function main(): Promise<void> {
   const jobId = (values.job as string | undefined) ?? null;
   const dryRun = Boolean(values['dry-run']);
   const confirmElevenLabs = Boolean(values['confirm-elevenlabs']);
+  const allowNoBgm = Boolean(values['allow-no-bgm']);
 
   const voiceFixturePresent = existsSync(resolve(VOICE_FIXTURE_PATH));
 
@@ -930,20 +942,96 @@ async function main(): Promise<void> {
     console.log('======================================================\n');
   }
 
+  // ---------- STEP 1.5: BGM selection (Round 51A) ----------
+  // BGM is part of the mandatory job render framework. Select a rotation track
+  // and wire it into the render manifest so the renderer mixes voice + BGM.
+  // bgmRequired drives the post-render guardrail below.
+  let bgmRequired = false;
+  let bgmRenderAsset: {
+    selected: true;
+    trackId: string;
+    title: string;
+    mood: string;
+    localAudioPath: string;
+    volumeMultiplier: number;
+  } | null = null;
+
+  if (jobId && jobOutputDir && jobManifest) {
+    console.log('\n======================================================');
+    console.log('🎵  VFOS BGM Selection Gate (Round 51A)');
+    console.log('======================================================');
+    const bgmResult = selectBgmForJob({ jobId, jobOutputDir });
+    console.log(`BGM library:           ${bgmResult.libraryPath}`);
+    console.log(`Declared tracks:       ${bgmResult.libraryEntryCount}`);
+    console.log(`Real audio files:      ${bgmResult.existingFileCount}`);
+
+    if (bgmResult.status === 'OK' && bgmResult.selection) {
+      const sel = bgmResult.selection;
+      console.log(`Selected track:        ${sel.trackId} — "${sel.title}" (${sel.mood})`);
+      console.log(`BGM file:              ${sel.localAudioPath}`);
+      console.log(`BGM artifact:          ${bgmResult.artifactPath}`);
+      bgmRequired = true;
+      bgmRenderAsset = {
+        selected: true,
+        trackId: sel.trackId,
+        title: sel.title,
+        mood: sel.mood,
+        localAudioPath: sel.localAudioPath,
+        volumeMultiplier: sel.volumeMultiplier,
+      };
+      jobManifest.artifacts.bgmArtifactPath = `${JOBS_ROOT}/${jobId}/bgm_selection_artifact.json`;
+      jobManifest.bgmPolicy = 'BGM_REQUIRED';
+      saveJobManifest(jobManifest);
+    } else {
+      // No real BGM file available (library metadata may still exist).
+      console.log(`🛑 ${bgmResult.status}`);
+      if (bgmResult.reason) console.log(`Reason: ${bgmResult.reason}`);
+
+      if (BGM_REQUIRED_BY_DEFAULT && !allowNoBgm) {
+        console.log('Review video requires BGM by default. Rendering is BLOCKED to avoid');
+        console.log('silently shipping a voiceover-only video.');
+        console.log('Operator action:');
+        console.log('  Add mp3 files to production/fixtures/bgm/ according to bgm_library.json,');
+        console.log(`  or rerun with --allow-no-bgm to render voiceover-only intentionally.`);
+        jobManifest.state = 'FAILED';
+        jobManifest.lastError = 'BGM_LIBRARY_FILES_MISSING';
+        jobManifest.bgmPolicy = 'BGM_REQUIRED';
+        saveJobManifest(jobManifest);
+        updateRegistryFromManifest(jobManifest);
+        writeStatusArtifact({
+          ...baseArtifact,
+          elevenLabsApiCalled,
+          chayExecuted: false,
+          state: 'BGM_LIBRARY_FILES_MISSING',
+        });
+        process.exit(11);
+      } else {
+        console.log('⚠️  Operator override (--allow-no-bgm): rendering voiceover-only.');
+        bgmRequired = false;
+        bgmRenderAsset = null;
+        jobManifest.bgmPolicy = 'ALLOW_NO_BGM_OPERATOR_OVERRIDE';
+        saveJobManifest(jobManifest);
+      }
+    }
+    console.log('======================================================\n');
+  }
+
   // ---------- STEP 2: render preview ----------
   let chayExecuted = false;
   if (jobId && jobSourceVideoAbs && jobOutputDir && jobRenderManifestPath && jobPreviewArtifactPath && jobPreviewPath) {
     // ---- JOB MODE: direct offline-render-video into job folder (Round 38) ----
     mkdirSync(jobOutputDir, { recursive: true });
 
-    // Write a minimal render manifest for offline-render-video.
+    // Write the render manifest for offline-render-video. assets.bgm is no
+    // longer hardcoded to null — it reflects the Round 51A BGM selection so the
+    // renderer mixes voice + BGM under the voiceover.
     const jobRenderManifest = {
       renderVersion: 'v1',
       jobId,
       runId,
       output: { expectedPreviewPath: jobPreviewPath },
       renderOptions: { estimatedDurationSec: 28, resolution: '1080x1920', aspectRatio: '9:16' },
-      assets: { bgm: null },
+      assets: { bgm: bgmRenderAsset },
       generatedAt: new Date().toISOString(),
     };
     writeFileSync(jobRenderManifestPath, `${JSON.stringify(jobRenderManifest, null, 2)}\n`, 'utf8');
@@ -1003,6 +1091,60 @@ async function main(): Promise<void> {
     process.exit(9);
   } else {
     console.log(`✅ [AudioGuard] Preview audio stream OK.`);
+  }
+
+  // ---------- BGM MIX GUARDRAIL (Round 51A) ----------
+  // ffprobe alone cannot prove BGM is present — amix collapses voice + BGM into
+  // a single audio stream, so a voiceover-only video and a voice+BGM video both
+  // show one audio stream. The guard therefore relies on the selection artifact
+  // and the renderer's mix report (voiceIncluded + bgmIncluded) instead.
+  if (jobId && jobOutputDir && bgmRequired) {
+    console.log(`\n🔍 [BgmGuard] Verifying BGM was mixed under the voiceover...`);
+    const bgmSelectionPath = join(jobOutputDir, 'bgm_selection_artifact.json');
+    const bgmReportPath = join(jobOutputDir, 'bgm_mixing_report.json');
+    const renderManifestAbs = join(jobOutputDir, 'render_manifest.json');
+
+    let bgmGuardFail: string | null = null;
+    if (!existsSync(bgmSelectionPath)) {
+      bgmGuardFail = 'bgm_selection_artifact.json missing';
+    } else if (!existsSync(bgmReportPath)) {
+      bgmGuardFail = 'bgm_mixing_report.json missing (renderer fell back to voiceover-only)';
+    } else {
+      try {
+        const manifestAsset = JSON.parse(readFileSync(renderManifestAbs, 'utf8'))?.assets?.bgm;
+        if (!manifestAsset || manifestAsset.selected !== true) {
+          bgmGuardFail = 'render_manifest.assets.bgm.selected is not true';
+        } else {
+          const report = JSON.parse(readFileSync(bgmReportPath, 'utf8'));
+          if (report.voiceIncluded !== true || report.bgmIncluded !== true) {
+            bgmGuardFail = `mix report flags not both true (voiceIncluded=${report.voiceIncluded}, bgmIncluded=${report.bgmIncluded})`;
+          }
+        }
+      } catch (err) {
+        bgmGuardFail = `could not parse BGM artifacts: ${(err as Error).message}`;
+      }
+    }
+
+    if (bgmGuardFail) {
+      console.log(`🛑 BGM_MISSING_IN_MIX`);
+      console.log(`Reason: ${bgmGuardFail}`);
+      console.log('BGM was required for this job but the rendered preview does not contain a');
+      console.log('verified voice + BGM mix. Refusing to advance to operator review.');
+      if (jobManifest) {
+        jobManifest.state = 'FAILED';
+        jobManifest.lastError = 'BGM_MISSING_IN_MIX';
+        saveJobManifest(jobManifest);
+        updateRegistryFromManifest(jobManifest);
+      }
+      writeStatusArtifact({
+        ...baseArtifact,
+        elevenLabsApiCalled,
+        chayExecuted,
+        state: 'BGM_MISSING_IN_MIX',
+      });
+      process.exit(12);
+    }
+    console.log(`✅ [BgmGuard] Voice + BGM mix verified (mix report present, flags OK).`);
   }
 
   // ---------- STEP 3: burn kinetic captions ----------
