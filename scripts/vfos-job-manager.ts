@@ -687,6 +687,9 @@ function cmdStatus(args: string[]): number {
   console.log(`QA Report:         ${manifest.artifacts.finalQaReportPath ?? '(none)'}  ${qaReportPath && exists(qaReportPath) ? '✅' : '❌'}`);
   console.log(`Created at:        ${manifest.createdAt}`);
   console.log(`Updated at:        ${manifest.updatedAt}`);
+  if (manifest.safety) {
+    console.log(`Safety Lock:       Uploaded: ${manifest.safety.uploaded ? '✅' : '❌'} | Published: ${manifest.safety.published ? '✅' : '❌'} | API Called: ${manifest.safety.facebookApiCalled ? '✅' : '❌'}`);
+  }
   return 0;
 }
 
