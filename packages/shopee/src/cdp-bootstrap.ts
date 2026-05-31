@@ -88,6 +88,14 @@ export interface BootstrapConfig {
   start_url?: string;
   /** If true, never spawn — only probe (used by --no-auto-launch) */
   no_auto_launch?: boolean;
+  /**
+   * When no override/env user-data-dir is set, fall back to the VFOS-dedicated
+   * default profile (see resolveDefaultUserDataDir) instead of throwing
+   * ERR_CDP_USER_DATA_DIR_REQUIRED. This lets the operator run the flow without
+   * any one-time env setup: the browser still auto-opens; they only sign in to
+   * Shopee once inside that dedicated profile and the session persists.
+   */
+  use_default_user_data_dir?: boolean;
 }
 
 export interface SpawnHandle {
@@ -265,6 +273,28 @@ export function resolveUserDataDir(config: BootstrapConfig, deps: BootstrapDeps)
 }
 
 /**
+ * VFOS-dedicated default Cốc Cốc profile, used when the operator has not set
+ * VFOS_BROWSER_USER_DATA_DIR. This is a SEPARATE profile owned by VFOS — never
+ * the operator's daily Cốc Cốc profile — so it never collides with (locks) a
+ * browser window they already have open. The Shopee Affiliate login persists
+ * inside this directory after a one-time sign-in, so every later run auto-opens
+ * straight into the catalog. It lives outside the repo (under %LOCALAPPDATA% /
+ * home) so it is never committed; only if neither is available do we fall back
+ * to a repo-local (gitignored) path.
+ */
+export function resolveDefaultUserDataDir(deps: BootstrapDeps): string {
+  const localAppData = deps.envGet("LOCALAPPDATA");
+  if (localAppData && localAppData.trim() !== "") {
+    return `${localAppData.replace(/[\\/]+$/, "")}\\VFOS\\coccoc-cdp-profile`;
+  }
+  const home = deps.envGet("USERPROFILE") ?? deps.envGet("HOME");
+  if (home && home.trim() !== "") {
+    return `${home.replace(/[\\/]+$/, "")}\\.vfos\\coccoc-cdp-profile`;
+  }
+  return "production/_commerce/coccoc_cdp_profile";
+}
+
+/**
  * Check whether the supplied user-data-dir is currently owned by another
  * browser instance. We never auto-delete these lock files — the owner
  * process may still be alive.
@@ -312,7 +342,24 @@ export async function bootstrapBrowser(
   }
 
   const browserPath = resolveBrowserPath(config, deps);
-  const userDataDir = resolveUserDataDir(config, deps);
+  let userDataDir: string;
+  try {
+    userDataDir = resolveUserDataDir(config, deps);
+  } catch (err) {
+    // No override/env profile set. If the caller opted into the safe default,
+    // use the VFOS-dedicated profile (auto-created) instead of bailing out and
+    // forcing the operator to launch the browser by hand.
+    if (
+      config.use_default_user_data_dir &&
+      err instanceof CdpBootstrapError &&
+      err.reason_code === "ERR_CDP_USER_DATA_DIR_REQUIRED"
+    ) {
+      userDataDir = resolveDefaultUserDataDir(deps);
+      deps.ensureDir(userDataDir);
+    } else {
+      throw err;
+    }
+  }
 
   const lockPath = detectProfileLock(userDataDir, deps);
   if (lockPath) {

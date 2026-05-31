@@ -8,6 +8,7 @@ import {
   detectProfileLock,
   expandEnvPath,
   resolveBrowserPath,
+  resolveDefaultUserDataDir,
   resolveUserDataDir,
   waitForCaptchaResolution,
   type BootstrapDeps,
@@ -123,6 +124,29 @@ describe("resolveUserDataDir", () => {
       (e: unknown) =>
         e instanceof CdpBootstrapError && e.reason_code === "ERR_CDP_USER_DATA_DIR_REQUIRED",
     );
+  });
+});
+
+describe("resolveDefaultUserDataDir", () => {
+  test("uses %LOCALAPPDATA%\\VFOS\\coccoc-cdp-profile when available", () => {
+    const deps = fakeDeps({
+      envGet: (k) => (k === "LOCALAPPDATA" ? "C:\\Users\\u\\AppData\\Local" : undefined),
+    });
+    assert.equal(
+      resolveDefaultUserDataDir(deps),
+      "C:\\Users\\u\\AppData\\Local\\VFOS\\coccoc-cdp-profile",
+    );
+  });
+
+  test("falls back to USERPROFILE\\.vfos when LOCALAPPDATA missing", () => {
+    const deps = fakeDeps({
+      envGet: (k) => (k === "USERPROFILE" ? "C:\\Users\\u" : undefined),
+    });
+    assert.equal(resolveDefaultUserDataDir(deps), "C:\\Users\\u\\.vfos\\coccoc-cdp-profile");
+  });
+
+  test("falls back to repo path when no home env is set", () => {
+    assert.equal(resolveDefaultUserDataDir(fakeDeps()), "production/_commerce/coccoc_cdp_profile");
   });
 });
 
@@ -280,6 +304,52 @@ describe("bootstrapBrowser — scenarios", () => {
         e instanceof CdpBootstrapError && e.reason_code === "ERR_CDP_USER_DATA_DIR_REQUIRED",
     );
     assert.equal(spawnCalled, false);
+  });
+
+  test("scenario 8: missing user-data-dir + use_default_user_data_dir → spawns with default profile", async () => {
+    let spawnCalled = false;
+    let spawnArgs: string[] = [];
+    let ensuredDir: string | null = null;
+    let probeCount = 0;
+    const deps = fakeDeps({
+      probePort: async () => {
+        probeCount++;
+        return probeCount > 1; // closed initially, open after first poll
+      },
+      isFile: (p) => p === "X:\\browser.exe",
+      fileExists: () => false, // no profile lock
+      ensureDir: (p) => {
+        ensuredDir = p;
+      },
+      envGet: (k) => (k === "LOCALAPPDATA" ? "C:\\Users\\u\\AppData\\Local" : undefined),
+      spawn: (_cmd, args) => {
+        spawnCalled = true;
+        spawnArgs = args;
+        return { unref: () => {} };
+      },
+      now: (() => {
+        let n = 0;
+        return () => (n += 100);
+      })(),
+    });
+    const r = await bootstrapBrowser(
+      {
+        browser_path_override: "X:\\browser.exe",
+        use_default_user_data_dir: true,
+        port_wait_timeout_ms: 5000,
+        port_poll_interval_ms: 100,
+      },
+      deps,
+    );
+    assert.equal(r.status, "launched");
+    assert.equal(r.user_data_dir, "C:\\Users\\u\\AppData\\Local\\VFOS\\coccoc-cdp-profile");
+    assert.equal(ensuredDir, "C:\\Users\\u\\AppData\\Local\\VFOS\\coccoc-cdp-profile");
+    assert.equal(spawnCalled, true);
+    assert.ok(
+      spawnArgs.some((a) =>
+        a === "--user-data-dir=C:\\Users\\u\\AppData\\Local\\VFOS\\coccoc-cdp-profile",
+      ),
+    );
   });
 });
 

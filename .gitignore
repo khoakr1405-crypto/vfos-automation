@@ -68,6 +68,10 @@ production/**/*.png
 # stays tracked as canonical product card references)
 production/_commerce/*.json
 
+# VFOS-dedicated Cốc Cốc CDP profile (repo-fallback location only; normally
+# lives under %LOCALAPPDATA%). Never commit a browser profile.
+production/_commerce/coccoc_cdp_profile/
+
 # VFOS production/archive runtime package output (production-packager.ts)
 production/archive/**
 

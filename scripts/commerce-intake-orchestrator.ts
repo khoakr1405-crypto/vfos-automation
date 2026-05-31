@@ -122,26 +122,41 @@ async function main() {
   // spawns a blank profile, never types credentials/OTP, never touches Chrome/Edge.
   console.log('\n[Intake] Step 0: Cốc Cốc CDP bootstrap (probe port 9222, auto-open if closed)...');
   try {
-    const boot = await bootstrapBrowser({ host: '127.0.0.1', port: 9222 });
+    // use_default_user_data_dir lets the bootstrap fall back to a VFOS-dedicated
+    // Cốc Cốc profile when VFOS_BROWSER_USER_DATA_DIR is unset, so the browser
+    // ALWAYS auto-opens — the operator never has to launch it by hand. It opens
+    // straight at the Shopee Affiliate offer page (bootstrap default start_url).
+    const boot = await bootstrapBrowser({
+      host: '127.0.0.1',
+      port: 9222,
+      use_default_user_data_dir: true,
+    });
     if (boot.status === 'launched') {
       console.log(
         `[Intake] Auto-opened Cốc Cốc (profile: ${boot.user_data_dir}) — waited ${boot.waited_ms_after_launch}ms for port.`,
+      );
+      console.log(
+        '[Intake] If this is the first run in the VFOS profile, sign in to Shopee Affiliate once in the opened window; the session persists for later runs.',
       );
     } else {
       console.log('[Intake] Cốc Cốc already running on port 9222 — attaching (no relaunch).');
     }
   } catch (err: any) {
+    // Only true environment faults reach here now (Cốc Cốc not installed, or the
+    // chosen profile is locked by another open window). The browser still does
+    // not require a manual debug-port launch in the normal case.
     const reason =
       err instanceof CdpBootstrapError ? `${err.reason_code}: ${err.message}` : err?.message;
-    console.warn(`[Intake] Cốc Cốc auto-open unavailable — ${reason}`);
-    console.warn('[Intake] Open Cốc Cốc manually with remote debugging enabled, then re-run:');
-    console.warn(
-      '  "C:\\Program Files\\CocCoc\\Browser\\Application\\browser.exe" --remote-debugging-port=9222',
-    );
-    console.warn('  Navigate to: https://affiliate.shopee.vn/offer/product_offer');
-    console.warn(
-      '  (Or set VFOS_BROWSER_USER_DATA_DIR to your logged-in Cốc Cốc profile to enable auto-open.)',
-    );
+    console.warn(`[Intake] Cốc Cốc auto-open could not complete — ${reason}`);
+    if (err instanceof CdpBootstrapError && err.reason_code === 'ERR_CDP_PROFILE_LOCKED') {
+      console.warn(
+        '[Intake] The VFOS profile is in use by an open Cốc Cốc window. Close that window and re-run — no manual debug launch needed.',
+      );
+    } else if (err instanceof CdpBootstrapError && err.reason_code === 'ERR_CDP_BROWSER_NOT_FOUND_ON_DISK') {
+      console.warn(
+        '[Intake] Install Cốc Cốc, or set VFOS_BROWSER_PATH to its browser.exe, then re-run. (Cốc Cốc only — never Chrome/Edge.)',
+      );
+    }
   }
 
   // ======================================================
@@ -166,23 +181,18 @@ async function main() {
 
   if (!preflightPassed) {
     console.warn('\n⚠️  [Intake] Preflight diagnostic check FAILED.');
-    console.warn('- Cốc Cốc is the ONLY supported browser for the Shopee Affiliate flow.');
-    console.warn(
-      '- Cốc Cốc CDP bootstrap is available: re-run `pnpm commerce:intake` (it auto-opens',
-    );
-    console.warn(
-      '  Cốc Cốc when VFOS_BROWSER_USER_DATA_DIR points at your logged-in profile), or open it manually:',
-    );
-    console.warn(
-      '  "C:\\Program Files\\CocCoc\\Browser\\Application\\browser.exe" --remote-debugging-port=9222',
-    );
-    console.warn('- Navigate Cốc Cốc to the active Shopee Affiliate Product Offer catalog:');
-    console.warn('  https://affiliate.shopee.vn/offer/product_offer');
-    console.warn('- Ensure no security block overlays (CAPTCHA or Login required) are present.');
+    console.warn('- Cốc Cốc was auto-opened on debug port 9222 (no manual launch needed).');
+    console.warn('- This usually means a one-time human step is pending IN THE OPEN WINDOW:');
+    console.warn('    • Sign in to Shopee Affiliate (first run in the VFOS profile), or');
+    console.warn('    • Clear a CAPTCHA / security verification overlay.');
+    console.warn('- Complete it in the already-open Cốc Cốc window, then simply re-run:');
+    console.warn('    pnpm commerce:intake');
+    console.warn('- Target page (the bootstrap opens it for you):');
+    console.warn('    https://affiliate.shopee.vn/offer/product_offer');
 
     intakeStatus.status = 'SUSPENDED';
     intakeStatus.recommendedNextAction =
-      'Please open the browser on debugging port 9222 and navigate to Shopee Product Offer page.';
+      'Cốc Cốc is already open on port 9222. Complete the one-time Shopee login / CAPTCHA in that window, then re-run pnpm commerce:intake.';
     writeFileSync(statusOutputPath, JSON.stringify(intakeStatus, null, 2), 'utf8');
     process.exit(0);
   }

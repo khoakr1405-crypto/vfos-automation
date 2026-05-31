@@ -58,12 +58,6 @@ import {
   waitForCaptchaResolution,
 } from '../src/cdp-bootstrap.js';
 import {
-  CdpBootstrapError,
-  bootstrapBrowser,
-  detectCaptchaGuard,
-  waitForCaptchaResolution,
-} from '../src/cdp-bootstrap.js';
-import {
   type ParsedCliArgs,
   classifyResolvedLink,
   extractShopidItemid,
@@ -513,6 +507,7 @@ async function main(): Promise<number> {
       host: cdpHost,
       port: cdpPort,
       no_auto_launch: cli.no_auto_launch,
+      use_default_user_data_dir: true,
       ...(cli.browser_path ? { browser_path_override: cli.browser_path } : {}),
       ...(cli.browser_user_data_dir ? { user_data_dir_override: cli.browser_user_data_dir } : {}),
       log_path: bootstrapLogPath,
