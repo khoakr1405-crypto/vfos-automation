@@ -268,18 +268,14 @@ async function main() {
   const qaReportPath = join(jobOutputDir, 'final_video_qa_report.json');
 
   if (dryRun) {
-    const dryRunReport = {
-      qaVersion: 'v1',
-      jobId,
-      status: 'DRY_RUN_PLAN_ONLY',
-      apiCalled: false,
-      generatedAt: new Date().toISOString(),
-      notes: 'Dry-run plan only. No STT API call. Pass --confirm-openai to execute.',
-    };
-    writeFileSync(qaReportPath, JSON.stringify(dryRunReport, null, 2) + '\n', 'utf8');
-    console.log('DRY-RUN plan complete. No API calls made.');
-    console.log(`Plan persisted: ${qaReportPath}`);
+    console.log('---- PLAN --------------------------------------------');
+    console.log(`OpenAI API call:  ${confirmOpenai ? 'Will be executed (Whisper STT)' : 'Skipped (needs --confirm-openai)'}`);
+    console.log(`Report path:      ${qaReportPath}`);
+    console.log(`Mutation:         None (dry-run mode)`);
+    console.log('------------------------------------------------------');
+    console.log('DRY-RUN plan complete. No files created/modified. No API calls made.');
     process.exit(0);
+    return;
   }
 
   // Handle immediate failures before STT
@@ -289,6 +285,7 @@ async function main() {
     saveManifest(manifest);
     updateRegistryFromManifest(manifest);
     process.exit(2);
+    return;
   }
 
   if (!audioStreamPresent) {
@@ -297,11 +294,13 @@ async function main() {
     saveManifest(manifest);
     updateRegistryFromManifest(manifest);
     process.exit(3);
+    return;
   }
 
   if (!scriptPresent || !scriptText) {
     console.error('🛑 MISSING_SCRIPT_ARTIFACT: script_artifact.json not found or empty.');
     process.exit(4);
+    return;
   }
 
   if (!confirmOpenai) {
@@ -309,6 +308,7 @@ async function main() {
     console.log('To run live STT QA, execute with:');
     console.log(`  pnpm job:qa --job ${jobId} --confirm-openai`);
     process.exit(0);
+    return;
   }
 
   loadDotEnv();
@@ -316,6 +316,7 @@ async function main() {
   if (!apiKey) {
     console.error('🛑 MISSING_OPENAI_CREDENTIALS');
     process.exit(1);
+    return;
   }
 
   // 1. Extract audio track from video to temp mp3 file using FFmpeg
