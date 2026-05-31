@@ -83,36 +83,37 @@ const TRACK_SPECS: Array<[number, string, string, string]> = [
     'upbeat_review',
     'cute marimba and glockenspiel, perky but soft, fun deal-announcement mood.',
   ],
-  // Nhóm 2 — Lo-fi Lifestyle / Shopping
+  // Nhóm 2 — Bright Chill Lifestyle / Shopping (regenerated Round 51B patch:
+  // operator rejected the original sleepy/sad lo-fi takes — steer brighter).
   [
     6,
-    'Lo-fi Coffee Review',
+    'Bright Chill Shopping',
     'lofi_lifestyle',
-    'warm lofi keys, soft vinyl crackle, relaxed coffee-shop tempo.',
+    'bright chill lifestyle shopping, light upbeat lo-fi pop, warm but NOT sleepy, clean drums, soft plucks and keys, gentle bounce, happy shopping energy; avoid sad, dark or lounge-cafe mood.',
   ],
   [
     7,
-    'Chill Home Shopping',
+    'Warm Home Review Pop',
     'lofi_lifestyle',
-    'mellow chill beat, soft pads, cozy home-browsing mood.',
+    'warm home review pop, light lo-fi with friendly groove, bright and cheerful, soft keys, gentle beat; not sleepy, not sad, not dark lounge.',
   ],
   [
     8,
-    'Soft Desk Setup',
+    'Soft Bounce Lifestyle',
     'lofi_lifestyle',
-    'soft rhodes keys, light brushed drums, calm desk-setup vibe.',
+    'soft bouncy lifestyle groove, light upbeat lo-fi, clean drums, playful plucks, warm and friendly; not sleepy, not melancholic.',
   ],
   [
     9,
-    'Cozy Product Finds',
+    'Friendly Product Flow',
     'lofi_lifestyle',
-    'cozy lofi guitar, gentle hum, intimate small-discovery feel.',
+    'friendly product flow, bright chill pop with light bounce, soft warm keys, easy positive energy; not sleepy, not dark, not sad.',
   ],
   [
     10,
-    'Gentle Lifestyle Beat',
+    'Clean Cozy Review Beat',
     'lofi_lifestyle',
-    'gentle laid-back beat, airy pads, slow relaxed lifestyle mood.',
+    'clean cozy review beat, warm lo-fi pop, gentle upbeat rhythm, bright and inviting; not sleepy, not lounge-sad.',
   ],
   // Nhóm 3 — Funky TikTok Review
   [
@@ -149,15 +150,15 @@ const TRACK_SPECS: Array<[number, string, string, string]> = [
   ],
   [
     17,
-    'Modern Gadget Flow',
+    'Bright Tech Review Pulse',
     'clean_tech',
-    'smooth modern synth flow, light plucks, sleek tech motion.',
+    'modern clean tech with friendly energy, bright light electronic pulse, crisp synth plucks, subtle groove, polished but not cold; not boring corporate, no aggressive EDM drop.',
   ],
   [
     18,
-    'Minimal Product Beat',
+    'Friendly Digital Product Beat',
     'clean_tech',
-    'minimal tidy beat, subtle bass, uncluttered tech backdrop.',
+    'friendly digital product beat, modern clean electronic, bright synths, light upbeat pulse, warm and polished; not cold, not corporate-stiff, no harsh drop.',
   ],
   [
     19,
@@ -260,6 +261,7 @@ async function main() {
     options: {
       'confirm-api-call': { type: 'boolean', default: false },
       limit: { type: 'string' },
+      only: { type: 'string' },
       'dry-run': { type: 'boolean', default: false },
     },
     strict: false,
@@ -267,6 +269,15 @@ async function main() {
 
   const confirm = Boolean(values['confirm-api-call']);
   const limit = values.limit ? Math.max(0, Number.parseInt(values.limit as string, 10)) : 0;
+  // --only bgm_006,bgm_007 → regenerate exactly those tracks (overwrite existing).
+  const onlySet = values.only
+    ? new Set(
+        (values.only as string)
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean),
+      )
+    : null;
 
   console.log('======================================================');
   console.log('🎵  VFOS BGM Candidate Generator (Round 51B)');
@@ -279,15 +290,27 @@ async function main() {
   const outDir = resolve(CANDIDATES_DIR);
   mkdirSync(outDir, { recursive: true });
 
-  // Only target tracks not already present as a candidate.
+  // Queue selection:
+  //   --only <ids>  → exactly those tracks, overwriting existing files (regenerate).
+  //   default       → tracks not yet present (fresh generation).
   const missing = TRACK_PLAN.filter((t) => !existsSync(join(outDir, t.fileName)));
-  let queue = missing;
+  let queue: TrackPlan[];
+  if (onlySet) {
+    queue = TRACK_PLAN.filter((t) => onlySet.has(t.trackId));
+    const unknown = [...onlySet].filter((id) => !TRACK_PLAN.some((t) => t.trackId === id));
+    if (unknown.length) console.log(`⚠️  Unknown trackIds ignored: ${unknown.join(', ')}`);
+  } else {
+    queue = missing;
+  }
   if (limit > 0) queue = queue.slice(0, limit);
   // Enforce the absolute hard cap defensively.
   queue = queue.slice(0, HARD_CAP);
 
   console.log(`Plan total:      ${TRACK_PLAN.length}`);
   console.log(`Already present: ${TRACK_PLAN.length - missing.length}`);
+  console.log(
+    `Mode:            ${onlySet ? `REGENERATE --only (${queue.length} track)` : 'fresh-missing'}`,
+  );
   console.log(`This run queue:  ${queue.length}${limit > 0 ? ` (limited to ${limit})` : ''}`);
   console.log('------------------------------------------------------');
 

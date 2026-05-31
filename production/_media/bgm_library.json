@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-05-31T07:23:05.183Z",
+  "updated_at": "2026-05-31T07:46:28.554Z",
   "entries": [
     {
       "id": "bgm_001",
@@ -74,7 +74,7 @@
     {
       "id": "bgm_006",
       "trackId": "bgm_006",
-      "title": "Lo-fi Coffee Review",
+      "title": "Bright Chill Shopping",
       "fileName": "bgm_006.mp3",
       "path": "production/fixtures/bgm/bgm_006.mp3",
       "mood": "lofi_lifestyle",
@@ -88,7 +88,7 @@
     {
       "id": "bgm_007",
       "trackId": "bgm_007",
-      "title": "Chill Home Shopping",
+      "title": "Warm Home Review Pop",
       "fileName": "bgm_007.mp3",
       "path": "production/fixtures/bgm/bgm_007.mp3",
       "mood": "lofi_lifestyle",
@@ -102,7 +102,7 @@
     {
       "id": "bgm_008",
       "trackId": "bgm_008",
-      "title": "Soft Desk Setup",
+      "title": "Soft Bounce Lifestyle",
       "fileName": "bgm_008.mp3",
       "path": "production/fixtures/bgm/bgm_008.mp3",
       "mood": "lofi_lifestyle",
@@ -116,7 +116,7 @@
     {
       "id": "bgm_009",
       "trackId": "bgm_009",
-      "title": "Cozy Product Finds",
+      "title": "Friendly Product Flow",
       "fileName": "bgm_009.mp3",
       "path": "production/fixtures/bgm/bgm_009.mp3",
       "mood": "lofi_lifestyle",
@@ -130,7 +130,7 @@
     {
       "id": "bgm_010",
       "trackId": "bgm_010",
-      "title": "Gentle Lifestyle Beat",
+      "title": "Clean Cozy Review Beat",
       "fileName": "bgm_010.mp3",
       "path": "production/fixtures/bgm/bgm_010.mp3",
       "mood": "lofi_lifestyle",
@@ -228,7 +228,7 @@
     {
       "id": "bgm_017",
       "trackId": "bgm_017",
-      "title": "Modern Gadget Flow",
+      "title": "Bright Tech Review Pulse",
       "fileName": "bgm_017.mp3",
       "path": "production/fixtures/bgm/bgm_017.mp3",
       "mood": "clean_tech",
@@ -242,7 +242,7 @@
     {
       "id": "bgm_018",
       "trackId": "bgm_018",
-      "title": "Minimal Product Beat",
+      "title": "Friendly Digital Product Beat",
       "fileName": "bgm_018.mp3",
       "path": "production/fixtures/bgm/bgm_018.mp3",
       "mood": "clean_tech",
