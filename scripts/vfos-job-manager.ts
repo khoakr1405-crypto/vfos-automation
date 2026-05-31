@@ -18,7 +18,7 @@
  *   data/temp/vfos_jobs_registry.json
  */
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { spawnSync } from 'node:child_process';
@@ -1164,7 +1164,7 @@ Generated at: ${now}
 }
 
 // ---------- script (Round 39/40) ----------
-function cmdScript(args: string[]): number {
+async function cmdScript(args: string[]): Promise<number> {
   const parsed = parseArgs({
     args,
     options: {
@@ -1373,41 +1373,93 @@ Hãy trả về duy nhất một đối tượng JSON có định dạng chính 
       return 0;
     }
 
+    const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+    const scriptErrorPath = resolve(JOBS_ROOT, jobId, 'script_generation_error.json');
+    const persistScriptError = (payload: Record<string, unknown>) => {
+      try {
+        mkdirSync(dirname(scriptErrorPath), { recursive: true });
+        // SECURITY: never include the API key or Authorization header in this artifact.
+        writeFileSync(
+          scriptErrorPath,
+          `${JSON.stringify({ jobId, runId: manifest.runId, generatedAt: isoNow(), ...payload }, null, 2)}\n`,
+          'utf8',
+        );
+        console.error(`  ↳ Exact error persisted to ${JOBS_ROOT}/${jobId}/script_generation_error.json`);
+      } catch (e: any) {
+        console.error(`  ↳ Failed to persist script error artifact: ${e.message}`);
+      }
+    };
+
     let validation: ValidationResult | null = null;
     let aiData: any = null;
-    const maxRetries = 2;
+    let lastErrorInfo: Record<string, unknown> | null = null;
+    const maxRetries = 3;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      console.log(`Calling OpenAI API (Attempt ${attempt}/${maxRetries})...`);
+      console.log(`Calling OpenAI API (gpt-4o-mini, in-process) — attempt ${attempt}/${maxRetries}...`);
       try {
-        const response = spawnSync('node', ['-e', `
-          fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer ' + process.env.OPENAI_API_KEY
-            },
-            body: JSON.stringify({
-              model: 'gpt-4o-mini',
-              response_format: { type: 'json_object' },
-              messages: [
-                { role: 'system', content: 'You are an AI assistant that only outputs JSON.' },
-                { role: 'user', content: ${JSON.stringify(prompt)} }
-              ],
-              temperature: 0.7
-            })
-          })
-          .then(r => r.json())
-          .then(d => console.log(JSON.stringify(d)))
-          .catch(e => console.error(e));
-        `], { env: { ...process.env, OPENAI_API_KEY: apiKey }, encoding: 'utf8' });
+        // In-process fetch (same pattern as job:vision) so the exact OpenAI
+        // error.message is never lost to a swallowed subprocess stderr.
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+            // Close the socket after response so the process can exit cleanly
+            // on Windows (avoids a libuv keep-alive handle assertion on exit).
+            Connection: 'close',
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            response_format: { type: 'json_object' },
+            messages: [
+              { role: 'system', content: 'You are an AI assistant that only outputs JSON.' },
+              { role: 'user', content: prompt },
+            ],
+            temperature: 0.7,
+          }),
+        });
 
-        if (response.status !== 0) {
-          throw new Error(`OpenAI process exited with code ${response.status}: ${response.stderr}`);
+        if (!response.ok) {
+          let errBody: any = null;
+          try {
+            errBody = await response.json();
+          } catch {
+            errBody = { raw: await response.text().catch(() => '') };
+          }
+          const apiMessage = errBody?.error?.message ?? JSON.stringify(errBody);
+          lastErrorInfo = {
+            errorCode: 'OPENAI_API_FAILURE',
+            phase: 'http_response',
+            httpStatus: response.status,
+            openaiErrorType: errBody?.error?.type ?? null,
+            openaiErrorCode: errBody?.error?.code ?? null,
+            openaiErrorMessage: apiMessage,
+            attempt,
+            model: 'gpt-4o-mini',
+          };
+          // Retry with exponential backoff on rate-limit / transient server errors.
+          if ((response.status === 429 || response.status >= 500) && attempt < maxRetries) {
+            const backoffMs = 1000 * 2 ** (attempt - 1);
+            console.warn(`⚠️  OpenAI HTTP ${response.status} (${errBody?.error?.code ?? 'transient'}); backoff ${backoffMs}ms then retry...`);
+            await sleep(backoffMs);
+            continue;
+          }
+          throw new Error(`OpenAI API error (HTTP ${response.status}): ${apiMessage}`);
         }
 
-        const resObj = JSON.parse(response.stdout.trim());
+        const resObj = await response.json();
         if (resObj.error) {
+          lastErrorInfo = {
+            errorCode: 'OPENAI_API_FAILURE',
+            phase: 'response_body',
+            httpStatus: response.status,
+            openaiErrorType: resObj.error.type ?? null,
+            openaiErrorCode: resObj.error.code ?? null,
+            openaiErrorMessage: resObj.error.message,
+            attempt,
+            model: 'gpt-4o-mini',
+          };
           throw new Error(`OpenAI API error: ${resObj.error.message}`);
         }
 
@@ -1431,21 +1483,38 @@ Hãy trả về duy nhất một đối tượng JSON có định dạng chính 
           productName,
           targetDurationSec: targetVoiceDurationSec,
           estimatedSpeechDurationSec,
-          visionAnalysis: visionArtifact
+          visionAnalysis: visionArtifact,
         });
 
         if (validation.passed) {
           console.log('🟢 AI script successfully generated and validation PASSED.');
+          lastErrorInfo = null;
           break;
         } else {
           console.warn(`⚠️  Validation failed on attempt ${attempt}:`);
           for (const err of validation.errors) {
             console.warn(`  - ${err}`);
           }
+          lastErrorInfo = {
+            errorCode: 'SCRIPT_QUALITY_VALIDATION_FAILED',
+            phase: 'validation',
+            validationErrors: validation.errors,
+            attempt,
+          };
         }
       } catch (err: any) {
         console.error(`Attempt ${attempt} failed: ${err.message}`);
+        if (!lastErrorInfo) {
+          lastErrorInfo = {
+            errorCode: 'OPENAI_API_FAILURE',
+            phase: 'exception',
+            openaiErrorMessage: err.message,
+            attempt,
+            model: 'gpt-4o-mini',
+          };
+        }
         if (attempt === maxRetries) {
+          persistScriptError(lastErrorInfo);
           console.error('🛑 OPENAI_API_FAILURE');
           return 6;
         }
@@ -1453,9 +1522,17 @@ Hãy trả về duy nhất một đối tượng JSON có định dạng chính 
     }
 
     if (!validation || !validation.passed) {
+      persistScriptError(lastErrorInfo ?? { errorCode: 'SCRIPT_QUALITY_VALIDATION_FAILED', phase: 'validation' });
       console.error('🛑 SCRIPT_QUALITY_VALIDATION_FAILED');
       console.error('Generated script failed all generation attempts.');
       return 7;
+    }
+
+    // Clear any stale error artifact from a previous failed run.
+    try {
+      if (existsSync(scriptErrorPath)) rmSync(scriptErrorPath);
+    } catch {
+      /* best-effort cleanup */
     }
 
     // Persist AI generated script version v3 (Round 42)
@@ -1601,7 +1678,7 @@ Hãy trả về duy nhất một đối tượng JSON có định dạng chính 
 }
 
 // ---------- entry ----------
-function main(): number {
+async function main(): Promise<number> {
   const argv = process.argv.slice(2);
   const sub = argv[0];
   const rest = argv.slice(1);
@@ -1612,7 +1689,7 @@ function main(): number {
     case 'attach-source':
       return cmdAttachSource(rest);
     case 'script':
-      return cmdScript(rest);
+      return await cmdScript(rest);
     case 'approve':
       return cmdApprove(rest);
     case 'reject':
@@ -1637,4 +1714,14 @@ function main(): number {
   }
 }
 
-process.exit(main());
+// Set exitCode and let the event loop drain naturally instead of forcing
+// process.exit(), which can race with in-flight async handle teardown on
+// Windows (libuv UV_HANDLE_CLOSING assertion) after an HTTP fetch.
+main()
+  .then((code) => {
+    process.exitCode = code;
+  })
+  .catch((err) => {
+    console.error(`Unhandled error: ${err?.message ?? err}`);
+    process.exitCode = 1;
+  });
