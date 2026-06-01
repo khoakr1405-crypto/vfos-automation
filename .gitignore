@@ -60,6 +60,7 @@ production/**/*.m4a
 production/**/*.wav
 production/**/*.webm
 production/**/*.mov
+production/**/*.mkv
 production/**/*.jpg
 production/**/*.jpeg
 production/**/*.png

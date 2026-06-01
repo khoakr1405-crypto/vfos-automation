@@ -20,9 +20,9 @@
  *
  * DEPRECATED flows (kept as FALLBACK per SKILL.md Round 26B audit policy,
  * NOT auto-triggered): storage_state login (`shopee:login`/`shopee:fetch`),
- * cookie-HTTP API (`shopee:fetch-cookie`/`shopee:fetch-products`), HAR
- * inspectors (`analyze-har`/`inspect-*`/`probe-product-offer`). Each legacy
- * script carries an in-file 🚫 DEPRECATED banner.
+ * cookie-HTTP API (`shopee:fetch-cookie`/`shopee:fetch-products`). Each legacy
+ * script carries an in-file 🚫 DEPRECATED banner. (HAR/probe debug inspectors
+ * removed in Round Cleanup B1 — superseded by CDP extract helpers.)
  *
  * Security (applies to ALL flows):
  *   - NO cookie/token/session data ever written to repo or stdout/stderr
