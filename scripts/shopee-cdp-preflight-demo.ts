@@ -69,7 +69,14 @@ async function main() {
     for (const ctx of contexts) {
       for (const p of ctx.pages()) {
         const url = p.url();
-        if (url.includes('affiliate.shopee.vn/offer/product_offer')) {
+        if (
+          url.includes('affiliate.shopee.vn') ||
+          url.includes('verify.shopee.vn') ||
+          url.includes('shopee.vn/verify') ||
+          url.includes('shopee.vn/security') ||
+          url.includes('buyer/login') ||
+          url.includes('shopee.vn/account/login')
+        ) {
           targetPage = p;
           break;
         }
@@ -206,6 +213,11 @@ async function main() {
         location.href.includes('/buyer/login') ||
         location.href.includes('/seller/login');
 
+      const onCaptchaUrl =
+        location.pathname.includes('/verify/captcha') ||
+        location.href.includes('/verify/captcha') ||
+        location.hostname.includes('verify.shopee.vn');
+
       // Payment / Tax banner — informational warning only, never a login block.
       const paymentTaxBanner =
         bodyText.includes('Thanh toán') ||
@@ -222,7 +234,7 @@ async function main() {
         selectedCounterPresent,
         searchBoxPresent,
         accountVisible,
-        hasCaptcha: hasCaptchaClass || containsCaptchaKeywords,
+        hasCaptcha: hasCaptchaClass || containsCaptchaKeywords || onCaptchaUrl,
         visibleLoginModal,
         visiblePasswordInput,
         onLoginUrl,

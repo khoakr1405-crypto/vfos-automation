@@ -300,49 +300,156 @@ async function inspectModalDetails(page: Page): Promise<any> {
 
 async function extractShortLinkFromModal(page: Page): Promise<string | null> {
   return page.evaluate(() => {
-    const SHOPEE_RE = /https?:\/\/(?:[a-zA-Z0-9-]+\.)*shopee\.vn\/[^\s'"]+/;
+    const SHOPEE_RE_G = /https?:\/\/(?:[a-zA-Z0-9-]+\.)*shopee\.vn\/[^\s'"]+/g;
+
+    const urls: string[] = [];
 
     // 1. Check all inputs and textareas
     const inputs = Array.from(
       document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input, textarea'),
     );
     for (const i of inputs) {
-      if (i.value && SHOPEE_RE.test(i.value)) {
-        const match = i.value.match(SHOPEE_RE);
-        if (match) return match[0];
+      if (i.value) {
+        const matches = i.value.match(SHOPEE_RE_G);
+        if (matches) {
+          for (const m of matches) {
+            const clean = m.trim().replace(/['"()]$/, '');
+            if (clean && !urls.includes(clean)) {
+              urls.push(clean);
+            }
+          }
+        }
       }
     }
 
     // 2. Check all links (anchor tags) inside any visible modal
-    const anchors = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href]'));
-    for (const a of anchors) {
-      if (a.href && SHOPEE_RE.test(a.href)) {
-        return a.href;
-      }
-    }
-
-    // 3. Search for any elements containing the text "shopee.vn" or "s.shopee.vn" inside the modal
-    const modalElements = Array.from(
+    const modalContainers = Array.from(
       document.querySelectorAll(
         '[class*="modal"], [class*="popup"], [class*="dialog"], [role="dialog"], .shopee-popup__container',
       ),
     );
-    for (const modal of modalElements) {
-      const text = modal.textContent || '';
-      const match = text.match(SHOPEE_RE);
-      if (match) {
-        return match[0];
+    for (const mc of modalContainers) {
+      const anchors = Array.from(mc.querySelectorAll<HTMLAnchorElement>('a[href]'));
+      for (const a of anchors) {
+        if (a.href) {
+          const matches = a.href.match(SHOPEE_RE_G);
+          if (matches) {
+            for (const m of matches) {
+              const clean = m.trim().replace(/['"()]$/, '');
+              if (clean && !urls.includes(clean)) {
+                urls.push(clean);
+              }
+            }
+          }
+        }
       }
     }
 
-    // 4. Fallback: Search the entire body for a Shopee link
-    const bodyText = document.body ? document.body.textContent || '' : '';
-    const bodyMatch = bodyText.match(SHOPEE_RE);
-    if (bodyMatch) {
-      return bodyMatch[0];
+    // Fallback: Check all anchors on the page
+    const allAnchors = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href]'));
+    for (const a of allAnchors) {
+      if (a.href) {
+        const matches = a.href.match(SHOPEE_RE_G);
+        if (matches) {
+          for (const m of matches) {
+            const clean = m.trim().replace(/['"()]$/, '');
+            if (clean && !urls.includes(clean)) {
+              urls.push(clean);
+            }
+          }
+        }
+      }
     }
 
-    return null;
+    // 3. Search text content of modal elements
+    for (const mc of modalContainers) {
+      const txt = mc.textContent || '';
+      const matches = txt.match(SHOPEE_RE_G);
+      if (matches) {
+        for (const m of matches) {
+          const clean = m.trim().replace(/['"()]$/, '');
+          if (clean && !urls.includes(clean)) {
+            urls.push(clean);
+          }
+        }
+      }
+    }
+
+    // 4. Fallback: Search the entire body text
+    if (document.body) {
+      const txt = document.body.textContent || '';
+      const matches = txt.match(SHOPEE_RE_G);
+      if (matches) {
+        for (const m of matches) {
+          const clean = m.trim().replace(/['"()]$/, '');
+          if (clean && !urls.includes(clean)) {
+            urls.push(clean);
+          }
+        }
+      }
+    }
+
+    if (urls.length === 0) return null;
+
+    // Pre-calculate scores and sort inline using Bubble Sort to be 100% immune to __name
+    const urlScores: { url: string; score: number }[] = [];
+    for (const urlStr of urls) {
+      let score = 0;
+      try {
+        const u = new URL(urlStr);
+        if (u.hostname === 'help.shopee.vn' || u.hostname.startsWith('help.')) {
+          score = -100;
+        } else if (u.hostname === 'partner.shopee.vn' || u.hostname.startsWith('partner.')) {
+          score = -90;
+        } else {
+          if (u.hostname === 's.shopee.vn') {
+            score += 1000;
+          }
+          if (
+            u.searchParams.has('utm_source') &&
+            /^an_\d+$/.test(u.searchParams.get('utm_source') || '')
+          ) {
+            score += 500;
+          }
+          if (
+            u.searchParams.has('mmp_pid') &&
+            /^an_\d+$/.test(u.searchParams.get('mmp_pid') || '')
+          ) {
+            score += 500;
+          }
+          if (u.hostname === 'shopee.vn' || u.hostname.endsWith('.shopee.vn')) {
+            if (u.pathname.includes('/opaanlp/') || u.pathname.includes('/universal-link/')) {
+              score += 200;
+            } else if (u.pathname.includes('-i.') || u.pathname.includes('/product/')) {
+              score += 100;
+            } else {
+              score += 50;
+            }
+          }
+        }
+      } catch {
+        if (urlStr.includes('s.shopee.vn')) {
+          score += 1000;
+        }
+        if (urlStr.includes('utm_source=an_') || urlStr.includes('mmp_pid=an_')) {
+          score += 500;
+        }
+      }
+      urlScores.push({ url: urlStr, score });
+    }
+
+    // Bubble sort descending
+    for (let i = 0; i < urlScores.length - 1; i++) {
+      for (let j = 0; j < urlScores.length - 1 - i; j++) {
+        if (urlScores[j].score < urlScores[j + 1].score) {
+          const temp = urlScores[j];
+          urlScores[j] = urlScores[j + 1];
+          urlScores[j + 1] = temp;
+        }
+      }
+    }
+
+    return urlScores[0] ? urlScores[0].url : null;
   });
 }
 
@@ -571,11 +678,11 @@ async function main(): Promise<number> {
     for (const p of ctx.pages()) {
       const url = p.url();
       if (
-        url.includes("affiliate.shopee.vn") ||
-        url.includes("verify.shopee.vn") ||
-        url.includes("shopee.vn/security") ||
-        url.includes("buyer/login") ||
-        url.includes("shopee.vn/account/login")
+        url.includes('affiliate.shopee.vn') ||
+        url.includes('verify.shopee.vn') ||
+        url.includes('shopee.vn/security') ||
+        url.includes('buyer/login') ||
+        url.includes('shopee.vn/account/login')
       ) {
         page = p;
         break;
@@ -622,9 +729,11 @@ async function main(): Promise<number> {
   }
 
   // Ensure page navigates to target offer catalog page if not there yet
-  if (!page.url().includes("offer/product_offer")) {
-    process.stdout.write("  [CDP] Navigating tab to active Shopee Affiliate Product Offer catalog...\n");
-    await page.goto("https://affiliate.shopee.vn/offer/product_offer");
+  if (!page.url().includes('offer/product_offer')) {
+    process.stdout.write(
+      '  [CDP] Navigating tab to active Shopee Affiliate Product Offer catalog...\n',
+    );
+    await page.goto('https://affiliate.shopee.vn/offer/product_offer');
     await page.waitForTimeout(3000);
   }
   process.stdout.write('\n');
@@ -798,17 +907,19 @@ async function main(): Promise<number> {
     const outcome = classifyResolvedLink(canonical, cli.expected_owner);
     process.stdout.write(`  validation: ${outcome.kind} — ${outcome.notes}\n`);
 
-    if (outcome.kind === 'REJECT') {
+    if (outcome.kind !== 'ACCEPT') {
+      const reasonCode =
+        outcome.kind === 'REJECT' ? outcome.reason_code : 'ERR_AFFILIATE_OWNER_MISMATCH';
       if (cli.dry_run) {
-        process.stdout.write(`  [dry-run] would appendRejected ${outcome.reason_code}\n`);
+        process.stdout.write(`  [dry-run] would appendRejected ${reasonCode}\n`);
       } else {
         await appendRejected(registryConfig, {
           short_link: shortLink,
           canonical_url: canonical,
-          reason_code: outcome.reason_code,
+          reason_code: reasonCode,
           notes: outcome.notes,
         });
-        process.stdout.write(`  appendRejected (${outcome.reason_code})\n`);
+        process.stdout.write(`  appendRejected (${reasonCode})\n`);
       }
       continue;
     }
