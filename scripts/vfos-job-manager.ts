@@ -782,6 +782,28 @@ function cmdStatus(args: string[]): number {
   if (manifest.safety) {
     console.log(`Safety Lock:       Uploaded: ${manifest.safety.uploaded ? '✅' : '❌'} | Published: ${manifest.safety.published ? '✅' : '❌'} | API Called: ${manifest.safety.facebookApiCalled ? '✅' : '❌'}`);
   }
+  
+  console.log('------------------------------------------------------');
+  console.log('💡  RECOMMENDED NEXT ACTION:');
+  if (manifest.state === 'WAITING_FOR_SOURCE_VIDEO') {
+    console.log(`  1. Drop a video file into: data/operator/video-downloads/`);
+    console.log(`  2. Check the inbox:        pnpm job:source-inbox --job ${jobId}`);
+    console.log(`  3. Run review:             pnpm job:run-review --job ${jobId} --file "<video>.mp4" --confirm-ai`);
+  } else if (manifest.state === 'READY_TO_RENDER') {
+    console.log(`  Run review pipeline:       pnpm job:run-review --job ${jobId} --file "${basename(manifest.source.sourceVideoPath || '')}" --confirm-ai`);
+  } else if (manifest.state === 'READY_FOR_OPERATOR_REVIEW') {
+    console.log(`  1. Open and review:        start "" "data\\temp\\jobs\\${jobId}\\preview_with_captions_v2.mp4"`);
+    console.log(`  2. Approve it:             pnpm job:approve --job ${jobId} --notes "Operator reviewed and approved."`);
+    console.log(`  3. Or reject it:           pnpm job:reject --job ${jobId} --notes "<reason>"`);
+  } else if (manifest.state === 'APPROVED') {
+    console.log(`  Package the video:         pnpm job:package --job ${jobId}`);
+  } else if (manifest.state === 'PACKAGED') {
+    console.log(`  Review publish pack:       production/archive/${jobId}/publish_readiness_report.md`);
+    console.log(`  Manual operators can now upload and publish.`);
+  } else {
+    console.log(`  No specific recommendation for state: ${manifest.state}`);
+  }
+  console.log('======================================================');
   return 0;
 }
 
@@ -1252,6 +1274,140 @@ Generated at: ${now}
   console.log(`   Manifest: ${packageManifestRel}`);
   console.log(`   Zip:      ${zipCreated ? zipRel : '(skipped / not created)'}`);
   console.log('   State → PACKAGED. No publish, no upload, no API. Manual submission required.');
+  return 0;
+}
+
+// ---------- run-review (Round 53) ----------
+async function cmdRunReview(args: string[]): Promise<number> {
+  const parsed = parseArgs({
+    args,
+    options: {
+      job: { type: 'string' },
+      file: { type: 'string' },
+      'confirm-ai': { type: 'boolean', default: false },
+      'confirm-openai': { type: 'boolean', default: false },
+      'confirm-elevenlabs': { type: 'boolean', default: false },
+      'dry-run': { type: 'boolean', default: false },
+    },
+    allowPositionals: false,
+    strict: true,
+  });
+
+  const jobId = parsed.values.job as string | undefined;
+  const file = parsed.values.file as string | undefined;
+  const confirmAi = Boolean(parsed.values['confirm-ai']);
+  const confirmOpenai = Boolean(parsed.values['confirm-openai']) || confirmAi;
+  const confirmElevenlabs = Boolean(parsed.values['confirm-elevenlabs']) || confirmAi;
+  const dryRun = Boolean(parsed.values['dry-run']);
+
+  if (!jobId) {
+    console.error('Error: --job <jobId> is required');
+    return 1;
+  }
+
+  const manifest = loadManifest(jobId);
+  if (!manifest) {
+    console.error(`🛑 UNKNOWN_JOB: ${jobId}`);
+    return 2;
+  }
+
+  if (!file) {
+    console.error('Error: --file <video> is required');
+    return 3;
+  }
+
+  // 1. Resolve file path: accept full path or check operator video inbox
+  let sourcePath = resolve(file);
+  if (!existsSync(sourcePath)) {
+    const inboxCandidate = resolve(OPERATOR_VIDEO_INBOX, file);
+    if (existsSync(inboxCandidate)) {
+      sourcePath = inboxCandidate;
+    } else {
+      console.error(`🛑 MISSING_SOURCE_VIDEO: ${file}`);
+      console.error(`  Not found as a path, nor in ${OPERATOR_VIDEO_INBOX}/`);
+      return 3;
+    }
+  }
+
+  const ext = extname(sourcePath).toLowerCase();
+  if (!VALID_VIDEO_EXTS.has(ext)) {
+    console.error(`🛑 UNSUPPORTED_VIDEO_EXT: ${ext} (allowed: ${[...VALID_VIDEO_EXTS].join(', ')})`);
+    return 4;
+  }
+
+  let sizeBytes = 0;
+  try {
+    sizeBytes = statSync(sourcePath).size;
+  } catch {
+    sizeBytes = 0;
+  }
+
+  const destPath = resolve(JOBS_ROOT, jobId, `source_video${ext}`);
+  const destRel = `${JOBS_ROOT}/${jobId}/source_video${ext}`;
+
+  console.log('======================================================');
+  console.log(`📎  VFOS Job Manager — run-review  ${dryRun ? '🔍 DRY-RUN' : '⚡ EXECUTE'}`);
+  console.log('======================================================');
+  console.log(`Job ID:            ${jobId}`);
+  console.log(`Source file:       ${file}`);
+  console.log(`Resolved path:     ${sourcePath}`);
+  console.log(`Size:              ${sizeBytes} bytes`);
+  console.log(`Destination:       ${destRel}`);
+  console.log(`New state:         READY_TO_RENDER`);
+  console.log('------------------------------------------------------');
+
+  if (dryRun) {
+    console.log('Dry-run: would attach source video and launch pipeline.');
+  } else {
+    // 2. Attach source video into job
+    copyFileSync(sourcePath, destPath);
+    manifest.source.sourceVideoPath = destRel;
+    manifest.state = 'READY_TO_RENDER';
+    saveManifest(manifest);
+
+    const reg = loadRegistry();
+    const productCardRaw = JSON.parse(readFileSync(resolve(manifest.source.productCardPath), 'utf8')) as Record<
+      string,
+      unknown
+    >;
+    upsertRegistryEntry(reg, entryFromManifest(manifest, extractProductName(productCardRaw)));
+    saveRegistry(reg);
+    console.log(`✅ Source attached. State → READY_TO_RENDER`);
+  }
+
+  // 3. Verify job state is READY_TO_RENDER
+  if (!dryRun && manifest.state !== 'READY_TO_RENDER') {
+    console.error(`🛑 INVALID_STATE: expected READY_TO_RENDER, got ${manifest.state}`);
+    return 5;
+  }
+
+  // 4. Run unified pipeline
+  console.log('\n[Orchestrator] Running unified review video generation pipeline...');
+  const reviewArgs = ['--job', jobId];
+  if (confirmOpenai) reviewArgs.push('--confirm-openai');
+  if (confirmElevenlabs) reviewArgs.push('--confirm-elevenlabs');
+  if (dryRun) reviewArgs.push('--dry-run');
+
+  const reviewRes = spawnSync('npx', ['tsx', 'scripts/review-video-orchestrator.ts', ...reviewArgs], {
+    shell: true,
+    stdio: 'inherit',
+  });
+
+  const reviewExit = reviewRes.status ?? 1;
+  if (reviewExit !== 0) {
+    console.error(`❌ [Orchestrator] Pipeline execution failed with exit code ${reviewExit}.`);
+    return reviewExit;
+  }
+
+  if (!dryRun) {
+    console.log('\n======================================================');
+    console.log('🎉 UNIFIED REVIEW VIDEO GENERATION COMPLETED');
+    console.log('======================================================');
+    console.log(`Output:      data/temp/jobs/${jobId}/preview_with_captions_v2.mp4`);
+    console.log(`To open:     start "" "data\\temp\\jobs\\${jobId}\\preview_with_captions_v2.mp4"`);
+    console.log('======================================================');
+  }
+
   return 0;
 }
 
@@ -1782,6 +1938,8 @@ async function main(): Promise<number> {
       return cmdAttachSource(rest);
     case 'source-inbox':
       return cmdSourceInbox(rest);
+    case 'run-review':
+      return await cmdRunReview(rest);
     case 'script':
       return await cmdScript(rest);
     case 'approve':
@@ -1799,6 +1957,7 @@ async function main(): Promise<number> {
       console.error('  pnpm job:create        --from-product <path> [--dry-run]');
       console.error('  pnpm job:attach-source --job <jobId> [--file <path|inbox-filename>] [--dry-run]');
       console.error('  pnpm job:source-inbox  [--job <jobId>]');
+      console.error('  pnpm job:run-review    --job <jobId> --file <path|inbox-filename> [--confirm-ai]');
       console.error('  pnpm job:script        --job <jobId> [--dry-run]');
       console.error('  pnpm job:approve       --job <jobId> [--notes "..."] [--dry-run]');
       console.error('  pnpm job:reject        --job <jobId> --notes "..." [--dry-run]');

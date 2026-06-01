@@ -27,6 +27,7 @@ const options = {
   'dry-run': { type: 'boolean' as const, default: false },
   'confirm-targeted-click': { type: 'boolean' as const, default: false },
   'run-review': { type: 'boolean' as const, default: false },
+  'create-job': { type: 'boolean' as const, default: false },
   output: { type: 'string' as const },
 };
 
@@ -375,17 +376,69 @@ async function main() {
     'Run pnpm chay to generate review preview after operator verifies the product card.';
   writeFileSync(statusOutputPath, JSON.stringify(intakeStatus, null, 2), 'utf8');
 
+  let jobCreated = false;
+  let newJobId = '';
+
+  const createJob = !!values['create-job'];
+  if (createJob) {
+    console.log('\n[Intake] --create-job option is active. Spawning job creation...');
+    const createRes = spawnSync(
+      'npx',
+      ['tsx', 'scripts/vfos-job-manager.ts', 'create', '--from-product', cardPath],
+      { shell: true, stdio: 'inherit' },
+    );
+    if (createRes.status === 0) {
+      jobCreated = true;
+      const regPath = resolve('data/temp/vfos_jobs_registry.json');
+      if (existsSync(regPath)) {
+        try {
+          const reg = JSON.parse(readFileSync(regPath, 'utf8'));
+          if (Array.isArray(reg.jobs) && reg.jobs.length > 0) {
+            const sorted = [...reg.jobs].sort((a, b) =>
+              String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')),
+            );
+            newJobId = sorted[0].jobId;
+          }
+        } catch {}
+      }
+    } else {
+      console.error('❌ [Intake] Job creation failed.');
+    }
+  }
+
   // Load and display card summary for operator convenience
   try {
     const cardObj = JSON.parse(readFileSync(cardPath, 'utf8'));
-    console.log('------------------------------------------------------');
-    console.log('🎉 SUCCESS: SHOPEE PRODUCT INTAKE COMPLETED');
-    console.log(`- Product Name:      ${cardObj.name}`);
-    console.log(`- Short Link:        ${cardObj.shortLink}`);
-    console.log(`- Resolved Owner ID: ${cardObj.affiliateOwnerId} (VERIFIED MATCH ✅)`);
-    console.log(`- Output Card Path:  ${cardPath}`);
-    console.log(`- Audit Status Path: ${auditStatusPath}`);
-    console.log('------------------------------------------------------');
+    if (jobCreated && newJobId) {
+      console.log('======================================================');
+      console.log('🎉 SUCCESS: SHOPEE PRODUCT INTAKE + JOB CREATION COMPLETED');
+      console.log('======================================================');
+      console.log(`- Product Name:      ${cardObj.name}`);
+      console.log(`- Score:             ${cardObj.score || 'N/A'}`);
+      console.log(`- Commission:        ${cardObj.commissionRate || cardObj.commission || 'N/A'}`);
+      console.log(`- Short Link:        ${cardObj.shortLink || 'N/A'}`);
+      console.log(`- Resolved Owner ID: ${cardObj.affiliateOwnerId} (VERIFIED MATCH ✅)`);
+      console.log(`- Job ID:            ${newJobId}`);
+      console.log(`- Job Folder:        data/temp/jobs/${newJobId}/`);
+      console.log(`- Video Inbox Path:  data/operator/video-downloads/`);
+      console.log('------------------------------------------------------');
+      console.log('✅ Product Card ready.');
+      console.log(`✅ Job created: ${newJobId}`);
+      console.log('State: WAITING_FOR_SOURCE_VIDEO\n');
+      console.log('Drop source video into:\n  data/operator/video-downloads/\n');
+      console.log('Then run:');
+      console.log(`  pnpm job:run-review --job ${newJobId} --file "<video>.mp4" --confirm-ai`);
+      console.log('======================================================');
+    } else {
+      console.log('------------------------------------------------------');
+      console.log('🎉 SUCCESS: SHOPEE PRODUCT INTAKE COMPLETED');
+      console.log(`- Product Name:      ${cardObj.name}`);
+      console.log(`- Short Link:        ${cardObj.shortLink}`);
+      console.log(`- Resolved Owner ID: ${cardObj.affiliateOwnerId} (VERIFIED MATCH ✅)`);
+      console.log(`- Output Card Path:  ${cardPath}`);
+      console.log(`- Audit Status Path: ${auditStatusPath}`);
+      console.log('------------------------------------------------------');
+    }
   } catch {}
 
   // ======================================================

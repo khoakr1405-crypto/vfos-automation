@@ -69,6 +69,7 @@
     "commerce:intake": "tsx scripts/commerce-intake-orchestrator.ts",
     "vfos:daily": "tsx scripts/vfos-daily-dashboard.ts",
     "vfos:sync-check": "tsx scripts/vfos-git-sync-guard.ts",
+    "job:run-review": "tsx scripts/vfos-job-manager.ts run-review",
     "job:create": "tsx scripts/vfos-job-manager.ts create",
     "job:status": "tsx scripts/vfos-job-manager.ts status",
     "job:attach-source": "tsx scripts/vfos-job-manager.ts attach-source",
