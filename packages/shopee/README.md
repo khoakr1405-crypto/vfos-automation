@@ -28,16 +28,17 @@ Affiliate owner bắt buộc: `an_17376660568`. Mọi link mismatch → fail saf
 
 ## DEPRECATED flows — kept as FALLBACK (Round 26B audit policy)
 
+> Quarantined to the `debug:*` namespace at workspace root (Round Cleanup D1)
+> so they no longer sit next to the official `commerce:intake` flow. Files are
+> kept as documented fallback; run only when CDP is unavailable + Operator explicit.
+
 | Script / Command | Loại | Trạng thái |
 |---|---|---|
-| `pnpm shopee:login` (`scripts/login-session.ts`) | storage_state login | DEPRECATED — chỉ khi CDP không khả dụng + Operator explicit |
-| `pnpm shopee:fetch` (`scripts/fetch-offers.ts`) | storage_state fetch | DEPRECATED — same |
-| `pnpm shopee:fetch-cookie` (`scripts/fetch-offers-cookie.ts`) | cookie HTTP API | DEPRECATED — same |
-| `pnpm shopee:fetch-products` (`scripts/fetch-products-cookie.ts`) | cookie HTTP API | DEPRECATED — same |
-| `scripts/analyze-har.ts` | HAR endpoint discovery | DEPRECATED REFERENCE-ONLY |
-| `scripts/inspect-long-links.ts` | HAR inspection | DEPRECATED REFERENCE-ONLY |
-| `scripts/inspect-product-item.ts` | HAR inspection | DEPRECATED REFERENCE-ONLY |
-| `scripts/probe-product-offer.ts` | cookie endpoint probe | DEPRECATED REFERENCE-ONLY |
+| `pnpm debug:shopee:login` (`scripts/login-session.ts`) | storage_state login | DEPRECATED — chỉ khi CDP không khả dụng + Operator explicit |
+| `pnpm debug:shopee:fetch` (`scripts/fetch-offers.ts`) | storage_state fetch | DEPRECATED — same |
+| `pnpm debug:shopee:fetch-cookie` (`scripts/fetch-offers-cookie.ts`) | cookie HTTP API | DEPRECATED — same |
+| `pnpm debug:shopee:fetch-products` (`scripts/fetch-products-cookie.ts`) | cookie HTTP API | DEPRECATED — same |
+| `pnpm debug:shopee:select` (`scripts/select-products.ts`) | offline product select | DEPRECATED — same |
 
 KHÔNG auto-trigger từ `/chay` hoặc `commerce:intake`. Mỗi file có in-file 🚫 banner.
 
@@ -53,10 +54,10 @@ KHÔNG auto-trigger từ `/chay` hoặc `commerce:intake`. Mỗi file có in-fil
 | [src/cdp-bootstrap.ts](src/cdp-bootstrap.ts) | CDP boot | bootstrapBrowser, captcha guards (Round 27B) |
 | [src/index.ts](src/index.ts) | Re-exports | Public API |
 | [scripts/extract-links-cdp.ts](scripts/extract-links-cdp.ts) | `pnpm shopee:extract-links-cdp` | **ACTIVE** — CDP single-link extractor |
-| [scripts/login-session.ts](scripts/login-session.ts) | `pnpm shopee:login` | 🚫 DEPRECATED (fallback) |
-| [scripts/fetch-offers.ts](scripts/fetch-offers.ts) | `pnpm shopee:fetch` | 🚫 DEPRECATED (fallback) |
-| [scripts/fetch-offers-cookie.ts](scripts/fetch-offers-cookie.ts) | `pnpm shopee:fetch-cookie` | 🚫 DEPRECATED (fallback) |
-| [scripts/fetch-products-cookie.ts](scripts/fetch-products-cookie.ts) | `pnpm shopee:fetch-products` | 🚫 DEPRECATED (fallback) |
+| [scripts/login-session.ts](scripts/login-session.ts) | `pnpm debug:shopee:login` | 🚫 DEPRECATED (fallback) |
+| [scripts/fetch-offers.ts](scripts/fetch-offers.ts) | `pnpm debug:shopee:fetch` | 🚫 DEPRECATED (fallback) |
+| [scripts/fetch-offers-cookie.ts](scripts/fetch-offers-cookie.ts) | `pnpm debug:shopee:fetch-cookie` | 🚫 DEPRECATED (fallback) |
+| [scripts/fetch-products-cookie.ts](scripts/fetch-products-cookie.ts) | `pnpm debug:shopee:fetch-products` | 🚫 DEPRECATED (fallback) |
 
 ---
 
