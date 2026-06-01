@@ -15,7 +15,7 @@ pnpm commerce:intake --confirm-targeted-click # extractor chạy thật, target_
 
 Orchestrator spawn chuỗi:
 - `pnpm shopee:preflight` — `scripts/shopee-cdp-preflight-demo.ts` (CDP probe port 9222)
-- `pnpm shopee:extractor` — `scripts/shopee-link-extractor-demo.ts` (targeted click, owner audit)
+- `packages/shopee/scripts/extract-links-cdp.ts` — extractor chính thức (targeted click, owner audit)
 - `pnpm shopee:builder` — `scripts/shopee-product-card-builder.ts` (normalize product card)
 - `pnpm shopee:audit` — `scripts/shopee-link-audit-demo.ts` (compliance gate)
 
