@@ -3,7 +3,8 @@
  *
  * Subcommands:
  *   pnpm job:create        --from-product <path> [--dry-run]
- *   pnpm job:attach-source --job <jobId> --file <path> [--dry-run]
+ *   pnpm job:attach-source --job <jobId> [--file <path|inbox-filename>] [--dry-run]
+ *   pnpm job:source-inbox  [--job <jobId>]   (list videos in the operator inbox)
  *   pnpm job:status        --job <jobId>
  *   pnpm job:list
  *
@@ -27,7 +28,60 @@ import { loadDotEnv } from '../packages/voice/src/load-env.js';
 const JOBS_ROOT = 'data/temp/jobs';
 const REGISTRY_PATH = 'data/temp/vfos_jobs_registry.json';
 
+// Default local-only inbox where the Operator drops downloaded/selected source
+// videos. The whole `data/` tree is gitignored, so videos here never commit.
+const OPERATOR_VIDEO_INBOX = 'data/operator/video-downloads';
+
 const VALID_VIDEO_EXTS = new Set(['.mp4', '.mov', '.webm', '.m4v']);
+
+/** Ensure the operator video inbox exists; returns its absolute path. */
+function ensureOperatorInbox(): string {
+  const abs = resolve(OPERATOR_VIDEO_INBOX);
+  mkdirSync(abs, { recursive: true });
+  return abs;
+}
+
+/** List video files currently in the operator inbox (sorted, newest first). */
+function listInboxVideos(): { name: string; sizeBytes: number; mtimeMs: number }[] {
+  const abs = ensureOperatorInbox();
+  let names: string[] = [];
+  try {
+    names = readdirSync(abs);
+  } catch {
+    return [];
+  }
+  const vids: { name: string; sizeBytes: number; mtimeMs: number }[] = [];
+  for (const name of names) {
+    if (!VALID_VIDEO_EXTS.has(extname(name).toLowerCase())) continue;
+    try {
+      const st = statSync(join(abs, name));
+      if (st.isFile()) vids.push({ name, sizeBytes: st.size, mtimeMs: st.mtimeMs });
+    } catch {
+      /* skip unreadable entries */
+    }
+  }
+  return vids.sort((a, b) => b.mtimeMs - a.mtimeMs);
+}
+
+/** Print the inbox contents + how to attach. Never auto-attaches. */
+function printInboxListing(jobId?: string): void {
+  const vids = listInboxVideos();
+  console.log(`Operator video inbox: ${OPERATOR_VIDEO_INBOX}/`);
+  if (vids.length === 0) {
+    console.log('  (empty) — drop a .mp4/.mov/.webm/.m4v file here, then re-run.');
+    return;
+  }
+  console.log(`  ${vids.length} video(s) found:`);
+  for (let i = 0; i < vids.length; i++) {
+    const v = vids[i];
+    console.log(`   [${i + 1}] ${v.name}  (${(v.sizeBytes / 1_000_000).toFixed(2)} MB)`);
+  }
+  const j = jobId ?? '<jobId>';
+  console.log('\nAttach the one you want (Operator chooses — never auto-attached):');
+  for (const v of vids) {
+    console.log(`  pnpm job:attach-source --job ${j} --file "${v.name}"`);
+  }
+}
 
 type JobState =
   | 'CREATED'
@@ -536,7 +590,10 @@ function cmdCreate(args: string[]): number {
   console.log(`Registry:          ${REGISTRY_PATH}`);
   console.log('');
   console.log('Next step (Operator):');
-  console.log(`  pnpm job:attach-source --job ${jobId} --file "C:\\path\\to\\source-video.mp4"`);
+  console.log(`  1. Drop the source video into: ${OPERATOR_VIDEO_INBOX}/`);
+  console.log(`  2. List it:    pnpm job:source-inbox`);
+  console.log(`  3. Attach it:  pnpm job:attach-source --job ${jobId} --file "<filename>.mp4"`);
+  console.log(`     (a full path also works: --file "C:\\path\\to\\source-video.mp4")`);
   return 0;
 }
 
@@ -560,21 +617,39 @@ function cmdAttachSource(args: string[]): number {
     console.error('Error: --job <jobId> is required');
     return 1;
   }
-  if (!filePath) {
-    console.error('Error: --file <path> is required');
-    return 1;
-  }
-
   const manifest = loadManifest(jobId);
   if (!manifest) {
     console.error(`🛑 UNKNOWN_JOB: ${jobId}`);
     return 2;
   }
 
-  const sourcePath = resolve(filePath);
+  // No --file: show the operator inbox so the Operator can pick one. We never
+  // auto-attach (even with a single file) — the choice stays with the Operator.
+  if (!filePath) {
+    console.log('======================================================');
+    console.log('📎  VFOS Job Manager — attach-source (no --file given)');
+    console.log('======================================================');
+    console.log(`Job ID:            ${jobId}`);
+    console.log('------------------------------------------------------');
+    printInboxListing(jobId);
+    return 0;
+  }
+
+  // Resolve the file: accept an absolute/relative path as-is, otherwise fall
+  // back to a bare filename inside the operator video inbox (the default place
+  // the Operator drops downloaded source videos).
+  let sourcePath = resolve(filePath);
   if (!existsSync(sourcePath)) {
-    console.error(`🛑 MISSING_SOURCE_VIDEO: ${filePath}`);
-    return 3;
+    const inboxCandidate = resolve(OPERATOR_VIDEO_INBOX, filePath);
+    if (existsSync(inboxCandidate)) {
+      sourcePath = inboxCandidate;
+    } else {
+      console.error(`🛑 MISSING_SOURCE_VIDEO: ${filePath}`);
+      console.error(`  Not found as a path, nor in ${OPERATOR_VIDEO_INBOX}/`);
+      console.error('------------------------------------------------------');
+      printInboxListing(jobId);
+      return 3;
+    }
   }
 
   const ext = extname(sourcePath).toLowerCase();
@@ -622,6 +697,23 @@ function cmdAttachSource(args: string[]): number {
   saveRegistry(reg);
 
   console.log(`✅ Source attached. State → READY_TO_RENDER`);
+  return 0;
+}
+
+// ---------- source-inbox ----------
+function cmdSourceInbox(args: string[]): number {
+  const parsed = parseArgs({
+    args,
+    options: { job: { type: 'string' } },
+    allowPositionals: false,
+    strict: true,
+  });
+  const jobId = parsed.values.job as string | undefined;
+
+  console.log('======================================================');
+  console.log('🎞️  VFOS Operator Video Source Inbox');
+  console.log('======================================================');
+  printInboxListing(jobId);
   return 0;
 }
 
@@ -1688,6 +1780,8 @@ async function main(): Promise<number> {
       return cmdCreate(rest);
     case 'attach-source':
       return cmdAttachSource(rest);
+    case 'source-inbox':
+      return cmdSourceInbox(rest);
     case 'script':
       return await cmdScript(rest);
     case 'approve':
@@ -1703,7 +1797,8 @@ async function main(): Promise<number> {
     default:
       console.error('Usage:');
       console.error('  pnpm job:create        --from-product <path> [--dry-run]');
-      console.error('  pnpm job:attach-source --job <jobId> --file <path> [--dry-run]');
+      console.error('  pnpm job:attach-source --job <jobId> [--file <path|inbox-filename>] [--dry-run]');
+      console.error('  pnpm job:source-inbox  [--job <jobId>]');
       console.error('  pnpm job:script        --job <jobId> [--dry-run]');
       console.error('  pnpm job:approve       --job <jobId> [--notes "..."] [--dry-run]');
       console.error('  pnpm job:reject        --job <jobId> --notes "..." [--dry-run]');
