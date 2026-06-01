@@ -5,6 +5,9 @@
 > **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `9921431` (HEAD local — `feat: add production reel archive packager`; ahead origin 1, chưa push)
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task → luôn chạy `pnpm vfos:daily` để có chỉ dẫn trạng thái mới nhất
 
+> ⚠️ **ĐƯỜNG VẬN HÀNH CHÍNH THỨC**: dùng `docs/00_DIEU_HANH/HUONG_DAN_VAN_HANH_CHINH_THUC_VFOS.md` (operator guide chuẩn, flow A-Z `commerce:intake` → `job:run-review` → `job:publish-facebook`).
+> Mọi lệnh `publish:facebook` (run-based), `shopee:login` / `shopee:fetch` / `shopee:fetch-cookie` / `shopee:select`, `pipeline:pN-demo` xuất hiện trong các round-log bên dưới là **legacy historical reference** (đã gỡ/đổi `debug:shopee:*` qua chuỗi Cleanup B1/C/C2/D1). KHÔNG dùng làm đường chính.
+
 ---
 
 ## 1. Mục tiêu lớn của VFOS
