@@ -109,8 +109,11 @@ async function main() {
       `[CDPPreflight] Found active Shopee target tab: "${targetPage.url().slice(0, 70)}..."`,
     );
 
-    // Perform read-only evaluations of target DOM structure
-    const diagnostics = await targetPage.evaluate(() => {
+    // Perform read-only DOM diagnostics. The Product Offer catalog hydrates
+    // client-side, so an immediate evaluate can catch an empty shell mid-load
+    // and false-block. We poll this (below) up to ~15s until the catalog is
+    // recognised or a real obstacle appears. Read-only — no clicks/mutations.
+    const evaluateDiagnostics = () => targetPage.evaluate(() => {
       // NOTE: no named helper functions inside evaluate — esbuild (tsx) injects a
       // `__name(...)` wrapper for named/const-assigned functions which is undefined
       // in the serialized browser context. Visibility is checked inline below.
@@ -227,29 +230,46 @@ async function main() {
       };
     });
 
-    // An authenticated, accessible catalog must never be treated as a login
-    // wall. Recognise it from ANY strong signal set — including the English UI
-    // where the per-card "Get Link" leaf buttons and the avatar selector are
-    // missed: the "Batch Get Link" button together with product cards / the
-    // "N / M selected" counter, or the Product Offer heading + search box, are
-    // sufficient on their own.
-    const catalogChrome =
-      diagnostics.productOfferHeading ||
-      diagnostics.selectedCounterPresent ||
-      diagnostics.searchBoxPresent;
-    const authenticatedCatalog =
-      diagnostics.getLinkButtonCount > 0 ||
-      (diagnostics.batchGetLinkPresent &&
-        (diagnostics.productCardCount > 0 || diagnostics.selectedCounterPresent)) ||
-      (diagnostics.productCardCount > 0 && (diagnostics.accountVisible || catalogChrome)) ||
-      (diagnostics.batchGetLinkPresent && catalogChrome);
+    // Poll the diagnostics until the catalog hydrates or a real obstacle shows.
+    //
+    // authenticatedCatalog: an accessible catalog must never be treated as a
+    // login wall. Recognise it from ANY strong signal set — including the
+    // English UI where per-card "Get Link" leaf buttons and the avatar selector
+    // are missed: the "Batch Get Link" button + product cards / the
+    // "N / M selected" counter, or the Product Offer heading + search box.
+    //
+    // hardLoginWall: a real login page / visible password field always blocks
+    // and is never overridden; a soft/stray login-modal selector only blocks
+    // when the catalog is otherwise inaccessible.
+    let diagnostics = await evaluateDiagnostics();
+    let catalogChrome = false;
+    let authenticatedCatalog = false;
+    let hardLoginWall = false;
+    let loginRequired = false;
+    const hydrationDeadlineMs = Date.now() + 15_000;
+    while (true) {
+      catalogChrome =
+        diagnostics.productOfferHeading ||
+        diagnostics.selectedCounterPresent ||
+        diagnostics.searchBoxPresent;
+      authenticatedCatalog =
+        diagnostics.getLinkButtonCount > 0 ||
+        (diagnostics.batchGetLinkPresent &&
+          (diagnostics.productCardCount > 0 || diagnostics.selectedCounterPresent)) ||
+        (diagnostics.productCardCount > 0 && (diagnostics.accountVisible || catalogChrome)) ||
+        (diagnostics.batchGetLinkPresent && catalogChrome);
+      hardLoginWall = diagnostics.visiblePasswordInput || diagnostics.onLoginUrl;
+      loginRequired =
+        hardLoginWall || (diagnostics.visibleLoginModal && !authenticatedCatalog);
 
-    // A hard login wall (real login page or a visible password field) always
-    // blocks and is never overridden. A soft/stray login-modal selector only
-    // blocks when the catalog is otherwise inaccessible.
-    const hardLoginWall = diagnostics.visiblePasswordInput || diagnostics.onLoginUrl;
-    const loginRequired =
-      hardLoginWall || (diagnostics.visibleLoginModal && !authenticatedCatalog);
+      // Decision reached once the catalog is recognised OR a real obstacle
+      // (CAPTCHA / login wall) is present — otherwise wait for SPA hydration.
+      const decided = authenticatedCatalog || diagnostics.hasCaptcha || loginRequired;
+      if (decided || Date.now() >= hydrationDeadlineMs) break;
+      console.log('[CDPPreflight] Catalog not hydrated yet — waiting for SPA render…');
+      await new Promise((r) => setTimeout(r, 1000));
+      diagnostics = await evaluateDiagnostics();
+    }
 
     // Pass when the catalog is accessible and no CAPTCHA / login wall blocks it.
     // The per-card "Get link" leaf button is no longer mandatory.
