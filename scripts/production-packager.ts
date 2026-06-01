@@ -68,8 +68,9 @@ function main() {
   const publishStatusPath = 'data/temp/facebook_publish_status.json';
   if (!existsSync(publishStatusPath)) {
     console.error(`🔴 ERROR: facebook_publish_status.json not found at ${publishStatusPath}.`);
-    console.error('Please run the preflight publish validation command first:');
-    console.error(`  pnpm publish:facebook --confirm-final-approval --run ${runId}`);
+    console.error('Please run the job-based preflight publish validation first.');
+    console.error('Locate the jobId via "pnpm job:dashboard" / "pnpm job:status", then run:');
+    console.error('  pnpm job:publish-facebook --job <jobId> --dry-run');
     process.exit(1);
   }
 

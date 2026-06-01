@@ -290,11 +290,11 @@ async function main() {
     if (facebookPublishStatusState === 'READY_FOR_MANUAL_PUBLISH_SUBMISSION') {
       publishAction = '🟢 Preflight publish report ready and verified. Open facebook_publish_report.md to review.';
     } else if (facebookPublishStatusState === 'BLOCKED_PENDING_OPERATOR_APPROVAL') {
-      publishAction = `👉 Review pack ready! After manual inspection, run: pnpm publish:facebook --confirm-final-approval --run ${runId}`;
+      publishAction = '👉 Review pack ready! Run-based publish is deprecated — locate the jobId via "pnpm job:dashboard" / "pnpm job:status", then run: pnpm job:publish-facebook --job <jobId> --dry-run';
     } else if (facebookPublishStatusState === 'NOT_READY_FOR_PUBLISHING') {
       publishAction = '❌ Unified publishing validation failed. Resolve missing readiness fields.';
     } else {
-      publishAction = `👉 Review pack ready! After manual inspection, run: pnpm publish:facebook --confirm-final-approval --run ${runId}`;
+      publishAction = '👉 Review pack ready! Run-based publish is deprecated — locate the jobId via "pnpm job:dashboard" / "pnpm job:status", then run: pnpm job:publish-facebook --job <jobId> --dry-run';
     }
   }
 
@@ -320,7 +320,7 @@ async function main() {
     if (facebookPublishStatusState === 'READY_FOR_MANUAL_PUBLISH_SUBMISSION') {
       mainAdvice = 'Preflight publish report ready and verified. Open facebook_publish_report.md to review.';
     } else {
-      mainAdvice = `Inspect latest video run in operator_review_pack.md. When ready, run: pnpm publish:facebook --confirm-final-approval --run ${runId}`;
+      mainAdvice = 'Inspect latest video run in operator_review_pack.md. Run-based publish is deprecated — locate the jobId via "pnpm job:dashboard" / "pnpm job:status", then run: pnpm job:publish-facebook --job <jobId> --dry-run';
     }
   }
 
@@ -438,9 +438,9 @@ async function main() {
     recommendedWhy = 'Shopee Product Card is audited and ready! Run localized preview generator pipeline to build review package.';
     expectedResult = 'Audio, script, and preview video rendering completed inside active run directory.';
   } else if (reviewPackStatus === 'READY_FOR_FINAL_OPERATOR_APPROVAL') {
-    recommendedNextCommand = `pnpm publish:facebook --confirm-final-approval --run ${runId}`;
-    recommendedWhy = 'Consolidated operator review pack is fully generated. After manually inspecting preview video, trigger final publishing request.';
-    expectedResult = 'Secure dry-run publish manifest built and queued for production deployment.';
+    recommendedNextCommand = 'pnpm job:publish-facebook --job <jobId> --dry-run';
+    recommendedWhy = 'Consolidated operator review pack is fully generated. Run-based publish is deprecated — locate the jobId via "pnpm job:dashboard" / "pnpm job:status" after manually inspecting the preview, then trigger the job-based publish readiness (dry-run). Live publish requires explicit --confirm-live-publish.';
+    expectedResult = 'Job-based dry-run publish readiness report built; no live upload performed.';
   }
 
   // Override with sync checks when critical git warning or blocking staged artifacts exist
@@ -492,7 +492,7 @@ async function main() {
 3. Confirm that Shopee Affiliate link registry offline audit successfully passes.
 4. Trigger the review video and preview renderer pipeline (\`pnpm chay --offline\`).
 5. Open \`operator_review_pack.md\` to manually review the generated reel kịch bản, hashtag, and video preview.
-6. Once manually approved, trigger the publish dry-run (\`pnpm publish:facebook --confirm-final-approval\`).
+6. Once manually approved, locate the jobId via \`pnpm job:dashboard\` / \`pnpm job:status\`, then trigger the publish dry-run (\`pnpm job:publish-facebook --job <jobId> --dry-run\`). Live publish requires an explicit \`--confirm-live-publish\`.
 
 ## 5. Strict Operational Boundaries
 - Do not share \`.env\`, tokens, cookies, sessions, or browser storage.
@@ -511,7 +511,7 @@ async function main() {
 - \`pnpm chay\` — Pipeline review run
 - \`pnpm chay --offline\` — Pipeline review offline execution
 - \`pnpm status -- --offline\` — Pipeline dashboard run status checks
-- \`pnpm publish:facebook --confirm-final-approval --run <runId>\` — Operator publish execution
+- \`pnpm job:publish-facebook --job <jobId> --dry-run\` — Operator publish readiness (live upload needs explicit \`--confirm-live-publish\`)
 
 ## 7. Artifact Paths
 - **vfos_daily_status.json**: \`${resolve(statusOutputPath)}\`
