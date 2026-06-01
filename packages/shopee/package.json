@@ -21,6 +21,8 @@
     "shopee:fetch": "tsx scripts/fetch-offers.ts",
     "shopee:fetch-cookie": "tsx scripts/fetch-offers-cookie.ts",
     "shopee:extract-links-cdp": "tsx scripts/extract-links-cdp.ts",
+    "debug:shopee:picks": "tsx scripts/debug/load-picks.ts",
+    "debug:shopee:test-single-cdp": "tsx scripts/debug/test-single-link-cdp.ts",
     "test": "tsx --test tests/*.test.ts"
   },
   "devDependencies": {
