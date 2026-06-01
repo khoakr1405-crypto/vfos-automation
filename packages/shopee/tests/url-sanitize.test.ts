@@ -1,0 +1,71 @@
+import { test, describe } from "node:test";
+import assert from "node:assert/strict";
+
+import {
+  containsSensitiveParams,
+  isSensitiveParamName,
+  maskUrlForLog,
+  sanitizeShopeeCanonicalUrl,
+} from "../src/url-sanitize.ts";
+
+const OWNER = "an_17376660568";
+const RAW = `https://shopee.vn/opaanlp/1562527322/29487996439?__mobile__=1&credential_token=SECRETVALUE&exp_group=rollout&gads_t_sig=SIGVALUE&mmp_pid=${OWNER}&uls_trackid=abc&utm_campaign=c&utm_content=x&utm_medium=affiliates&utm_source=${OWNER}&utm_term=t`;
+
+describe("isSensitiveParamName", () => {
+  test("flags credential/session/signature names", () => {
+    for (const n of ["credential_token", "gads_t_sig", "session_id", "auth", "cookie", "x_signature", "otp"]) {
+      assert.equal(isSensitiveParamName(n), true, `${n} should be sensitive`);
+    }
+  });
+  test("keeps public tracking names", () => {
+    for (const n of ["utm_source", "utm_medium", "mmp_pid", "exp_group", "__mobile__", "uls_trackid"]) {
+      assert.equal(isSensitiveParamName(n), false, `${n} should be public`);
+    }
+  });
+});
+
+describe("sanitizeShopeeCanonicalUrl", () => {
+  test("strips credential_token + gads_t_sig, keeps tracking + owner", () => {
+    const { cleanUrl, strippedParams, keptParams } = sanitizeShopeeCanonicalUrl(RAW);
+    assert.deepEqual(strippedParams.sort(), ["credential_token", "gads_t_sig"]);
+    assert.ok(!cleanUrl.includes("SECRETVALUE"));
+    assert.ok(!cleanUrl.includes("SIGVALUE"));
+    assert.ok(!cleanUrl.includes("credential_token"));
+    assert.ok(cleanUrl.includes(OWNER)); // utm_source / mmp_pid survive
+    assert.ok(keptParams.includes("utm_source"));
+    assert.ok(keptParams.includes("mmp_pid"));
+  });
+
+  test("is idempotent and yields a clean URL", () => {
+    const once = sanitizeShopeeCanonicalUrl(RAW).cleanUrl;
+    const twice = sanitizeShopeeCanonicalUrl(once);
+    assert.equal(twice.cleanUrl, once);
+    assert.equal(twice.strippedParams.length, 0);
+    assert.equal(containsSensitiveParams(once), false);
+  });
+
+  test("non-URL input returns unchanged with empty lists", () => {
+    const r = sanitizeShopeeCanonicalUrl("not a url");
+    assert.equal(r.cleanUrl, "not a url");
+    assert.deepEqual(r.strippedParams, []);
+  });
+});
+
+describe("containsSensitiveParams", () => {
+  test("true for raw, false for sanitized", () => {
+    assert.equal(containsSensitiveParams(RAW), true);
+    assert.equal(containsSensitiveParams(sanitizeShopeeCanonicalUrl(RAW).cleanUrl), false);
+  });
+  test("does not flag a path segment that merely contains 'token'", () => {
+    assert.equal(containsSensitiveParams("https://shopee.vn/token-store/1/2?utm_source=" + OWNER), false);
+  });
+});
+
+describe("maskUrlForLog", () => {
+  test("keeps host+path, replaces query with param names only", () => {
+    const masked = maskUrlForLog(RAW);
+    assert.ok(masked.startsWith("https://shopee.vn/opaanlp/1562527322/29487996439?{"));
+    assert.ok(!masked.includes("SECRETVALUE"));
+    assert.ok(masked.includes("credential_token")); // name only, no value
+  });
+});

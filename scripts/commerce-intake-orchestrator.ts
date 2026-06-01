@@ -18,6 +18,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { CdpBootstrapError, bootstrapBrowser } from '../packages/shopee/src/cdp-bootstrap.js';
+import { sanitizeShopeeCanonicalUrl } from '../packages/shopee/src/url-sanitize.js';
 
 const AFFILIATE_OWNER_ID = 'an_17376660568';
 const LINK_REGISTRY_PATH = 'production/_commerce/shopee_link_registry.json';
@@ -261,6 +262,12 @@ async function main() {
         `\n❌  [Intake] Extracted link owner mismatch — expected ${AFFILIATE_OWNER_ID}, got ${entry?.affiliate_owner_id ?? '(none)'}.`,
       );
     } else {
+      // Sanitize the canonical deep-link before persisting: strip
+      // credential/session/signature params (credential_token, gads_t_sig, …)
+      // and keep only public affiliate tracking. No raw credentials in artifacts.
+      const { cleanUrl: canonicalCleanUrl, strippedParams } = sanitizeShopeeCanonicalUrl(
+        entry.canonical_url,
+      );
       writeFileSync(
         extractorStatusPath,
         JSON.stringify(
@@ -270,7 +277,9 @@ async function main() {
             shopid: entry.shopid,
             itemid: entry.itemid,
             shortLink: entry.short_link,
-            canonicalUrl: entry.canonical_url,
+            canonicalUrl: canonicalCleanUrl,
+            canonicalCleanUrl,
+            canonicalStrippedParams: strippedParams,
             affiliateOwnerId: entry.affiliate_owner_id,
             ownerVerified: true,
             score: (entry as any).score || 'unknown',

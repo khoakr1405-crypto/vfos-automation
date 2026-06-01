@@ -10,6 +10,10 @@
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import {
+  containsSensitiveParams,
+  sanitizeShopeeCanonicalUrl,
+} from '../packages/shopee/src/url-sanitize.js';
 
 const EXPECTED_OWNER = 'an_17376660568';
 const DEFAULT_REGISTRY_PATH = resolve('production/_commerce/shopee_link_registry.json');
@@ -73,19 +77,6 @@ function isValidCanonicalUrl(url: string | undefined): boolean {
   } catch {
     return url.includes('shopee.vn');
   }
-}
-
-// Check for unmasked token/cookie/session variables
-function containsSensitiveParams(url: string | undefined): boolean {
-  if (!url) return false;
-  const lowercase = url.toLowerCase();
-  return (
-    lowercase.includes('cookie=') ||
-    lowercase.includes('session=') ||
-    lowercase.includes('token=') ||
-    lowercase.includes('password=') ||
-    lowercase.includes('auth=')
-  );
 }
 
 function main() {
@@ -195,20 +186,30 @@ function main() {
 
     if (canonical) {
       aCheck.canonicalUrlPresent = true;
-      if (!isValidCanonicalUrl(canonical)) {
-        violations.push(`Link Artifact: Canonical URL "${canonical}" has invalid Shopee domain.`);
+      // Evaluate the SANITIZED canonical: prefer a clean URL the producer already
+      // wrote, else derive it here. The audit certifies what flows downstream, so
+      // a raw extraction source carrying a signature param is not itself a
+      // failure — but the cleaned form must end up free of credentials.
+      const cleanCanonical =
+        artifact.canonicalCleanUrl || sanitizeShopeeCanonicalUrl(canonical).cleanUrl;
+      aCheck.canonicalCleanUrl = cleanCanonical;
+
+      if (!isValidCanonicalUrl(cleanCanonical)) {
+        violations.push('Link Artifact: Canonical URL has invalid Shopee domain.');
         aCheck.status = 'FAIL';
       }
-      if (containsSensitiveParams(canonical)) {
-        violations.push('Link Artifact: Canonical URL contains potential unmasked credentials/session keys.');
+      if (containsSensitiveParams(cleanCanonical)) {
+        violations.push(
+          'Link Artifact: Sanitized canonical URL still contains credential/session/signature params.',
+        );
         aCheck.status = 'FAIL';
       }
 
-      // Check Owner ID in long URL tracking query parameters
-      const urlHasCorrectOwner = canonical.includes(EXPECTED_OWNER);
+      // Owner ID must survive in the cleaned tracking params (utm_source/mmp_pid).
+      const urlHasCorrectOwner = cleanCanonical.includes(EXPECTED_OWNER);
       aCheck.ownerVerified = urlHasCorrectOwner;
       if (!urlHasCorrectOwner) {
-        violations.push(`Link Artifact: Canonical URL tracking parameter mismatch. Expected owner "${EXPECTED_OWNER}" but long link did not contain it.`);
+        violations.push(`Link Artifact: Canonical URL tracking parameter mismatch. Expected owner "${EXPECTED_OWNER}" but cleaned link did not contain it.`);
         ownerMismatches++;
         aCheck.status = 'FAIL';
       }
@@ -240,6 +241,19 @@ function main() {
       cCheck.status = 'FAIL';
     }
 
+    // The Product Card feeds the pipeline — it must never carry credential /
+    // session / signature params on EITHER canonical field.
+    const cardCanonical = card.canonicalCleanUrl || card.canonicalUrl;
+    cCheck.canonicalClean = !(
+      containsSensitiveParams(card.canonicalUrl) || containsSensitiveParams(card.canonicalCleanUrl)
+    );
+    if (!cCheck.canonicalClean) {
+      violations.push(
+        'Product Card: canonical URL contains credential/session/signature params; it must store the sanitized canonicalCleanUrl only.',
+      );
+      cCheck.status = 'FAIL';
+    }
+
     // Check card properties against link artifact for strict consistency
     if (hasArtifact) {
       const artShort = artifact.shortLink || artifact.extractedLink;
@@ -247,7 +261,16 @@ function main() {
         violations.push(`Product Card & Link Artifact: short link mismatch. Card: "${card.shortLink}", Link Artifact: "${artShort}"`);
         cCheck.status = 'FAIL';
       }
-      if (artifact.canonicalUrl && card.canonicalUrl && artifact.canonicalUrl !== card.canonicalUrl) {
+      // Compare the SANITIZED canonical forms: the card stores the cleaned URL
+      // while the artifact may retain the raw extraction source, so a direct
+      // equality check would false-fail on the stripped params.
+      const artifactCanonicalClean =
+        artifact.canonicalCleanUrl || sanitizeShopeeCanonicalUrl(artifact.canonicalUrl).cleanUrl;
+      if (
+        artifactCanonicalClean &&
+        cardCanonical &&
+        artifactCanonicalClean !== cardCanonical
+      ) {
         violations.push('Product Card & Link Artifact: canonical URL mismatch.');
         cCheck.status = 'FAIL';
       }

@@ -12,6 +12,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import { maskUrlForLog, sanitizeShopeeCanonicalUrl } from '../packages/shopee/src/url-sanitize.js';
 
 const EXPECTED_OWNER = 'an_17376660568';
 const REGISTRY_PATH = resolve('production/_commerce/shopee_link_registry.json');
@@ -63,6 +64,20 @@ async function main() {
 
   console.log(`[CardBuilder] Raw inputs validated! Product: "${productName}"`);
 
+  // Sanitize the canonical deep-link: strip credential/session/signature query
+  // params (credential_token, gads_t_sig, …) while keeping the public affiliate
+  // tracking (utm_source/mmp_pid carry the owner). The Product Card only ever
+  // stores the cleaned URL — never the raw credential-bearing link.
+  const { cleanUrl: canonicalCleanUrl, strippedParams } = sanitizeShopeeCanonicalUrl(
+    rawArtifact.canonicalCleanUrl || canonicalUrl,
+  );
+  if (strippedParams.length > 0) {
+    console.log(
+      `[CardBuilder] Stripped ${strippedParams.length} sensitive canonical param(s): ${strippedParams.join(', ')}`,
+    );
+  }
+  console.log(`[CardBuilder] Canonical (masked): ${maskUrlForLog(canonicalCleanUrl)}`);
+
   // Step 4: Construct standard normalized Selected Product Card schema
   const productCard = {
     id: itemid || 'unknown_item',
@@ -70,7 +85,11 @@ async function main() {
     shopId: shopid || 'unknown_shop',
     itemId: itemid || 'unknown_item',
     shortLink: shortLink || '',
-    canonicalUrl: canonicalUrl || '',
+    canonicalUrl: canonicalCleanUrl,
+    canonicalCleanUrl,
+    // NOTE: the names of stripped params are intentionally NOT stored on the
+    // card (kept only in logs + the link artifact) so the pipeline-facing card
+    // never contains a credential-shaped string.
     affiliateOwnerId: EXPECTED_OWNER,
     source: 'shopee_affiliate_cdp',
     validationStatus: 'VERIFIED',
@@ -105,7 +124,7 @@ async function main() {
             shopid,
             itemid,
             short_link: shortLink,
-            canonical_url: canonicalUrl,
+            canonical_url: canonicalCleanUrl,
             affiliate_owner_id: EXPECTED_OWNER,
             affiliate_link_status: 'VERIFIED_FROM_LONG_LINK',
             source: 'cdp_browser_targeted_click',
