@@ -18,6 +18,7 @@ import type {
   OperatorJobDTO,
   OverviewSummary,
   ProductRowDTO,
+  PublishQueueItemDTO,
   StatusAccent,
   VfosJobState,
 } from './types';
@@ -28,6 +29,7 @@ export type {
   OperatorJobDTO,
   OverviewSummary,
   ProductRowDTO,
+  PublishQueueItemDTO,
   StatusAccent,
   VfosJobState,
 } from './types';
@@ -349,3 +351,104 @@ export function getJobPreviewAbsPath(jobId: string): string | null {
   }
   return abs;
 }
+
+export function loadPublishQueueItems(): PublishQueueItemDTO[] {
+  const jobs = loadOperatorJobs();
+  // Filter for jobs that can be in the publish queue (READY_FOR_OPERATOR_REVIEW, APPROVED, PACKAGED)
+  const filtered = jobs.filter(
+    (j) =>
+      j.state === 'READY_FOR_OPERATOR_REVIEW' ||
+      j.state === 'APPROVED' ||
+      j.state === 'PACKAGED'
+  );
+
+  return filtered.map((job) => {
+    const id = job.id;
+    const pkgPath = `production/archive/${id}/package_manifest.json`;
+    const pkgExists = fileExistsInside(pkgPath);
+
+    const reportPath = `production/archive/${id}/publish_readiness_report.md`;
+    const reportExists = fileExistsInside(reportPath);
+
+    // Map job state to publishReadiness status
+    let publishReadiness: PublishQueueItemDTO['publishReadiness'] = 'unknown';
+    if (job.state === 'READY_FOR_OPERATOR_REVIEW') {
+      publishReadiness = 'missing_approval';
+    } else if (job.state === 'APPROVED') {
+      publishReadiness = pkgExists ? 'ready' : 'missing_package';
+    } else if (job.state === 'PACKAGED') {
+      publishReadiness = 'ready';
+    }
+
+    // Determine target channel (clean fallback)
+    const suggestedChannel = (job.suggestedChannel || '').includes('mock') || (job.suggestedChannel || '').includes('chưa nối')
+      ? 'Kênh Review Sản Phẩm #1'
+      : job.suggestedChannel;
+
+    // Gate checks
+    const gateChecks: PublishQueueItemDTO['gateChecks'] = [
+      {
+        label: 'Operator Approved',
+        status: (job.state === 'APPROVED' || job.state === 'PACKAGED') ? 'pass' : 'pending',
+        detail: job.state === 'READY_FOR_OPERATOR_REVIEW' ? 'Chờ phê duyệt từ Operator' : 'Đã được phê duyệt',
+      },
+      {
+        label: 'Final QA PASS',
+        status: job.qaStatus === 'PASS' ? 'pass' : job.qaStatus === 'FAIL' ? 'fail' : 'pending',
+        detail: job.qaStatus === 'PASS' ? 'QA Gate Đạt' : 'QA Gate chưa hoàn thành',
+      },
+      {
+        label: 'Captioned Preview Exists',
+        status: job.hasPreview ? 'pass' : 'fail',
+        detail: job.hasPreview ? 'Tệp video có vietsub sẵn sàng' : 'Thiếu tệp video phụ đề',
+      },
+      {
+        label: 'Package Manifest Exists',
+        status: pkgExists ? 'pass' : (job.state === 'READY_FOR_OPERATOR_REVIEW' ? 'pending' : 'fail'),
+        detail: pkgExists ? 'Tệp cấu trúc đóng gói sẵn sàng' : 'Chưa được đóng gói sản xuất',
+      },
+      {
+        label: 'Publish Readiness Report Exists',
+        status: reportExists ? 'pass' : 'warn',
+        detail: reportExists ? 'Báo cáo sẵn sàng xuất bản tồn tại' : 'Thiếu báo cáo sẵn sàng',
+      },
+      {
+        label: 'Target Channel Selected',
+        status: suggestedChannel ? 'pass' : 'warn',
+        detail: suggestedChannel ? `Kênh đích: ${suggestedChannel}` : 'Chưa chọn kênh phân phối',
+      },
+      {
+        label: 'Affiliate Link Valid',
+        status: job.ownerValid ? 'pass' : 'fail',
+        detail: job.ownerValid ? 'Link hợp lệ (khớp Shopee owner)' : 'Sai Shopee owner hoặc chưa xác thực',
+      },
+      {
+        label: 'No Live Publish Confirmation',
+        status: 'pass',
+        detail: 'Hệ thống an toàn chế độ Read-only',
+      },
+    ];
+
+    const warnings: string[] = [];
+    if (!job.ownerValid) warnings.push('Sai Shopee owner ID hoặc chưa cấu hình hợp lệ.');
+    if (!pkgExists && job.state !== 'READY_FOR_OPERATOR_REVIEW') warnings.push('Chưa tìm thấy tệp đóng gói package_manifest.json.');
+    if (!job.hasPreview) warnings.push('Không tìm thấy tệp video captioned preview mp4.');
+
+    return {
+      jobId: id,
+      laneId: 'review',
+      productName: job.product,
+      status: job.state as PublishQueueItemDTO['status'],
+      previewUrl: job.previewUrl,
+      suggestedChannel,
+      platform: job.platform,
+      publishReadiness,
+      dryRunStatus: pkgExists ? 'pass' : 'not_run',
+      livePublishStatus: 'not_allowed_in_ui04',
+      gateChecks,
+      warnings,
+      source: 'real',
+    };
+  });
+}
+

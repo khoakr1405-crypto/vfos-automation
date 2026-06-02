@@ -83,3 +83,24 @@ export interface OverviewSummary {
   packaged: number;
   approved: number;
 }
+
+export interface PublishQueueItemDTO {
+  jobId: string;
+  laneId: string;
+  productName: string | null;
+  status: 'APPROVED' | 'PACKAGED' | 'READY_FOR_OPERATOR_REVIEW' | 'PUBLISHED_CANDIDATE' | 'UNKNOWN';
+  previewUrl: string | null;
+  suggestedChannel: string | null;
+  platform: 'facebook' | 'tiktok' | 'youtube' | 'unknown';
+  publishReadiness: 'ready' | 'blocked' | 'missing_package' | 'missing_approval' | 'unknown';
+  dryRunStatus: 'not_run' | 'pass' | 'fail' | 'unknown';
+  livePublishStatus: 'not_allowed_in_ui04';
+  gateChecks: Array<{
+    label: string;
+    status: 'pass' | 'fail' | 'warn' | 'pending';
+    detail?: string;
+  }>;
+  warnings: string[];
+  source: 'real' | 'mock';
+}
+

@@ -76,13 +76,13 @@ export function PlatformPublishCard({
             </Button>
           ) : (
             <Button
-              variant={gate.ok ? 'success' : 'outline'}
-              disabled={!gate.ok}
-              className="w-full"
+              variant={gate.ok ? 'outline' : 'outline'}
+              disabled={true}
+              className={`w-full ${gate.ok ? 'border-accent-amber/40 text-accent-amber' : ''}`}
             >
               {gate.ok ? (
                 <>
-                  <Icon name="publish" width={13} height={13} /> Publish {shortName}
+                  <UtilIcon name="clock" width={13} height={13} /> Dry-run planned
                 </>
               ) : (
                 <>
@@ -91,8 +91,14 @@ export function PlatformPublishCard({
               )}
             </Button>
           )}
-          {!gate.ok && !isPublished && gate.reason && (
-            <p className="text-center text-[10px] text-accent-amber">{gate.reason}</p>
+          {gate.ok ? (
+            <p className="text-center text-[9px] text-neutral-500 uppercase tracking-wider">
+              Live publish is disabled in UI-04
+            </p>
+          ) : (
+            !isPublished && gate.reason && (
+              <p className="text-center text-[10px] text-accent-amber">{gate.reason}</p>
+            )
           )}
         </div>
       </CardBody>

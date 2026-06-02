@@ -30,6 +30,19 @@ export function SelectedPublishContent({ content }: { content: PublishContent })
 
         {/* Product + statuses */}
         <div className="space-y-3">
+          {/* Safety Alert (Enforced in UI-04) */}
+          <div className="rounded-xl border border-accent-amber/20 bg-accent-amber/5 px-3.5 py-2.5 text-[11px] text-accent-amber flex gap-2.5 items-start">
+            <UtilIcon name="bell" width={14} height={14} className="shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold">VFOS Studio Safety Notice (UI-04):</p>
+              <ul className="list-disc pl-3.5 mt-0.5 space-y-0.5 text-neutral-400">
+                <li><span className="text-accent-amber font-medium">Live publish is disabled in UI-04</span> (Read-only environment)</li>
+                <li><span className="text-accent-amber font-medium">Approve does not publish</span> (Chỉ chuẩn bị gói đóng gói trung gian)</li>
+                <li>Hệ thống tách biệt hoàn toàn chạy Dry-Run, không có side effects.</li>
+              </ul>
+            </div>
+          </div>
+
           <div className="rounded-xl border border-hairline bg-raised/40 px-3.5 py-3">
             <div className="flex items-center justify-between">
               <p className="text-xs font-semibold text-neutral-100">{content.product}</p>
