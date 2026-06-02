@@ -20,23 +20,23 @@ export function Sidebar() {
         </div>
       </div>
 
-      <nav className="flex-1 space-y-5 overflow-y-auto px-3 pb-6">
+      <nav className="flex-1 space-y-4 overflow-y-auto px-3 pb-6">
         {NAV_GROUPS.map((group) => (
-          <div key={group.title}>
-            <p className="px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-neutral-600">
+          <div key={group.title} className="space-y-1">
+            <p className="px-3 text-[10px] font-bold uppercase tracking-wider text-neutral-500/80">
               {group.title}
             </p>
-            <ul className="space-y-0.5">
+            <ul className="space-y-0.5 border-l border-hairline/30 ml-3.5 pl-2">
               {group.items.map((item) => {
                 const active = pathname === item.href;
                 return (
                   <li key={item.href}>
                     <Link
                       href={item.href}
-                      className={`group flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] transition ${
+                      className={`group flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-xs transition ${
                         active
-                          ? 'bg-raised text-neutral-50'
-                          : 'text-neutral-400 hover:bg-raised/50 hover:text-neutral-200'
+                          ? 'bg-raised text-neutral-50 font-medium'
+                          : 'text-neutral-400 hover:bg-raised/40 hover:text-neutral-200'
                       }`}
                     >
                       <span
@@ -46,10 +46,9 @@ export function Sidebar() {
                             : 'text-neutral-500 group-hover:text-neutral-300'
                         }
                       >
-                        <Icon name={item.icon} />
+                        <Icon name={item.icon} width={14} height={14} />
                       </span>
-                      <span className="flex-1">{item.label}</span>
-                      <span className="text-[10px] font-mono text-neutral-600">{item.no}</span>
+                      <span className="flex-1 truncate">{item.label}</span>
                     </Link>
                   </li>
                 );
@@ -59,8 +58,8 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="border-t border-hairline px-5 py-3 text-[10px] text-neutral-600">
-        VFOS Studio · v0.1 · UI shell
+      <div className="border-t border-hairline px-5 py-3.5 text-[10px] text-neutral-600 font-medium">
+        VFOS Studio · v1.0 · Operator Control
       </div>
     </aside>
   );

@@ -32,27 +32,37 @@ export type NavGroup = {
 
 export const NAV_GROUPS: NavGroup[] = [
   {
-    title: 'Tổng quan',
+    title: 'Trung tâm điều hành',
     items: [{ no: 1, href: '/', label: 'Tổng quan', icon: 'overview', accent: 'blue' }],
   },
   {
-    title: 'Nội dung',
+    title: 'Kênh & Ngách',
+    items: [
+      { no: 2, href: '/channels', label: 'Cụm kênh & Kênh', icon: 'channels', accent: 'blue' },
+    ],
+  },
+  {
+    title: 'Sản phẩm & Link',
+    items: [
+      { no: 3, href: '/products', label: 'Sản phẩm & Link', icon: 'products', accent: 'amber' },
+    ],
+  },
+  {
+    title: 'Tài nguyên đầu vào',
     items: [
       { no: 4, href: '/create', label: 'Tạo nội dung mới', icon: 'create', accent: 'violet' },
       { no: 5, href: '/raw-visual', label: 'Raw Visual AI', icon: 'rawvisual', accent: 'violet' },
+    ],
+  },
+  {
+    title: 'Xưởng Sản Xuất Video',
+    items: [
       { no: 6, href: '/script', label: 'Script / Voice / BGM', icon: 'script', accent: 'violet' },
       { no: 7, href: '/render', label: 'Render & Caption', icon: 'render', accent: 'cyan' },
     ],
   },
   {
-    title: 'Kênh & Sản phẩm',
-    items: [
-      { no: 2, href: '/channels', label: 'Cụm kênh & Kênh', icon: 'channels', accent: 'blue' },
-      { no: 3, href: '/products', label: 'Sản phẩm & Link', icon: 'products', accent: 'amber' },
-    ],
-  },
-  {
-    title: 'Vận hành',
+    title: 'QA / Xuất bản',
     items: [
       { no: 8, href: '/qa', label: 'QA & Duyệt', icon: 'qa', accent: 'green' },
       { no: 9, href: '/publish', label: 'Xuất bản & Lịch', icon: 'publish', accent: 'green' },
@@ -60,7 +70,7 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    title: 'Đo lường',
+    title: 'Hiệu suất / Báo cáo',
     items: [
       {
         no: 10,

@@ -5,66 +5,76 @@ import { UtilIcon } from '../icons';
 
 const LEVEL_META: Record<
   AttentionLevel,
-  { label: string; dot: string; text: string; border: string }
+  { label: string; text: string; bg: string; border: string; iconColor: string }
 > = {
   high: {
-    label: 'Cao',
-    dot: 'bg-accent-rose',
+    label: 'Khẩn cấp',
     text: 'text-accent-rose',
-    border: 'border-l-accent-rose',
+    bg: 'bg-accent-rose/10',
+    border: 'border-accent-rose/20 hover:border-accent-rose/40',
+    iconColor: 'text-accent-rose',
   },
   medium: {
-    label: 'Vừa',
-    dot: 'bg-accent-amber',
+    label: 'Cảnh báo',
     text: 'text-accent-amber',
-    border: 'border-l-accent-amber',
+    bg: 'bg-accent-amber/10',
+    border: 'border-accent-amber/20 hover:border-accent-amber/40',
+    iconColor: 'text-accent-amber',
   },
   low: {
-    label: 'Thấp',
-    dot: 'bg-accent-blue',
+    label: 'Chú ý',
     text: 'text-accent-blue',
-    border: 'border-l-accent-blue',
+    bg: 'bg-accent-blue/10',
+    border: 'border-accent-blue/20 hover:border-accent-blue/40',
+    iconColor: 'text-accent-blue',
   },
 };
 
 /** C. Danh sách việc cần chú ý — alert + module + hành động + link. */
 export function AttentionPanel() {
-  const highCount = ATTENTION_ITEMS.filter((i) => i.level === 'high').length;
-
   return (
     <Card className="flex h-full flex-col">
       <CardHeader
-        title="Việc cần chú ý"
-        subtitle={`${ATTENTION_ITEMS.length} việc · ${highCount} mức cao`}
+        title="Cảnh báo cần chú ý"
+        subtitle={`${ATTENTION_ITEMS.length} cảnh báo vận hành`}
         accentClass="text-accent-amber"
         right={
-          <span className="flex h-6 min-w-6 items-center justify-center rounded-full bg-accent-rose/15 px-2 text-[11px] font-bold text-accent-rose">
-            {highCount}
-          </span>
+          <Link href="/qa" className="text-[11px] text-neutral-500 hover:text-neutral-300">
+            Xem chi tiết
+          </Link>
         }
       />
       <CardBody className="flex-1 space-y-2">
-        {ATTENTION_ITEMS.map((item) => {
+        {ATTENTION_ITEMS.slice(0, 4).map((item) => {
           const meta = LEVEL_META[item.level];
           return (
             <Link
               key={item.id}
               href={item.href}
-              className={`group block rounded-lg border border-hairline border-l-2 bg-raised/40 px-3 py-2.5 transition hover:bg-raised ${meta.border}`}
+              className={`group block rounded-lg border bg-panel/50 px-3.5 py-3 transition ${meta.border}`}
             >
-              <div className="flex items-center gap-2">
-                <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${meta.dot}`} />
-                <p className="flex-1 text-xs font-medium text-neutral-100">{item.title}</p>
-                <span className={`text-[10px] font-semibold uppercase ${meta.text}`}>
-                  {meta.label}
-                </span>
-              </div>
-              <p className="mt-1 pl-3.5 text-[11px] leading-snug text-neutral-500">{item.detail}</p>
-              <div className="mt-1.5 flex items-center justify-between pl-3.5">
-                <span className="text-[10px] text-neutral-600">{item.module}</span>
-                <span className="flex items-center gap-1 text-[10px] font-medium text-neutral-300 group-hover:text-white">
-                  {item.action} <UtilIcon name="chevron" width={11} height={11} />
-                </span>
+              <div className="flex items-start gap-3">
+                {/* Warning Icon Container */}
+                <div
+                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${meta.bg} ${meta.iconColor}`}
+                >
+                  <UtilIcon name="bell" width={14} height={14} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold text-neutral-100 truncate">{item.title}</p>
+                    <span className={`text-[10px] font-bold uppercase tracking-wider ${meta.text}`}>
+                      {meta.label}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[11px] leading-snug text-neutral-500">{item.detail}</p>
+                  <div className="mt-2.5 flex items-center justify-between text-[10px]">
+                    <span className="text-neutral-600 font-mono">{item.module}</span>
+                    <span className="flex items-center gap-1 font-medium text-neutral-400 group-hover:text-neutral-200 transition-colors">
+                      {item.action} <UtilIcon name="chevron" width={10} height={10} />
+                    </span>
+                  </div>
+                </div>
               </div>
             </Link>
           );

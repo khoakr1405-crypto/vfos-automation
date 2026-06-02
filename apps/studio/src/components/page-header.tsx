@@ -22,9 +22,6 @@ export function PageHeader({ no, icon, accent, title, description, actions }: Pa
           <Icon name={icon} width={22} height={22} />
         </span>
         <div>
-          <div className="flex items-center gap-2">
-            <span className="text-[11px] font-semibold text-neutral-500">MODULE {no}</span>
-          </div>
           <h1 className="text-lg font-semibold tracking-tight text-neutral-50">{title}</h1>
           <p className="text-xs text-neutral-500">{description}</p>
         </div>

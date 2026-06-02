@@ -36,11 +36,7 @@ export function CardHeader({
     <div className="flex items-start justify-between gap-3 border-b border-hairline px-5 py-4">
       <div className="flex items-center gap-3">
         {typeof no === 'number' && (
-          <span
-            className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-raised text-xs font-bold ${accentClass}`}
-          >
-            {no}
-          </span>
+          <span className={`w-1 h-3.5 rounded-full bg-current shrink-0 ${accentClass}`} />
         )}
         <div>
           <h2 className="text-sm font-semibold text-neutral-100">{title}</h2>

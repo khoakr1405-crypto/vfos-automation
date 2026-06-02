@@ -18,7 +18,7 @@ type BadgeProps = {
 export function Badge({ children, accent = 'blue', className = '' }: BadgeProps) {
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium ${ACCENT_BG_SOFT[accent]} ${className}`}
+      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap shrink-0 ${ACCENT_BG_SOFT[accent]} ${className}`}
     >
       {children}
     </span>
@@ -69,12 +69,12 @@ const STATUS_MAP: Record<string, { label: string; accent: AccentKey }> = {
   processing: { label: 'Đang xử lý', accent: 'blue' },
   rejected: { label: 'Loại', accent: 'rose' },
   // content lifecycle (overview)
-  draft: { label: 'Draft', accent: 'cyan' },
-  rendering: { label: 'Rendering', accent: 'blue' },
-  'qa-pass': { label: 'QA PASS', accent: 'green' },
+  draft: { label: 'Đang xử lý', accent: 'cyan' },
+  rendering: { label: 'Đang xử lý', accent: 'blue' },
+  'qa-pass': { label: 'Đã duyệt', accent: 'green' },
   'pending-approval': { label: 'Chờ duyệt', accent: 'amber' },
-  published: { label: 'Published', accent: 'green' },
-  failed: { label: 'Failed', accent: 'rose' },
+  published: { label: 'Xuất bản', accent: 'green' },
+  failed: { label: 'Lỗi xuất bản', accent: 'rose' },
   // publish readiness (overview)
   'missing-thumbnail': { label: 'Thiếu thumbnail', accent: 'amber' },
   scheduled: { label: 'Đã lên lịch', accent: 'blue' },
