@@ -454,45 +454,10 @@ export const QA_QUEUE: QaQueueItem[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Xuất bản & Lịch — publish từng nền tảng riêng, KHÔNG auto
+// Xuất bản & Lịch — publish từng nền tảng riêng, KHÔNG auto.
+// Mô hình chi tiết (Publish Command Center) nằm cuối file — Round UI-03A:
+// xem PUBLISH_QUEUE, PUBLISH_SUMMARY_KPIS, PUBLISH_SCHEDULE_PREVIEW, PUBLISH_WARNINGS.
 // ---------------------------------------------------------------------------
-export type PublishRow = {
-  jobId: string;
-  platform: PlatformId;
-  channel: string;
-  status: 'ready' | 'manual-review' | 'wait-thumbnail' | 'approved';
-  scheduledAt: string;
-};
-export const PUBLISH_MATRIX: PublishRow[] = [
-  {
-    jobId: 'JOB-2401',
-    platform: 'facebook',
-    channel: 'Rửa Xe Tiện Ích',
-    status: 'ready',
-    scheduledAt: '18:00 · 06/01',
-  },
-  {
-    jobId: 'JOB-2405',
-    platform: 'tiktok',
-    channel: 'Đồ Chơi Xe Hay',
-    status: 'manual-review',
-    scheduledAt: '20:00 · 06/01',
-  },
-  {
-    jobId: 'JOB-2403',
-    platform: 'youtube',
-    channel: 'Phụ Kiện Ô Tô',
-    status: 'wait-thumbnail',
-    scheduledAt: '22:00 · 06/01',
-  },
-];
-
-export type PublishPackage = { platform: PlatformId; file: string; size: string };
-export const PUBLISH_PACKAGES: PublishPackage[] = [
-  { platform: 'facebook', file: 'facebook_reels_001_9x16.zip', size: '95.2 MB' },
-  { platform: 'tiktok', file: 'tiktok_001_9x16.zip', size: '92.1 MB' },
-  { platform: 'youtube', file: 'shorts_001_9x16.zip', size: '93.7 MB' },
-];
 
 // ---------------------------------------------------------------------------
 // Hiệu suất / Analytics
@@ -927,4 +892,494 @@ export const OVERVIEW_PIPELINE: PipelineStageStat[] = [
   { name: 'Duyệt', count: 3, href: '/qa' },
   { name: 'Package', count: 2, href: '/publish' },
   { name: 'Published', count: 42, href: '/publish', terminal: true },
+];
+
+/* =============================================================================
+ * PUBLISH COMMAND CENTER (Round UI-03A)
+ * Model publish theo TỪNG nội dung × TỪNG nền tảng + gate thủ công.
+ * Vẫn là MOCK: không gọi API, không publish thật.
+ * ========================================================================== */
+
+// Trạng thái publish theo nền tảng (uppercase = trạng thái máy publish).
+export type PublishPlatformStatus =
+  | 'READY'
+  | 'MANUAL_REVIEW'
+  | 'MISSING_THUMBNAIL'
+  | 'WAIT_PACKAGE'
+  | 'SCHEDULED'
+  | 'PUBLISHED'
+  | 'BLOCKED';
+
+export type PlatformPublishState = {
+  status: PublishPlatformStatus;
+  channel: string;
+  packageFile: string | null;
+  packageSize: string | null;
+  captionReady: boolean;
+  thumbnailReady: boolean;
+  affiliateLinkReady: boolean;
+  scheduledAt: string | null;
+};
+
+export type PublishContent = {
+  id: string;
+  title: string;
+  laneId: LaneId;
+  product: string;
+  productPrice: string;
+  affiliateLink: string; // MOCK — vẫn gắn owner để gate kiểm tra
+  duration: string;
+  format: string;
+  // gate chung (content-level)
+  qaPassed: boolean;
+  approved: boolean; // operator đã duyệt
+  ownerValid: boolean; // owner_id Shopee khớp
+  captionReady: boolean;
+  voiceBgmReady: boolean;
+  durationValid: boolean;
+  safeAreaOk: boolean;
+  platforms: Record<PlatformId, PlatformPublishState>;
+};
+
+const aff = (sku: string) => `https://shp.ee/${sku}?aff=${SHOPEE_OWNER}`;
+
+export const PUBLISH_QUEUE: PublishContent[] = [
+  {
+    id: 'JOB-2401',
+    title: 'Máy rửa xe Zukul — demo 5 phút',
+    laneId: 'rua-xe',
+    product: 'Máy rửa xe mini Zukul',
+    productPrice: '₫699.000',
+    affiliateLink: aff('zukul699'),
+    duration: '00:15',
+    format: '9:16 · 1080×1920',
+    qaPassed: true,
+    approved: true,
+    ownerValid: true,
+    captionReady: true,
+    voiceBgmReady: true,
+    durationValid: true,
+    safeAreaOk: true,
+    platforms: {
+      facebook: {
+        status: 'READY',
+        channel: 'Rửa Xe Tiện Ích',
+        packageFile: 'fb_reels_zukul_9x16.zip',
+        packageSize: '95.2 MB',
+        captionReady: true,
+        thumbnailReady: true,
+        affiliateLinkReady: true,
+        scheduledAt: '18:00 · 02/06',
+      },
+      tiktok: {
+        status: 'MANUAL_REVIEW',
+        channel: 'Đồ Chơi Xe Hay',
+        packageFile: 'tiktok_zukul_9x16.zip',
+        packageSize: '92.1 MB',
+        captionReady: true,
+        thumbnailReady: true,
+        affiliateLinkReady: true,
+        scheduledAt: null,
+      },
+      youtube: {
+        status: 'MISSING_THUMBNAIL',
+        channel: 'Phụ Kiện Ô Tô',
+        packageFile: 'shorts_zukul_9x16.zip',
+        packageSize: '93.7 MB',
+        captionReady: true,
+        thumbnailReady: false,
+        affiliateLinkReady: true,
+        scheduledAt: null,
+      },
+    },
+  },
+  {
+    id: 'JOB-2404',
+    title: 'Bộ rửa xe bọt tuyết — before/after',
+    laneId: 'rua-xe',
+    product: 'Bộ rửa xe bọt tuyết',
+    productPrice: '₫179.000',
+    affiliateLink: aff('foam179'),
+    duration: '00:19',
+    format: '9:16 · 1080×1920',
+    qaPassed: true,
+    approved: true,
+    ownerValid: true,
+    captionReady: true,
+    voiceBgmReady: true,
+    durationValid: true,
+    safeAreaOk: true,
+    platforms: {
+      facebook: {
+        status: 'SCHEDULED',
+        channel: 'Rửa Xe Tiện Ích',
+        packageFile: 'fb_reels_foam_9x16.zip',
+        packageSize: '88.4 MB',
+        captionReady: true,
+        thumbnailReady: true,
+        affiliateLinkReady: true,
+        scheduledAt: '19:00 · 02/06',
+      },
+      tiktok: {
+        status: 'READY',
+        channel: 'Đồ Chơi Xe Hay',
+        packageFile: 'tiktok_foam_9x16.zip',
+        packageSize: '85.0 MB',
+        captionReady: true,
+        thumbnailReady: true,
+        affiliateLinkReady: true,
+        scheduledAt: null,
+      },
+      youtube: {
+        status: 'READY',
+        channel: 'Phụ Kiện Ô Tô',
+        packageFile: 'shorts_foam_9x16.zip',
+        packageSize: '90.1 MB',
+        captionReady: true,
+        thumbnailReady: true,
+        affiliateLinkReady: true,
+        scheduledAt: '21:00 · 02/06',
+      },
+    },
+  },
+  {
+    id: 'JOB-2403',
+    title: 'Máy xay sinh tố mini — review',
+    laneId: 'review',
+    product: 'Máy xay sinh tố mini',
+    productPrice: '₫249.000',
+    affiliateLink: aff('blend249'),
+    duration: '00:42',
+    format: '9:16 · 1080×1920',
+    qaPassed: true,
+    approved: false, // CHƯA duyệt → khóa toàn bộ gate chung
+    ownerValid: true,
+    captionReady: true,
+    voiceBgmReady: true,
+    durationValid: true,
+    safeAreaOk: true,
+    platforms: {
+      facebook: {
+        status: 'BLOCKED',
+        channel: 'Review Đồ Hay',
+        packageFile: 'fb_reels_blend_9x16.zip',
+        packageSize: '96.0 MB',
+        captionReady: true,
+        thumbnailReady: true,
+        affiliateLinkReady: true,
+        scheduledAt: null,
+      },
+      tiktok: {
+        status: 'BLOCKED',
+        channel: 'Review Sản Phẩm',
+        packageFile: 'tiktok_blend_9x16.zip',
+        packageSize: '91.3 MB',
+        captionReady: true,
+        thumbnailReady: true,
+        affiliateLinkReady: true,
+        scheduledAt: null,
+      },
+      youtube: {
+        status: 'WAIT_PACKAGE',
+        channel: 'Review Đồ Gia Dụng',
+        packageFile: null,
+        packageSize: null,
+        captionReady: true,
+        thumbnailReady: false,
+        affiliateLinkReady: true,
+        scheduledAt: null,
+      },
+    },
+  },
+  {
+    id: 'JOB-2405',
+    title: 'Hộp đồ câu đa năng — top 5',
+    laneId: 'cau-ca',
+    product: 'Hộp đồ câu đa năng',
+    productPrice: '₫89.000',
+    affiliateLink: 'https://shp.ee/box89?aff=an_0000000000', // owner SAI → ownerValid=false
+    duration: '00:33',
+    format: '9:16 · 1080×1920',
+    qaPassed: true,
+    approved: true,
+    ownerValid: false, // link sai owner → khóa gate chung
+    captionReady: true,
+    voiceBgmReady: true,
+    durationValid: true,
+    safeAreaOk: true,
+    platforms: {
+      facebook: {
+        status: 'WAIT_PACKAGE',
+        channel: 'Câu Cá Mỗi Ngày',
+        packageFile: null,
+        packageSize: null,
+        captionReady: true,
+        thumbnailReady: true,
+        affiliateLinkReady: false,
+        scheduledAt: null,
+      },
+      tiktok: {
+        status: 'MANUAL_REVIEW',
+        channel: 'Đồ Câu Giá Rẻ',
+        packageFile: 'tiktok_box_9x16.zip',
+        packageSize: '80.5 MB',
+        captionReady: true,
+        thumbnailReady: true,
+        affiliateLinkReady: false,
+        scheduledAt: null,
+      },
+      youtube: {
+        status: 'BLOCKED',
+        channel: 'Câu Cá VN',
+        packageFile: 'shorts_box_9x16.zip',
+        packageSize: '82.2 MB',
+        captionReady: false,
+        thumbnailReady: false,
+        affiliateLinkReady: false,
+        scheduledAt: null,
+      },
+    },
+  },
+  {
+    id: 'JOB-2399',
+    title: 'Mẹo rửa xe sạch như mới',
+    laneId: 'rua-xe',
+    product: 'Nước rửa xe bọt tuyết',
+    productPrice: '₫120.000',
+    affiliateLink: aff('soap120'),
+    duration: '00:21',
+    format: '9:16 · 1080×1920',
+    qaPassed: true,
+    approved: true,
+    ownerValid: true,
+    captionReady: true,
+    voiceBgmReady: true,
+    durationValid: true,
+    safeAreaOk: true,
+    platforms: {
+      facebook: {
+        status: 'PUBLISHED',
+        channel: 'Rửa Xe Tiện Ích',
+        packageFile: 'fb_reels_soap_9x16.zip',
+        packageSize: '79.0 MB',
+        captionReady: true,
+        thumbnailReady: true,
+        affiliateLinkReady: true,
+        scheduledAt: 'Đã đăng 08:00 · 01/06',
+      },
+      tiktok: {
+        status: 'PUBLISHED',
+        channel: 'Đồ Chơi Xe Hay',
+        packageFile: 'tiktok_soap_9x16.zip',
+        packageSize: '77.4 MB',
+        captionReady: true,
+        thumbnailReady: true,
+        affiliateLinkReady: true,
+        scheduledAt: 'Đã đăng 09:30 · 01/06',
+      },
+      youtube: {
+        status: 'SCHEDULED',
+        channel: 'Phụ Kiện Ô Tô',
+        packageFile: 'shorts_soap_9x16.zip',
+        packageSize: '81.0 MB',
+        captionReady: true,
+        thumbnailReady: true,
+        affiliateLinkReady: true,
+        scheduledAt: '22:00 · 02/06',
+      },
+    },
+  },
+];
+
+// A. Summary KPI — số liệu tổng hợp (mock).
+export const PUBLISH_SUMMARY_KPIS: Kpi[] = [
+  { label: 'Sẵn sàng publish', value: '5', accent: 'green' },
+  { label: 'Đang chờ duyệt', value: '2', accent: 'amber' },
+  { label: 'Thiếu package', value: '2', accent: 'rose' },
+  { label: 'Thiếu thumbnail', value: '1', accent: 'amber' },
+  { label: 'Đã scheduled', value: '4', accent: 'blue' },
+  { label: 'Publish hôm nay', value: '6', accent: 'cyan' },
+];
+
+// --- Gate logic (single source of truth, tái dùng cho mọi component) ---
+export type GateItem = { label: string; ok: boolean };
+
+export function contentGateChecklist(c: PublishContent): GateItem[] {
+  return [
+    { label: 'QA PASS', ok: c.qaPassed },
+    { label: 'Operator đã duyệt', ok: c.approved },
+    { label: `Link affiliate đúng owner (${SHOPEE_OWNER})`, ok: c.ownerValid },
+    { label: 'Caption tồn tại', ok: c.captionReady },
+    { label: 'Voice & BGM sẵn sàng', ok: c.voiceBgmReady },
+    { label: 'Thời lượng hợp lệ (15–60s)', ok: c.durationValid },
+    { label: 'Khung 9:16 safe-area OK', ok: c.safeAreaOk },
+  ];
+}
+
+export function contentGatePassed(c: PublishContent): boolean {
+  return contentGateChecklist(c).every((i) => i.ok);
+}
+
+export function platformChecklist(c: PublishContent, p: PlatformId): GateItem[] {
+  const s = c.platforms[p];
+  return [
+    { label: 'Video package sẵn sàng', ok: s.packageFile !== null },
+    { label: 'Caption/copy theo nền tảng', ok: s.captionReady },
+    { label: 'Thumbnail', ok: s.thumbnailReady },
+    { label: 'Affiliate link gắn đúng', ok: s.affiliateLinkReady },
+    {
+      label: 'Không cần manual review',
+      ok: s.status !== 'MANUAL_REVIEW' && s.status !== 'BLOCKED',
+    },
+  ];
+}
+
+/** Quyết định nút publish 1 nền tảng có mở khóa không. */
+export function canPublishPlatform(
+  c: PublishContent,
+  p: PlatformId,
+): { ok: boolean; reason: string | null } {
+  if (c.platforms[p].status === 'PUBLISHED') return { ok: false, reason: 'Đã publish' };
+  if (!contentGatePassed(c))
+    return { ok: false, reason: 'Nội dung chưa qua gate chung (QA / duyệt / owner)' };
+  const failed = platformChecklist(c, p).find((i) => !i.ok);
+  if (failed) return { ok: false, reason: `Thiếu: ${failed.label}` };
+  return { ok: true, reason: null };
+}
+
+// F. Schedule preview — gom theo hôm nay / ngày mai / tuần này.
+export type ScheduleBucket = 'today' | 'tomorrow' | 'week';
+export type SchedulePreviewItem = {
+  id: string;
+  bucket: ScheduleBucket;
+  time: string;
+  platform: PlatformId;
+  channel: string;
+  title: string;
+  status: PublishPlatformStatus;
+  packageFile: string;
+};
+
+export const PUBLISH_SCHEDULE_PREVIEW: SchedulePreviewItem[] = [
+  {
+    id: 'S1',
+    bucket: 'today',
+    time: '18:00',
+    platform: 'facebook',
+    channel: 'Rửa Xe Tiện Ích',
+    title: 'Máy rửa xe Zukul — demo 5 phút',
+    status: 'READY',
+    packageFile: 'fb_reels_zukul_9x16.zip',
+  },
+  {
+    id: 'S2',
+    bucket: 'today',
+    time: '19:00',
+    platform: 'facebook',
+    channel: 'Rửa Xe Tiện Ích',
+    title: 'Bộ rửa xe bọt tuyết',
+    status: 'SCHEDULED',
+    packageFile: 'fb_reels_foam_9x16.zip',
+  },
+  {
+    id: 'S3',
+    bucket: 'today',
+    time: '21:00',
+    platform: 'youtube',
+    channel: 'Phụ Kiện Ô Tô',
+    title: 'Bộ rửa xe bọt tuyết',
+    status: 'SCHEDULED',
+    packageFile: 'shorts_foam_9x16.zip',
+  },
+  {
+    id: 'S4',
+    bucket: 'tomorrow',
+    time: '22:00',
+    platform: 'youtube',
+    channel: 'Phụ Kiện Ô Tô',
+    title: 'Mẹo rửa xe sạch như mới',
+    status: 'SCHEDULED',
+    packageFile: 'shorts_soap_9x16.zip',
+  },
+  {
+    id: 'S5',
+    bucket: 'week',
+    time: 'T5 · 20:00',
+    platform: 'tiktok',
+    channel: 'Đồ Chơi Xe Hay',
+    title: 'Bộ rửa xe bọt tuyết',
+    status: 'READY',
+    packageFile: 'tiktok_foam_9x16.zip',
+  },
+  {
+    id: 'S6',
+    bucket: 'week',
+    time: 'T6 · 20:00',
+    platform: 'tiktok',
+    channel: 'Đồ Câu Giá Rẻ',
+    title: 'Hộp đồ câu đa năng — top 5',
+    status: 'MANUAL_REVIEW',
+    packageFile: 'tiktok_box_9x16.zip',
+  },
+];
+
+// G. Warnings / blocked — link sang module xử lý phù hợp.
+export type PublishWarning = {
+  id: string;
+  level: AttentionLevel;
+  title: string;
+  detail: string;
+  href: string;
+  action: string;
+};
+
+export const PUBLISH_WARNINGS: PublishWarning[] = [
+  {
+    id: 'W1',
+    level: 'high',
+    title: 'Chưa được operator duyệt',
+    detail: 'JOB-2403 · Máy xay sinh tố mini đã QA PASS nhưng chưa duyệt — khóa toàn bộ publish.',
+    href: '/qa',
+    action: 'Mở QA & Duyệt',
+  },
+  {
+    id: 'W2',
+    level: 'high',
+    title: 'Affiliate link sai owner',
+    detail: `JOB-2405 · Hộp đồ câu — link không khớp owner_id ${SHOPEE_OWNER}.`,
+    href: '/products',
+    action: 'Kiểm tra link',
+  },
+  {
+    id: 'W3',
+    level: 'medium',
+    title: 'YouTube thiếu thumbnail',
+    detail: 'JOB-2401 · YouTube Shorts chưa có thumbnail → nút publish bị khóa.',
+    href: '/render',
+    action: 'Thêm thumbnail',
+  },
+  {
+    id: 'W4',
+    level: 'medium',
+    title: 'Facebook chưa có package',
+    detail: 'JOB-2405 · Facebook Reels chưa render package 9:16.',
+    href: '/render',
+    action: 'Render package',
+  },
+  {
+    id: 'W5',
+    level: 'medium',
+    title: 'TikTok cần manual review',
+    detail: 'JOB-2401 · TikTok cần kiểm tra thủ công trước khi đăng.',
+    href: '/qa',
+    action: 'Mở QA',
+  },
+  {
+    id: 'W6',
+    level: 'low',
+    title: 'Kiểm tra lịch đăng',
+    detail: 'Một số nội dung dồn cùng khung 18:00–22:00 hôm nay.',
+    href: '/schedule',
+    action: 'Mở lịch',
+  },
 ];

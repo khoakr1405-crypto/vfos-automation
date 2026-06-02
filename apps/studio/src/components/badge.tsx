@@ -84,3 +84,19 @@ export function StatusBadge({ status }: { status: string }) {
   const meta = STATUS_MAP[status] ?? { label: status, accent: 'blue' as AccentKey };
   return <Badge accent={meta.accent}>{meta.label}</Badge>;
 }
+
+// Publish command center — trạng thái uppercase theo nền tảng (Round UI-03A).
+const PUBLISH_STATUS_META: Record<string, { label: string; accent: AccentKey }> = {
+  READY: { label: 'Ready', accent: 'green' },
+  MANUAL_REVIEW: { label: 'Manual review', accent: 'amber' },
+  MISSING_THUMBNAIL: { label: 'Thiếu thumbnail', accent: 'amber' },
+  WAIT_PACKAGE: { label: 'Chờ package', accent: 'rose' },
+  SCHEDULED: { label: 'Đã lên lịch', accent: 'blue' },
+  PUBLISHED: { label: 'Published', accent: 'green' },
+  BLOCKED: { label: 'Blocked', accent: 'rose' },
+};
+
+export function PublishStatusBadge({ status }: { status: string }) {
+  const meta = PUBLISH_STATUS_META[status] ?? { label: status, accent: 'blue' as AccentKey };
+  return <Badge accent={meta.accent}>{meta.label}</Badge>;
+}
