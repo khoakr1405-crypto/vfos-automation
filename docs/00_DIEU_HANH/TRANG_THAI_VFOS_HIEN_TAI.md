@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-06-02 (Round UI-01 *VFOS Studio Multi-Channel Dashboard UI Shell* đã chốt thành công và commit sạch sẽ.)
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `335aef0` (HEAD local — `feat: add VFOS Studio multi-channel dashboard UI shell`)
+> **Cập nhật lần cuối**: 2026-06-02 (Round UI-02 — *Wire Operator Dashboard với job thật read-only* đã chốt + commit. Master Plan VFOS Studio UI đã được duyệt.)
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `ee19e1c` (HEAD local — `feat(studio): wire operator dashboard to real job data (read-only, UI-02)`)
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task → luôn chạy `pnpm vfos:daily` để có chỉ dẫn trạng thái mới nhất
 
 > ⚠️ **ĐƯỜNG VẬN HÀNH CHÍNH THỨC**: dùng `docs/00_DIEU_HANH/HUONG_DAN_VAN_HANH_CHINH_THUC_VFOS.md` (operator guide chuẩn, flow A-Z `commerce:intake` → `job:run-review` → `job:publish-facebook`).
@@ -1847,7 +1847,33 @@ Commit: `docs: add chay aliases for shopee cdp extraction`.
 - `biome check apps/studio/src` -> PASS (với các warning style `noDefaultExport` được định nghĩa trong `biome.json` cho các page/layout Next.js).
 - Web App chạy thành công tại `http://localhost:3002`.
 
-**Commit mốc**: `335aef0` (`feat: add VFOS Studio multi-channel dashboard UI shell`).
+**Commit mốc**: `335aef0` (`feat: add VFOS Studio multi-channel dashboard UI shell`). UI Strategy 01 (Operator Overview Dashboard cho lane Review sản phẩm) chốt ở `dc07090`.
+
+---
+
+### ✅ Round UI-02 — Wire Operator Dashboard với job thật (read-only): ĐÃ CHỐT (2026-06-02)
+
+**Ngữ cảnh**: Sau UI Strategy 01 (dashboard UI shell + Operator Overview, chốt ở `dc07090`), toàn bộ dashboard vẫn chạy mock data. UI-02 nối Operator Dashboard với **dữ liệu job thật** theo chế độ **read-only**, giữ nguyên giao diện đã duyệt.
+
+**Mục tiêu**: Operator Dashboard đọc job thật từ hệ thống `scripts/vfos-job-manager.ts` (registry + manifest + cleanliness/ffprobe report) qua Next route handlers `/api/studio/*`, dùng adapter map vào component hiện có. Không side effect, không approve/reject thật, không publish, không gọi API ngoài.
+
+**Đã làm**:
+- Adapter server-only `apps/studio/src/lib/studio-data/` (`paths.ts`, `types.ts`, `jobs.ts`) — đọc `data/temp/vfos_jobs_registry.json` + `data/temp/jobs/<id>/job_manifest.json` + `runs/<id>/source/ffprobe.json` + product card. Chỉ đọc JSON nhỏ, fallback an toàn, **không expose raw path/URL/token**.
+- 4 GET route handler `force-dynamic`: `/api/studio/overview`, `/api/studio/jobs`, `/api/studio/jobs/:jobId`, `/api/studio/jobs/:jobId/preview` (media stream, Range-aware, chống path traversal).
+- Wire 3 component overview: `operator-job-queue.tsx` (job thật + loading/empty/error + preview thật + badge map state thật + pipeline checklist), `product-queue.tsx` (product thật, **chỉ owner id + cờ valid, không expose URL affiliate**), `mock-banner.tsx` (phân biệt real vs mock).
+- Owner validation `an_17376660568` giữ nguyên. Analytics/cluster/weekly/KPI/publish-readiness **vẫn mock** (đánh dấu rõ).
+
+**Kết quả verify**:
+- `pnpm --filter @vfos/studio typecheck` → PASS. `build` → PASS (4 route ƒ Dynamic). `biome check` file đổi → clean.
+- Secret/path leak scan trên API JSON + DOM (credential_token, token, secret, `C:\`, `data/temp`, `runs/`, shopee URL) → **= 0**.
+- Preview media: full 200 video/mp4 (5.5MB), Range 206, job không preview 404. Traversal id → 400.
+- Browser review `http://localhost:3002`: dark dashboard (không HTML thô), 8 job thật render, 5 preview video thật, 0 console/page error, 0 failed request.
+
+**Commit mốc**: `ee19e1c` (`feat(studio): wire operator dashboard to real job data (read-only, UI-02)`) — 10 files, không kèm docs/runtime/binary.
+
+**Master Plan**: `docs/00_DIEU_HANH/VFOS_STUDIO_UI_MASTER_PLAN.md` (đã được Operator duyệt) — bản đồ UI tổng thể 7 phòng ban + roadmap 10 phase.
+
+**Bước tiếp theo dự kiến (CHƯA làm nếu Operator chưa ra lệnh)**: **Phase 3 theo Master Plan — Approve/Reject an toàn**: POST `/api/studio/jobs/:id/approve|reject` gọi lại command `job:approve`/`job:reject` (không reimplement gate), approve chỉ khi `READY_FOR_OPERATOR_REVIEW` + QA PASS, reject bắt buộc notes, **không publish thật**. Kích hoạt nút Approve/Reject (hiện disabled placeholder).
 
 ---
 
