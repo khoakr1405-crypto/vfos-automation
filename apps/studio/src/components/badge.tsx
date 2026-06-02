@@ -100,3 +100,23 @@ export function PublishStatusBadge({ status }: { status: string }) {
   const meta = PUBLISH_STATUS_META[status] ?? { label: status, accent: 'blue' as AccentKey };
   return <Badge accent={meta.accent}>{meta.label}</Badge>;
 }
+
+// QA review center — QA status + platform readiness (Round UI-03B).
+const QA_STATUS_META: Record<string, { label: string; accent: AccentKey }> = {
+  WAIT_QA: { label: 'Chờ QA', accent: 'blue' },
+  RUNNING_QA: { label: 'Đang QA', accent: 'cyan' },
+  QA_PASS: { label: 'QA PASS', accent: 'green' },
+  QA_FAIL: { label: 'QA FAIL', accent: 'rose' },
+  NEEDS_OPERATOR_REVIEW: { label: 'Chờ operator', accent: 'amber' },
+  APPROVED: { label: 'Đã duyệt', accent: 'green' },
+  REJECTED: { label: 'Bị reject', accent: 'rose' },
+  BLOCKED: { label: 'Blocked', accent: 'rose' },
+  // platform readiness
+  READY: { label: 'Ready', accent: 'green' },
+  WARNING: { label: 'Warning', accent: 'amber' },
+};
+
+export function QaStatusBadge({ status }: { status: string }) {
+  const meta = QA_STATUS_META[status] ?? { label: status, accent: 'blue' as AccentKey };
+  return <Badge accent={meta.accent}>{meta.label}</Badge>;
+}

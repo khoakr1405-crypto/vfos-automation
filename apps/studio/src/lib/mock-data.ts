@@ -407,51 +407,10 @@ export const RENDER_SETTINGS: RenderSetting[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// QA & Duyệt — checklist bắt buộc trước khi duyệt
+// QA & Duyệt — checklist bắt buộc trước khi duyệt.
+// Mô hình chi tiết (QA Review Command Center) nằm cuối file — Round UI-03B:
+// xem QA_QUEUE_JOBS, QA_SUMMARY_KPIS, REJECT_REASON_OPTIONS, canApproveQa().
 // ---------------------------------------------------------------------------
-export type QaCheck = { label: string; status: 'pass' | 'fail' | 'warn' };
-export const QA_CHECKLIST: QaCheck[] = [
-  { label: 'Audio tồn tại', status: 'pass' },
-  { label: 'Voice rõ lời', status: 'pass' },
-  { label: 'BGM không lấn voice', status: 'pass' },
-  { label: 'Caption tồn tại', status: 'pass' },
-  { label: 'Duration hợp lệ (15s – 60s)', status: 'pass' },
-  { label: 'Link affiliate hợp lệ', status: 'pass' },
-  { label: 'Visual đúng sản phẩm', status: 'pass' },
-  { label: 'Không watermark', status: 'pass' },
-  { label: 'Safe area 9:16 OK', status: 'pass' },
-];
-
-export type QaQueueItem = {
-  jobId: string;
-  title: string;
-  laneId: LaneId;
-  platform: PlatformId;
-  result: 'pass' | 'pending' | 'fail';
-};
-export const QA_QUEUE: QaQueueItem[] = [
-  {
-    jobId: 'JOB-2401',
-    title: 'Máy rửa xe Zukul — demo 5 phút',
-    laneId: 'rua-xe',
-    platform: 'facebook',
-    result: 'pending',
-  },
-  {
-    jobId: 'JOB-2403',
-    title: 'Máy xay sinh tố mini — review',
-    laneId: 'review',
-    platform: 'youtube',
-    result: 'pass',
-  },
-  {
-    jobId: 'JOB-2402',
-    title: 'Cần câu Carbon 2m1 — unbox',
-    laneId: 'cau-ca',
-    platform: 'tiktok',
-    result: 'pending',
-  },
-];
 
 // ---------------------------------------------------------------------------
 // Xuất bản & Lịch — publish từng nền tảng riêng, KHÔNG auto.
@@ -1383,3 +1342,619 @@ export const PUBLISH_WARNINGS: PublishWarning[] = [
     action: 'Mở lịch',
   },
 ];
+
+/* =============================================================================
+ * QA REVIEW COMMAND CENTER (Round UI-03B)
+ * QA kỹ thuật + nội dung + affiliate + platform readiness, trước operator gate.
+ * Vẫn là MOCK: không STT/FFmpeg/render/API thật.
+ * ========================================================================== */
+
+export type QaStatus =
+  | 'WAIT_QA'
+  | 'RUNNING_QA'
+  | 'QA_PASS'
+  | 'QA_FAIL'
+  | 'NEEDS_OPERATOR_REVIEW'
+  | 'APPROVED'
+  | 'REJECTED'
+  | 'BLOCKED';
+
+export type OperatorStatus = 'pending' | 'approved' | 'rejected';
+export type RiskLevel = 'high' | 'medium' | 'low';
+export type CheckState = 'pass' | 'fail' | 'warn';
+
+export type QaCheckItem = { label: string; state: CheckState; note?: string };
+export type QaReadinessStatus = 'READY' | 'WARNING' | 'BLOCKED';
+
+export type QaPlatformReadiness = {
+  platform: PlatformId;
+  packageReady: boolean;
+  captionReady: boolean;
+  thumbnailReady: boolean;
+  safeAreaOk: boolean;
+  status: QaReadinessStatus;
+};
+
+export type QaFinding = {
+  id: string;
+  severity: RiskLevel;
+  category: 'audio' | 'caption' | 'affiliate' | 'creative' | 'platform' | 'render';
+  message: string;
+  action: string;
+  href: string;
+};
+
+// Nhãn checklist chuẩn (single source) — job chỉ lưu override khi khác 'pass'.
+export const TECHNICAL_QA_LABELS = [
+  'Video file tồn tại',
+  'Có audio stream',
+  'Voice không bị câm',
+  'BGM đã mix (nếu cần)',
+  'BGM không lấn voice',
+  'Có caption trên preview',
+  'Duration hợp lệ',
+  'Safe area 9:16 OK',
+  'Render package tồn tại',
+  'Không thiếu artifact',
+] as const;
+
+export const CREATIVE_QA_LABELS = [
+  'Hook rõ trong 3 giây đầu',
+  'Script không quá bán hàng',
+  'Script không phóng đại công dụng',
+  'Voice khớp mood / BGM',
+  'Caption dễ đọc',
+  'CTA mềm, không spam',
+  'Video không quá generic',
+  'Sản phẩm hiển thị đủ rõ',
+  'Không watermark / text lạ',
+] as const;
+
+export const AFFILIATE_QA_LABELS = [
+  'Có Product Card',
+  'Có link affiliate Shopee',
+  `owner_id = ${SHOPEE_OWNER}`,
+  'Link không rỗng / sai owner',
+  'Sản phẩm khớp nội dung video',
+  'CTA đúng link / sản phẩm',
+  'Claim không vượt Product Card',
+] as const;
+
+export type CheckOverride = Record<string, { state: CheckState; note?: string }>;
+
+export type QaJob = {
+  id: string;
+  title: string;
+  laneId: LaneId;
+  product: string;
+  productPrice: string;
+  affiliateLink: string;
+  ownerValid: boolean;
+  duration: string;
+  targets: PlatformId[];
+  qaStatus: QaStatus;
+  operatorStatus: OperatorStatus;
+  risk: RiskLevel;
+  rejectReason?: string;
+  voiceStatus: CheckState;
+  bgmStatus: CheckState;
+  captionStatus: CheckState;
+  packageStatus: CheckState;
+  techOverrides?: CheckOverride;
+  creativeOverrides?: CheckOverride;
+  affiliateOverrides?: CheckOverride;
+  platforms: QaPlatformReadiness[];
+  findings: QaFinding[];
+};
+
+const qaAff = (sku: string) => `https://shp.ee/${sku}?aff=${SHOPEE_OWNER}`;
+
+export const QA_QUEUE_JOBS: QaJob[] = [
+  {
+    id: 'JOB-2401',
+    title: 'Máy rửa xe Zukul — demo 5 phút',
+    laneId: 'rua-xe',
+    product: 'Máy rửa xe mini Zukul',
+    productPrice: '₫699.000',
+    affiliateLink: qaAff('zukul699'),
+    ownerValid: true,
+    duration: '00:15',
+    targets: ['facebook', 'tiktok', 'youtube'],
+    qaStatus: 'NEEDS_OPERATOR_REVIEW',
+    operatorStatus: 'pending',
+    risk: 'medium',
+    voiceStatus: 'pass',
+    bgmStatus: 'pass',
+    captionStatus: 'pass',
+    packageStatus: 'pass',
+    platforms: [
+      {
+        platform: 'facebook',
+        packageReady: true,
+        captionReady: true,
+        thumbnailReady: true,
+        safeAreaOk: true,
+        status: 'READY',
+      },
+      {
+        platform: 'tiktok',
+        packageReady: true,
+        captionReady: true,
+        thumbnailReady: true,
+        safeAreaOk: true,
+        status: 'WARNING',
+      },
+      {
+        platform: 'youtube',
+        packageReady: true,
+        captionReady: true,
+        thumbnailReady: false,
+        safeAreaOk: true,
+        status: 'BLOCKED',
+      },
+    ],
+    findings: [
+      {
+        id: 'F1',
+        severity: 'medium',
+        category: 'platform',
+        message: 'YouTube Shorts thiếu thumbnail → nút publish YouTube bị khóa.',
+        action: 'Thêm thumbnail',
+        href: '/render',
+      },
+      {
+        id: 'F2',
+        severity: 'low',
+        category: 'platform',
+        message: 'TikTok cần manual review trước khi đăng.',
+        action: 'Xem ở Publish',
+        href: '/publish',
+      },
+    ],
+  },
+  {
+    id: 'JOB-2402',
+    title: 'Cần câu Carbon 2m1 — unbox',
+    laneId: 'cau-ca',
+    product: 'Cần câu Carbon 2m1',
+    productPrice: '₫159.000',
+    affiliateLink: qaAff('carbon21'),
+    ownerValid: true,
+    duration: '00:28',
+    targets: ['tiktok', 'youtube'],
+    qaStatus: 'QA_FAIL',
+    operatorStatus: 'pending',
+    risk: 'high',
+    voiceStatus: 'pass',
+    bgmStatus: 'fail',
+    captionStatus: 'pass',
+    packageStatus: 'pass',
+    techOverrides: {
+      'BGM không lấn voice': { state: 'fail', note: 'BGM −10 LUFS, lấn voice ở đoạn hook & CTA' },
+    },
+    creativeOverrides: {
+      'Voice khớp mood / BGM': { state: 'warn', note: 'BGM quá to nên lệch mood' },
+    },
+    platforms: [
+      {
+        platform: 'tiktok',
+        packageReady: true,
+        captionReady: true,
+        thumbnailReady: true,
+        safeAreaOk: true,
+        status: 'BLOCKED',
+      },
+      {
+        platform: 'youtube',
+        packageReady: true,
+        captionReady: true,
+        thumbnailReady: true,
+        safeAreaOk: true,
+        status: 'BLOCKED',
+      },
+    ],
+    findings: [
+      {
+        id: 'F1',
+        severity: 'high',
+        category: 'audio',
+        message: 'BGM lấn voice — người xem khó nghe lời thoại.',
+        action: 'Mix lại ở Script / Voice / BGM',
+        href: '/script',
+      },
+    ],
+  },
+  {
+    id: 'JOB-2403',
+    title: 'Máy xay sinh tố mini — review',
+    laneId: 'review',
+    product: 'Máy xay sinh tố mini',
+    productPrice: '₫249.000',
+    affiliateLink: qaAff('blend249'),
+    ownerValid: true,
+    duration: '00:42',
+    targets: ['youtube'],
+    qaStatus: 'QA_PASS',
+    operatorStatus: 'pending',
+    risk: 'low',
+    voiceStatus: 'pass',
+    bgmStatus: 'pass',
+    captionStatus: 'pass',
+    packageStatus: 'pass',
+    platforms: [
+      {
+        platform: 'youtube',
+        packageReady: true,
+        captionReady: true,
+        thumbnailReady: true,
+        safeAreaOk: true,
+        status: 'READY',
+      },
+    ],
+    findings: [],
+  },
+  {
+    id: 'JOB-2406',
+    title: 'Máy hút bụi cầm tay — mini test',
+    laneId: 'review',
+    product: 'Máy hút bụi cầm tay',
+    productPrice: '₫349.000',
+    affiliateLink: qaAff('vac349'),
+    ownerValid: true,
+    duration: '00:24',
+    targets: ['facebook'],
+    qaStatus: 'NEEDS_OPERATOR_REVIEW',
+    operatorStatus: 'pending',
+    risk: 'medium',
+    voiceStatus: 'pass',
+    bgmStatus: 'warn',
+    captionStatus: 'pass',
+    packageStatus: 'pass',
+    techOverrides: {
+      'BGM đã mix (nếu cần)': { state: 'warn', note: 'Chưa có BGM — đang để voice trần' },
+    },
+    creativeOverrides: {
+      'Hook rõ trong 3 giây đầu': { state: 'warn', note: 'Hook hơi yếu, chưa nêu lợi ích ngay' },
+      'Script không quá bán hàng': { state: 'warn', note: 'Script hơi nặng bán hàng' },
+    },
+    platforms: [
+      {
+        platform: 'facebook',
+        packageReady: true,
+        captionReady: true,
+        thumbnailReady: true,
+        safeAreaOk: true,
+        status: 'WARNING',
+      },
+    ],
+    findings: [
+      {
+        id: 'F1',
+        severity: 'medium',
+        category: 'creative',
+        message: 'Hook yếu + script hơi quá bán — dễ rớt view 3 giây đầu.',
+        action: 'Chỉnh hook / script',
+        href: '/script',
+      },
+      {
+        id: 'F2',
+        severity: 'low',
+        category: 'audio',
+        message: 'Thiếu BGM dẫn mood (đang voice trần).',
+        action: 'Thêm BGM nền',
+        href: '/script',
+      },
+    ],
+  },
+  {
+    id: 'JOB-2405',
+    title: 'Hộp đồ câu đa năng — top 5',
+    laneId: 'cau-ca',
+    product: 'Hộp đồ câu đa năng',
+    productPrice: '₫89.000',
+    affiliateLink: 'https://shp.ee/box89?aff=an_0000000000',
+    ownerValid: false,
+    duration: '00:33',
+    targets: ['tiktok', 'youtube'],
+    qaStatus: 'QA_FAIL',
+    operatorStatus: 'pending',
+    risk: 'high',
+    voiceStatus: 'pass',
+    bgmStatus: 'pass',
+    captionStatus: 'pass',
+    packageStatus: 'pass',
+    affiliateOverrides: {
+      [`owner_id = ${SHOPEE_OWNER}`]: {
+        state: 'fail',
+        note: 'Link gắn owner an_0000000000 — KHÔNG khớp',
+      },
+      'Link không rỗng / sai owner': { state: 'fail' },
+    },
+    platforms: [
+      {
+        platform: 'tiktok',
+        packageReady: true,
+        captionReady: true,
+        thumbnailReady: true,
+        safeAreaOk: true,
+        status: 'BLOCKED',
+      },
+      {
+        platform: 'youtube',
+        packageReady: false,
+        captionReady: true,
+        thumbnailReady: false,
+        safeAreaOk: true,
+        status: 'BLOCKED',
+      },
+    ],
+    findings: [
+      {
+        id: 'F1',
+        severity: 'high',
+        category: 'affiliate',
+        message: `Affiliate link sai owner (≠ ${SHOPEE_OWNER}) — fail-safe, không được publish.`,
+        action: 'Sửa link ở Sản phẩm & Link',
+        href: '/products',
+      },
+    ],
+  },
+  {
+    id: 'JOB-2404',
+    title: 'Bộ rửa xe bọt tuyết — before/after',
+    laneId: 'rua-xe',
+    product: 'Bộ rửa xe bọt tuyết',
+    productPrice: '₫179.000',
+    affiliateLink: qaAff('foam179'),
+    ownerValid: true,
+    duration: '00:19',
+    targets: ['facebook'],
+    qaStatus: 'BLOCKED',
+    operatorStatus: 'pending',
+    risk: 'medium',
+    voiceStatus: 'pass',
+    bgmStatus: 'pass',
+    captionStatus: 'pass',
+    packageStatus: 'fail',
+    techOverrides: {
+      'Render package tồn tại': { state: 'fail', note: 'Chưa render package 9:16 — QA bị chặn' },
+      'Có caption trên preview': { state: 'warn', note: 'Preview chưa có caption' },
+    },
+    platforms: [
+      {
+        platform: 'facebook',
+        packageReady: false,
+        captionReady: false,
+        thumbnailReady: true,
+        safeAreaOk: true,
+        status: 'BLOCKED',
+      },
+    ],
+    findings: [
+      {
+        id: 'F1',
+        severity: 'medium',
+        category: 'render',
+        message: 'Chưa có render package — QA không thể hoàn tất.',
+        action: 'Render lại ở Render & Caption',
+        href: '/render',
+      },
+    ],
+  },
+  {
+    id: 'JOB-2399',
+    title: 'Mẹo rửa xe sạch như mới',
+    laneId: 'rua-xe',
+    product: 'Nước rửa xe bọt tuyết',
+    productPrice: '₫120.000',
+    affiliateLink: qaAff('soap120'),
+    ownerValid: true,
+    duration: '00:21',
+    targets: ['facebook', 'tiktok', 'youtube'],
+    qaStatus: 'APPROVED',
+    operatorStatus: 'approved',
+    risk: 'low',
+    voiceStatus: 'pass',
+    bgmStatus: 'pass',
+    captionStatus: 'pass',
+    packageStatus: 'pass',
+    platforms: [
+      {
+        platform: 'facebook',
+        packageReady: true,
+        captionReady: true,
+        thumbnailReady: true,
+        safeAreaOk: true,
+        status: 'READY',
+      },
+      {
+        platform: 'tiktok',
+        packageReady: true,
+        captionReady: true,
+        thumbnailReady: true,
+        safeAreaOk: true,
+        status: 'READY',
+      },
+      {
+        platform: 'youtube',
+        packageReady: true,
+        captionReady: true,
+        thumbnailReady: true,
+        safeAreaOk: true,
+        status: 'READY',
+      },
+    ],
+    findings: [],
+  },
+  {
+    id: 'JOB-2398',
+    title: 'Bộ chăm sóc nội thất xe — combo',
+    laneId: 'rua-xe',
+    product: 'Bộ rửa xe bọt tuyết',
+    productPrice: '₫259.000',
+    affiliateLink: qaAff('combo259'),
+    ownerValid: true,
+    duration: '00:26',
+    targets: ['facebook', 'tiktok'],
+    qaStatus: 'REJECTED',
+    operatorStatus: 'rejected',
+    risk: 'high',
+    rejectReason:
+      'BGM lấn voice + caption khó đọc — cần mix lại và tăng tương phản chữ trước khi QA lại.',
+    voiceStatus: 'pass',
+    bgmStatus: 'fail',
+    captionStatus: 'warn',
+    packageStatus: 'pass',
+    techOverrides: {
+      'BGM không lấn voice': { state: 'fail' },
+    },
+    creativeOverrides: {
+      'Caption dễ đọc': { state: 'fail', note: 'Tương phản chữ thấp, khó đọc trên nền sáng' },
+    },
+    platforms: [
+      {
+        platform: 'facebook',
+        packageReady: true,
+        captionReady: true,
+        thumbnailReady: true,
+        safeAreaOk: true,
+        status: 'BLOCKED',
+      },
+      {
+        platform: 'tiktok',
+        packageReady: true,
+        captionReady: true,
+        thumbnailReady: true,
+        safeAreaOk: true,
+        status: 'BLOCKED',
+      },
+    ],
+    findings: [
+      {
+        id: 'F1',
+        severity: 'high',
+        category: 'audio',
+        message: 'BGM lấn voice.',
+        action: 'Mix lại',
+        href: '/script',
+      },
+      {
+        id: 'F2',
+        severity: 'medium',
+        category: 'caption',
+        message: 'Caption khó đọc (tương phản thấp).',
+        action: 'Tăng tương phản ở Render',
+        href: '/render',
+      },
+    ],
+  },
+  {
+    id: 'JOB-2407',
+    title: 'Đánh giá nồi chiên không dầu',
+    laneId: 'review',
+    product: 'Máy xay sinh tố mini',
+    productPrice: '₫249.000',
+    affiliateLink: qaAff('blend249'),
+    ownerValid: true,
+    duration: '00:38',
+    targets: ['tiktok'],
+    qaStatus: 'WAIT_QA',
+    operatorStatus: 'pending',
+    risk: 'low',
+    voiceStatus: 'pass',
+    bgmStatus: 'pass',
+    captionStatus: 'pass',
+    packageStatus: 'pass',
+    platforms: [
+      {
+        platform: 'tiktok',
+        packageReady: true,
+        captionReady: true,
+        thumbnailReady: true,
+        safeAreaOk: true,
+        status: 'WARNING',
+      },
+    ],
+    findings: [],
+  },
+  {
+    id: 'JOB-2408',
+    title: 'Cần câu máy mini — test bãi',
+    laneId: 'cau-ca',
+    product: 'Cần câu Carbon 2m1',
+    productPrice: '₫159.000',
+    affiliateLink: qaAff('carbon21'),
+    ownerValid: true,
+    duration: '00:31',
+    targets: ['youtube'],
+    qaStatus: 'RUNNING_QA',
+    operatorStatus: 'pending',
+    risk: 'low',
+    voiceStatus: 'pass',
+    bgmStatus: 'pass',
+    captionStatus: 'pass',
+    packageStatus: 'pass',
+    platforms: [
+      {
+        platform: 'youtube',
+        packageReady: true,
+        captionReady: true,
+        thumbnailReady: true,
+        safeAreaOk: true,
+        status: 'WARNING',
+      },
+    ],
+    findings: [],
+  },
+];
+
+// A. Summary KPI — số liệu tổng hợp QA (mock, mức dashboard).
+export const QA_SUMMARY_KPIS: Kpi[] = [
+  { label: 'Chờ QA', value: '4', accent: 'blue' },
+  { label: 'QA PASS', value: '12', accent: 'green' },
+  { label: 'QA FAIL', value: '3', accent: 'rose' },
+  { label: 'Chờ operator duyệt', value: '5', accent: 'amber' },
+  { label: 'Đã duyệt', value: '28', accent: 'green' },
+  { label: 'Bị reject', value: '2', accent: 'rose' },
+];
+
+// H. Gợi ý lý do reject cho operator.
+export const REJECT_REASON_OPTIONS = [
+  'Voice chưa rõ',
+  'BGM lấn voice',
+  'Caption lỗi / khó đọc',
+  'Hook yếu',
+  'Sai / nghi ngờ affiliate owner',
+  'Raw visual chưa đúng sản phẩm',
+  'Thiếu thumbnail / package',
+  'Claim sản phẩm cần sửa',
+];
+
+// --- Helper QA (single source) ---
+function buildChecks(labels: readonly string[], overrides?: CheckOverride): QaCheckItem[] {
+  return labels.map((label) => {
+    const o = overrides?.[label];
+    return o ? { label, state: o.state, note: o.note } : { label, state: 'pass' };
+  });
+}
+
+export function technicalQaChecks(j: QaJob): QaCheckItem[] {
+  return buildChecks(TECHNICAL_QA_LABELS, j.techOverrides);
+}
+export function creativeQaChecks(j: QaJob): QaCheckItem[] {
+  return buildChecks(CREATIVE_QA_LABELS, j.creativeOverrides);
+}
+export function affiliateQaChecks(j: QaJob): QaCheckItem[] {
+  return buildChecks(AFFILIATE_QA_LABELS, j.affiliateOverrides);
+}
+
+/** Operator chỉ được Approve khi QA không FAIL/BLOCKED và chưa duyệt/reject. */
+export function canApproveQa(j: QaJob): boolean {
+  return (
+    j.operatorStatus === 'pending' &&
+    j.qaStatus !== 'QA_FAIL' &&
+    j.qaStatus !== 'BLOCKED' &&
+    j.qaStatus !== 'WAIT_QA' &&
+    j.qaStatus !== 'RUNNING_QA'
+  );
+}
