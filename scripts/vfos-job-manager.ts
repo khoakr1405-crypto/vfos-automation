@@ -2429,6 +2429,13 @@ async function cmdApproveCleanliness(args: string[]): Promise<number> {
 
   // 6. Update Manifest & Registry cleanlinessStatus
   (manifest.source as any).cleanlinessStatus = toStatus;
+  if (status === 'pass') {
+    manifest.state = 'SOURCE_READY';
+    manifest.lastError = null;
+  } else {
+    manifest.state = 'FAILED';
+    manifest.lastError = `WATERMARK_DETECTED: Cleanliness review rejected by operator. Notes: ${notes.trim()}`;
+  }
   saveManifest(manifest);
 
   const reg = loadRegistry();

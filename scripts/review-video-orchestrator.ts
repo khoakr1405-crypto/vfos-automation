@@ -245,6 +245,76 @@ function saveJobManifest(manifest: JobManifest): void {
   writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
 }
 
+function resolveApprovedCleanSource(jobId: string): string {
+  const manifest = loadJobManifest(jobId);
+  if (!manifest) {
+    throw { code: 'UNKNOWN_JOB', message: `Job ${jobId} does not exist.` };
+  }
+
+  // 1. Verify existence of clean_source_video.mp4
+  const jobSourceDir = resolve(`runs/${jobId}/source`);
+  const finalVideoPath = join(jobSourceDir, 'clean_source_video.mp4');
+  const cleanlinessReportPath = join(jobSourceDir, 'source_cleanliness_report.json');
+
+  if (!existsSync(finalVideoPath)) {
+    throw { code: 'CLEAN_SOURCE_VIDEO_NOT_FOUND', message: `runs/${jobId}/source/clean_source_video.mp4 does not exist.` };
+  }
+
+  // 2. Verify existence of source_cleanliness_report.json
+  if (!existsSync(cleanlinessReportPath)) {
+    throw { code: 'CLEANLINESS_REPORT_NOT_FOUND', message: `runs/${jobId}/source/source_cleanliness_report.json does not exist.` };
+  }
+
+  // 3. Read existing report and check status
+  let report: any;
+  try {
+    report = JSON.parse(readFileSync(cleanlinessReportPath, 'utf8'));
+  } catch (err) {
+    throw { code: 'CLEANLINESS_REPORT_UNREADABLE', message: `Failed to parse cleanliness report.` };
+  }
+
+  const reportStatus = report.status || 'UNKNOWN_NEEDS_OPERATOR_REVIEW';
+  const manifestStatus = (manifest.source as any).cleanlinessStatus || 'NEEDS_REVIEW';
+
+  if (reportStatus === 'UNKNOWN_NEEDS_OPERATOR_REVIEW' || manifestStatus === 'NEEDS_REVIEW') {
+    throw { 
+      code: 'CLEANLINESS_NOT_APPROVED', 
+      message: `Cleanliness check is pending Operator approval. Please run:\n  pnpm source:approve-cleanliness --job ${jobId} --status pass --notes "<operator notes>"` 
+    };
+  }
+
+  if (reportStatus === 'WATERMARK_DETECTED' || manifestStatus === 'WATERMARK_DETECTED') {
+    throw { 
+      code: 'WATERMARK_DETECTED', 
+      message: `Cleanliness check failed! Watermark/logo detected. Please replace the source video or re-evaluate.` 
+    };
+  }
+
+  if (reportStatus !== 'WATERMARK_NOT_DETECTED' || manifestStatus !== 'WATERMARK_NOT_DETECTED') {
+    throw { 
+      code: 'SOURCE_NOT_READY', 
+      message: `Cleanliness is not approved (status: ${reportStatus ?? 'UNKNOWN'}).` 
+    };
+  }
+
+  // 4. Validate frame paths if they exist
+  const framePaths: string[] = report.framePaths || [];
+  for (const fp of framePaths) {
+    const fullFramePath = resolve(fp);
+    if (!existsSync(fullFramePath)) {
+      console.warn(`⚠️ [Warning] Extracted frame path is missing: ${fp}`);
+    }
+  }
+
+  // 5. ffprobe verification
+  const duration = getVideoDuration(finalVideoPath);
+  if (duration <= 0) {
+    throw { code: 'FFPROBE_FAILED', message: `ffprobe failed to read duration for clean source video.` };
+  }
+
+  return finalVideoPath;
+}
+
 function loadRegistry(): Registry {
   const path = resolve(JOBS_REGISTRY_PATH);
   if (!existsSync(path))
@@ -616,9 +686,65 @@ async function main(): Promise<void> {
   if (jobId) {
     jobManifest = loadJobManifest(jobId);
     if (jobManifest) {
-      const rel = jobManifest.source.sourceVideoPath;
-      jobSourceVideoAbs = rel ? resolve(rel) : null;
-      jobSourceVideoPresent = Boolean(jobSourceVideoAbs && existsSync(jobSourceVideoAbs));
+      try {
+        const cleanSourcePath = resolveApprovedCleanSource(jobId);
+        console.log(`✅ Approved clean source video verified: ${cleanSourcePath}`);
+        
+        // Update manifest fields to point to this clean source video
+        const relativeSourcePath = `runs/${jobId}/source/clean_source_video.mp4`;
+        jobManifest.source.sourceVideoPath = relativeSourcePath;
+        (jobManifest.source as any).localPath = relativeSourcePath;
+
+        // Trace update in manifest/status
+        (jobManifest.source as any).approvedSourceVideoPath = relativeSourcePath;
+        (jobManifest.source as any).sourceVideoPathUsedByPipeline = relativeSourcePath;
+        (jobManifest.source as any).sourceVideoProvider = (jobManifest.source as any).provider ?? 'unduhtiktok';
+        (jobManifest.source as any).cleanlinessReportPath = `runs/${jobId}/source/source_cleanliness_report.json`;
+        (jobManifest.source as any).sourceResolvedAt = new Date().toISOString();
+        saveJobManifest(jobManifest);
+        
+        // Re-read to ensure consistency
+        const rel = jobManifest.source.sourceVideoPath;
+        jobSourceVideoAbs = rel ? resolve(rel) : null;
+        jobSourceVideoPresent = Boolean(jobSourceVideoAbs && existsSync(jobSourceVideoAbs));
+
+      } catch (err: any) {
+        console.error('======================================================');
+        console.error(`🛑 PIPELINE_GATE_BLOCKED: ${err.code ?? 'SOURCE_NOT_READY'}`);
+        console.error(err.message);
+        console.error('======================================================');
+        
+        jobManifest.state = 'FAILED';
+        jobManifest.lastError = `${err.code}: ${err.message}`;
+        saveJobManifest(jobManifest);
+        updateRegistryFromManifest(jobManifest);
+        
+        // Write status report
+        const baseArtifact: StatusArtifact = {
+          statusVersion: 'v1',
+          runId,
+          jobId,
+          state: (err.code as any) ?? 'MISSING_JOB_SOURCE_VIDEO',
+          videoFixturePresent: false,
+          voiceFixturePresent: false,
+          jobSourceVideoPresent: false,
+          elevenLabsApiCalled: false,
+          chayExecuted: false,
+          captionExecuted: false,
+          captionPreset: preset,
+          outputVideoPath: null,
+          previewArtifact: null,
+          safety: {
+            facebookApiCalled: false,
+            uploaded: false,
+            published: false,
+            operatorReviewRequired: true,
+          },
+          generatedAt: new Date().toISOString(),
+        };
+        writeStatusArtifact(baseArtifact);
+        process.exit(20);
+      }
     }
   }
 
