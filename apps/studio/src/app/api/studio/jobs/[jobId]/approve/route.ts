@@ -1,13 +1,9 @@
-import { spawnSync } from 'node:child_process';
-import { repoRoot } from '@/lib/studio-data/paths';
 import { loadJobById } from '@/lib/studio-data/jobs';
+import { runRepoScript } from '@/lib/studio-data/run-command';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST(
-  req: Request,
-  ctx: { params: Promise<{ jobId: string }> }
-) {
+export async function POST(req: Request, ctx: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await ctx.params;
 
   // 1. Strict validation of jobId to prevent command injection / directory traversal
@@ -18,9 +14,9 @@ export async function POST(
         action: 'approve',
         jobId,
         code: 'BAD_JOB_ID',
-        message: 'Mã Job ID không hợp lệ.'
+        message: 'Mã Job ID không hợp lệ.',
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -34,16 +30,18 @@ export async function POST(
           action: 'approve',
           jobId,
           code: 'JOB_NOT_FOUND',
-          message: `Không tìm thấy Job có ID: ${jobId}`
+          message: `Không tìm thấy Job có ID: ${jobId}`,
         },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
     // 3. Rà soát điều kiện phê duyệt (Approve Guards)
     const details: string[] = [];
     if (job.state !== 'READY_FOR_OPERATOR_REVIEW') {
-      details.push(`Trạng thái của Job phải là READY_FOR_OPERATOR_REVIEW (hiện tại: ${job.state}).`);
+      details.push(
+        `Trạng thái của Job phải là READY_FOR_OPERATOR_REVIEW (hiện tại: ${job.state}).`,
+      );
     }
     if (job.qaStatus !== 'PASS') {
       details.push('Kết quả kiểm định Final QA chưa vượt qua (phải là PASS).');
@@ -60,9 +58,9 @@ export async function POST(
           jobId,
           code: 'APPROVE_GATE_BLOCKED',
           message: 'Không đủ điều kiện phê duyệt Job.',
-          details
+          details,
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -77,19 +75,13 @@ export async function POST(
       // Body may be empty, which is completely fine for approve
     }
 
-    // 4. Gọi lệnh pnpm job:approve thực tế
-    const root = repoRoot();
-    const cmd = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
-    const args = ['job:approve', '--job', jobId];
+    // 4. Gọi command thật qua tsx (an toàn EINVAL + injection — xem run-command.ts)
+    const scriptArgs = ['approve', '--job', jobId];
     if (notes) {
-      args.push('--notes', notes);
+      scriptArgs.push('--notes', notes);
     }
 
-    const run = spawnSync(cmd, args, {
-      cwd: root,
-      encoding: 'utf8',
-      env: { ...process.env },
-    });
+    const run = runRepoScript('scripts/vfos-job-manager.ts', scriptArgs);
 
     if (run.status !== 0) {
       const stderr = (run.stderr || '').trim();
@@ -105,9 +97,9 @@ export async function POST(
             `Exit code: ${run.status}`,
             stderr ? `Stderr: ${stderr.slice(0, 500)}` : null,
             stdout ? `Stdout: ${stdout.slice(0, 500)}` : null,
-          ].filter(Boolean)
+          ].filter(Boolean),
         },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -118,7 +110,7 @@ export async function POST(
       action: 'approve',
       jobId,
       job: updatedJob,
-      message: 'Job approved. Not published.'
+      message: 'Job approved. Not published.',
     });
   } catch (err: any) {
     return Response.json(
@@ -127,9 +119,9 @@ export async function POST(
         action: 'approve',
         jobId,
         code: 'INTERNAL_SERVER_ERROR',
-        message: err.message || 'Lỗi hệ thống trong quá trình xử lý phê duyệt.'
+        message: err.message || 'Lỗi hệ thống trong quá trình xử lý phê duyệt.',
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

@@ -13,12 +13,17 @@ type LoadState = 'loading' | 'ready' | 'error';
 export function OperatorJobQueue() {
   const [jobs, setJobs] = useState<OperatorJobDTO[]>([]);
   const [load, setLoad] = useState<LoadState>('loading');
-  
+
   // UI-03 state for operations
   const [loadingJobs, setLoadingJobs] = useState<Record<string, boolean>>({});
-  const [errorJobs, setErrorJobs] = useState<Record<string, { code: string; message: string; details?: string[] } | null>>({});
+  const [errorJobs, setErrorJobs] = useState<
+    Record<string, { code: string; message: string; details?: string[] } | null>
+  >({});
   const [rejectingJobId, setRejectingJobId] = useState<string | null>(null);
   const [rejectNotes, setRejectNotes] = useState('');
+  // Inline approve confirmation — thay cho window.confirm() (native dialog bị
+  // suppressed trong fullscreen/kiosk khiến approve im lặng không gửi request).
+  const [approvingJobId, setApprovingJobId] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -39,11 +44,6 @@ export function OperatorJobQueue() {
   }, []);
 
   const handleApprove = async (jobId: string) => {
-    const confirmApprove = window.confirm(
-      "Phê duyệt video này? Video sẽ chuyển sang APPROVED / Publish Queue readiness, nhưng chưa publish."
-    );
-    if (!confirmApprove) return;
-
     setLoadingJobs((prev) => ({ ...prev, [jobId]: true }));
     setErrorJobs((prev) => ({ ...prev, [jobId]: null }));
 
@@ -64,9 +64,8 @@ export function OperatorJobQueue() {
           },
         }));
       } else {
-        setJobs((prev) =>
-          prev.map((j) => (j.id === jobId && data.job ? data.job : j))
-        );
+        setJobs((prev) => prev.map((j) => (j.id === jobId && data.job ? data.job : j)));
+        setApprovingJobId(null);
       }
     } catch (err: any) {
       setErrorJobs((prev) => ({
@@ -105,9 +104,7 @@ export function OperatorJobQueue() {
           },
         }));
       } else {
-        setJobs((prev) =>
-          prev.map((j) => (j.id === jobId && data.job ? data.job : j))
-        );
+        setJobs((prev) => prev.map((j) => (j.id === jobId && data.job ? data.job : j)));
         setRejectingJobId(null);
         setRejectNotes('');
       }
@@ -460,12 +457,45 @@ export function OperatorJobQueue() {
                             </Button>
                           </div>
                         </div>
+                      ) : approvingJobId === job.id ? (
+                        <div className="space-y-2 bg-neutral-900/50 p-3 rounded-xl border border-accent-green/30">
+                          <p className="text-xs font-bold text-neutral-100">Phê duyệt video này?</p>
+                          <p className="text-[11px] text-neutral-400">
+                            Job sẽ chuyển sang{' '}
+                            <span className="font-semibold text-accent-green">APPROVED</span> và vào
+                            Publish Queue readiness. Approve KHÔNG publish — không gọi
+                            Facebook/TikTok API.
+                          </p>
+                          <div className="flex gap-2 justify-end">
+                            <Button
+                              variant="ghost"
+                              onClick={() => setApprovingJobId(null)}
+                              disabled={loadingJobs[job.id]}
+                              className="px-3 py-1 text-xs font-semibold text-neutral-400 border border-hairline hover:bg-neutral-800"
+                            >
+                              Hủy
+                            </Button>
+                            <Button
+                              variant="success"
+                              onClick={() => handleApprove(job.id)}
+                              disabled={loadingJobs[job.id]}
+                              className="px-3 py-1 text-xs font-bold text-white bg-accent-green hover:bg-accent-green/90 flex items-center gap-1"
+                            >
+                              {loadingJobs[job.id] ? (
+                                <span className="h-3.5 w-3.5 animate-spin border-2 border-white/30 border-t-white rounded-full" />
+                              ) : (
+                                <UtilIcon name="check" width={12} height={12} />
+                              )}
+                              Xác nhận duyệt
+                            </Button>
+                          </div>
+                        </div>
                       ) : (
                         <div className="space-y-1.5">
                           <div className="flex items-center gap-2">
                             <Button
                               variant="success"
-                              onClick={() => handleApprove(job.id)}
+                              onClick={() => setApprovingJobId(job.id)}
                               disabled={!job.canReview || loadingJobs[job.id]}
                               className="text-white font-bold px-4 py-1.5 flex items-center gap-1.5 disabled:opacity-50"
                             >
@@ -487,7 +517,8 @@ export function OperatorJobQueue() {
                             </Button>
                           </div>
                           <p className="text-[10px] text-neutral-500">
-                            * Approve không publish — chỉ chuyển sang APPROVED để đóng gói và đưa vào Publish Queue.
+                            * Approve không publish — chỉ chuyển sang APPROVED để đóng gói và đưa
+                            vào Publish Queue.
                           </p>
                         </div>
                       )}
@@ -495,7 +526,9 @@ export function OperatorJobQueue() {
                   )}
 
                   {/* UI-03: Decision Display Row */}
-                  {(job.state === 'APPROVED' || job.state === 'REJECTED' || job.state === 'PACKAGED') && (
+                  {(job.state === 'APPROVED' ||
+                    job.state === 'REJECTED' ||
+                    job.state === 'PACKAGED') && (
                     <div className="pt-2 border-t border-hairline/20 flex flex-wrap items-center gap-2">
                       {job.state === 'APPROVED' && (
                         <span className="inline-flex items-center gap-1.5 text-xs text-accent-green font-bold bg-accent-green/10 px-3 py-1 rounded-lg">
@@ -517,7 +550,8 @@ export function OperatorJobQueue() {
                       )}
                       {job.operatorDecision && job.operatorDecision !== 'PENDING' && (
                         <p className="text-[10px] text-neutral-400 italic">
-                          Ý kiến Operator: {job.operatorDecision === 'APPROVED' ? 'Duyệt đạt' : 'Từ chối'}{' '}
+                          Ý kiến Operator:{' '}
+                          {job.operatorDecision === 'APPROVED' ? 'Duyệt đạt' : 'Từ chối'}{' '}
                           {job.notes ? `(${job.notes})` : ''}
                         </p>
                       )}

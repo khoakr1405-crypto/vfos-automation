@@ -12,7 +12,6 @@
  * Command đó tự có 14 preflight gate + tự mask token + tự ghi status/result.
  * ========================================================================== */
 
-import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
 import {
   appendPublishAuditLog,
@@ -23,6 +22,7 @@ import {
   livePublishDisabledReason,
 } from '@/lib/studio-data/jobs';
 import { repoRoot, resolveInsideRepo } from '@/lib/studio-data/paths';
+import { runRepoScript } from '@/lib/studio-data/run-command';
 import type { LivePublishAuditRecord } from '@/lib/studio-data/types';
 
 export const dynamic = 'force-dynamic';
@@ -223,17 +223,12 @@ export async function POST(req: Request, ctx: { params: Promise<{ jobId: string 
 
   // 6. Tất cả guard pass → ghi audit (attempt) rồi gọi command thật.
   const requestedAt = new Date().toISOString();
-  const cmd = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
-  const args = ['job:publish-facebook', '--job', jobId, '--confirm-live-publish'];
-
-  const run = spawnSync(cmd, args, {
-    cwd: repoRoot(),
-    encoding: 'utf8',
-    env: { ...process.env },
-    timeout: 120_000,
-    maxBuffer: 1024 * 1024,
-    shell: false,
-  });
+  // Gọi command thật qua tsx (an toàn EINVAL + injection — xem run-command.ts)
+  const run = runRepoScript('scripts/job-facebook-publish-command.ts', [
+    '--job',
+    jobId,
+    '--confirm-live-publish',
+  ]);
 
   const exitCode = typeof run.status === 'number' ? run.status : null;
   const succeeded = !run.error && exitCode === 0;

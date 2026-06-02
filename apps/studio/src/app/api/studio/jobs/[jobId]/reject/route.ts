@@ -1,13 +1,9 @@
-import { spawnSync } from 'node:child_process';
-import { repoRoot } from '@/lib/studio-data/paths';
 import { loadJobById } from '@/lib/studio-data/jobs';
+import { runRepoScript } from '@/lib/studio-data/run-command';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST(
-  req: Request,
-  ctx: { params: Promise<{ jobId: string }> }
-) {
+export async function POST(req: Request, ctx: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await ctx.params;
 
   // 1. Strict validation of jobId to prevent command injection / directory traversal
@@ -18,9 +14,9 @@ export async function POST(
         action: 'reject',
         jobId,
         code: 'BAD_JOB_ID',
-        message: 'Mã Job ID không hợp lệ.'
+        message: 'Mã Job ID không hợp lệ.',
       },
-      { status: 400 }
+      { status: 400 },
     );
   }
 
@@ -43,9 +39,9 @@ export async function POST(
           action: 'reject',
           jobId,
           code: 'REJECT_NOTES_REQUIRED',
-          message: 'Lý do từ chối (Notes) bắt buộc phải nhập và dài từ 3 ký tự trở lên.'
+          message: 'Lý do từ chối (Notes) bắt buộc phải nhập và dài từ 3 ký tự trở lên.',
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -58,9 +54,9 @@ export async function POST(
           action: 'reject',
           jobId,
           code: 'JOB_NOT_FOUND',
-          message: `Không tìm thấy Job có ID: ${jobId}`
+          message: `Không tìm thấy Job có ID: ${jobId}`,
         },
-        { status: 404 }
+        { status: 404 },
       );
     }
 
@@ -77,22 +73,20 @@ export async function POST(
           jobId,
           code: 'REJECT_GATE_BLOCKED',
           message: 'Không đủ điều kiện từ chối Job.',
-          details
+          details,
         },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    // 4. Gọi lệnh pnpm job:reject thực tế
-    const root = repoRoot();
-    const cmd = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
-    const args = ['job:reject', '--job', jobId, '--notes', notes];
-
-    const run = spawnSync(cmd, args, {
-      cwd: root,
-      encoding: 'utf8',
-      env: { ...process.env },
-    });
+    // 4. Gọi command thật qua tsx (an toàn EINVAL + injection — xem run-command.ts)
+    const run = runRepoScript('scripts/vfos-job-manager.ts', [
+      'reject',
+      '--job',
+      jobId,
+      '--notes',
+      notes,
+    ]);
 
     if (run.status !== 0) {
       const stderr = (run.stderr || '').trim();
@@ -108,9 +102,9 @@ export async function POST(
             `Exit code: ${run.status}`,
             stderr ? `Stderr: ${stderr.slice(0, 500)}` : null,
             stdout ? `Stdout: ${stdout.slice(0, 500)}` : null,
-          ].filter(Boolean)
+          ].filter(Boolean),
         },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -121,7 +115,7 @@ export async function POST(
       action: 'reject',
       jobId,
       job: updatedJob,
-      message: 'Job rejected.'
+      message: 'Job rejected.',
     });
   } catch (err: any) {
     return Response.json(
@@ -130,9 +124,9 @@ export async function POST(
         action: 'reject',
         jobId,
         code: 'INTERNAL_SERVER_ERROR',
-        message: err.message || 'Lỗi hệ thống trong quá trình xử lý từ chối.'
+        message: err.message || 'Lỗi hệ thống trong quá trình xử lý từ chối.',
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
