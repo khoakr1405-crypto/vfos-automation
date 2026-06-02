@@ -590,3 +590,341 @@ export const VFOS_RULES = [
   'Operator duyệt thủ công trước khi publish.',
   'Publish từng nền tảng riêng — KHÔNG publish tự động.',
 ];
+
+/* =============================================================================
+ * OVERVIEW DASHBOARD (Round UI-02)
+ * Dữ liệu chuyên cho page Tổng quan "/". Vẫn là MOCK tĩnh.
+ * ========================================================================== */
+
+// A. KPI Summary — 6 KPI chính + sparkline 7 ngày + link sang module sâu.
+export type OverviewKpi = Kpi & { spark: number[]; href: string };
+
+export const OVERVIEW_DASHBOARD_KPIS: OverviewKpi[] = [
+  {
+    label: 'Job đang chạy',
+    value: '28',
+    delta: '+6 hôm nay',
+    trend: 'up',
+    accent: 'blue',
+    href: '/create',
+    spark: [12, 15, 14, 19, 17, 22, 28],
+  },
+  {
+    label: 'Nội dung đã tạo',
+    value: '56',
+    delta: '+12%',
+    trend: 'up',
+    accent: 'violet',
+    href: '/create',
+    spark: [30, 34, 38, 41, 47, 52, 56],
+  },
+  {
+    label: 'Video đã xuất bản',
+    value: '42',
+    delta: '+8 hôm nay',
+    trend: 'up',
+    accent: 'cyan',
+    href: '/publish',
+    spark: [20, 24, 27, 30, 34, 38, 42],
+  },
+  {
+    label: 'Lượt xem tổng',
+    value: '1.25M',
+    delta: '+32%',
+    trend: 'up',
+    accent: 'green',
+    href: '/analytics',
+    spark: [142, 168, 155, 190, 176, 210, 232],
+  },
+  {
+    label: 'Doanh thu ước tính',
+    value: '₫68.5M',
+    delta: '+9.4%',
+    trend: 'up',
+    accent: 'green',
+    href: '/analytics',
+    spark: [38, 44, 49, 52, 58, 63, 68],
+  },
+  {
+    label: 'CTR (tỷ lệ click)',
+    value: '4.12%',
+    delta: '+0.27%',
+    trend: 'up',
+    accent: 'amber',
+    href: '/analytics',
+    spark: [3.5, 3.7, 3.6, 3.9, 4.0, 4.05, 4.12],
+  },
+];
+
+// B. Cụm kênh hiệu quả — tóm tắt theo ngách (số kênh/nội dung/view/click/doanh thu).
+export type ClusterSummary = {
+  laneId: LaneId;
+  name: string;
+  channels: number;
+  contents: number;
+  views: string;
+  clicks: string;
+  revenue: string;
+  platforms: PlatformId[];
+};
+
+export const CLUSTER_SUMMARIES: ClusterSummary[] = [
+  {
+    laneId: 'review',
+    name: 'Review Sản Phẩm',
+    channels: 3,
+    contents: 24,
+    views: '1.58M',
+    clicks: '38.2K',
+    revenue: '₫33.6M',
+    platforms: ['facebook', 'tiktok', 'youtube'],
+  },
+  {
+    laneId: 'cau-ca',
+    name: 'Câu Cá',
+    channels: 3,
+    contents: 16,
+    views: '662K',
+    clicks: '19.4K',
+    revenue: '₫21.9M',
+    platforms: ['facebook', 'tiktok', 'youtube'],
+  },
+  {
+    laneId: 'rua-xe',
+    name: 'Rửa Xe & Đồ Chơi Xe',
+    channels: 3,
+    contents: 18,
+    views: '548K',
+    clicks: '14.8K',
+    revenue: '₫13.0M',
+    platforms: ['facebook', 'tiktok', 'youtube'],
+  },
+];
+
+// C. Danh sách việc cần chú ý — alert theo mức độ + module + hành động + link.
+export type AttentionLevel = 'high' | 'medium' | 'low';
+export type AttentionItem = {
+  id: string;
+  level: AttentionLevel;
+  title: string;
+  detail: string;
+  module: string;
+  href: string;
+  action: string;
+};
+
+export const ATTENTION_ITEMS: AttentionItem[] = [
+  {
+    id: 'A1',
+    level: 'high',
+    title: '3 job chờ operator duyệt',
+    detail: 'Đã QA PASS, đang chờ duyệt thủ công trước khi publish.',
+    module: 'QA & Duyệt',
+    href: '/qa',
+    action: 'Duyệt ngay',
+  },
+  {
+    id: 'A2',
+    level: 'high',
+    title: 'TikTok cần manual review',
+    detail: 'JOB-2405 · Đồ Chơi Xe Hay cần kiểm tra thủ công trước khi đăng.',
+    module: 'Xuất bản',
+    href: '/publish',
+    action: 'Mở publish',
+  },
+  {
+    id: 'A3',
+    level: 'medium',
+    title: 'YouTube Shorts thiếu thumbnail',
+    detail: 'JOB-2403 · Phụ Kiện Ô Tô chưa gắn thumbnail.',
+    module: 'Render & Caption',
+    href: '/render',
+    action: 'Thêm thumbnail',
+  },
+  {
+    id: 'A4',
+    level: 'medium',
+    title: '2 link affiliate cần kiểm tra owner',
+    detail: `Xác minh owner_id ${SHOPEE_OWNER} trước khi xuất bản.`,
+    module: 'Sản phẩm & Link',
+    href: '/products',
+    action: 'Kiểm tra link',
+  },
+  {
+    id: 'A5',
+    level: 'low',
+    title: '1 raw visual chưa audit',
+    detail: 'raw_zukul_003.mp4 đang xử lý, chờ audit chất lượng.',
+    module: 'Raw Visual AI',
+    href: '/raw-visual',
+    action: 'Xem raw',
+  },
+  {
+    id: 'A6',
+    level: 'low',
+    title: 'QA cảnh báo caption',
+    detail: '1 video caption tràn safe-area, cần kiểm tra lại.',
+    module: 'QA & Duyệt',
+    href: '/qa',
+    action: 'Mở QA',
+  },
+];
+
+// D. Job/Nội dung gần đây — bao phủ đủ các trạng thái + 3 lane + 3 nền tảng.
+export type ContentStatus =
+  | 'draft'
+  | 'rendering'
+  | 'qa-pass'
+  | 'pending-approval'
+  | 'ready'
+  | 'published'
+  | 'failed';
+
+export type RecentContent = {
+  id: string;
+  title: string;
+  laneId: LaneId;
+  product: string;
+  platform: PlatformId;
+  status: ContentStatus;
+  duration: string;
+  href: string;
+};
+
+export const RECENT_CONTENTS: RecentContent[] = [
+  {
+    id: 'JOB-2401',
+    title: 'Máy rửa xe Zukul — demo 5 phút',
+    laneId: 'rua-xe',
+    product: 'Máy rửa xe mini Zukul',
+    platform: 'facebook',
+    status: 'pending-approval',
+    duration: '00:15',
+    href: '/qa',
+  },
+  {
+    id: 'JOB-2402',
+    title: 'Cần câu Carbon 2m1 — unbox',
+    laneId: 'cau-ca',
+    product: 'Cần câu Carbon 2m1',
+    platform: 'tiktok',
+    status: 'rendering',
+    duration: '00:28',
+    href: '/render',
+  },
+  {
+    id: 'JOB-2403',
+    title: 'Máy xay sinh tố mini — review',
+    laneId: 'review',
+    product: 'Máy xay sinh tố mini',
+    platform: 'youtube',
+    status: 'qa-pass',
+    duration: '00:42',
+    href: '/qa',
+  },
+  {
+    id: 'JOB-2404',
+    title: 'Bộ rửa xe bọt tuyết — before/after',
+    laneId: 'rua-xe',
+    product: 'Bộ rửa xe bọt tuyết',
+    platform: 'facebook',
+    status: 'ready',
+    duration: '00:19',
+    href: '/publish',
+  },
+  {
+    id: 'JOB-2405',
+    title: 'Hộp đồ câu đa năng — top 5',
+    laneId: 'cau-ca',
+    product: 'Hộp đồ câu đa năng',
+    platform: 'tiktok',
+    status: 'failed',
+    duration: '00:33',
+    href: '/qa',
+  },
+  {
+    id: 'JOB-2406',
+    title: 'Máy hút bụi cầm tay — mini test',
+    laneId: 'review',
+    product: 'Máy hút bụi cầm tay',
+    platform: 'youtube',
+    status: 'draft',
+    duration: '00:24',
+    href: '/create',
+  },
+  {
+    id: 'JOB-2399',
+    title: 'Mẹo rửa xe sạch như mới',
+    laneId: 'rua-xe',
+    product: 'Nước rửa xe bọt tuyết',
+    platform: 'tiktok',
+    status: 'published',
+    duration: '00:21',
+    href: '/analytics',
+  },
+];
+
+// E. Publish Readiness Matrix nhỏ — trạng thái sẵn sàng theo nền tảng.
+export type ReadinessStatus =
+  | 'ready'
+  | 'manual-review'
+  | 'missing-thumbnail'
+  | 'scheduled'
+  | 'published';
+
+export type PlatformReadiness = {
+  platform: PlatformId;
+  status: ReadinessStatus;
+  count: number;
+  note: string;
+};
+
+export const PUBLISH_READINESS: PlatformReadiness[] = [
+  { platform: 'facebook', status: 'ready', count: 3, note: '3 video đã duyệt, sẵn sàng publish' },
+  { platform: 'tiktok', status: 'manual-review', count: 1, note: '1 video cần manual review' },
+  {
+    platform: 'youtube',
+    status: 'missing-thumbnail',
+    count: 1,
+    note: '1 video còn thiếu thumbnail',
+  },
+];
+
+// F. Mini Analytics — 7 ngày + top nội dung + top sản phẩm (revenue theo cụm tái dùng REVENUE_BY_LANE).
+export const SEVEN_DAY_LABELS = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+export const SEVEN_DAY_VIEWS = [142, 168, 155, 190, 176, 210, 232]; // nghìn view/ngày
+
+export type TopProduct = {
+  name: string;
+  laneId: LaneId;
+  clicks: string;
+  revenue: string;
+};
+
+export const TOP_PRODUCTS: TopProduct[] = [
+  { name: 'Máy rửa xe mini Zukul', laneId: 'rua-xe', clicks: '12.4K', revenue: '₫12.8M' },
+  { name: 'Cần câu Carbon 2m1', laneId: 'cau-ca', clicks: '8.1K', revenue: '₫8.45M' },
+  { name: 'Máy xay sinh tố mini', laneId: 'review', clicks: '6.7K', revenue: '₫6.10M' },
+];
+
+// G. Pipeline Overview — 10 stage + số job mỗi stage để lộ bottleneck.
+// 'Published' là stage đầu ra (terminal), không tính vào bottleneck WIP.
+export type PipelineStageStat = {
+  name: string;
+  count: number;
+  href: string;
+  terminal?: boolean;
+};
+
+export const OVERVIEW_PIPELINE: PipelineStageStat[] = [
+  { name: 'Raw Visual', count: 5, href: '/raw-visual' },
+  { name: 'Vision AI', count: 3, href: '/raw-visual' },
+  { name: 'Script', count: 6, href: '/script' },
+  { name: 'Voice & BGM', count: 4, href: '/script' },
+  { name: 'Render', count: 7, href: '/render' },
+  { name: 'Caption', count: 2, href: '/render' },
+  { name: 'QA', count: 8, href: '/qa' },
+  { name: 'Duyệt', count: 3, href: '/qa' },
+  { name: 'Package', count: 2, href: '/publish' },
+  { name: 'Published', count: 42, href: '/publish', terminal: true },
+];

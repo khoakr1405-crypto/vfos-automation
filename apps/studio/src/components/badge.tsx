@@ -68,6 +68,16 @@ const STATUS_MAP: Record<string, { label: string; accent: AccentKey }> = {
   // raw visual
   processing: { label: 'Đang xử lý', accent: 'blue' },
   rejected: { label: 'Loại', accent: 'rose' },
+  // content lifecycle (overview)
+  draft: { label: 'Draft', accent: 'cyan' },
+  rendering: { label: 'Rendering', accent: 'blue' },
+  'qa-pass': { label: 'QA PASS', accent: 'green' },
+  'pending-approval': { label: 'Chờ duyệt', accent: 'amber' },
+  published: { label: 'Published', accent: 'green' },
+  failed: { label: 'Failed', accent: 'rose' },
+  // publish readiness (overview)
+  'missing-thumbnail': { label: 'Thiếu thumbnail', accent: 'amber' },
+  scheduled: { label: 'Đã lên lịch', accent: 'blue' },
 };
 
 export function StatusBadge({ status }: { status: string }) {
