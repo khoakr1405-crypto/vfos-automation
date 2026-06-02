@@ -2430,8 +2430,18 @@ async function cmdApproveCleanliness(args: string[]): Promise<number> {
   // 6. Update Manifest & Registry cleanlinessStatus
   (manifest.source as any).cleanlinessStatus = toStatus;
   if (status === 'pass') {
-    manifest.state = 'SOURCE_READY';
-    manifest.lastError = null;
+    // Only restore/heal FAILED state to SOURCE_READY if the failure was cleanliness-related
+    const hasCleanlinessFailure = manifest.lastError && (
+      manifest.lastError.includes('WATERMARK_DETECTED') ||
+      manifest.lastError.includes('CLEANLINESS_NOT_APPROVED') ||
+      manifest.lastError.includes('SOURCE_NOT_READY') ||
+      manifest.lastError.includes('cleanliness') ||
+      manifest.lastError.includes('watermark')
+    );
+    if (manifest.state === 'FAILED' && hasCleanlinessFailure) {
+      manifest.state = 'SOURCE_READY';
+      manifest.lastError = null;
+    }
   } else {
     manifest.state = 'FAILED';
     manifest.lastError = `WATERMARK_DETECTED: Cleanliness review rejected by operator. Notes: ${notes.trim()}`;

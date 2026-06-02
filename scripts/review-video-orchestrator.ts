@@ -695,10 +695,31 @@ async function main(): Promise<void> {
         jobManifest.source.sourceVideoPath = relativeSourcePath;
         (jobManifest.source as any).localPath = relativeSourcePath;
 
+        // Resolve actual and requested providers from source_download_report.json if exists
+        let requestedProvider = (jobManifest.source as any).provider ?? 'unduhtiktok';
+        let actualProvider = requestedProvider;
+        const jobSourceDir = resolve(`runs/${jobId}/source`);
+        const downloadReportPath = join(jobSourceDir, 'source_download_report.json');
+        if (existsSync(downloadReportPath)) {
+          try {
+            const dlReport = JSON.parse(readFileSync(downloadReportPath, 'utf8'));
+            if (dlReport.requestedProvider) {
+              requestedProvider = dlReport.requestedProvider;
+            }
+            if (dlReport.actualProvider) {
+              actualProvider = dlReport.actualProvider;
+            }
+          } catch (e) {
+            // ignore
+          }
+        }
+
         // Trace update in manifest/status
         (jobManifest.source as any).approvedSourceVideoPath = relativeSourcePath;
         (jobManifest.source as any).sourceVideoPathUsedByPipeline = relativeSourcePath;
-        (jobManifest.source as any).sourceVideoProvider = (jobManifest.source as any).provider ?? 'unduhtiktok';
+        (jobManifest.source as any).requestedProvider = requestedProvider;
+        (jobManifest.source as any).actualProvider = actualProvider;
+        (jobManifest.source as any).sourceVideoProvider = actualProvider;
         (jobManifest.source as any).cleanlinessReportPath = `runs/${jobId}/source/source_cleanliness_report.json`;
         (jobManifest.source as any).sourceResolvedAt = new Date().toISOString();
         saveJobManifest(jobManifest);
