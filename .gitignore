@@ -88,3 +88,8 @@ production/archive/**
 **/facebook_publish_report.md
 **/operator_review_pack.json
 **/operator_review_pack.md
+
+# VFOS runs directory (downloaded clean source videos and temporary logs/reports)
+runs/
+**/clean_source_video.mp4
+

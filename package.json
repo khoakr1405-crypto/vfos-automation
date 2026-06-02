@@ -52,6 +52,8 @@
     "production:pack": "tsx scripts/production-packager.ts",
     "shopee:audit": "tsx scripts/shopee-link-audit-demo.ts",
     "commerce:intake": "tsx scripts/commerce-intake-orchestrator.ts",
+    "source:intake-clean": "tsx scripts/vfos-job-manager.ts intake-clean",
+    "source:approve-cleanliness": "tsx scripts/vfos-job-manager.ts approve-cleanliness",
     "vfos:daily": "tsx scripts/vfos-daily-dashboard.ts",
     "vfos:sync-check": "tsx scripts/vfos-git-sync-guard.ts",
     "job:run-review": "tsx scripts/vfos-job-manager.ts run-review",
