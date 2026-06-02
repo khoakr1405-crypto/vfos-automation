@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-05-29 (Phiên state-sync — Round 29 *VFOS Operator/Safety Hardening Suite* đã chốt LOCAL nhưng chưa push; file điều hành đồng bộ lại sau khi phát hiện stale so với 50+ commit kể từ `15c2210`. Ngày 2026-05-28 vẫn là mốc Round 28 yt_016 Sub-Agent validation thành công với `yt_016_final_reels_v2_3.mp4` đạt QC.)
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `9921431` (HEAD local — `feat: add production reel archive packager`; ahead origin 1, chưa push)
+> **Cập nhật lần cuối**: 2026-06-02 (Round UI-01 *VFOS Studio Multi-Channel Dashboard UI Shell* đã chốt thành công và commit sạch sẽ.)
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `335aef0` (HEAD local — `feat: add VFOS Studio multi-channel dashboard UI shell`)
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task → luôn chạy `pnpm vfos:daily` để có chỉ dẫn trạng thái mới nhất
 
 > ⚠️ **ĐƯỜNG VẬN HÀNH CHÍNH THỨC**: dùng `docs/00_DIEU_HANH/HUONG_DAN_VAN_HANH_CHINH_THUC_VFOS.md` (operator guide chuẩn, flow A-Z `commerce:intake` → `job:run-review` → `job:publish-facebook`).
@@ -1830,6 +1830,24 @@ Commit: `docs: add chay aliases for shopee cdp extraction`.
 - Phiên sync chỉ cập nhật `docs/00_DIEU_HANH/TRANG_THAI_VFOS_HIEN_TAI.md`.
 - KHÔNG commit runtime artifacts. KHÔNG commit untracked scripts. KHÔNG push.
 - HEAD local sau khi user duyệt commit doc-only sẽ là `9921431 + 1`.
+
+---
+
+### ✅ Round UI-01 — VFOS Studio Multi-Channel Dashboard UI Shell: ĐÃ CHỐT (2026-06-02)
+
+**Ngữ cảnh**: Cung cấp giao diện dashboard (UI shell) đa kênh cho VFOS Studio để Operator dễ dàng theo dõi, biên tập kịch bản, quản lý kênh, sản phẩm, và publish trạng thái của các chiến dịch.
+
+**Mục tiêu**: Thiết lập cấu trúc giao diện Dashboard/Studio với đầy đủ các view chức năng (Overview, Channels, Products, Script, Raw Visual, Render, QA, Publish, Schedule, Analytics, Create).
+
+**Files đã commit**: `apps/studio/`, `biome.json`, `pnpm-lock.yaml`.
+
+**Kết quả verify**:
+- `pnpm --filter @vfos/studio typecheck` -> PASS
+- `pnpm --filter @vfos/studio build` -> PASS
+- `biome check apps/studio/src` -> PASS (với các warning style `noDefaultExport` được định nghĩa trong `biome.json` cho các page/layout Next.js).
+- Web App chạy thành công tại `http://localhost:3002`.
+
+**Commit mốc**: `335aef0` (`feat: add VFOS Studio multi-channel dashboard UI shell`).
 
 ---
 
