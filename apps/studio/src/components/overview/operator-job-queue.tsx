@@ -9,11 +9,16 @@ import { Button } from '../ui';
 
 type LoadState = 'loading' | 'ready' | 'error';
 
-// Round UI-02: dữ liệu job đọc THẬT (read-only) từ /api/studio/jobs.
-// Approve/Reject CHƯA nối side effect — nút để placeholder, Phase 3 mới wire thật.
+// Round UI-03: dữ liệu job đọc THẬT và wire nút bấm Approve/Reject thật.
 export function OperatorJobQueue() {
   const [jobs, setJobs] = useState<OperatorJobDTO[]>([]);
   const [load, setLoad] = useState<LoadState>('loading');
+  
+  // UI-03 state for operations
+  const [loadingJobs, setLoadingJobs] = useState<Record<string, boolean>>({});
+  const [errorJobs, setErrorJobs] = useState<Record<string, { code: string; message: string; details?: string[] } | null>>({});
+  const [rejectingJobId, setRejectingJobId] = useState<string | null>(null);
+  const [rejectNotes, setRejectNotes] = useState('');
 
   useEffect(() => {
     let alive = true;
@@ -32,6 +37,92 @@ export function OperatorJobQueue() {
       alive = false;
     };
   }, []);
+
+  const handleApprove = async (jobId: string) => {
+    const confirmApprove = window.confirm(
+      "Phê duyệt video này? Video sẽ chuyển sang APPROVED / Publish Queue readiness, nhưng chưa publish."
+    );
+    if (!confirmApprove) return;
+
+    setLoadingJobs((prev) => ({ ...prev, [jobId]: true }));
+    setErrorJobs((prev) => ({ ...prev, [jobId]: null }));
+
+    try {
+      const res = await fetch(`/api/studio/jobs/${encodeURIComponent(jobId)}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setErrorJobs((prev) => ({
+          ...prev,
+          [jobId]: {
+            code: data.code || 'APPROVE_FAILED',
+            message: data.message || 'Phê duyệt thất bại.',
+            details: data.details || [],
+          },
+        }));
+      } else {
+        setJobs((prev) =>
+          prev.map((j) => (j.id === jobId && data.job ? data.job : j))
+        );
+      }
+    } catch (err: any) {
+      setErrorJobs((prev) => ({
+        ...prev,
+        [jobId]: {
+          code: 'NETWORK_ERROR',
+          message: err.message || 'Lỗi mạng khi thực hiện phê duyệt.',
+        },
+      }));
+    } finally {
+      setLoadingJobs((prev) => ({ ...prev, [jobId]: false }));
+    }
+  };
+
+  const handleReject = async (jobId: string) => {
+    if (!rejectNotes.trim() || rejectNotes.trim().length < 3) return;
+
+    setLoadingJobs((prev) => ({ ...prev, [jobId]: true }));
+    setErrorJobs((prev) => ({ ...prev, [jobId]: null }));
+
+    try {
+      const res = await fetch(`/api/studio/jobs/${encodeURIComponent(jobId)}/reject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notes: rejectNotes.trim() }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setErrorJobs((prev) => ({
+          ...prev,
+          [jobId]: {
+            code: data.code || 'REJECT_FAILED',
+            message: data.message || 'Từ chối thất bại.',
+            details: data.details || [],
+          },
+        }));
+      } else {
+        setJobs((prev) =>
+          prev.map((j) => (j.id === jobId && data.job ? data.job : j))
+        );
+        setRejectingJobId(null);
+        setRejectNotes('');
+      }
+    } catch (err: any) {
+      setErrorJobs((prev) => ({
+        ...prev,
+        [jobId]: {
+          code: 'NETWORK_ERROR',
+          message: err.message || 'Lỗi mạng khi thực hiện từ chối.',
+        },
+      }));
+    } finally {
+      setLoadingJobs((prev) => ({ ...prev, [jobId]: false }));
+    }
+  };
 
   const getPipeIcon = (state: 'pass' | 'fail' | 'warn') => {
     if (state === 'pass') {
@@ -73,8 +164,7 @@ export function OperatorJobQueue() {
             Hành lang kiểm soát video jobs (Active Lane: Review sản phẩm)
           </h3>
           <p className="text-xs text-neutral-500 mt-0.5">
-            Đọc job thật (read-only) từ registry. Approve/Reject thật sẽ wire ở Phase 3 — round này
-            không gọi side effect.
+            Dữ liệu job thật tích hợp API xử lý phê duyệt/từ chối an toàn (Approve không publish).
           </p>
         </div>
         <div className="flex gap-2">
@@ -304,31 +394,133 @@ export function OperatorJobQueue() {
                     </div>
                   )}
 
-                  {/* Operator Actions row — Phase 3 mới wire thật, hiện disabled */}
-                  {job.canReview && (
-                    <div className="space-y-1.5 pt-2">
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="success"
-                          disabled
-                          title="Phase 3 sẽ nối approve thật"
-                          className="text-white font-bold px-4 py-1.5 flex items-center gap-1"
-                        >
-                          <UtilIcon name="check" width={12} height={12} /> Phê duyệt
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          disabled
-                          title="Phase 3 sẽ nối reject thật"
-                          className="border border-hairline text-neutral-300 font-bold px-4 py-1.5 flex items-center gap-1"
-                        >
-                          <UtilIcon name="x" width={12} height={12} /> Từ Chối
-                        </Button>
+                  {/* UI-03: Action error panel if any */}
+                  {errorJobs[job.id] && (
+                    <div className="rounded-xl border border-accent-rose/25 bg-neutral-950 p-3.5 font-mono text-[11px] text-accent-rose space-y-1.5 shadow-inner">
+                      <div className="flex items-center justify-between border-b border-accent-rose/10 pb-1.5 mb-1.5">
+                        <span className="font-bold uppercase tracking-wider flex items-center gap-1.5 text-xs text-accent-rose">
+                          <span className="h-1.5 w-1.5 rounded-full bg-accent-rose animate-ping" />
+                          THAO TÁC THẤT BẠI (ACTION FAILURE)
+                        </span>
+                        <span className="text-[9px] text-neutral-600 bg-accent-rose/5 px-2 py-0.5 rounded border border-accent-rose/10">
+                          MÃ LỖI: {errorJobs[job.id]?.code}
+                        </span>
                       </div>
-                      <p className="text-[10px] text-neutral-500">
-                        * Job đạt điều kiện duyệt (READY_FOR_OPERATOR_REVIEW + QA PASS).
-                        Approve/Reject thật sẽ nối ở Phase 3 — round này chỉ đọc.
-                      </p>
+                      <p className="font-bold text-neutral-200">{errorJobs[job.id]?.message}</p>
+                      {errorJobs[job.id]?.details && errorJobs[job.id]!.details!.length > 0 && (
+                        <ul className="list-disc pl-4 space-y-1 mt-1 text-neutral-400">
+                          {errorJobs[job.id]!.details!.map((det, idx) => (
+                            <li key={idx}>{det}</li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+
+                  {/* UI-03: Operator Actions row */}
+                  {job.state === 'READY_FOR_OPERATOR_REVIEW' && (
+                    <div className="space-y-3 pt-2">
+                      {rejectingJobId === job.id ? (
+                        <div className="space-y-2 bg-neutral-900/50 p-3 rounded-xl border border-hairline/40">
+                          <label className="block text-xs font-bold text-neutral-200">
+                            Nhập lý do từ chối (bắt buộc, tối thiểu 3 ký tự):
+                          </label>
+                          <textarea
+                            value={rejectNotes}
+                            onChange={(e) => setRejectNotes(e.target.value)}
+                            placeholder="Ví dụ: Video có logo douyin/watermark, giọng đọc bị vấp, BGM quá to..."
+                            className="w-full bg-neutral-950 border border-hairline/80 rounded-lg p-2.5 text-xs text-neutral-100 placeholder-neutral-500 font-sans focus:outline-none focus:border-accent-rose"
+                            rows={2}
+                            disabled={loadingJobs[job.id]}
+                          />
+                          <div className="flex gap-2 justify-end">
+                            <Button
+                              variant="ghost"
+                              onClick={() => {
+                                setRejectingJobId(null);
+                                setRejectNotes('');
+                              }}
+                              disabled={loadingJobs[job.id]}
+                              className="px-3 py-1 text-xs font-semibold text-neutral-400 border border-hairline hover:bg-neutral-800"
+                            >
+                              Hủy
+                            </Button>
+                            <Button
+                              variant="danger"
+                              onClick={() => handleReject(job.id)}
+                              disabled={loadingJobs[job.id] || rejectNotes.trim().length < 3}
+                              className="px-3 py-1 text-xs font-bold text-white bg-accent-rose hover:bg-accent-rose/90 flex items-center gap-1"
+                            >
+                              {loadingJobs[job.id] ? (
+                                <span className="h-3.5 w-3.5 animate-spin border-2 border-white/30 border-t-white rounded-full" />
+                              ) : (
+                                <UtilIcon name="x" width={12} height={12} />
+                              )}
+                              Xác nhận từ chối
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="success"
+                              onClick={() => handleApprove(job.id)}
+                              disabled={!job.canReview || loadingJobs[job.id]}
+                              className="text-white font-bold px-4 py-1.5 flex items-center gap-1.5 disabled:opacity-50"
+                            >
+                              {loadingJobs[job.id] ? (
+                                <span className="h-3.5 w-3.5 animate-spin border-2 border-white/30 border-t-white rounded-full" />
+                              ) : (
+                                <UtilIcon name="check" width={12} height={12} />
+                              )}
+                              Phê duyệt
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              onClick={() => setRejectingJobId(job.id)}
+                              disabled={loadingJobs[job.id]}
+                              className="border border-hairline text-neutral-300 font-bold px-4 py-1.5 flex items-center gap-1.5 hover:bg-raised/40"
+                            >
+                              <UtilIcon name="x" width={12} height={12} />
+                              Từ chối
+                            </Button>
+                          </div>
+                          <p className="text-[10px] text-neutral-500">
+                            * Approve không publish — chỉ chuyển sang APPROVED để đóng gói và đưa vào Publish Queue.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* UI-03: Decision Display Row */}
+                  {(job.state === 'APPROVED' || job.state === 'REJECTED' || job.state === 'PACKAGED') && (
+                    <div className="pt-2 border-t border-hairline/20 flex flex-wrap items-center gap-2">
+                      {job.state === 'APPROVED' && (
+                        <span className="inline-flex items-center gap-1.5 text-xs text-accent-green font-bold bg-accent-green/10 px-3 py-1 rounded-lg">
+                          <UtilIcon name="check" width={14} height={14} />
+                          Đã duyệt — chờ Publish Queue
+                        </span>
+                      )}
+                      {job.state === 'REJECTED' && (
+                        <span className="inline-flex items-center gap-1.5 text-xs text-accent-rose font-bold bg-accent-rose/10 px-3 py-1 rounded-lg">
+                          <UtilIcon name="x" width={14} height={14} />
+                          Đã từ chối
+                        </span>
+                      )}
+                      {job.state === 'PACKAGED' && (
+                        <span className="inline-flex items-center gap-1.5 text-xs text-accent-cyan font-bold bg-accent-cyan/10 px-3 py-1 rounded-lg">
+                          <UtilIcon name="sparkle" width={14} height={14} />
+                          Đã đóng gói — sẵn sàng Publish
+                        </span>
+                      )}
+                      {job.operatorDecision && job.operatorDecision !== 'PENDING' && (
+                        <p className="text-[10px] text-neutral-400 italic">
+                          Ý kiến Operator: {job.operatorDecision === 'APPROVED' ? 'Duyệt đạt' : 'Từ chối'}{' '}
+                          {job.notes ? `(${job.notes})` : ''}
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>

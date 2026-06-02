@@ -54,6 +54,7 @@ export interface OperatorJobDTO {
   errorLog?: { stage: string; error: string };
   ownerId: string | null;
   ownerValid: boolean;
+  notes: string | null;
   updatedAt: string | null;
 }
 

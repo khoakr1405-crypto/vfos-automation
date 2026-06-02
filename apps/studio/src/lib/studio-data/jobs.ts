@@ -68,7 +68,7 @@ interface Manifest {
   };
   artifacts?: ManifestArtifacts;
   state?: string;
-  review?: { operatorDecision?: 'PENDING' | 'APPROVED' | 'REJECTED' };
+  review?: { operatorDecision?: 'PENDING' | 'APPROVED' | 'REJECTED'; notes?: string | null };
   qaStatus?: string | null;
   lastError?: string | null;
   duration?: { sourceVideoDurationSec?: number; captionedPreviewDurationSec?: number };
@@ -237,9 +237,10 @@ function buildJobDTO(entry: RegistryEntry): OperatorJobDTO {
     pipeline,
     previewUrl,
     hasPreview,
-    errorLog,
     ownerId,
     ownerValid,
+    notes: manifest?.review?.notes ?? null,
+    errorLog,
     updatedAt: manifest?.updatedAt ?? entry.updatedAt ?? null,
   };
 }
