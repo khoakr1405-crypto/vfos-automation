@@ -12,6 +12,7 @@ import {
 import type { PublishQueueItemDTO } from '@/lib/studio-data/types';
 import { useEffect, useState } from 'react';
 import { UtilIcon } from '../icons';
+import { LivePublishPanel } from './live-publish-panel';
 import { PlatformPublishCard } from './platform-publish-card';
 import { PublishGateChecklist } from './publish-gate-checklist';
 import { PublishPayloadPreview } from './publish-payload-preview';
@@ -82,6 +83,11 @@ function mapDtoToPublishContent(dto: PublishQueueItemDTO): PublishContent {
     hashtagsContent: dto.hashtagsContent,
     facebookTokenConfigured: dto.facebookTokenConfigured,
     livePublishEnabled: dto.livePublishEnabled,
+    livePublishEnabledReason: dto.livePublishEnabledReason,
+    facebookCredentialsConfigured: dto.facebookCredentialsConfigured,
+    alreadyPublished: dto.alreadyPublished,
+    confirmPhrase: dto.confirmPhrase,
+    liveGateBlockedReasons: dto.liveGateBlockedReasons,
     dryRunAvailable: dto.dryRunAvailable,
     dryRunCommand: dto.dryRunCommand,
     payloadPreview: dto.payloadPreview,
@@ -185,6 +191,8 @@ export function PublishCommandCenter() {
       </div>
 
       <PublishPayloadPreview content={selected} />
+
+      <LivePublishPanel content={selected} />
 
       <PublishGateChecklist content={selected} />
     </div>

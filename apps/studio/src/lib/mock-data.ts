@@ -913,6 +913,12 @@ export type PublishContent = {
   hashtagsContent?: string | null;
   facebookTokenConfigured?: boolean;
   livePublishEnabled?: boolean;
+  // Round UI-06 — local-only guarded live publish (sanitized, boolean/string only)
+  livePublishEnabledReason?: string;
+  facebookCredentialsConfigured?: boolean;
+  alreadyPublished?: boolean;
+  confirmPhrase?: string;
+  liveGateBlockedReasons?: string[];
   dryRunAvailable?: boolean;
   dryRunCommand?: string;
   payloadPreview?: {

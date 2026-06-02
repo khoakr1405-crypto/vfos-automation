@@ -119,4 +119,55 @@ export interface PublishQueueItemDTO {
     affiliateLinkStatus: 'valid' | 'invalid';
     dryRunCommand: string;
   };
+  // --- Round UI-06: local-only guarded live publish (sanitized, boolean-only) ---
+  /** env VFOS_STUDIO_ALLOW_LIVE_PUBLISH === 'true' (sanitized boolean, never the raw value). */
+  livePublishEnabledReason: string;
+  /** Boolean only — FACEBOOK_PAGE_ID + FACEBOOK_PAGE_ACCESS_TOKEN present server-side. Never the token. */
+  facebookCredentialsConfigured: boolean;
+  /** Job manifest already marked uploaded/published (or state PUBLISHED). */
+  alreadyPublished: boolean;
+  /** Exact phrase the Operator must type to confirm live publish: `PUBLISH <jobId>`. */
+  confirmPhrase: string;
+  /** Human-readable reasons live publish is currently blocked (gate failures). Empty = ready. */
+  liveGateBlockedReasons: string[];
+}
+
+/* =============================================================================
+ * Round UI-06 — live publish preflight (server-evaluated, read-only)
+ * ========================================================================== */
+
+export interface LivePublishGate {
+  key: string;
+  label: string;
+  passed: boolean;
+  detail: string;
+}
+
+export interface LivePublishGateResult {
+  jobId: string;
+  jobExists: boolean;
+  /** Raw manifest state, including PUBLISHED (not normalized). */
+  rawState: string | null;
+  productName: string | null;
+  targetChannel: string | null;
+  facebookCredentialsConfigured: boolean;
+  alreadyPublished: boolean;
+  gates: LivePublishGate[];
+  /** Labels of failing gates — surfaced as blocked reasons. */
+  blockedReasons: string[];
+  /** All gates passed (excludes env flag, local-only, confirm phrase — checked in route). */
+  gatesPassed: boolean;
+}
+
+export interface LivePublishAuditRecord {
+  action: 'LIVE_PUBLISH_FACEBOOK';
+  jobId: string;
+  requestedAt: string;
+  localOnly: boolean;
+  envLivePublishEnabled: boolean;
+  confirmPhraseMatched: boolean;
+  gateStatus: 'PASS' | 'BLOCKED';
+  result: 'SUCCESS' | 'FAIL' | 'BLOCKED';
+  exitCode: number | null;
+  operatorSource: string;
 }

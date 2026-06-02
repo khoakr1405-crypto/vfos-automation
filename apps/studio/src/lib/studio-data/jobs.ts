@@ -11,10 +11,14 @@
  *   - KHÔNG side effect: không ghi file, không gọi command, không gọi API ngoài.
  * ========================================================================== */
 
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { resolveInsideRepo } from './paths';
 import type {
   GateState,
+  LivePublishAuditRecord,
+  LivePublishGate,
+  LivePublishGateResult,
   OperatorJobDTO,
   OverviewSummary,
   ProductRowDTO,
@@ -26,6 +30,9 @@ import type {
 export type {
   AffiliateGate,
   GateState,
+  LivePublishAuditRecord,
+  LivePublishGate,
+  LivePublishGateResult,
   OperatorJobDTO,
   OverviewSummary,
   ProductRowDTO,
@@ -58,6 +65,8 @@ interface ManifestArtifacts {
   previewVideoPath?: string | null;
   captionedPreviewPath?: string | null;
   finalQaReportPath?: string | null;
+  productionPackageManifestPath?: string | null;
+  publishReadinessPath?: string | null;
 }
 
 interface Manifest {
@@ -71,6 +80,7 @@ interface Manifest {
   artifacts?: ManifestArtifacts;
   state?: string;
   review?: { operatorDecision?: 'PENDING' | 'APPROVED' | 'REJECTED'; notes?: string | null };
+  safety?: { facebookApiCalled?: boolean; uploaded?: boolean; published?: boolean };
   qaStatus?: string | null;
   lastError?: string | null;
   duration?: { sourceVideoDurationSec?: number; captionedPreviewDurationSec?: number };
@@ -364,6 +374,207 @@ export function readJobTextFile(jobId: string, filename: string): string | null 
   }
 }
 
+/* =============================================================================
+ * Round UI-06 — local-only guarded live publish (SERVER ONLY)
+ * -----------------------------------------------------------------------------
+ * Mọi thứ ở đây READ-ONLY trừ appendPublishAuditLog (chỉ ghi audit jsonl trong
+ * runtime gitignored). KHÔNG gọi command publish ở module này — route handler
+ * mới được spawn command thật sau khi toàn bộ guard pass.
+ * ========================================================================== */
+
+const FALLBACK_CHANNEL = 'Kênh Review Sản Phẩm #1';
+
+/** env flag, mặc định false. Không bao giờ trả raw value ra ngoài — chỉ boolean. */
+export function isLivePublishEnvEnabled(): boolean {
+  return process.env.VFOS_STUDIO_ALLOW_LIVE_PUBLISH === 'true';
+}
+
+export function livePublishDisabledReason(): string {
+  return isLivePublishEnvEnabled()
+    ? ''
+    : 'VFOS_STUDIO_ALLOW_LIVE_PUBLISH chưa được bật (mặc định tắt).';
+}
+
+/**
+ * Boolean only — Facebook page credentials cần cho command live publish thật
+ * (`job:publish-facebook --confirm-live-publish`). KHÔNG đọc/trả giá trị token.
+ */
+export function facebookCredentialsConfigured(): boolean {
+  return Boolean(
+    (process.env.FACEBOOK_PAGE_ID || '').trim() &&
+      (process.env.FACEBOOK_PAGE_ACCESS_TOKEN || '').trim(),
+  );
+}
+
+/** Cụm xác nhận Operator phải gõ chính xác để live publish. */
+export function livePublishConfirmPhrase(jobId: string): string {
+  return `PUBLISH ${jobId}`;
+}
+
+/**
+ * Đánh giá toàn bộ gate live-publish server-side từ manifest + artifact thật.
+ * READ-ONLY. KHÔNG xét env flag / local-only / confirm phrase (route lo phần đó).
+ */
+export function evaluateLivePublishGates(jobId: string): LivePublishGateResult {
+  const empty: LivePublishGateResult = {
+    jobId,
+    jobExists: false,
+    rawState: null,
+    productName: null,
+    targetChannel: null,
+    facebookCredentialsConfigured: facebookCredentialsConfigured(),
+    alreadyPublished: false,
+    gates: [],
+    blockedReasons: ['Không tìm thấy Job (manifest thiếu).'],
+    gatesPassed: false,
+  };
+
+  if (!/^[A-Za-z0-9_-]+$/.test(jobId)) return empty;
+
+  const manifest = readJson<Manifest>(`${JOBS_ROOT_REL}/${jobId}/job_manifest.json`);
+  if (!manifest) return empty;
+
+  const entry = loadRegistryEntries().find((j) => j.jobId === jobId);
+  const rawState = manifest.state ?? entry?.state ?? null;
+  const productName = (entry?.productName ?? '')?.trim() || null;
+
+  const card = readJson<ProductCard>(manifest.source?.productCardPath ?? entry?.productCardPath);
+  const ownerValid =
+    card?.affiliateOwnerId === EXPECTED_OWNER && card?.validationStatus === 'VERIFIED';
+
+  const qa = resolveQa(manifest);
+  const a = manifest.artifacts ?? {};
+  const captionedPresent = fileExistsInside(a.captionedPreviewPath ?? entry?.captionedPreviewPath);
+  const pkgPresent =
+    fileExistsInside(a.productionPackageManifestPath) ||
+    fileExistsInside(`production/archive/${jobId}/package_manifest.json`);
+  const captionPresent = fileExistsInside(`production/archive/${jobId}/caption.txt`);
+  const hashtagsPresent = fileExistsInside(`production/archive/${jobId}/hashtags.txt`);
+  const readinessPresent =
+    fileExistsInside(a.publishReadinessPath) ||
+    fileExistsInside(`production/archive/${jobId}/publish_readiness_report.md`);
+  const fbCreds = facebookCredentialsConfigured();
+  const alreadyPublished =
+    manifest.safety?.uploaded === true ||
+    manifest.safety?.published === true ||
+    rawState === 'PUBLISHED';
+
+  const gates: LivePublishGate[] = [
+    {
+      key: 'job_exists',
+      label: 'Job tồn tại',
+      passed: true,
+      detail: 'Tìm thấy manifest của Job.',
+    },
+    {
+      key: 'state',
+      label: 'Trạng thái APPROVED/PACKAGED',
+      passed: rawState === 'APPROVED' || rawState === 'PACKAGED',
+      detail: `Trạng thái hiện tại: ${rawState ?? 'không rõ'}.`,
+    },
+    {
+      key: 'operator_approved',
+      label: 'Operator đã phê duyệt',
+      passed: (manifest.review?.operatorDecision ?? entry?.operatorDecision) === 'APPROVED',
+      detail: 'Quyết định Operator phải là APPROVED.',
+    },
+    {
+      key: 'final_qa',
+      label: 'Final QA PASS',
+      passed: qa === 'PASS',
+      detail: qa === 'PASS' ? 'QA Gate đạt.' : `QA hiện tại: ${qa ?? 'chưa có'}.`,
+    },
+    {
+      key: 'captioned_preview',
+      label: 'Captioned preview tồn tại',
+      passed: captionedPresent,
+      detail: captionedPresent ? 'Có tệp video phụ đề.' : 'Thiếu tệp captioned preview.',
+    },
+    {
+      key: 'package_manifest',
+      label: 'Đã đóng gói (package manifest)',
+      passed: pkgPresent,
+      detail: pkgPresent ? 'Có package_manifest.json.' : 'Chưa đóng gói sản xuất.',
+    },
+    {
+      key: 'caption_file',
+      label: 'Tệp caption.txt tồn tại',
+      passed: captionPresent,
+      detail: captionPresent ? 'Có caption.txt.' : 'Thiếu caption.txt.',
+    },
+    {
+      key: 'hashtag_file',
+      label: 'Tệp hashtags.txt tồn tại',
+      passed: hashtagsPresent,
+      detail: hashtagsPresent ? 'Có hashtags.txt.' : 'Thiếu hashtags.txt.',
+    },
+    {
+      key: 'affiliate_link',
+      label: 'Affiliate link hợp lệ',
+      passed: ownerValid,
+      detail: ownerValid ? 'Khớp Shopee owner đã xác thực.' : 'Sai owner hoặc chưa xác thực.',
+    },
+    {
+      key: 'target_channel',
+      label: 'Đã chọn kênh đích',
+      passed: true,
+      detail: `Kênh đích: ${FALLBACK_CHANNEL}.`,
+    },
+    {
+      key: 'facebook_credentials',
+      label: 'Facebook credentials đã cấu hình',
+      passed: fbCreds,
+      detail: fbCreds
+        ? 'Facebook Page ID + Page credential có mặt server-side (boolean).'
+        : 'Thiếu Facebook Page ID / Page credential server-side.',
+    },
+    {
+      key: 'publish_readiness',
+      label: 'Publish readiness report tồn tại',
+      passed: readinessPresent,
+      detail: readinessPresent ? 'Có publish_readiness_report.md.' : 'Thiếu báo cáo readiness.',
+    },
+    {
+      key: 'not_published',
+      label: 'Chưa từng publish',
+      passed: !alreadyPublished,
+      detail: alreadyPublished ? 'Job đã được publish/upload trước đó.' : 'Job chưa publish.',
+    },
+  ];
+
+  const blockedReasons = gates.filter((g) => !g.passed).map((g) => g.label);
+
+  return {
+    jobId,
+    jobExists: true,
+    rawState,
+    productName,
+    targetChannel: FALLBACK_CHANNEL,
+    facebookCredentialsConfigured: fbCreds,
+    alreadyPublished,
+    gates,
+    blockedReasons,
+    gatesPassed: blockedReasons.length === 0,
+  };
+}
+
+/**
+ * Ghi 1 dòng audit (JSONL) vào runtime gitignored. KHÔNG bao giờ chứa token.
+ * Trả false nếu jobId không hợp lệ hoặc ghi lỗi (không throw).
+ */
+export function appendPublishAuditLog(jobId: string, record: LivePublishAuditRecord): boolean {
+  if (!/^[A-Za-z0-9_-]+$/.test(jobId)) return false;
+  const abs = resolveInsideRepo(`${JOBS_ROOT_REL}/${jobId}/publish_audit_log.jsonl`);
+  if (!abs) return false;
+  try {
+    mkdirSync(dirname(abs), { recursive: true });
+    appendFileSync(abs, `${JSON.stringify(record)}\n`, 'utf-8');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function loadPublishQueueItems(): PublishQueueItemDTO[] {
   const jobs = loadOperatorJobs();
   // Filter for jobs that can be in the publish queue (READY_FOR_OPERATOR_REVIEW, APPROVED, PACKAGED)
@@ -372,8 +583,11 @@ export function loadPublishQueueItems(): PublishQueueItemDTO[] {
       j.state === 'READY_FOR_OPERATOR_REVIEW' || j.state === 'APPROVED' || j.state === 'PACKAGED',
   );
 
+  const liveEnvEnabled = isLivePublishEnvEnabled();
+
   return filtered.map((job) => {
     const id = job.id;
+    const liveGate = evaluateLivePublishGates(id);
     const pkgPath = `production/archive/${id}/package_manifest.json`;
     const pkgExists = fileExistsInside(pkgPath);
 
@@ -454,8 +668,10 @@ export function loadPublishQueueItems(): PublishQueueItemDTO[] {
       },
       {
         label: 'Live Publish Enabled',
-        status: 'warn',
-        detail: 'Bị khóa ở UI-05 (Dry-Run / Readiness Only)',
+        status: liveEnvEnabled ? 'pass' : 'warn',
+        detail: liveEnvEnabled
+          ? 'Cờ live publish đã bật (vẫn cần confirm phrase + guard).'
+          : 'Cờ VFOS_STUDIO_ALLOW_LIVE_PUBLISH chưa bật (mặc định tắt).',
       },
       {
         label: 'Dry-run Available',
@@ -517,7 +733,12 @@ export function loadPublishQueueItems(): PublishQueueItemDTO[] {
       captionContent,
       hashtagsContent,
       facebookTokenConfigured,
-      livePublishEnabled: false,
+      livePublishEnabled: liveEnvEnabled,
+      livePublishEnabledReason: livePublishDisabledReason(),
+      facebookCredentialsConfigured: liveGate.facebookCredentialsConfigured,
+      alreadyPublished: liveGate.alreadyPublished,
+      confirmPhrase: livePublishConfirmPhrase(id),
+      liveGateBlockedReasons: liveGate.blockedReasons,
       dryRunAvailable: job.state === 'APPROVED' || job.state === 'PACKAGED',
       dryRunCommand,
       payloadPreview: {
