@@ -352,14 +352,24 @@ export function getJobPreviewAbsPath(jobId: string): string | null {
   return abs;
 }
 
+export function readJobTextFile(jobId: string, filename: string): string | null {
+  if (!/^[A-Za-z0-9_-]+$/.test(jobId)) return null;
+  const rel = `production/archive/${jobId}/${filename}`;
+  const abs = resolveInsideRepo(rel);
+  if (!abs || !existsSync(abs)) return null;
+  try {
+    return readFileSync(abs, 'utf-8');
+  } catch {
+    return null;
+  }
+}
+
 export function loadPublishQueueItems(): PublishQueueItemDTO[] {
   const jobs = loadOperatorJobs();
   // Filter for jobs that can be in the publish queue (READY_FOR_OPERATOR_REVIEW, APPROVED, PACKAGED)
   const filtered = jobs.filter(
     (j) =>
-      j.state === 'READY_FOR_OPERATOR_REVIEW' ||
-      j.state === 'APPROVED' ||
-      j.state === 'PACKAGED'
+      j.state === 'READY_FOR_OPERATOR_REVIEW' || j.state === 'APPROVED' || j.state === 'PACKAGED',
   );
 
   return filtered.map((job) => {
@@ -369,6 +379,19 @@ export function loadPublishQueueItems(): PublishQueueItemDTO[] {
 
     const reportPath = `production/archive/${id}/publish_readiness_report.md`;
     const reportExists = fileExistsInside(reportPath);
+
+    const captionExists = fileExistsInside(`production/archive/${id}/caption.txt`);
+    const hashtagsExists = fileExistsInside(`production/archive/${id}/hashtags.txt`);
+
+    const captionContent = readJobTextFile(id, 'caption.txt');
+    const hashtagsContent = readJobTextFile(id, 'hashtags.txt');
+
+    // Safe environment checks (only boolean, no token leakage)
+    const facebookTokenConfigured = !!(
+      process.env.FACEBOOK_ACCESS_TOKEN ||
+      process.env.FB_ACCESS_TOKEN ||
+      process.env.FACEBOOK_TOKEN
+    );
 
     // Map job state to publishReadiness status
     let publishReadiness: PublishQueueItemDTO['publishReadiness'] = 'unknown';
@@ -381,16 +404,21 @@ export function loadPublishQueueItems(): PublishQueueItemDTO[] {
     }
 
     // Determine target channel (clean fallback)
-    const suggestedChannel = (job.suggestedChannel || '').includes('mock') || (job.suggestedChannel || '').includes('chưa nối')
-      ? 'Kênh Review Sản Phẩm #1'
-      : job.suggestedChannel;
+    const suggestedChannel =
+      (job.suggestedChannel || '').includes('mock') ||
+      (job.suggestedChannel || '').includes('chưa nối')
+        ? 'Kênh Review Sản Phẩm #1'
+        : job.suggestedChannel;
 
-    // Gate checks
+    // Deep gate checks
     const gateChecks: PublishQueueItemDTO['gateChecks'] = [
       {
         label: 'Operator Approved',
-        status: (job.state === 'APPROVED' || job.state === 'PACKAGED') ? 'pass' : 'pending',
-        detail: job.state === 'READY_FOR_OPERATOR_REVIEW' ? 'Chờ phê duyệt từ Operator' : 'Đã được phê duyệt',
+        status: job.state === 'APPROVED' || job.state === 'PACKAGED' ? 'pass' : 'pending',
+        detail:
+          job.state === 'READY_FOR_OPERATOR_REVIEW'
+            ? 'Chờ phê duyệt từ Operator'
+            : 'Đã được phê duyệt',
       },
       {
         label: 'Final QA PASS',
@@ -404,8 +432,38 @@ export function loadPublishQueueItems(): PublishQueueItemDTO[] {
       },
       {
         label: 'Package Manifest Exists',
-        status: pkgExists ? 'pass' : (job.state === 'READY_FOR_OPERATOR_REVIEW' ? 'pending' : 'fail'),
+        status: pkgExists ? 'pass' : job.state === 'READY_FOR_OPERATOR_REVIEW' ? 'pending' : 'fail',
         detail: pkgExists ? 'Tệp cấu trúc đóng gói sẵn sàng' : 'Chưa được đóng gói sản xuất',
+      },
+      {
+        label: 'Caption File Exists',
+        status: captionExists ? 'pass' : 'fail',
+        detail: captionExists ? 'Tệp caption.txt hợp lệ' : 'Thiếu tệp caption.txt',
+      },
+      {
+        label: 'Hashtag File Exists',
+        status: hashtagsExists ? 'pass' : 'fail',
+        detail: hashtagsExists ? 'Tệp hashtags.txt hợp lệ' : 'Thiếu tệp hashtags.txt',
+      },
+      {
+        label: 'Facebook Token Configured',
+        status: facebookTokenConfigured ? 'pass' : 'warn',
+        detail: facebookTokenConfigured
+          ? 'Facebook token đã cấu hình'
+          : 'Chưa cấu hình Facebook token',
+      },
+      {
+        label: 'Live Publish Enabled',
+        status: 'warn',
+        detail: 'Bị khóa ở UI-05 (Dry-Run / Readiness Only)',
+      },
+      {
+        label: 'Dry-run Available',
+        status: job.state === 'APPROVED' || job.state === 'PACKAGED' ? 'pass' : 'pending',
+        detail:
+          job.state === 'APPROVED' || job.state === 'PACKAGED'
+            ? 'Chạy thử dry-run sẵn sàng'
+            : 'Đang chờ phê duyệt',
       },
       {
         label: 'Publish Readiness Report Exists',
@@ -420,7 +478,9 @@ export function loadPublishQueueItems(): PublishQueueItemDTO[] {
       {
         label: 'Affiliate Link Valid',
         status: job.ownerValid ? 'pass' : 'fail',
-        detail: job.ownerValid ? 'Link hợp lệ (khớp Shopee owner)' : 'Sai Shopee owner hoặc chưa xác thực',
+        detail: job.ownerValid
+          ? 'Link hợp lệ (khớp Shopee owner)'
+          : 'Sai Shopee owner hoặc chưa xác thực',
       },
       {
         label: 'No Live Publish Confirmation',
@@ -431,8 +491,14 @@ export function loadPublishQueueItems(): PublishQueueItemDTO[] {
 
     const warnings: string[] = [];
     if (!job.ownerValid) warnings.push('Sai Shopee owner ID hoặc chưa cấu hình hợp lệ.');
-    if (!pkgExists && job.state !== 'READY_FOR_OPERATOR_REVIEW') warnings.push('Chưa tìm thấy tệp đóng gói package_manifest.json.');
+    if (!pkgExists && job.state !== 'READY_FOR_OPERATOR_REVIEW')
+      warnings.push('Chưa tìm thấy tệp đóng gói package_manifest.json.');
     if (!job.hasPreview) warnings.push('Không tìm thấy tệp video captioned preview mp4.');
+    if (!captionExists) warnings.push('Thiếu tệp caption.txt.');
+    if (!hashtagsExists) warnings.push('Thiếu tệp hashtags.txt.');
+
+    const platform = job.platform || 'facebook';
+    const dryRunCommand = `pnpm job:publish-${platform} --job ${id} --dry-run`;
 
     return {
       jobId: id,
@@ -448,7 +514,23 @@ export function loadPublishQueueItems(): PublishQueueItemDTO[] {
       gateChecks,
       warnings,
       source: 'real',
+      captionContent,
+      hashtagsContent,
+      facebookTokenConfigured,
+      livePublishEnabled: false,
+      dryRunAvailable: job.state === 'APPROVED' || job.state === 'PACKAGED',
+      dryRunCommand,
+      payloadPreview: {
+        jobId: id,
+        productName: job.product,
+        targetPlatform: platform,
+        targetChannel: suggestedChannel,
+        videoPackageStatus: pkgExists ? 'available' : 'missing',
+        captionStatus: captionExists ? 'available' : 'missing',
+        hashtagsStatus: hashtagsExists ? 'available' : 'missing',
+        affiliateLinkStatus: job.ownerValid ? 'valid' : 'invalid',
+        dryRunCommand,
+      },
     };
   });
 }
-

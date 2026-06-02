@@ -907,6 +907,30 @@ export type PublishContent = {
   durationValid: boolean;
   safeAreaOk: boolean;
   platforms: Record<PlatformId, PlatformPublishState>;
+
+  // Dry-run / payload preview fields
+  captionContent?: string | null;
+  hashtagsContent?: string | null;
+  facebookTokenConfigured?: boolean;
+  livePublishEnabled?: boolean;
+  dryRunAvailable?: boolean;
+  dryRunCommand?: string;
+  payloadPreview?: {
+    jobId: string;
+    productName: string | null;
+    targetPlatform: string;
+    targetChannel: string | null;
+    videoPackageStatus: 'available' | 'missing';
+    captionStatus: 'available' | 'missing';
+    hashtagsStatus: 'available' | 'missing';
+    affiliateLinkStatus: 'valid' | 'invalid';
+    dryRunCommand: string;
+  };
+  gateChecks?: Array<{
+    label: string;
+    status: 'pass' | 'fail' | 'warn' | 'pending';
+    detail?: string;
+  }>;
 };
 
 const aff = (sku: string) => `https://shp.ee/${sku}?aff=${SHOPEE_OWNER}`;

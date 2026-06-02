@@ -1,35 +1,45 @@
 'use client';
 
-import { PLATFORMS, type PublishContent, type PlatformPublishState, type PublishPlatformStatus, SHOPEE_OWNER } from '@/lib/mock-data';
-import { useState, useEffect } from 'react';
+import {
+  type LaneId,
+  PLATFORMS,
+  type PlatformId,
+  type PlatformPublishState,
+  type PublishContent,
+  type PublishPlatformStatus,
+  SHOPEE_OWNER,
+} from '@/lib/mock-data';
+import type { PublishQueueItemDTO } from '@/lib/studio-data/types';
+import { useEffect, useState } from 'react';
+import { UtilIcon } from '../icons';
 import { PlatformPublishCard } from './platform-publish-card';
 import { PublishGateChecklist } from './publish-gate-checklist';
+import { PublishPayloadPreview } from './publish-payload-preview';
 import { PublishQueueTable } from './publish-queue-table';
 import { SelectedPublishContent } from './selected-publish-content';
-import { UtilIcon } from '../icons';
 
-function mapDtoToPublishContent(dto: any): PublishContent {
+function mapDtoToPublishContent(dto: PublishQueueItemDTO): PublishContent {
   const isApproved = dto.status === 'APPROVED' || dto.status === 'PACKAGED';
   const isPackaged = dto.status === 'PACKAGED';
 
   // Find QA status
-  const qaGate = dto.gateChecks?.find((g: any) => g.label === 'Final QA PASS');
+  const qaGate = dto.gateChecks?.find((g) => g.label === 'Final QA PASS');
   const qaPassed = qaGate ? qaGate.status === 'pass' : false;
 
   // Find preview status
-  const previewGate = dto.gateChecks?.find((g: any) => g.label === 'Captioned Preview Exists');
+  const previewGate = dto.gateChecks?.find((g) => g.label === 'Captioned Preview Exists');
   const hasPreview = previewGate ? previewGate.status === 'pass' : false;
 
   // Find owner valid
-  const affiliateGate = dto.gateChecks?.find((g: any) => g.label === 'Affiliate Link Valid');
+  const affiliateGate = dto.gateChecks?.find((g) => g.label === 'Affiliate Link Valid');
   const ownerValid = affiliateGate ? affiliateGate.status === 'pass' : false;
 
   // Find report status
-  const reportGate = dto.gateChecks?.find((g: any) => g.label === 'Publish Readiness Report Exists');
+  const reportGate = dto.gateChecks?.find((g) => g.label === 'Publish Readiness Report Exists');
   const reportExists = reportGate ? reportGate.status === 'pass' : false;
 
-  const platforms: Record<string, PlatformPublishState> = {};
-  for (const p of ['facebook', 'tiktok', 'youtube']) {
+  const platforms = {} as Record<PlatformId, PlatformPublishState>;
+  for (const p of ['facebook', 'tiktok', 'youtube'] as PlatformId[]) {
     let status: PublishPlatformStatus = 'WAIT_PACKAGE';
     if (isPackaged) {
       status = 'READY';
@@ -54,7 +64,7 @@ function mapDtoToPublishContent(dto: any): PublishContent {
   return {
     id: dto.jobId,
     title: dto.productName || dto.jobId,
-    laneId: dto.laneId || 'review',
+    laneId: (dto.laneId as LaneId) || 'review',
     product: dto.productName || dto.jobId,
     productPrice: isApproved ? '₫699.000' : '₫0', // or sanitized price
     affiliateLink: `https://shp.ee/sku?aff=${SHOPEE_OWNER}`,
@@ -67,7 +77,15 @@ function mapDtoToPublishContent(dto: any): PublishContent {
     voiceBgmReady: true,
     durationValid: true,
     safeAreaOk: true,
-    platforms: platforms as any,
+    platforms,
+    captionContent: dto.captionContent,
+    hashtagsContent: dto.hashtagsContent,
+    facebookTokenConfigured: dto.facebookTokenConfigured,
+    livePublishEnabled: dto.livePublishEnabled,
+    dryRunAvailable: dto.dryRunAvailable,
+    dryRunCommand: dto.dryRunCommand,
+    payloadPreview: dto.payloadPreview,
+    gateChecks: dto.gateChecks,
   };
 }
 
@@ -142,7 +160,9 @@ export function PublishCommandCenter() {
     return (
       <div className="rounded-2xl border border-hairline bg-card/20 py-12 text-center text-neutral-500 italic space-y-2">
         <p>Không tìm thấy Job nào trong trạng thái Review/Approved/Packaged.</p>
-        <p className="text-xs text-neutral-600">Vui lòng phê duyệt một số Job tại Overview Dashboard trước.</p>
+        <p className="text-xs text-neutral-600">
+          Vui lòng phê duyệt một số Job tại Overview Dashboard trước.
+        </p>
       </div>
     );
   }
@@ -163,6 +183,8 @@ export function PublishCommandCenter() {
           ))}
         </div>
       </div>
+
+      <PublishPayloadPreview content={selected} />
 
       <PublishGateChecklist content={selected} />
     </div>
