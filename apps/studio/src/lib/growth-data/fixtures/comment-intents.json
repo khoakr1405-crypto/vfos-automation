@@ -4,5 +4,9 @@
   { "commentId": "cm_003", "intent": "ASK_WHERE_TO_BUY", "confidence": 0.9, "isSafeForAuto": true },
   { "commentId": "cm_004", "intent": "ASK_STOCK", "confidence": 0.88, "isSafeForAuto": true },
   { "commentId": "cm_005", "intent": "COMPLAINT", "confidence": 0.82, "isSafeForAuto": false },
-  { "commentId": "cm_006", "intent": "COMPARE_PRODUCT", "confidence": 0.71, "isSafeForAuto": false }
+  { "commentId": "cm_006", "intent": "COMPARE_PRODUCT", "confidence": 0.71, "isSafeForAuto": false },
+  { "commentId": "cm_007", "intent": "JOKE", "confidence": 0.96, "isSafeForAuto": false },
+  { "commentId": "cm_008", "intent": "PRAISE", "confidence": 0.98, "isSafeForAuto": false },
+  { "commentId": "cm_009", "intent": "COMPLAINT", "confidence": 0.92, "isSafeForAuto": false },
+  { "commentId": "cm_010", "intent": "QUESTION", "confidence": 0.85, "isSafeForAuto": false }
 ]

@@ -35,6 +35,11 @@ export const ESCALATE_INTENTS = [
   'ABUSE',
   'SPAM',
   'UNKNOWN',
+  'QUESTION',
+  'JOKE',
+  'PRAISE',
+  'NEGATIVE_LIGHT',
+  'TREND_REACTION',
 ] as const;
 
 export type SafeAutoIntent = (typeof SAFE_AUTO_INTENTS)[number];
@@ -129,6 +134,11 @@ export interface CommentIntent {
   intent: CommentIntentValue;
   confidence: number;
   isSafeForAuto: boolean;
+  mood?: 'funny' | 'curious' | 'interested' | 'skeptical' | 'angry' | 'neutral';
+  replyStyle?: 'funny' | 'friendly' | 'informative' | 'soft-defense' | 'no-reply' | 'escalate';
+  conversionOpportunity?: 'none' | 'soft' | 'medium' | 'high';
+  shouldIncludeLink?: boolean;
+  riskLevel?: 'low' | 'medium' | 'high';
 }
 
 /** Mẫu reply theo intent. bodyTemplate dùng placeholder {affiliate_link}. */

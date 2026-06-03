@@ -14,7 +14,8 @@ export type IconKey =
   | 'qa'
   | 'publish'
   | 'analytics'
-  | 'schedule';
+  | 'schedule'
+  | 'comments';
 
 export type NavItem = {
   /** Module number as shown in the reference (1..11). */
@@ -78,6 +79,13 @@ export const NAV_GROUPS: NavGroup[] = [
         label: 'Hiệu suất / Analytics',
         icon: 'analytics',
         accent: 'green',
+      },
+      {
+        no: 12,
+        href: '/comments',
+        label: 'Bình luận & Mắt thần',
+        icon: 'comments',
+        accent: 'violet',
       },
     ],
   },
