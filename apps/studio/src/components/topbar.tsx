@@ -3,7 +3,7 @@ import { UtilIcon } from './icons';
 
 export function Topbar() {
   return (
-    <header className="sticky top-0 z-20 flex flex-col border-b border-hairline bg-canvas/80 px-5 py-3 backdrop-blur lg:flex-row lg:items-center gap-4">
+    <header className="flex flex-col border-b border-hairline bg-canvas/80 px-5 py-3 backdrop-blur lg:flex-row lg:items-center gap-4">
       {/* Search & Filters */}
       <div className="flex min-w-0 flex-1 flex-col sm:flex-row sm:items-center gap-3">
         <div className="flex w-full max-w-xs items-center gap-2 rounded-lg border border-hairline bg-panel/80 px-3 py-2 text-neutral-500 focus-within:border-neutral-500 transition">
