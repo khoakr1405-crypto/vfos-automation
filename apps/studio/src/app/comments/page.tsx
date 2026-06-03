@@ -3,8 +3,15 @@ import {
   loadCommentIntents,
   loadCommentItems,
   loadPublishedPosts,
+  loadReplyTemplates,
 } from '@/lib/growth-data/load';
-import type { Channel, CommentIntent, CommentItem, PublishedPost } from '@/lib/growth-data/types';
+import type {
+  Channel,
+  CommentIntent,
+  CommentItem,
+  PublishedPost,
+  ReplyTemplate,
+} from '@/lib/growth-data/types';
 import type { PlatformId } from '@/lib/mock-data';
 import { loadJobById } from '@/lib/studio-data/jobs';
 import { CommentInboxClient } from './comment-inbox';
@@ -31,6 +38,12 @@ export interface AnalyzedComment {
   platform: PlatformId;
   videoTitle: string;
   affiliateShortLink: string | null;
+
+  // Draft Reply Assistant fields:
+  draftReply: string;
+  draftRationale: string;
+  draftHasLink: boolean;
+  draftWarning?: string;
 }
 
 function analyzeComment(
@@ -38,6 +51,7 @@ function analyzeComment(
   intentObj: CommentIntent | undefined,
   post: PublishedPost | undefined,
   channel: Channel | undefined,
+  templates: ReplyTemplate[],
 ): AnalyzedComment {
   const text = comment.text.toLowerCase();
 
@@ -129,10 +143,17 @@ function analyzeComment(
 
   // 3. Determine Risk Level
   let riskLevel: 'low' | 'medium' | 'high' = 'low';
-  if (intent === 'COMPLAINT' || text.includes('lừa đảo')) {
+  if (
+    intent === 'COMPLAINT' ||
+    intent === 'NEGATIVE' ||
+    intent === 'SPAM' ||
+    intent === 'ABUSE' ||
+    text.includes('lừa đảo')
+  ) {
     riskLevel = 'high';
   } else if (
     intent === 'COMPARE_PRODUCT' ||
+    intent === 'NEGATIVE_LIGHT' ||
     text.includes('tệ') ||
     text.includes('dở') ||
     text.includes('mắc')
@@ -169,9 +190,37 @@ function analyzeComment(
     conversionOpportunity = 'soft';
   }
 
+  const affiliateLink = post?.affiliateShortLink || null;
+
+  const isLinkIntent =
+    intent === 'ASK_LINK' ||
+    intent === 'ASK_PRICE' ||
+    intent === 'ASK_WHERE_TO_BUY' ||
+    intent === 'ASK_STOCK';
+
+  const isQuestionWithBuyingIntent =
+    intent === 'QUESTION' &&
+    (text.includes('xin link') ||
+      text.includes('link') ||
+      text.includes('giá') ||
+      text.includes('bao nhiêu') ||
+      text.includes('ở đâu') ||
+      text.includes('mua'));
+
   // 6. Determine Should Include Link
   const shouldIncludeLink =
-    intent === 'ASK_LINK' || intent === 'ASK_WHERE_TO_BUY' || intent === 'ASK_PRICE';
+    (isLinkIntent || isQuestionWithBuyingIntent) &&
+    !!affiliateLink &&
+    !(
+      intent === 'COMPLAINT' ||
+      intent === 'NEGATIVE' ||
+      intent === 'SPAM' ||
+      intent === 'ABUSE' ||
+      intent === 'NEGATIVE_LIGHT' ||
+      intent === 'UNKNOWN' ||
+      intent === 'COMPARE_PRODUCT' ||
+      riskLevel === 'high'
+    );
 
   // Resolve Product/Job Title
   const realJob = post ? loadJobById(post.jobId) : null;
@@ -181,6 +230,66 @@ function analyzeComment(
     post?.videoId ||
     post?.jobId ||
     'Sản phẩm / Video không rõ';
+
+  // 7. Draft Reply Assistant Logic
+  let draftReply = '';
+  let draftRationale = '';
+  let draftHasLink = false;
+  let draftWarning: string | undefined = undefined;
+
+  if (
+    intent === 'COMPLAINT' ||
+    intent === 'NEGATIVE' ||
+    intent === 'SPAM' ||
+    intent === 'ABUSE' ||
+    riskLevel === 'high'
+  ) {
+    draftReply = 'Cần Operator xử lý thủ công';
+    draftRationale =
+      'Bình luận chứa ý kiến khiếu nại, phản hồi tiêu cực hoặc rủi ro độc hại cao. Chặn câu trả lời tự động để tránh gây tranh chấp thêm.';
+    draftHasLink = false;
+    draftWarning =
+      '⚠️ Cảnh báo: Đây là bình luận tiêu cực/khiếu nại. Ưu tiên xin lỗi/ghi nhận, kiểm tra đơn hàng nếu có, không tranh luận, không gắn link.';
+  } else {
+    // Look up template in reply-templates.json
+    const matchingTemplate = templates.find((t) => t.intent === intent);
+
+    if (isLinkIntent || isQuestionWithBuyingIntent) {
+      if (affiliateLink) {
+        draftHasLink = true;
+        const templateBody =
+          matchingTemplate?.bodyTemplate || 'Dạ bạn xem sản phẩm ở link này nha: {affiliate_link}';
+        draftReply = templateBody.replace('{affiliate_link}', affiliateLink);
+        draftRationale = isQuestionWithBuyingIntent
+          ? 'Câu hỏi của người xem thể hiện rõ ý định mua hàng. Đính kèm link tiếp thị liên kết Shopee tương ứng.'
+          : 'Người xem chủ động hỏi link, hỏi giá hoặc mua sản phẩm. Đính kèm link tiếp thị liên kết Shopee tương ứng.';
+      } else {
+        draftHasLink = false;
+        const templateBody = matchingTemplate?.bodyTemplate || 'Dạ bạn xem sản phẩm ở link này nha';
+        draftReply = templateBody.replace(': {affiliate_link}', '').replace('{affiliate_link}', '');
+        draftRationale =
+          'Người xem có nhu cầu mua hàng, tuy nhiên bài viết hoặc sản phẩm chưa được cấu hình Shopee Affiliate Link hợp lệ. Đề xuất phản hồi không kèm link.';
+      }
+    } else {
+      // JOKE, PRAISE, TREND_REACTION, COMPARE_PRODUCT or general QUESTION
+      draftHasLink = false;
+      draftReply = matchingTemplate?.bodyTemplate || 'Dạ shop cảm ơn bạn đã quan tâm theo dõi nhé!';
+
+      if (intent === 'JOKE' || intent === 'TREND_REACTION') {
+        draftRationale =
+          'Bình luận mang tính chất vui đùa, bắt trend. Phản hồi hóm hỉnh, thân thiện để duy trì tương tác tốt và tuyệt đối không chèn link tiếp thị.';
+      } else if (intent === 'PRAISE') {
+        draftRationale =
+          'Bình luận khen ngợi hoặc khích lệ tích cực. Gửi lời cảm ơn chân thành tới người xem và tuyệt đối không chèn link tiếp thị để giữ sự tự nhiên.';
+      } else if (intent === 'COMPARE_PRODUCT') {
+        draftRationale =
+          'Bình luận so sánh sản phẩm. Phản hồi khách quan, trung lập để người xem tự chọn, không chèn link sản phẩm và không khẳng định sản phẩm nào tốt hơn nếu thiếu dữ liệu chắc chắn.';
+      } else {
+        draftRationale =
+          'Bình luận hỏi đáp hoặc tương tác chung. Phản hồi thân thiện, giải đáp thông tin và không chèn link tiếp thị.';
+      }
+    }
+  }
 
   return {
     commentId: comment.commentId,
@@ -202,6 +311,10 @@ function analyzeComment(
     platform: (channel?.platform || 'facebook') as PlatformId,
     videoTitle,
     affiliateShortLink: post?.affiliateShortLink || null,
+    draftReply,
+    draftRationale,
+    draftHasLink,
+    draftWarning,
   };
 }
 
@@ -211,12 +324,13 @@ export default function CommentsPage() {
   const intents = loadCommentIntents();
   const posts = loadPublishedPosts();
   const channels = loadChannels();
+  const templates = loadReplyTemplates();
 
   const analyzedComments: AnalyzedComment[] = comments.map((comment) => {
     const intentObj = intents.find((i) => i.commentId === comment.commentId);
     const post = posts.find((p) => p.publishedPostId === comment.publishedPostId);
     const channel = post ? channels.find((c) => c.channelId === post.channelId) : undefined;
-    return analyzeComment(comment, intentObj, post, channel);
+    return analyzeComment(comment, intentObj, post, channel, templates);
   });
 
   return (

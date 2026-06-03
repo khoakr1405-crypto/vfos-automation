@@ -30,5 +30,45 @@
     "bodyTemplate": "Dạ còn hàng nha, bạn đặt ở link: {affiliate_link}",
     "requiresLink": true,
     "tone": "friendly"
+  },
+  {
+    "templateId": "tpl_joke",
+    "intent": "JOKE",
+    "lane": "review",
+    "bodyTemplate": "Haha xem hài hước thật, cảm ơn bạn đã quan tâm theo dõi nha! 😂",
+    "requiresLink": false,
+    "tone": "funny"
+  },
+  {
+    "templateId": "tpl_praise",
+    "intent": "PRAISE",
+    "lane": "review",
+    "bodyTemplate": "Dạ cảm ơn bạn nhiều lắm, shop sẽ cố gắng làm thêm nhiều nội dung chất lượng hơn nữa ạ! 🥰",
+    "requiresLink": false,
+    "tone": "friendly"
+  },
+  {
+    "templateId": "tpl_compare",
+    "intent": "COMPARE_PRODUCT",
+    "lane": "review",
+    "bodyTemplate": "Dạ mỗi dòng đều có ưu điểm riêng tùy theo nhu cầu sử dụng, bạn có thể tham khảo thêm thông số chi tiết để chọn mẫu phù hợp nhất nha!",
+    "requiresLink": false,
+    "tone": "informative"
+  },
+  {
+    "templateId": "tpl_question",
+    "intent": "QUESTION",
+    "lane": "review",
+    "bodyTemplate": "Dạ bạn cần thêm thông tin gì về sản phẩm cứ nhắn tin trực tiếp để shop hỗ trợ giải đáp nhanh nhất nhé!",
+    "requiresLink": false,
+    "tone": "friendly"
+  },
+  {
+    "templateId": "tpl_trend",
+    "intent": "TREND_REACTION",
+    "lane": "review",
+    "bodyTemplate": "Chuẩn luôn bạn ơi! Thả tim cho video nha ❤️",
+    "requiresLink": false,
+    "tone": "funny"
   }
 ]

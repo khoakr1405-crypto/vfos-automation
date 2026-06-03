@@ -427,6 +427,46 @@ export function CommentInboxClient({ initialComments }: CommentInboxClientProps)
                         '🚫 Bỏ qua (No-reply): Bình luận spam hoặc chứa từ ngữ độc hại. Bỏ qua, ẩn bình luận hoặc block tài khoản để làm sạch trang.'}
                     </p>
                   </div>
+
+                  {/* Draft Reply Assistant Section */}
+                  <div className="border-t border-hairline/80 pt-5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="h-2 w-2 rounded-full bg-accent-violet animate-pulse" />
+                        <span className="text-[11px] font-black uppercase text-accent-violet tracking-wider">
+                          Trợ Lý Soạn Nháp (Draft Reply Assistant)
+                        </span>
+                      </div>
+                      <Badge accent={selectedComment.draftHasLink ? 'green' : 'amber'}>
+                        {selectedComment.draftHasLink ? 'Kèm affiliate link' : 'Không kèm link'}
+                      </Badge>
+                    </div>
+
+                    {selectedComment.draftWarning ? (
+                      <div className="rounded-xl border border-accent-rose/30 bg-accent-rose/10 p-4 space-y-2">
+                        <div className="text-xs font-bold text-accent-rose">
+                          {selectedComment.draftWarning}
+                        </div>
+                        <div className="rounded-lg bg-panel/60 p-3 border border-hairline text-xs font-mono text-neutral-400">
+                          {selectedComment.draftReply}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="rounded-xl bg-panel/50 p-4 border border-hairline/80 relative">
+                          <p className="text-[10px] uppercase font-bold text-neutral-500 mb-1.5">
+                            Gợi ý phản hồi từ hệ thống
+                          </p>
+                          <p className="text-xs font-semibold text-neutral-200 leading-relaxed italic select-all">
+                            "{selectedComment.draftReply}"
+                          </p>
+                        </div>
+                        <p className="text-[11px] text-neutral-400 leading-relaxed">
+                          <strong>Lý do:</strong> {selectedComment.draftRationale}
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </CardBody>
               </div>
 
@@ -434,19 +474,22 @@ export function CommentInboxClient({ initialComments }: CommentInboxClientProps)
               <CardBody className="border-t border-hairline pt-4 flex flex-col gap-3">
                 <div className="flex items-center gap-2 text-[10px] text-neutral-500 font-semibold">
                   <UtilIcon name="clock" width={12} height={12} />
-                  CHỈ ĐỌC (READ-ONLY) · Việc soạn nháp & kích hoạt Auto-Reply sẽ được kích hoạt ở
-                  Growth 07 & 08.
+                  TRỢ LÝ SOẠN NHÁP · Đang trong chế độ xem trước (Presentational).
                 </div>
                 <div className="flex gap-3">
                   <Button
                     variant="outline"
                     disabled
-                    className="flex-1 opacity-45 cursor-not-allowed"
+                    className="flex-1 opacity-45 cursor-not-allowed text-[11px]"
                   >
-                    Tạo câu trả lời nháp
+                    Duyệt nháp & Lưu (Chưa kích hoạt trong Growth 07)
                   </Button>
-                  <Button variant="outline" disabled className="opacity-45 cursor-not-allowed">
-                    Cấu hình Guard Auto
+                  <Button
+                    variant="outline"
+                    disabled
+                    className="flex-1 opacity-45 cursor-not-allowed text-[11px]"
+                  >
+                    Gửi phản hồi (Chưa bật trong Growth 07)
                   </Button>
                 </div>
               </CardBody>
