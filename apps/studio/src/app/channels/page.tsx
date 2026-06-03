@@ -1,24 +1,39 @@
-import { LanePill, PlatformPill, StatusBadge } from '@/components/badge';
-import { Card, CardBody, CardHeader } from '@/components/card';
+import { LanePill } from '@/components/badge';
+import { ChannelsSection } from '@/components/channels/channels-section';
+import { ContentAnglesSection } from '@/components/channels/content-angles-section';
 import { UtilIcon } from '@/components/icons';
-import { MockBanner } from '@/components/mock-banner';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui';
-import { CHANNEL_CLUSTERS, LANES } from '@/lib/mock-data';
+import { loadChannels, loadContentAngles } from '@/lib/growth-data/load';
+import { LANES } from '@/lib/mock-data';
 
-export default function ChannelsPage() {
+// Đọc Growth data thật (filesystem fixtures) ở mỗi request — không prerender tĩnh.
+export const dynamic = 'force-dynamic';
+
+export default async function ChannelsPage() {
+  const channels = loadChannels();
+  const angles = loadContentAngles();
+
   return (
     <div className="space-y-6">
-      <MockBanner />
+      <div className="flex items-center gap-2 rounded-xl border border-accent-blue/30 bg-accent-blue/10 px-3.5 py-2 text-[11px] text-accent-blue">
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent-blue" />
+        <span>
+          <strong>Growth 03 · READ-ONLY.</strong> Kênh & Content Angle đọc <strong>thật</strong> qua
+          growth-data adapter (Growth fixtures seed). Chưa gọi Meta API, chưa publish; quyền page
+          chỉ hiển thị trạng thái boolean, không lộ giá trị xác thực.
+        </span>
+      </div>
+
       <PageHeader
         no={2}
         icon="channels"
         accent="blue"
         title="Cụm kênh & Kênh"
-        description="Mỗi ngách là một cụm kênh đa nền tảng. Theo dõi view / CTR / doanh thu từng kênh."
+        description="Quản lý kênh/page theo ngách + content angle. Nguồn: Growth data adapter (read-only)."
         actions={
           <Button variant="primary">
-            <UtilIcon name="plus" /> Thêm cụm kênh
+            <UtilIcon name="plus" /> Thêm kênh
           </Button>
         }
       />
@@ -36,48 +51,8 @@ export default function ChannelsPage() {
         ))}
       </div>
 
-      <div className="space-y-5">
-        {CHANNEL_CLUSTERS.map((cluster) => (
-          <Card key={cluster.laneId}>
-            <CardHeader
-              title={cluster.name}
-              subtitle="3 kênh · Facebook / TikTok / YouTube"
-              right={<LanePill laneId={cluster.laneId} />}
-            />
-            <CardBody className="!p-0">
-              <table className="w-full text-left text-xs">
-                <thead className="text-[10px] uppercase tracking-wider text-neutral-600">
-                  <tr className="border-b border-hairline">
-                    <th className="px-5 py-2.5 font-medium">Kênh</th>
-                    <th className="px-5 py-2.5 font-medium">Lượt xem</th>
-                    <th className="px-5 py-2.5 font-medium">CTR</th>
-                    <th className="px-5 py-2.5 font-medium">Doanh thu</th>
-                    <th className="px-5 py-2.5 font-medium">Trạng thái</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {cluster.channels.map((ch) => (
-                    <tr
-                      key={ch.platform}
-                      className="border-b border-hairline/60 last:border-0 hover:bg-raised/30"
-                    >
-                      <td className="px-5 py-3">
-                        <PlatformPill platform={ch.platform} />
-                      </td>
-                      <td className="px-5 py-3 font-semibold text-neutral-100">{ch.views}</td>
-                      <td className="px-5 py-3 text-neutral-300">{ch.ctr}</td>
-                      <td className="px-5 py-3 text-accent-green">{ch.revenue}</td>
-                      <td className="px-5 py-3">
-                        <StatusBadge status={ch.status} />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </CardBody>
-          </Card>
-        ))}
-      </div>
+      <ChannelsSection channels={channels} />
+      <ContentAnglesSection angles={angles} />
     </div>
   );
 }
