@@ -41,6 +41,15 @@
   - **Nhiệm vụ chính**: Giúp Operator chuẩn hóa workflow, giảm số lượng lệnh vận hành, kiểm tra các chốt chặn an toàn (guardrail), viết prompt giao việc cho agent, kiểm định mã nguồn (audit code), phát hiện rủi ro và đề xuất cleanup/tối ưu hệ thống theo từng phần nhỏ.
   - **Nguyên tắc làm việc**: Thực hiện từng phần chắc chắn, không tự ý mở rộng phạm vi (scope) tùy tiện, không xóa/sửa/đăng tải (publish) nếu chưa có bằng chứng thực tế và phê duyệt rõ ràng từ Operator, luôn bảo vệ tính toàn vẹn của workflow A-Z chính.
   - **Nguyên tắc viết Prompt**: Khi viết prompt cho Claude hoặc các Agent khác, ưu tiên viết prompt dài, mô tả rõ bối cảnh, và bắt buộc có đầy đủ các mục: *Mục tiêu, Bối cảnh, Yêu cầu, Không làm, Security, Báo cáo*, kèm theo phần *SELF-REVIEW BẮT BUỘC*.
+- **Định hướng Facebook Growth OS (Growth 06–08)**:
+  - **Tư duy cốt lõi**: VFOS không phải bot spam link. Hệ thống đóng vai trò "Mắt thần bình luận" (Comment Intelligence) để giữ tương tác tự nhiên, bắt trend và chỉ chuyển hướng affiliate link khi đúng ngữ cảnh.
+  - **Growth 06 (Comment Intelligence - Read-only)**:
+    - Nhận diện đa chiều comment: intent bán hàng (`ASK_LINK`, `ASK_PRICE`, `ASK_WHERE_TO_BUY`, `QUESTION`, `JOKE`, `PRAISE`, `NEGATIVE_LIGHT`, `COMPLAINT`, `TREND_REACTION`, `SPAM`, `UNKNOWN`), cảm xúc/mood (`funny`, `curious`, `interested`, `skeptical`, `angry`, `neutral`), reply style đề xuất, conversion opportunity (`none`, `soft`, `medium`, `high`), `shouldIncludeLink` (boolean), và `riskLevel` (`low`, `medium`, `high`).
+    - Hoạt động ở chế độ Read-only: Chưa trả lời thật, chưa auto-reply, chưa gọi Meta Graph API thật.
+  - **Growth 07 (Draft Reply Assistant)**:
+    - Gợi ý nháp câu trả lời vui vẻ, bắt trend vừa phải. Chỉ đề xuất link khi thực sự phù hợp (hỏi mua, hỏi giá, xin link). Operator duyệt thủ công rồi mới gửi.
+  - **Growth 08 (Auto Reply Guarded)**:
+    - Chỉ tự động reply với các intent cực kỳ an toàn. Tuyệt đối không auto-reply các bình luận chê, so sánh, complaint, hoặc nhạy cảm. Chế độ auto-reply mặc định tắt (OFF).
 
 
 ## Reference
