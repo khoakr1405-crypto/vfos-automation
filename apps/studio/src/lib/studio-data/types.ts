@@ -6,6 +6,8 @@
  * các type này.
  * ========================================================================== */
 
+import type { CtaReadinessSummary } from '@/lib/growth-data/cta-readiness';
+
 export type GateState = 'pass' | 'fail' | 'warn';
 export type AffiliateGate = 'pass' | 'fail' | 'warn';
 
@@ -130,6 +132,12 @@ export interface PublishQueueItemDTO {
   confirmPhrase: string;
   /** Human-readable reasons live publish is currently blocked (gate failures). Empty = ready. */
   liveGateBlockedReasons: string[];
+  /**
+   * Round Affiliate Hub 03 — tóm tắt readiness CTA multi-touch (transport-safe).
+   * Đính ở API boundary (publish-queue route); undefined/null = job chưa có
+   * AffiliateCtaPlan. KHÔNG token/secret/raw link.
+   */
+  ctaReadiness?: CtaReadinessSummary | null;
 }
 
 /* =============================================================================

@@ -12,6 +12,7 @@ import {
 import type { PublishQueueItemDTO } from '@/lib/studio-data/types';
 import { useEffect, useState } from 'react';
 import { UtilIcon } from '../icons';
+import { CtaReadinessCard } from './cta-readiness-card';
 import { LivePublishPanel } from './live-publish-panel';
 import { PlatformPublishCard } from './platform-publish-card';
 import { PublishGateChecklist } from './publish-gate-checklist';
@@ -92,6 +93,7 @@ function mapDtoToPublishContent(dto: PublishQueueItemDTO): PublishContent {
     dryRunCommand: dto.dryRunCommand,
     payloadPreview: dto.payloadPreview,
     gateChecks: dto.gateChecks,
+    ctaReadiness: dto.ctaReadiness ?? null,
   };
 }
 
@@ -178,6 +180,8 @@ export function PublishCommandCenter() {
       <PublishQueueTable items={items} selectedId={selected.id} onSelect={setSelectedId} />
 
       <SelectedPublishContent content={selected} />
+
+      <CtaReadinessCard summary={selected.ctaReadiness} />
 
       <div>
         <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">

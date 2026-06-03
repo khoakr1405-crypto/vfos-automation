@@ -19,7 +19,16 @@
  *     (Secondary optional). Mức "chưa khớp bối cảnh tối ưu" để round sau, chưa model.
  * ========================================================================== */
 
-import type { AffiliateCtaPlan, CtaReadiness, CtaSlot } from './types';
+import type {
+  AffiliateCtaPlan,
+  CtaMode,
+  CtaReadiness,
+  CtaSlot,
+  CtaSlotStatus,
+  FacebookHubStatus,
+  LinkRole,
+  ProductTagStatus,
+} from './types';
 
 function isReady(slot: CtaSlot): boolean {
   return slot.status === 'ready';
@@ -48,4 +57,54 @@ export function computeCtaReadiness(plan: AffiliateCtaPlan): CtaReadiness {
       if (anyReady && replyPolicyOk) return 'ready';
       return 'partial';
   }
+}
+
+/* ---- Transport-safe summary cho UI (Round Affiliate Hub 03) ---------------- */
+
+/**
+ * Tóm tắt 1 slot để gửi xuống client. KHÔNG kèm raw link (chỉ cờ hasLink) —
+ * link công khai vẫn hiển thị ở product card, readiness card chỉ cần trạng thái.
+ */
+export interface CtaSlotSummary {
+  role: LinkRole;
+  status: CtaSlotStatus;
+  hasLink: boolean;
+  note: string | null;
+}
+
+/** Tóm tắt readiness CTA cho 1 job — transport-safe (không token/secret/raw link). */
+export interface CtaReadinessSummary {
+  jobId: string;
+  ctaMode: CtaMode;
+  readiness: CtaReadiness;
+  facebookHubStatus: FacebookHubStatus;
+  productTagStatus: ProductTagStatus;
+  requiresManualTagging: boolean;
+  primary: CtaSlotSummary;
+  secondaries: CtaSlotSummary[];
+  reply: CtaSlotSummary;
+}
+
+function toSlotSummary(slot: CtaSlot): CtaSlotSummary {
+  return {
+    role: slot.role,
+    status: slot.status,
+    hasLink: slot.link !== null,
+    note: slot.note ?? null,
+  };
+}
+
+/** Map AffiliateCtaPlan → summary. readiness lấy từ computeCtaReadiness (authoritative). */
+export function toCtaReadinessSummary(plan: AffiliateCtaPlan): CtaReadinessSummary {
+  return {
+    jobId: plan.jobId,
+    ctaMode: plan.ctaMode,
+    readiness: computeCtaReadiness(plan),
+    facebookHubStatus: plan.facebookHubStatus,
+    productTagStatus: plan.productTagStatus,
+    requiresManualTagging: plan.requiresManualTagging,
+    primary: toSlotSummary(plan.primaryCta),
+    secondaries: plan.secondaryCtas.map(toSlotSummary),
+    reply: toSlotSummary(plan.replyCta),
+  };
 }

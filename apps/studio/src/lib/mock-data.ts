@@ -9,6 +9,7 @@
  * Khi nối backend thật ở round sau, thay nguồn dữ liệu này — UI giữ nguyên.
  * ========================================================================== */
 
+import type { CtaReadinessSummary } from './growth-data/cta-readiness';
 import type { AccentKey } from './nav';
 
 /** Affiliate owner bắt buộc của VFOS (Shopee). Mismatch = fail-safe. */
@@ -937,6 +938,8 @@ export type PublishContent = {
     status: 'pass' | 'fail' | 'warn' | 'pending';
     detail?: string;
   }>;
+  // Round Affiliate Hub 03 — readiness CTA multi-touch (transport-safe, từ API).
+  ctaReadiness?: CtaReadinessSummary | null;
 };
 
 const aff = (sku: string) => `https://shp.ee/${sku}?aff=${SHOPEE_OWNER}`;

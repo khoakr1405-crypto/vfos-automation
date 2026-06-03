@@ -184,6 +184,9 @@ export type FacebookHubStatus = 'available' | 'unavailable' | 'unknown' | 'manua
 /** Mức sẵn sàng tổng hợp của kế hoạch CTA cho 1 video. */
 export type CtaReadiness = 'ready' | 'partial' | 'blocked';
 
+/** Tình trạng product tag native trên Facebook. */
+export type ProductTagStatus = 'tagged' | 'untagged' | 'not_supported';
+
 /** Một slot CTA theo vai trò. link là URL CÔNG KHAI (shortLink/canonical), KHÔNG secret. */
 export interface CtaSlot {
   role: LinkRole;
@@ -211,7 +214,7 @@ export interface AffiliateCtaPlan {
   /** role = REPLY_LINK — dùng khi người xem hỏi link/giá/mua đâu. */
   replyCta: CtaSlot;
   facebookHubStatus: FacebookHubStatus;
-  productTagStatus: 'tagged' | 'untagged' | 'not_supported';
+  productTagStatus: ProductTagStatus;
   requiresManualTagging: boolean;
   /** Gắn link trong reply hay không vẫn do shouldIncludeLink theo intent quyết định. */
   replyLinkPolicy: 'intent_gated';
