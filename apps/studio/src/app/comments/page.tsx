@@ -1,4 +1,6 @@
+import { computeCtaReadiness } from '@/lib/growth-data/cta-readiness';
 import {
+  loadAffiliateCtaPlans,
   loadChannels,
   loadCommentIntents,
   loadCommentItems,
@@ -6,9 +8,13 @@ import {
   loadReplyTemplates,
 } from '@/lib/growth-data/load';
 import type {
+  AffiliateCtaPlan,
   Channel,
   CommentIntent,
   CommentItem,
+  CtaMode,
+  CtaReadiness,
+  CtaSlotStatus,
   PublishedPost,
   ReplyTemplate,
 } from '@/lib/growth-data/types';
@@ -44,6 +50,14 @@ export interface AnalyzedComment {
   draftRationale: string;
   draftHasLink: boolean;
   draftWarning?: string;
+
+  // Reply CTA plan fields (Affiliate Hub 04):
+  replyCtaPlanStatus: CtaReadiness | 'missing';
+  replyCtaMode: CtaMode | null;
+  replyCtaSlotStatus: CtaSlotStatus | null;
+  replyLinkPolicy: 'intent_gated' | null;
+  replyCtaDecision: 'use_reply_cta' | 'no_link' | 'missing_plan' | 'manual_review';
+  replyCtaDecisionReason: string;
 }
 
 function analyzeComment(
@@ -52,6 +66,7 @@ function analyzeComment(
   post: PublishedPost | undefined,
   channel: Channel | undefined,
   templates: ReplyTemplate[],
+  plan: AffiliateCtaPlan | undefined,
 ): AnalyzedComment {
   const text = comment.text.toLowerCase();
 
@@ -222,6 +237,47 @@ function analyzeComment(
       riskLevel === 'high'
     );
 
+  // 6b. Reply CTA decision (Affiliate Hub 04).
+  // Comment Intelligence quyết shouldIncludeLink; AffiliateCtaPlan chỉ quyết DÙNG
+  // LINK NÀO cho reply. KHÔNG dùng Primary Hub CTA cho reply.
+  const replyCtaReady =
+    !!plan && plan.replyCta.status === 'ready' && plan.replyLinkPolicy === 'intent_gated';
+  const replyCtaPlanStatus: CtaReadiness | 'missing' = plan ? computeCtaReadiness(plan) : 'missing';
+  const isNegativeOrRisky =
+    intent === 'COMPLAINT' ||
+    intent === 'NEGATIVE' ||
+    intent === 'SPAM' ||
+    intent === 'ABUSE' ||
+    riskLevel === 'high';
+  // Link reply hiệu lực: ưu tiên Reply CTA của plan, fallback link bài (logic cũ).
+  const effectiveReplyLink = replyCtaReady ? plan.replyCta.link : affiliateLink;
+
+  let replyCtaDecision: AnalyzedComment['replyCtaDecision'];
+  let replyCtaDecisionReason: string;
+  if (isNegativeOrRisky) {
+    replyCtaDecision = 'manual_review';
+    replyCtaDecisionReason =
+      'Bình luận tiêu cực/khiếu nại/rủi ro cao — cần Operator xử lý thủ công, không gắn link, không auto-reply.';
+  } else if (!shouldIncludeLink) {
+    replyCtaDecision = 'no_link';
+    replyCtaDecisionReason =
+      intent === 'COMPARE_PRODUCT'
+        ? 'So sánh sản phẩm — trả lời trung lập, không khẳng định hơn/thua, không gắn link.'
+        : 'Bình luận tương tác cộng đồng / chưa đủ ý định mua-link-giá — không gắn link.';
+  } else if (!plan) {
+    replyCtaDecision = 'missing_plan';
+    replyCtaDecisionReason =
+      'Có ý định mua nhưng job chưa có AffiliateCtaPlan — fallback link mặc định của bài, nên bổ sung Reply CTA plan.';
+  } else if (replyCtaReady) {
+    replyCtaDecision = 'use_reply_cta';
+    replyCtaDecisionReason =
+      'Người xem hỏi mua/link/giá — dùng Reply CTA (intent-gated). Không dùng Primary Hub CTA cho reply.';
+  } else {
+    replyCtaDecision = 'no_link';
+    replyCtaDecisionReason =
+      'Có ý định mua nhưng Reply CTA trong plan chưa sẵn sàng — tạm không gắn link, cần bổ sung link reply.';
+  }
+
   // Resolve Product/Job Title
   const realJob = post ? loadJobById(post.jobId) : null;
   const videoTitle =
@@ -255,11 +311,11 @@ function analyzeComment(
     const matchingTemplate = templates.find((t) => t.intent === intent);
 
     if (isLinkIntent || isQuestionWithBuyingIntent) {
-      if (affiliateLink) {
+      if (effectiveReplyLink) {
         draftHasLink = true;
         const templateBody =
           matchingTemplate?.bodyTemplate || 'Dạ bạn xem sản phẩm ở link này nha: {affiliate_link}';
-        draftReply = templateBody.replace('{affiliate_link}', affiliateLink);
+        draftReply = templateBody.replace('{affiliate_link}', effectiveReplyLink);
         draftRationale = isQuestionWithBuyingIntent
           ? 'Câu hỏi của người xem thể hiện rõ ý định mua hàng. Đính kèm link tiếp thị liên kết Shopee tương ứng.'
           : 'Người xem chủ động hỏi link, hỏi giá hoặc mua sản phẩm. Đính kèm link tiếp thị liên kết Shopee tương ứng.';
@@ -315,6 +371,12 @@ function analyzeComment(
     draftRationale,
     draftHasLink,
     draftWarning,
+    replyCtaPlanStatus,
+    replyCtaMode: plan?.ctaMode ?? null,
+    replyCtaSlotStatus: plan?.replyCta.status ?? null,
+    replyLinkPolicy: plan?.replyLinkPolicy ?? null,
+    replyCtaDecision,
+    replyCtaDecisionReason,
   };
 }
 
@@ -325,12 +387,14 @@ export default function CommentsPage() {
   const posts = loadPublishedPosts();
   const channels = loadChannels();
   const templates = loadReplyTemplates();
+  const ctaPlansByJobId = new Map(loadAffiliateCtaPlans().map((p) => [p.jobId, p]));
 
   const analyzedComments: AnalyzedComment[] = comments.map((comment) => {
     const intentObj = intents.find((i) => i.commentId === comment.commentId);
     const post = posts.find((p) => p.publishedPostId === comment.publishedPostId);
     const channel = post ? channels.find((c) => c.channelId === post.channelId) : undefined;
-    return analyzeComment(comment, intentObj, post, channel, templates);
+    const plan = post ? ctaPlansByJobId.get(post.jobId) : undefined;
+    return analyzeComment(comment, intentObj, post, channel, templates, plan);
   });
 
   return (

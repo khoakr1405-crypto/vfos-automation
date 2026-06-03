@@ -7,8 +7,34 @@ import { PageHeader } from '@/components/page-header';
 import { StatCard } from '@/components/stat-card';
 import { Button } from '@/components/ui';
 import type { PlatformId } from '@/lib/mock-data';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import type { AnalyzedComment } from './page';
+
+const REPLY_CTA_DECISION_META: Record<
+  AnalyzedComment['replyCtaDecision'],
+  { label: string; accent: 'green' | 'amber' | 'blue' | 'rose' }
+> = {
+  use_reply_cta: { label: 'Dùng Reply CTA', accent: 'green' },
+  no_link: { label: 'Không gắn link', accent: 'amber' },
+  missing_plan: { label: 'Chưa có Reply CTA plan', accent: 'blue' },
+  manual_review: { label: 'Cần Operator xử lý', accent: 'rose' },
+};
+
+const PLAN_STATUS_ACCENT: Record<string, 'green' | 'amber' | 'rose' | 'blue'> = {
+  ready: 'green',
+  partial: 'amber',
+  blocked: 'rose',
+  missing: 'blue',
+};
+
+function ReplyCtaRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-neutral-500">{label}</span>
+      {children}
+    </div>
+  );
+}
 
 interface CommentInboxClientProps {
   initialComments: AnalyzedComment[];
@@ -466,6 +492,71 @@ export function CommentInboxClient({ initialComments }: CommentInboxClientProps)
                         </p>
                       </div>
                     )}
+
+                    {/* Reply CTA Plan (Affiliate Hub 04) */}
+                    <div className="rounded-xl border border-hairline bg-raised/15 p-4 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-bold uppercase text-neutral-500">
+                          Reply CTA Plan
+                        </span>
+                        <Badge
+                          accent={REPLY_CTA_DECISION_META[selectedComment.replyCtaDecision].accent}
+                        >
+                          {REPLY_CTA_DECISION_META[selectedComment.replyCtaDecision].label}
+                        </Badge>
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-[11px]">
+                        <ReplyCtaRow label="Plan status">
+                          <Badge
+                            accent={
+                              PLAN_STATUS_ACCENT[selectedComment.replyCtaPlanStatus] || 'blue'
+                            }
+                          >
+                            {selectedComment.replyCtaPlanStatus.toUpperCase()}
+                          </Badge>
+                        </ReplyCtaRow>
+                        <ReplyCtaRow label="ctaMode">
+                          <span className="text-neutral-300">
+                            {selectedComment.replyCtaMode ?? '—'}
+                          </span>
+                        </ReplyCtaRow>
+                        <ReplyCtaRow label="Reply CTA slot">
+                          <span className="text-neutral-300">
+                            {selectedComment.replyCtaSlotStatus ?? '—'}
+                          </span>
+                        </ReplyCtaRow>
+                        <ReplyCtaRow label="Reply link policy">
+                          <span className="text-neutral-300">
+                            {selectedComment.replyLinkPolicy ?? '—'}
+                          </span>
+                        </ReplyCtaRow>
+                        <ReplyCtaRow label="shouldIncludeLink">
+                          <span
+                            className={
+                              selectedComment.shouldIncludeLink
+                                ? 'text-accent-green'
+                                : 'text-accent-amber'
+                            }
+                          >
+                            {selectedComment.shouldIncludeLink ? 'true' : 'false'}
+                          </span>
+                        </ReplyCtaRow>
+                        <ReplyCtaRow label="Có link trong nháp">
+                          <span
+                            className={
+                              selectedComment.draftHasLink
+                                ? 'text-accent-green'
+                                : 'text-neutral-400'
+                            }
+                          >
+                            {selectedComment.draftHasLink ? 'có' : 'không'}
+                          </span>
+                        </ReplyCtaRow>
+                      </div>
+                      <p className="text-[11px] text-neutral-400 leading-relaxed">
+                        <strong>Quyết định:</strong> {selectedComment.replyCtaDecisionReason}
+                      </p>
+                    </div>
                   </div>
                 </CardBody>
               </div>
