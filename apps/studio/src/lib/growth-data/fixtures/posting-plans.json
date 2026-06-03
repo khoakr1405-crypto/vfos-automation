@@ -22,5 +22,13 @@
     "slotTime": "2026-06-04T20:00:00.000Z",
     "platform": "facebook",
     "status": "planned"
+  },
+  {
+    "planId": "plan_004",
+    "channelId": "ch_review_02",
+    "jobId": null,
+    "slotTime": "2026-06-05T20:00:00.000Z",
+    "platform": "facebook",
+    "status": "skipped"
   }
 ]
