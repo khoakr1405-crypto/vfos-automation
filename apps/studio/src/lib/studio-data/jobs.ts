@@ -12,8 +12,37 @@
  * ========================================================================== */
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
-import { dirname } from 'node:path';
-import { resolveInsideRepo } from './paths';
+import { dirname, join } from 'node:path';
+import { repoRoot, resolveInsideRepo } from './paths';
+
+// Load .env from repo root to ensure Next.js dev server has the same environment variables
+function loadStudioEnv() {
+  const root = repoRoot();
+  const envPath = join(root, '.env');
+  if (!existsSync(envPath)) return;
+  try {
+    const content = readFileSync(envPath, 'utf8');
+    for (const line of content.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const index = trimmed.indexOf('=');
+      if (index === -1) continue;
+      const key = trimmed.substring(0, index).trim();
+      let val = trimmed.substring(index + 1).trim();
+      if (
+        (val.startsWith('"') && val.endsWith('"')) ||
+        (val.startsWith("'") && val.endsWith("'"))
+      ) {
+        val = val.substring(1, val.length - 1);
+      }
+      if (!process.env[key]) {
+        process.env[key] = val;
+      }
+    }
+  } catch {}
+}
+
+loadStudioEnv();
 import type {
   GateState,
   LivePublishAuditRecord,
@@ -427,6 +456,10 @@ export function evaluateLivePublishGates(jobId: string): LivePublishGateResult {
     gates: [],
     blockedReasons: ['Không tìm thấy Job (manifest thiếu).'],
     gatesPassed: false,
+    facebookPageIdConfigured: !!(process.env.FACEBOOK_PAGE_ID || '').trim(),
+    facebookPageAccessTokenConfigured: !!(process.env.FACEBOOK_PAGE_ACCESS_TOKEN || '').trim(),
+    metaModeLive: (process.env.META_MODE || '').trim().toLowerCase() === 'live',
+    studioLivePublishEnabled: isLivePublishEnvEnabled(),
   };
 
   if (!/^[A-Za-z0-9_-]+$/.test(jobId)) return empty;
@@ -454,6 +487,7 @@ export function evaluateLivePublishGates(jobId: string): LivePublishGateResult {
     fileExistsInside(a.publishReadinessPath) ||
     fileExistsInside(`production/archive/${jobId}/publish_readiness_report.md`);
   const fbCreds = facebookCredentialsConfigured();
+  const metaModeLive = (process.env.META_MODE || '').trim().toLowerCase() === 'live';
   const alreadyPublished =
     manifest.safety?.uploaded === true ||
     manifest.safety?.published === true ||
@@ -529,6 +563,22 @@ export function evaluateLivePublishGates(jobId: string): LivePublishGateResult {
         : 'Thiếu Facebook Page ID / Page credential server-side.',
     },
     {
+      key: 'meta_mode_live',
+      label: 'META_MODE=live',
+      passed: metaModeLive,
+      detail: metaModeLive
+        ? 'Đã cấu hình META_MODE=live cho Graph API thật.'
+        : 'Thiếu cấu hình META_MODE=live trong môi trường.',
+    },
+    {
+      key: 'studio_live_publish_enabled',
+      label: 'VFOS_STUDIO_ALLOW_LIVE_PUBLISH=true',
+      passed: isLivePublishEnvEnabled(),
+      detail: isLivePublishEnvEnabled()
+        ? 'Đã cấu hình VFOS_STUDIO_ALLOW_LIVE_PUBLISH=true'
+        : 'Thiếu cấu hình VFOS_STUDIO_ALLOW_LIVE_PUBLISH=true trong môi trường (mặc định tắt).',
+    },
+    {
       key: 'publish_readiness',
       label: 'Publish readiness report tồn tại',
       passed: readinessPresent,
@@ -555,6 +605,10 @@ export function evaluateLivePublishGates(jobId: string): LivePublishGateResult {
     gates,
     blockedReasons,
     gatesPassed: blockedReasons.length === 0,
+    facebookPageIdConfigured: !!(process.env.FACEBOOK_PAGE_ID || '').trim(),
+    facebookPageAccessTokenConfigured: !!(process.env.FACEBOOK_PAGE_ACCESS_TOKEN || '').trim(),
+    metaModeLive,
+    studioLivePublishEnabled: isLivePublishEnvEnabled(),
   };
 }
 
@@ -601,11 +655,7 @@ export function loadPublishQueueItems(): PublishQueueItemDTO[] {
     const hashtagsContent = readJobTextFile(id, 'hashtags.txt');
 
     // Safe environment checks (only boolean, no token leakage)
-    const facebookTokenConfigured = !!(
-      process.env.FACEBOOK_ACCESS_TOKEN ||
-      process.env.FB_ACCESS_TOKEN ||
-      process.env.FACEBOOK_TOKEN
-    );
+    const facebookTokenConfigured = !!(process.env.FACEBOOK_PAGE_ACCESS_TOKEN || '').trim();
 
     // Map job state to publishReadiness status
     let publishReadiness: PublishQueueItemDTO['publishReadiness'] = 'unknown';

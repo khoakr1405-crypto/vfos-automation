@@ -157,6 +157,10 @@ export interface LivePublishGateResult {
   blockedReasons: string[];
   /** All gates passed (excludes env flag, local-only, confirm phrase — checked in route). */
   gatesPassed: boolean;
+  facebookPageIdConfigured?: boolean;
+  facebookPageAccessTokenConfigured?: boolean;
+  metaModeLive?: boolean;
+  studioLivePublishEnabled?: boolean;
 }
 
 export interface LivePublishAuditRecord {
