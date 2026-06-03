@@ -1,0 +1,175 @@
+[
+  {
+    "jobId": "job_20260530_001",
+    "lane": "review",
+    "ctaMode": "SINGLE_PRODUCT_REVIEW",
+    "productId": "42874449161",
+    "primaryCta": {
+      "role": "HUB_NATIVE",
+      "status": "ready",
+      "link": "https://s.shopee.vn/MOCKlink01",
+      "note": "Facebook Affiliate Hub native tag cho sản phẩm chính"
+    },
+    "secondaryCtas": [],
+    "replyCta": {
+      "role": "REPLY_LINK",
+      "status": "ready",
+      "link": "https://s.shopee.vn/MOCKlink01",
+      "note": "Reply dùng lại chính link Primary khi người xem hỏi"
+    },
+    "facebookHubStatus": "available",
+    "productTagStatus": "tagged",
+    "requiresManualTagging": false,
+    "replyLinkPolicy": "intent_gated",
+    "readiness": "ready",
+    "source": "mock"
+  },
+  {
+    "jobId": "job_20260601_001",
+    "lane": "review",
+    "ctaMode": "SINGLE_PRODUCT_REVIEW",
+    "productId": "11223344556",
+    "primaryCta": {
+      "role": "HUB_NATIVE",
+      "status": "missing",
+      "link": null,
+      "note": "Hub chưa khả dụng trên page — fallback xuống caption link"
+    },
+    "secondaryCtas": [
+      {
+        "role": "CAPTION_LINK",
+        "status": "ready",
+        "link": "https://s.shopee.vn/MOCKlink02",
+        "note": "Link phụ trong caption khi chưa có Hub native"
+      }
+    ],
+    "replyCta": {
+      "role": "REPLY_LINK",
+      "status": "ready",
+      "link": "https://s.shopee.vn/MOCKlink02"
+    },
+    "facebookHubStatus": "unavailable",
+    "productTagStatus": "not_supported",
+    "requiresManualTagging": false,
+    "replyLinkPolicy": "intent_gated",
+    "readiness": "partial",
+    "source": "mock"
+  },
+  {
+    "jobId": "job_20260602_cauca_001",
+    "lane": "cau-ca",
+    "ctaMode": "MULTI_TOUCH_NICHE",
+    "productId": "70011223344",
+    "primaryCta": {
+      "role": "HUB_NATIVE",
+      "status": "ready",
+      "link": "https://s.shopee.vn/MOCKcauca01",
+      "note": "Sản phẩm chính: bộ cần câu"
+    },
+    "secondaryCtas": [
+      {
+        "role": "CAPTION_LINK",
+        "status": "ready",
+        "link": "https://s.shopee.vn/MOCKcauca02",
+        "note": "Sản phẩm phụ: mồi câu"
+      },
+      {
+        "role": "PINNED_COMMENT",
+        "status": "ready",
+        "link": "https://s.shopee.vn/MOCKcauca03",
+        "note": "Sản phẩm phụ: hộp đựng đồ câu"
+      }
+    ],
+    "replyCta": {
+      "role": "REPLY_LINK",
+      "status": "ready",
+      "link": "https://s.shopee.vn/MOCKcauca01"
+    },
+    "facebookHubStatus": "available",
+    "productTagStatus": "tagged",
+    "requiresManualTagging": false,
+    "replyLinkPolicy": "intent_gated",
+    "readiness": "ready",
+    "source": "mock"
+  },
+  {
+    "jobId": "job_20260602_ruaxe_001",
+    "lane": "rua-xe",
+    "ctaMode": "MULTI_TOUCH_NICHE",
+    "productId": "70055667788",
+    "primaryCta": {
+      "role": "HUB_NATIVE",
+      "status": "ready",
+      "link": "https://s.shopee.vn/MOCKruaxe01",
+      "note": "Sản phẩm chính: máy rửa xe mini"
+    },
+    "secondaryCtas": [],
+    "replyCta": {
+      "role": "REPLY_LINK",
+      "status": "missing",
+      "link": null,
+      "note": "Chưa chọn link phụ cho reply — cần bổ sung để lên ready"
+    },
+    "facebookHubStatus": "available",
+    "productTagStatus": "untagged",
+    "requiresManualTagging": true,
+    "replyLinkPolicy": "intent_gated",
+    "readiness": "partial",
+    "source": "mock"
+  },
+  {
+    "jobId": "job_20260603_context_001",
+    "lane": "doi-song",
+    "ctaMode": "CONTEXTUAL_CONTENT",
+    "productId": "70099001122",
+    "primaryCta": {
+      "role": "HUB_NATIVE",
+      "status": "ready",
+      "link": "https://s.shopee.vn/MOCKctx01",
+      "note": "Sản phẩm hợp bối cảnh nhất trong video"
+    },
+    "secondaryCtas": [
+      {
+        "role": "CAPTION_LINK",
+        "status": "ready",
+        "link": "https://s.shopee.vn/MOCKctx02",
+        "note": "Sản phẩm liên quan (optional theo context)"
+      }
+    ],
+    "replyCta": {
+      "role": "REPLY_LINK",
+      "status": "ready",
+      "link": "https://s.shopee.vn/MOCKctx01"
+    },
+    "facebookHubStatus": "manual_required",
+    "productTagStatus": "untagged",
+    "requiresManualTagging": true,
+    "replyLinkPolicy": "intent_gated",
+    "readiness": "ready",
+    "source": "mock"
+  },
+  {
+    "jobId": "job_20260603_bad_001",
+    "lane": "review",
+    "ctaMode": "SINGLE_PRODUCT_REVIEW",
+    "productId": "70033445566",
+    "primaryCta": {
+      "role": "HUB_NATIVE",
+      "status": "invalid",
+      "link": "https://s.shopee.vn/MOCKbad01",
+      "note": "Owner mismatch — không phải an_17376660568, chặn lại"
+    },
+    "secondaryCtas": [],
+    "replyCta": {
+      "role": "REPLY_LINK",
+      "status": "missing",
+      "link": null
+    },
+    "facebookHubStatus": "unknown",
+    "productTagStatus": "not_supported",
+    "requiresManualTagging": false,
+    "replyLinkPolicy": "intent_gated",
+    "readiness": "blocked",
+    "source": "mock"
+  }
+]

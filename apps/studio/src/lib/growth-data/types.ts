@@ -164,6 +164,62 @@ export interface CommentActionLog {
   createdAt: string;
 }
 
+/* ---- Affiliate CTA plan (Round Affiliate Hub 02) -------------------------- */
+
+/** Vai trò của một CTA/link affiliate trong 1 video. */
+export type LinkRole = 'HUB_NATIVE' | 'CAPTION_LINK' | 'PINNED_COMMENT' | 'REPLY_LINK';
+
+/**
+ * Chiến lược CTA theo lane — quyết định readiness rule. KHÔNG ép mọi video 2–3
+ * link: lane review 1 sản phẩm chỉ cần 1 Primary CTA hợp lệ là đủ.
+ */
+export type CtaMode = 'SINGLE_PRODUCT_REVIEW' | 'MULTI_TOUCH_NICHE' | 'CONTEXTUAL_CONTENT';
+
+/** Trạng thái 1 slot CTA. 'invalid' = owner/link sai (vd owner mismatch/chưa verify). */
+export type CtaSlotStatus = 'ready' | 'missing' | 'invalid' | 'not_applicable';
+
+/** Facebook Affiliate Hub khả dụng tới đâu. KHÔNG gọi Meta API — cờ do operator/artifact. */
+export type FacebookHubStatus = 'available' | 'unavailable' | 'unknown' | 'manual_required';
+
+/** Mức sẵn sàng tổng hợp của kế hoạch CTA cho 1 video. */
+export type CtaReadiness = 'ready' | 'partial' | 'blocked';
+
+/** Một slot CTA theo vai trò. link là URL CÔNG KHAI (shortLink/canonical), KHÔNG secret. */
+export interface CtaSlot {
+  role: LinkRole;
+  status: CtaSlotStatus;
+  /** Link công khai (shortLink/canonicalUrl). KHÔNG token/secret. null khi chưa có. */
+  link: string | null;
+  note?: string;
+}
+
+/**
+ * Kế hoạch CTA multi-touch cho 1 job/video. Neo theo jobId (lớp "kế hoạch",
+ * tồn tại được trước cả khi publish). Số CTA & readiness tùy ctaMode — không ép
+ * cứng 2–3 link. KHÔNG chứa token/secret, chỉ link công khai + cờ enum/boolean.
+ */
+export interface AffiliateCtaPlan {
+  jobId: string;
+  /** Lane để suy/override ctaMode (vd 'review', 'cau-ca', 'rua-xe'). */
+  lane: string;
+  ctaMode: CtaMode;
+  productId: string | null;
+  /** role = HUB_NATIVE — Facebook Affiliate Hub / native product tag (tùy chọn). */
+  primaryCta: CtaSlot;
+  /** CAPTION_LINK | PINNED_COMMENT — có thể RỖNG với SINGLE_PRODUCT_REVIEW. */
+  secondaryCtas: CtaSlot[];
+  /** role = REPLY_LINK — dùng khi người xem hỏi link/giá/mua đâu. */
+  replyCta: CtaSlot;
+  facebookHubStatus: FacebookHubStatus;
+  productTagStatus: 'tagged' | 'untagged' | 'not_supported';
+  requiresManualTagging: boolean;
+  /** Gắn link trong reply hay không vẫn do shouldIncludeLink theo intent quyết định. */
+  replyLinkPolicy: 'intent_gated';
+  /** Tính theo ctaMode (xem computeCtaReadiness). */
+  readiness: CtaReadiness;
+  source: GrowthDataSource;
+}
+
 /** Tín hiệu học được từ dữ liệu hiệu suất/comment. refId trỏ entity theo scope. */
 export interface LearningSignal {
   signalId: string;
@@ -198,6 +254,7 @@ export interface GrowthSnapshot {
   commentIntents: CommentIntent[];
   replyTemplates: ReplyTemplate[];
   commentActionLog: CommentActionLog[];
+  affiliateCtaPlans: AffiliateCtaPlan[];
   learningSignals: LearningSignal[];
   growthRecommendations: GrowthRecommendation[];
 }

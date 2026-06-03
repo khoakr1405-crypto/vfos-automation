@@ -6,15 +6,17 @@
  * tránh ESM→CJS named-export flakiness khi chạy từ root scripts/.
  * KHÔNG gọi API, KHÔNG ghi file, KHÔNG đụng pipeline — chỉ load fixtures + validate.
  *
- * PASS khi cả 4 nhóm đều sạch:
- *   1. 11/11 entity load không throw (mỗi entity có dữ liệu).
+ * PASS khi cả 5 nhóm đều sạch:
+ *   1. Tất cả entity load không throw (mỗi entity có dữ liệu).
  *   2. No secret fields (quét cả key lẫn value).
  *   3. Referential integrity hợp lệ.
  *   4. Enum intent hợp lệ + safe-auto vs escalate phân tách rõ.
+ *   5. AffiliateCtaPlan integrity: vai trò slot + ctaMode + readiness khớp rule.
  * ========================================================================== */
 
 import { loadGrowthSnapshot } from '../src/lib/growth-data/load';
 import {
+  checkCtaPlanIntegrity,
   checkIntentTaxonomy,
   checkReferentialIntegrity,
   findSecretViolations,
@@ -39,12 +41,13 @@ function main(): number {
     ['commentIntents', snap.commentIntents.length],
     ['replyTemplates', snap.replyTemplates.length],
     ['commentActionLog', snap.commentActionLog.length],
+    ['affiliateCtaPlans', snap.affiliateCtaPlans.length],
     ['learningSignals', snap.learningSignals.length],
     ['growthRecommendations', snap.growthRecommendations.length],
   ];
 
   // 1) Entity load
-  printSection('1) Entity load (11/11 không throw)');
+  printSection('1) Entity load (tất cả entity không throw)');
   let loaded = 0;
   for (const [name, n] of counts) {
     const ok = n > 0;
@@ -89,6 +92,26 @@ function main(): number {
   } else {
     failed = true;
     for (const e of taxErrors) console.log(`  FAIL ${e}`);
+  }
+
+  // 5) Affiliate CTA plan integrity + readiness theo ctaMode
+  printSection('5) AffiliateCtaPlan (vai trò slot + ctaMode + readiness rule)');
+  const modeCounts = new Map<string, number>();
+  const readinessCounts = new Map<string, number>();
+  for (const plan of snap.affiliateCtaPlans) {
+    modeCounts.set(plan.ctaMode, (modeCounts.get(plan.ctaMode) ?? 0) + 1);
+    readinessCounts.set(plan.readiness, (readinessCounts.get(plan.readiness) ?? 0) + 1);
+  }
+  const fmt = (m: Map<string, number>): string =>
+    [...m.entries()].map(([k, v]) => `${k}=${v}`).join(', ');
+  console.log(`  Modes:     ${fmt(modeCounts) || '(none)'}`);
+  console.log(`  Readiness: ${fmt(readinessCounts) || '(none)'}`);
+  const ctaErrors = checkCtaPlanIntegrity(snap);
+  if (ctaErrors.length === 0) {
+    console.log('  OK   slot roles + ctaMode hợp lệ, readiness khớp computeCtaReadiness');
+  } else {
+    failed = true;
+    for (const e of ctaErrors) console.log(`  FAIL ${e}`);
   }
 
   printSection('KẾT QUẢ');

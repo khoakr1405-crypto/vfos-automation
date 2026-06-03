@@ -8,7 +8,11 @@
  *   3. checkIntentTaxonomy   — enum intent hợp lệ + safe-auto vs escalate phân tách.
  * ========================================================================== */
 
+import { computeCtaReadiness } from './cta-readiness';
 import { ESCALATE_INTENTS, type GrowthSnapshot, SAFE_AUTO_INTENTS } from './types';
+
+const SECONDARY_ROLES = new Set(['CAPTION_LINK', 'PINNED_COMMENT']);
+const CTA_MODES = new Set(['SINGLE_PRODUCT_REVIEW', 'MULTI_TOUCH_NICHE', 'CONTEXTUAL_CONTENT']);
 
 /** Các thuật ngữ nhạy cảm bị cấm xuất hiện ở key HOẶC value (case-insensitive). */
 const SECRET_TERMS = [
@@ -166,6 +170,56 @@ export function checkIntentTaxonomy(snap: GrowthSnapshot): string[] {
   const seenEscalate = snap.commentIntents.some((ci) => escalate.has(ci.intent));
   if (!seenSafe) errors.push('Taxonomy: fixtures thiếu ít nhất 1 intent an toàn (SAFE_AUTO)');
   if (!seenEscalate) errors.push('Taxonomy: fixtures thiếu ít nhất 1 intent escalate');
+
+  return errors;
+}
+
+/**
+ * Kiểm tra AffiliateCtaPlan (Round Affiliate Hub 02):
+ *   - jobId không trùng.
+ *   - ctaMode hợp lệ; vai trò từng slot đúng (Primary=HUB_NATIVE, Secondary∈caption/pinned,
+ *     Reply=REPLY_LINK); replyLinkPolicy='intent_gated'.
+ *   - readiness lưu khớp computeCtaReadiness (single source of truth cho rule).
+ *   - Nếu jobId trùng 1 PublishedPost thì productId phải nhất quán.
+ */
+export function checkCtaPlanIntegrity(snap: GrowthSnapshot): string[] {
+  const errors: string[] = [];
+  const seenJobIds = new Set<string>();
+  const postByJobId = new Map(snap.publishedPosts.map((p) => [p.jobId, p]));
+
+  for (const plan of snap.affiliateCtaPlans) {
+    const tag = `AffiliateCtaPlan ${plan.jobId}`;
+
+    if (seenJobIds.has(plan.jobId)) errors.push(`${tag}: jobId trùng lặp`);
+    seenJobIds.add(plan.jobId);
+
+    if (!CTA_MODES.has(plan.ctaMode)) errors.push(`${tag}: ctaMode "${plan.ctaMode}" không hợp lệ`);
+
+    if (plan.primaryCta.role !== 'HUB_NATIVE')
+      errors.push(`${tag}: primaryCta.role phải là HUB_NATIVE (đang "${plan.primaryCta.role}")`);
+    for (const s of plan.secondaryCtas) {
+      if (!SECONDARY_ROLES.has(s.role))
+        errors.push(`${tag}: secondaryCta.role "${s.role}" không hợp lệ (caption/pinned)`);
+    }
+    if (plan.replyCta.role !== 'REPLY_LINK')
+      errors.push(`${tag}: replyCta.role phải là REPLY_LINK (đang "${plan.replyCta.role}")`);
+
+    if (plan.replyLinkPolicy !== 'intent_gated')
+      errors.push(`${tag}: replyLinkPolicy phải là 'intent_gated'`);
+
+    const expected = computeCtaReadiness(plan);
+    if (plan.readiness !== expected)
+      errors.push(
+        `${tag}: readiness="${plan.readiness}" mâu thuẫn rule ctaMode=${plan.ctaMode} (đúng: "${expected}")`,
+      );
+
+    const post = postByJobId.get(plan.jobId);
+    if (post?.productId && plan.productId && post.productId !== plan.productId) {
+      errors.push(
+        `${tag}: productId "${plan.productId}" lệch PublishedPost "${post.productId}" cùng jobId`,
+      );
+    }
+  }
 
   return errors;
 }

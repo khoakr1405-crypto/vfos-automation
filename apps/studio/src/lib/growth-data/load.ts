@@ -14,6 +14,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { growthFixturesDir } from './paths';
 import type {
+  AffiliateCtaPlan,
   Channel,
   CommentActionLog,
   CommentIntent,
@@ -77,6 +78,10 @@ export function loadCommentActionLog(): CommentActionLog[] {
   return loadArray<CommentActionLog>('comment-action-log.json');
 }
 
+export function loadAffiliateCtaPlans(): AffiliateCtaPlan[] {
+  return loadArray<AffiliateCtaPlan>('affiliate-cta-plans.json');
+}
+
 export function loadLearningSignals(): LearningSignal[] {
   return loadArray<LearningSignal>('learning-signals.json');
 }
@@ -99,6 +104,7 @@ export function loadGrowthSnapshot(): GrowthSnapshot {
     commentIntents: loadCommentIntents(),
     replyTemplates: loadReplyTemplates(),
     commentActionLog: loadCommentActionLog(),
+    affiliateCtaPlans: loadAffiliateCtaPlans(),
     learningSignals: loadLearningSignals(),
     growthRecommendations: loadGrowthRecommendations(),
   };
