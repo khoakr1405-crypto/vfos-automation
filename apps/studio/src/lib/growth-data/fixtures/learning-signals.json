@@ -1,0 +1,29 @@
+[
+  {
+    "signalId": "sig_001",
+    "scope": "post",
+    "refId": "pp_001",
+    "metric": "ctr",
+    "delta": 0.006,
+    "observation": "CTR pp_001 cao hơn trung bình kênh khoảng 36%",
+    "capturedAt": "2026-06-02T09:00:00.000Z"
+  },
+  {
+    "signalId": "sig_002",
+    "scope": "angle",
+    "refId": "angle_unboxing",
+    "metric": "views",
+    "delta": 4200,
+    "observation": "Angle unboxing kéo view tốt hơn pain_solver",
+    "capturedAt": "2026-06-02T09:00:00.000Z"
+  },
+  {
+    "signalId": "sig_003",
+    "scope": "channel",
+    "refId": "ch_review_02",
+    "metric": "ctr",
+    "delta": -0.004,
+    "observation": "Kênh review_02 CTR thấp, nên xem lại hook trước khi tăng tần suất",
+    "capturedAt": "2026-06-02T09:00:00.000Z"
+  }
+]

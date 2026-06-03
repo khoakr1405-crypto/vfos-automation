@@ -1,0 +1,22 @@
+[
+  {
+    "publishedPostId": "pp_001",
+    "jobId": "job_20260530_001",
+    "channelId": "ch_review_01",
+    "facebookPostId": "100000000000001_900000000000001",
+    "videoId": "vid_900000000000001",
+    "productId": "42874449161",
+    "affiliateShortLink": "https://s.shopee.vn/MOCKlink01",
+    "publishedAt": "2026-05-31T04:01:03.000Z"
+  },
+  {
+    "publishedPostId": "pp_002",
+    "jobId": "job_20260601_001",
+    "channelId": "ch_review_01",
+    "facebookPostId": "100000000000001_900000000000002",
+    "videoId": "vid_900000000000002",
+    "productId": "11223344556",
+    "affiliateShortLink": "https://s.shopee.vn/MOCKlink02",
+    "publishedAt": "2026-06-01T03:30:00.000Z"
+  }
+]

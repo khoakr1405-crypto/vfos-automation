@@ -1,0 +1,56 @@
+[
+  {
+    "commentId": "cm_001",
+    "publishedPostId": "pp_001",
+    "fbCommentId": "900000000000001_700000000000001",
+    "authorRef": "viewer_a1",
+    "text": "Cho mình xin link với shop ơi",
+    "createdAt": "2026-05-31T05:10:00.000Z",
+    "status": "classified"
+  },
+  {
+    "commentId": "cm_002",
+    "publishedPostId": "pp_001",
+    "fbCommentId": "900000000000001_700000000000002",
+    "authorRef": "viewer_a2",
+    "text": "Bao nhiêu tiền vậy shop",
+    "createdAt": "2026-05-31T05:12:00.000Z",
+    "status": "classified"
+  },
+  {
+    "commentId": "cm_003",
+    "publishedPostId": "pp_001",
+    "fbCommentId": "900000000000001_700000000000003",
+    "authorRef": "viewer_a3",
+    "text": "Mua ở đâu vậy ạ",
+    "createdAt": "2026-05-31T05:20:00.000Z",
+    "status": "classified"
+  },
+  {
+    "commentId": "cm_004",
+    "publishedPostId": "pp_002",
+    "fbCommentId": "900000000000002_700000000000004",
+    "authorRef": "viewer_b1",
+    "text": "Còn hàng không shop",
+    "createdAt": "2026-06-01T04:05:00.000Z",
+    "status": "classified"
+  },
+  {
+    "commentId": "cm_005",
+    "publishedPostId": "pp_002",
+    "fbCommentId": "900000000000002_700000000000005",
+    "authorRef": "viewer_b2",
+    "text": "Hàng dùng vài hôm là hư, thất vọng quá",
+    "createdAt": "2026-06-01T04:30:00.000Z",
+    "status": "escalated"
+  },
+  {
+    "commentId": "cm_006",
+    "publishedPostId": "pp_002",
+    "fbCommentId": "900000000000002_700000000000006",
+    "authorRef": "viewer_b3",
+    "text": "So với máy bên kia thì cái nào tốt hơn",
+    "createdAt": "2026-06-01T04:45:00.000Z",
+    "status": "new"
+  }
+]

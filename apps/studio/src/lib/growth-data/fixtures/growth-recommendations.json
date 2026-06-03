@@ -1,0 +1,16 @@
+[
+  {
+    "recId": "rec_001",
+    "basedOnSignals": ["sig_001", "sig_002"],
+    "recommendation": "Ưu tiên angle unboxing cho batch tới trên kênh review_01",
+    "priority": "high",
+    "status": "proposed"
+  },
+  {
+    "recId": "rec_002",
+    "basedOnSignals": ["sig_003"],
+    "recommendation": "Thử hook mạnh hơn cho kênh review_02 trước khi tăng tần suất đăng",
+    "priority": "medium",
+    "status": "proposed"
+  }
+]

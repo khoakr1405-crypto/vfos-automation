@@ -1,0 +1,8 @@
+[
+  { "commentId": "cm_001", "intent": "ASK_LINK", "confidence": 0.95, "isSafeForAuto": true },
+  { "commentId": "cm_002", "intent": "ASK_PRICE", "confidence": 0.93, "isSafeForAuto": true },
+  { "commentId": "cm_003", "intent": "ASK_WHERE_TO_BUY", "confidence": 0.9, "isSafeForAuto": true },
+  { "commentId": "cm_004", "intent": "ASK_STOCK", "confidence": 0.88, "isSafeForAuto": true },
+  { "commentId": "cm_005", "intent": "COMPLAINT", "confidence": 0.82, "isSafeForAuto": false },
+  { "commentId": "cm_006", "intent": "COMPARE_PRODUCT", "confidence": 0.71, "isSafeForAuto": false }
+]

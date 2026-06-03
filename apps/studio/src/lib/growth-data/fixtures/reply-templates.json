@@ -1,0 +1,34 @@
+[
+  {
+    "templateId": "tpl_ask_link",
+    "intent": "ASK_LINK",
+    "lane": "review",
+    "bodyTemplate": "Dạ link sản phẩm đây ạ: {affiliate_link} 🛒",
+    "requiresLink": true,
+    "tone": "friendly"
+  },
+  {
+    "templateId": "tpl_ask_price",
+    "intent": "ASK_PRICE",
+    "lane": "review",
+    "bodyTemplate": "Dạ giá đang ưu đãi, bạn xem chi tiết ở link nha: {affiliate_link}",
+    "requiresLink": true,
+    "tone": "friendly"
+  },
+  {
+    "templateId": "tpl_ask_where",
+    "intent": "ASK_WHERE_TO_BUY",
+    "lane": "review",
+    "bodyTemplate": "Bạn mua ở đây cho yên tâm nha: {affiliate_link}",
+    "requiresLink": true,
+    "tone": "friendly"
+  },
+  {
+    "templateId": "tpl_ask_stock",
+    "intent": "ASK_STOCK",
+    "lane": "review",
+    "bodyTemplate": "Dạ còn hàng nha, bạn đặt ở link: {affiliate_link}",
+    "requiresLink": true,
+    "tone": "friendly"
+  }
+]

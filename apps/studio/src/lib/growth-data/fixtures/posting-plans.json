@@ -1,0 +1,26 @@
+[
+  {
+    "planId": "plan_001",
+    "channelId": "ch_review_01",
+    "jobId": "job_20260530_001",
+    "slotTime": "2026-05-31T18:00:00.000Z",
+    "platform": "facebook",
+    "status": "posted"
+  },
+  {
+    "planId": "plan_002",
+    "channelId": "ch_review_01",
+    "jobId": "job_20260601_001",
+    "slotTime": "2026-06-01T20:00:00.000Z",
+    "platform": "facebook",
+    "status": "posted"
+  },
+  {
+    "planId": "plan_003",
+    "channelId": "ch_review_02",
+    "jobId": null,
+    "slotTime": "2026-06-04T20:00:00.000Z",
+    "platform": "facebook",
+    "status": "planned"
+  }
+]

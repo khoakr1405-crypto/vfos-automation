@@ -1,0 +1,26 @@
+[
+  {
+    "metricId": "met_001",
+    "publishedPostId": "pp_001",
+    "capturedAt": "2026-06-02T08:00:00.000Z",
+    "views": 18230,
+    "clicks": 412,
+    "ctr": 0.0226,
+    "reactions": 540,
+    "commentsCount": 37,
+    "shares": 22,
+    "source": "mock"
+  },
+  {
+    "metricId": "met_002",
+    "publishedPostId": "pp_002",
+    "capturedAt": "2026-06-02T08:00:00.000Z",
+    "views": 9120,
+    "clicks": 150,
+    "ctr": 0.0164,
+    "reactions": 210,
+    "commentsCount": 14,
+    "shares": 8,
+    "source": "mock"
+  }
+]

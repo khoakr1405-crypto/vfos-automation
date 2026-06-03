@@ -1,0 +1,42 @@
+[
+  {
+    "actionId": "act_001",
+    "commentId": "cm_001",
+    "action": "draft",
+    "level": "L2",
+    "replyText": "Dạ link sản phẩm đây ạ: {affiliate_link} 🛒",
+    "affiliateLinkUsed": null,
+    "operatorRef": null,
+    "createdAt": "2026-05-31T05:25:00.000Z"
+  },
+  {
+    "actionId": "act_002",
+    "commentId": "cm_002",
+    "action": "draft",
+    "level": "L2",
+    "replyText": "Dạ giá đang ưu đãi, bạn xem chi tiết ở link nha: {affiliate_link}",
+    "affiliateLinkUsed": null,
+    "operatorRef": "operator_demo",
+    "createdAt": "2026-05-31T05:26:00.000Z"
+  },
+  {
+    "actionId": "act_003",
+    "commentId": "cm_005",
+    "action": "escalated",
+    "level": "L1",
+    "replyText": null,
+    "affiliateLinkUsed": null,
+    "operatorRef": null,
+    "createdAt": "2026-06-01T04:31:00.000Z"
+  },
+  {
+    "actionId": "act_004",
+    "commentId": "cm_006",
+    "action": "escalated",
+    "level": "L1",
+    "replyText": null,
+    "affiliateLinkUsed": null,
+    "operatorRef": null,
+    "createdAt": "2026-06-01T04:46:00.000Z"
+  }
+]

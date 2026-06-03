@@ -1,0 +1,29 @@
+[
+  {
+    "angleId": "angle_unboxing",
+    "name": "Unboxing gadget bếp",
+    "hook": "Mở hộp món bếp này xong là muốn mua ngay",
+    "audience": "nội trợ 25-40",
+    "lane": "review",
+    "productAffinity": ["kitchen", "gadget"],
+    "status": "active"
+  },
+  {
+    "angleId": "angle_pain_solver",
+    "name": "Giải quyết nỗi đau bếp núc",
+    "hook": "Còn loay hoay vụ này trong bếp thì xem ngay",
+    "audience": "nội trợ 25-45",
+    "lane": "review",
+    "productAffinity": ["kitchen"],
+    "status": "testing"
+  },
+  {
+    "angleId": "angle_speed_demo",
+    "name": "Demo tốc độ tiện ích",
+    "hook": "Nhanh hơn hẳn cách làm cũ",
+    "audience": "người trẻ 18-30",
+    "lane": "review",
+    "productAffinity": ["gadget"],
+    "status": "active"
+  }
+]

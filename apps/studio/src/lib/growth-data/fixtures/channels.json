@@ -1,0 +1,22 @@
+[
+  {
+    "channelId": "ch_review_01",
+    "platform": "facebook",
+    "pageId": "100000000000001",
+    "displayName": "VFOS Review Đồ Gia Dụng",
+    "lane": "review",
+    "status": "active",
+    "postingRule": "2 video/ngày, khung 18h-21h",
+    "pageAccessConfigured": true
+  },
+  {
+    "channelId": "ch_review_02",
+    "platform": "facebook",
+    "pageId": "100000000000002",
+    "displayName": "VFOS Bếp & Nhà",
+    "lane": "review",
+    "status": "review",
+    "postingRule": "1 video/ngày, khung 20h",
+    "pageAccessConfigured": false
+  }
+]
