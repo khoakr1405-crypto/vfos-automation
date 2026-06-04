@@ -1,11 +1,11 @@
 'use client';
 
 /* =============================================================================
- * VFOS Studio — Manual performance input PREVIEW (Round Real Analytics 02A)
+ * VFOS Studio — Manual performance input PREVIEW + LOCAL SAVE (Real Analytics 02A→02B)
  * -----------------------------------------------------------------------------
- * CLIENT component. PREVIEW-ONLY / NO-WRITE: Operator paste CSV → parse + validate
- * + hiển thị preview. TUYỆT ĐỐI không ghi file/runtime, không POST, không gọi API.
- * Mọi dữ liệu chỉ sống trong React state. Lưu thật để dành Real Analytics 02B.
+ * CLIENT component. Operator paste CSV → parse + validate preview (02A) → Save to
+ * LOCAL RUNTIME qua POST có guard (02B). KHÔNG gọi Facebook/Shopee API, KHÔNG commit
+ * runtime, KHÔNG token/secret. Save chỉ bật khi có ≥1 valid row và 0 invalid row.
  * ========================================================================== */
 
 import { Badge } from '@/components/badge';
@@ -37,6 +37,21 @@ function formatNumber(n: number): string {
   return new Intl.NumberFormat('vi-VN').format(n);
 }
 
+type SaveState = 'idle' | 'saving' | 'done' | 'error';
+
+interface SaveResponse {
+  ok: boolean;
+  savedCount?: number;
+  duplicateIds?: string[];
+  invalidRows?: Array<{ index: number; errors: string[] }>;
+  runtimePathConfigured?: boolean;
+  message?: string;
+  code?: string;
+  fields?: string[];
+}
+
+const SAVE_ENDPOINT = '/api/studio/analytics/manual-performance/save';
+
 export function ManualInputPreview({
   knownJobIds,
   knownPostIds,
@@ -46,33 +61,65 @@ export function ManualInputPreview({
 }) {
   const [text, setText] = useState('');
   const [result, setResult] = useState<ManualCsvParseResult | null>(null);
+  const [saveState, setSaveState] = useState<SaveState>('idle');
+  const [saveResp, setSaveResp] = useState<SaveResponse | null>(null);
 
   const runPreview = () => {
     setResult(parseManualCsv(text, { knownJobIds, knownPostIds }));
+    setSaveState('idle');
+    setSaveResp(null);
   };
   const clearAll = () => {
     setText('');
     setResult(null);
+    setSaveState('idle');
+    setSaveResp(null);
   };
 
   const validRows = result?.rows.filter((r) => r.errors.length === 0) ?? [];
   const invalidRows = result?.rows.filter((r) => r.errors.length > 0) ?? [];
   const warnRows = result?.rows.filter((r) => r.warnings.length > 0) ?? [];
 
+  // Save chỉ bật khi có ≥1 valid row VÀ 0 invalid row (warning vẫn cho lưu).
+  const canSave =
+    result !== null && result.validCount > 0 && result.invalidCount === 0 && saveState !== 'saving';
+
+  const runSave = async () => {
+    if (!result) return;
+    const rows = result.rows.filter((r) => r.errors.length === 0).map((r) => r.draft);
+    setSaveState('saving');
+    setSaveResp(null);
+    try {
+      const res = await fetch(SAVE_ENDPOINT, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ rows }),
+      });
+      const data: SaveResponse = await res.json();
+      setSaveResp(data);
+      setSaveState(data.ok ? 'done' : 'error');
+    } catch {
+      setSaveResp({ ok: false, message: 'Lỗi mạng khi gọi local save.' });
+      setSaveState('error');
+    }
+  };
+
   return (
     <Card>
       <CardHeader
-        title="Manual Performance Input — Preview Only"
-        subtitle="Operator nhập/paste CSV để validate thử · KHÔNG lưu (write để dành Real Analytics 02B)"
+        title="Manual Performance Input — Preview & Local Save"
+        subtitle="Operator paste CSV → validate → lưu vào local runtime (gitignored). KHÔNG gọi API, KHÔNG commit runtime."
         accentClass="text-accent-violet"
-        right={<Badge accent="violet">PREVIEW ONLY / NO-WRITE</Badge>}
+        right={<Badge accent="violet">LOCAL RUNTIME ONLY</Badge>}
       />
       <CardBody className="space-y-4">
         <div className="flex items-center gap-2 rounded-xl border border-accent-amber/30 bg-accent-amber/10 px-3.5 py-2 text-[11px] text-accent-amber">
           <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent-amber" />
           <span>
-            <strong>Chưa gọi Facebook/Shopee API · Chưa lưu dữ liệu · Chỉ validate preview.</strong>{' '}
-            Dữ liệu paste chỉ nằm trong trình duyệt, không gửi đi đâu, không ghi vào repo.
+            <strong>
+              Local runtime only · Không gọi Facebook/Shopee API · Không commit runtime.
+            </strong>{' '}
+            Lưu vào file local gitignored, không gửi ra ngoài, không ghi vào fixtures source.
           </span>
         </div>
 
@@ -109,12 +156,17 @@ export function ManualInputPreview({
             Xóa
           </Button>
           <Button
-            variant="outline"
-            disabled
+            variant="success"
+            onClick={runSave}
+            disabled={!canSave}
             className="ml-auto"
-            title="Lưu thật sẽ làm ở Real Analytics 02B"
+            title={
+              canSave
+                ? 'Lưu các dòng hợp lệ vào local runtime (gitignored)'
+                : 'Cần ≥1 dòng hợp lệ và 0 dòng lỗi để lưu'
+            }
           >
-            Lưu (Real Analytics 02B)
+            {saveState === 'saving' ? 'Đang lưu…' : 'Save to Local Runtime'}
           </Button>
         </div>
 
@@ -266,6 +318,57 @@ export function ManualInputPreview({
                   ))}
                 </ul>
               </div>
+            )}
+          </div>
+        )}
+
+        {saveResp && (
+          <div
+            className={`rounded-xl border px-4 py-3 ${
+              saveResp.ok
+                ? 'border-accent-green/30 bg-accent-green/5'
+                : 'border-accent-rose/30 bg-accent-rose/5'
+            }`}
+          >
+            <p
+              className={`text-[11px] font-semibold ${
+                saveResp.ok ? 'text-accent-green' : 'text-accent-rose'
+              }`}
+            >
+              {saveResp.ok ? '✓ Đã lưu vào local runtime' : '✕ Lưu thất bại'}
+            </p>
+            {saveResp.message && (
+              <p className="mt-1 text-[11px] text-neutral-300">{saveResp.message}</p>
+            )}
+            {saveResp.ok && (
+              <ul className="mt-1.5 space-y-0.5 text-[10px] text-neutral-500">
+                <li>
+                  savedCount: <span className="text-neutral-200">{saveResp.savedCount ?? 0}</span>
+                </li>
+                <li>
+                  Runtime target:{' '}
+                  {saveResp.runtimePathConfigured ? 'local runtime configured' : 'chưa cấu hình'}
+                </li>
+                {saveResp.duplicateIds && saveResp.duplicateIds.length > 0 && (
+                  <li className="text-accent-amber">
+                    Trùng (bỏ qua): {saveResp.duplicateIds.length} dòng
+                  </li>
+                )}
+              </ul>
+            )}
+            {!saveResp.ok && saveResp.invalidRows && saveResp.invalidRows.length > 0 && (
+              <ul className="mt-1.5 space-y-0.5 text-[10px] text-accent-rose">
+                {saveResp.invalidRows.map((r) => (
+                  <li key={r.index}>
+                    Dòng {r.index + 1}: {r.errors.join(' · ')}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {!saveResp.ok && saveResp.fields && saveResp.fields.length > 0 && (
+              <p className="mt-1.5 text-[10px] text-accent-rose">
+                Trường nhạy cảm bị từ chối: {saveResp.fields.join(', ')}
+              </p>
             )}
           </div>
         )}

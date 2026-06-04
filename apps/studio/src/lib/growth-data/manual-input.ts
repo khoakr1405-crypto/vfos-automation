@@ -182,3 +182,69 @@ export function parseManualCsv(text: string, ctx: ManualInputContext): ManualCsv
     totals,
   };
 }
+
+/* ---- Save helpers (Round Real Analytics 02B) ------------------------------ */
+
+/** Nguồn HỢP LỆ khi lưu runtime — chỉ manual/manual_import. KHÔNG fixture/api_future. */
+export const SAVABLE_SOURCES = new Set<string>(['manual', 'manual_import']);
+
+/** Thuật ngữ nhạy cảm bị từ chối nếu xuất hiện trong payload save (server scan). */
+export const SENSITIVE_TERMS = [
+  'access_token',
+  'accesstoken',
+  'facebook_page_access_token',
+  'bearer',
+  'eaab',
+  'password',
+  'secret',
+  'cookie',
+  'credential',
+  'token',
+] as const;
+
+/** Trả về các thuật ngữ nhạy cảm tìm thấy trong text (đã lowercase). PURE. */
+export function findSensitiveTerms(text: string): string[] {
+  const low = (text || '').toLowerCase();
+  return SENSITIVE_TERMS.filter((t) => low.includes(t));
+}
+
+const slug = (s: string): string => s.replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+
+/**
+ * snapshotId xác định theo NỘI DUNG (idempotent): jobId + measuredAt + ctaRole.
+ * Re-save cùng một dòng ⇒ cùng id ⇒ bị dedupe reject. Không random.
+ */
+export function deriveSnapshotId(d: {
+  jobId: string;
+  measuredAt: string;
+  ctaRole: string | null;
+}): string {
+  return `mps_${slug(d.jobId)}__${slug(d.measuredAt)}__${slug(d.ctaRole ?? 'post')}`.toLowerCase();
+}
+
+/**
+ * Validate 1 draft cho SAVE (server authoritative, KHÔNG tin client). PURE.
+ * Chặt hơn preview: source chỉ manual/manual_import (cấm fixture/api_future khi lưu).
+ */
+export function validateSavableDraft(d: ManualInputDraft): string[] {
+  const errors: string[] = [];
+  const intNonNeg = (v: number, f: string): void => {
+    if (!Number.isInteger(v) || v < 0) errors.push(`${f}: phải là số nguyên ≥ 0`);
+  };
+  if (!d.jobId) errors.push('jobId: thiếu');
+  if (!d.measuredAt) errors.push('measuredAt: thiếu');
+  intNonNeg(d.views, 'views');
+  intNonNeg(d.clicks, 'clicks');
+  intNonNeg(d.comments, 'comments');
+  intNonNeg(d.reactions, 'reactions');
+  intNonNeg(d.shares, 'shares');
+  intNonNeg(d.conversions, 'conversions');
+  if (d.views > 0 && d.clicks > d.views) errors.push(`clicks (${d.clicks}) > views (${d.views})`);
+  if (d.clicks > 0 && d.conversions > d.clicks)
+    errors.push(`conversions (${d.conversions}) > clicks (${d.clicks})`);
+  if (!SAVABLE_SOURCES.has(d.source))
+    errors.push(`source "${d.source}" không cho phép lưu (chỉ manual/manual_import)`);
+  if (d.ctaRole !== null && !LINK_ROLES.has(d.ctaRole))
+    errors.push(`ctaRole "${d.ctaRole}" không hợp lệ`);
+  return errors;
+}
