@@ -20,6 +20,7 @@ import type {
   CommentIntent,
   CommentItem,
   ContentAngle,
+  CtaRoleMetric,
   GrowthRecommendation,
   GrowthSnapshot,
   LearningSignal,
@@ -82,6 +83,10 @@ export function loadAffiliateCtaPlans(): AffiliateCtaPlan[] {
   return loadArray<AffiliateCtaPlan>('affiliate-cta-plans.json');
 }
 
+export function loadCtaRoleMetrics(): CtaRoleMetric[] {
+  return loadArray<CtaRoleMetric>('cta-role-metrics.json');
+}
+
 export function loadLearningSignals(): LearningSignal[] {
   return loadArray<LearningSignal>('learning-signals.json');
 }
@@ -105,6 +110,7 @@ export function loadGrowthSnapshot(): GrowthSnapshot {
     replyTemplates: loadReplyTemplates(),
     commentActionLog: loadCommentActionLog(),
     affiliateCtaPlans: loadAffiliateCtaPlans(),
+    ctaRoleMetrics: loadCtaRoleMetrics(),
     learningSignals: loadLearningSignals(),
     growthRecommendations: loadGrowthRecommendations(),
   };

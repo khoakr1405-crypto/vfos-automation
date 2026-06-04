@@ -1,0 +1,90 @@
+[
+  {
+    "jobId": "job_20260530_001",
+    "role": "HUB_NATIVE",
+    "impressions": 12000,
+    "clicks": 540,
+    "conversions": 18,
+    "source": "mock"
+  },
+  {
+    "jobId": "job_20260530_001",
+    "role": "REPLY_LINK",
+    "impressions": 800,
+    "clicks": 96,
+    "conversions": 7,
+    "source": "mock"
+  },
+  {
+    "jobId": "job_20260601_001",
+    "role": "CAPTION_LINK",
+    "impressions": 9000,
+    "clicks": 360,
+    "conversions": 11,
+    "source": "mock"
+  },
+  {
+    "jobId": "job_20260601_001",
+    "role": "REPLY_LINK",
+    "impressions": 600,
+    "clicks": 78,
+    "conversions": 5,
+    "source": "mock"
+  },
+  {
+    "jobId": "job_20260602_cauca_001",
+    "role": "HUB_NATIVE",
+    "impressions": 15000,
+    "clicks": 600,
+    "conversions": 20,
+    "source": "mock"
+  },
+  {
+    "jobId": "job_20260602_cauca_001",
+    "role": "CAPTION_LINK",
+    "impressions": 15000,
+    "clicks": 300,
+    "conversions": 8,
+    "source": "mock"
+  },
+  {
+    "jobId": "job_20260602_cauca_001",
+    "role": "PINNED_COMMENT",
+    "impressions": 4000,
+    "clicks": 160,
+    "conversions": 6,
+    "source": "mock"
+  },
+  {
+    "jobId": "job_20260602_cauca_001",
+    "role": "REPLY_LINK",
+    "impressions": 1200,
+    "clicks": 132,
+    "conversions": 9,
+    "source": "mock"
+  },
+  {
+    "jobId": "job_20260602_ruaxe_001",
+    "role": "HUB_NATIVE",
+    "impressions": 8000,
+    "clicks": 280,
+    "conversions": 9,
+    "source": "mock"
+  },
+  {
+    "jobId": "job_20260603_context_001",
+    "role": "HUB_NATIVE",
+    "impressions": 6000,
+    "clicks": 210,
+    "conversions": 7,
+    "source": "mock"
+  },
+  {
+    "jobId": "job_20260603_context_001",
+    "role": "CAPTION_LINK",
+    "impressions": 6000,
+    "clicks": 150,
+    "conversions": 5,
+    "source": "mock"
+  }
+]

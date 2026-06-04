@@ -1,17 +1,21 @@
-import { LanePill, PlatformPill } from '@/components/badge';
+import { Badge, LanePill, PlatformPill } from '@/components/badge';
 import { Card, CardBody, CardHeader } from '@/components/card';
 import { MockBanner } from '@/components/mock-banner';
 import { PageHeader } from '@/components/page-header';
 import { StatCard } from '@/components/stat-card';
 import { Button } from '@/components/ui';
+import { computeCtaReadiness } from '@/lib/growth-data/cta-readiness';
 import {
+  loadAffiliateCtaPlans,
   loadChannels,
   loadContentAngles,
+  loadCtaRoleMetrics,
   loadPerformanceMetrics,
   loadPublishedPosts,
 } from '@/lib/growth-data/load';
+import type { CtaReadiness, LinkRole } from '@/lib/growth-data/types';
 import { LANES, LANE_LABEL, type PlatformId } from '@/lib/mock-data';
-import { ACCENT_TEXT } from '@/lib/nav';
+import { ACCENT_TEXT, type AccentKey } from '@/lib/nav';
 import { loadJobById } from '@/lib/studio-data/jobs';
 
 // Hex per accent for the conic-gradient donut (CSS gradients can't read Tailwind classes).
@@ -28,6 +32,37 @@ function formatNumber(num: number): string {
   return new Intl.NumberFormat('vi-VN').format(num);
 }
 
+// Affiliate Hub 05 — CTA role display (mock analytics).
+const CTA_ROLE_ORDER: LinkRole[] = ['HUB_NATIVE', 'CAPTION_LINK', 'PINNED_COMMENT', 'REPLY_LINK'];
+const CTA_ROLE_META: Record<LinkRole, { label: string; note: string; accent: AccentKey }> = {
+  HUB_NATIVE: {
+    label: 'Hub Native CTA',
+    note: 'Native/banner CTA khi Facebook Affiliate Hub khả dụng.',
+    accent: 'green',
+  },
+  CAPTION_LINK: {
+    label: 'Caption Link',
+    note: 'Link phụ trong caption (fallback khi chưa có Hub).',
+    accent: 'cyan',
+  },
+  PINNED_COMMENT: {
+    label: 'Pinned Comment Link',
+    note: 'Link phụ trong comment ghim.',
+    accent: 'violet',
+  },
+  REPLY_LINK: {
+    label: 'Reply CTA',
+    note: 'Chỉ dùng khi Comment Intelligence cho phép (intent-gated).',
+    accent: 'amber',
+  },
+};
+const READINESS_ACCENT: Record<CtaReadiness, AccentKey> = {
+  ready: 'green',
+  partial: 'amber',
+  blocked: 'rose',
+};
+
+// biome-ignore lint/style/noDefaultExport: Next.js page requires default export
 export default function AnalyticsPage() {
   const metrics = loadPerformanceMetrics();
   const posts = loadPublishedPosts();
@@ -166,6 +201,37 @@ export default function AnalyticsPage() {
 
   performanceDetails.sort((a, b) => b.views - a.views);
 
+  // 5. CTA role breakdown (Affiliate Hub 05 — MOCK). Join role metrics ↔ CTA plan.
+  const ctaRoleMetrics = loadCtaRoleMetrics();
+  const ctaPlanByJobId = new Map(loadAffiliateCtaPlans().map((p) => [p.jobId, p]));
+
+  const ctaRoleBreakdown = CTA_ROLE_ORDER.map((role) => {
+    const recs = ctaRoleMetrics.filter((m) => m.role === role);
+    const impressions = recs.reduce((s, m) => s + m.impressions, 0);
+    const clicks = recs.reduce((s, m) => s + m.clicks, 0);
+    const conversions = recs.reduce((s, m) => s + m.conversions, 0);
+    const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
+    return { role, ...CTA_ROLE_META[role], impressions, clicks, conversions, ctr };
+  });
+
+  const ctaByJob = [...new Set(ctaRoleMetrics.map((m) => m.jobId))]
+    .map((jobId) => {
+      const recs = ctaRoleMetrics.filter((m) => m.jobId === jobId);
+      const totalClicks = recs.reduce((s, m) => s + m.clicks, 0);
+      const top = recs.reduce((best, m) => (m.clicks > best.clicks ? m : best), recs[0]);
+      const plan = ctaPlanByJobId.get(jobId);
+      const realJob = loadJobById(jobId);
+      return {
+        jobId,
+        title: realJob?.product || realJob?.title || jobId,
+        ctaMode: plan?.ctaMode ?? null,
+        readiness: plan ? computeCtaReadiness(plan) : null,
+        totalClicks,
+        topRole: top ? CTA_ROLE_META[top.role].label : '—',
+      };
+    })
+    .sort((a, b) => b.totalClicks - a.totalClicks);
+
   return (
     <div className="space-y-6">
       <MockBanner />
@@ -276,6 +342,109 @@ export default function AnalyticsPage() {
           </CardBody>
         </Card>
       </div>
+
+      {/* CTA Performance by Role — Mock (Affiliate Hub 05) */}
+      <Card>
+        <CardHeader
+          title="CTA Performance by Role — Mock"
+          subtitle="Hiệu quả theo vai trò CTA · dữ liệu giả lập (fixture), CHƯA phải số liệu Facebook/Shopee thật"
+          accentClass="text-accent-amber"
+          right={<Badge accent="amber">MOCK / READ-ONLY</Badge>}
+        />
+        <CardBody className="space-y-5">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {ctaRoleBreakdown.map((r) => (
+              <div key={r.role} className="rounded-xl border border-hairline bg-raised/40 p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-semibold text-neutral-100">{r.label}</p>
+                  <Badge accent={r.accent}>{r.role}</Badge>
+                </div>
+                <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                  <div>
+                    <p className="text-[10px] text-neutral-500">Clicks</p>
+                    <p className="text-sm font-semibold text-neutral-100">
+                      {formatNumber(r.clicks)}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-neutral-500">CTR</p>
+                    <p className="text-sm font-semibold text-accent-green">{r.ctr.toFixed(2)}%</p>
+                  </div>
+                  <div>
+                    <p className="text-[10px] text-neutral-500">Conv.</p>
+                    <p className="text-sm font-semibold text-neutral-100">
+                      {formatNumber(r.conversions)}
+                    </p>
+                  </div>
+                </div>
+                <p className="mt-2.5 text-[10px] leading-relaxed text-neutral-500">{r.note}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Per-job CTA breakdown */}
+          <div>
+            <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+              Theo job/video (mock)
+            </p>
+            <div className="overflow-x-auto rounded-xl border border-hairline">
+              <table className="w-full min-w-[640px] text-left text-xs">
+                <thead className="text-[10px] uppercase tracking-wider text-neutral-600">
+                  <tr className="border-b border-hairline">
+                    <th className="px-4 py-2.5 font-medium">Job / Sản phẩm</th>
+                    <th className="px-4 py-2.5 font-medium">ctaMode</th>
+                    <th className="px-4 py-2.5 font-medium">Readiness</th>
+                    <th className="px-4 py-2.5 font-medium text-right">Tổng CTA clicks</th>
+                    <th className="px-4 py-2.5 font-medium">Top role</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ctaByJob.map((j) => (
+                    <tr
+                      key={j.jobId}
+                      className="border-b border-hairline/60 last:border-0 hover:bg-raised/30"
+                    >
+                      <td className="px-4 py-3">
+                        <div className="font-medium text-neutral-100">{j.title}</div>
+                        <div className="mt-0.5 font-mono text-[10px] text-neutral-500">
+                          {j.jobId}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-neutral-300">{j.ctaMode ?? '—'}</td>
+                      <td className="px-4 py-3">
+                        {j.readiness ? (
+                          <Badge accent={READINESS_ACCENT[j.readiness]}>
+                            {j.readiness.toUpperCase()}
+                          </Badge>
+                        ) : (
+                          <span className="text-neutral-500">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold text-neutral-100">
+                        {formatNumber(j.totalClicks)}
+                      </td>
+                      <td className="px-4 py-3 text-neutral-300">{j.topRole}</td>
+                    </tr>
+                  ))}
+                  {ctaByJob.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-8 text-center text-neutral-500">
+                        Chưa có dữ liệu CTA role (mock)
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <p className="text-[10px] leading-relaxed text-neutral-500">
+            <strong>Lưu ý chiến lược:</strong> số role mỗi video tùy <code>ctaMode</code> — review 1
+            sản phẩm chỉ cần 1 Primary CTA hợp lệ; multi-touch mới dùng thêm link phụ. Analytics chỉ
+            đo hiệu quả theo role, không ép spam nhiều link.
+          </p>
+        </CardBody>
+      </Card>
 
       {/* Top performers */}
       <Card>

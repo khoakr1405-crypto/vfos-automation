@@ -223,6 +223,20 @@ export interface AffiliateCtaPlan {
   source: GrowthDataSource;
 }
 
+/**
+ * Hiệu suất CTA theo vai trò cho 1 job (Round Affiliate Hub 05). MOCK/placeholder —
+ * chưa phải số liệu Facebook/Shopee thật. CTR tính ở UI từ clicks/impressions.
+ * KHÔNG token/secret/raw link.
+ */
+export interface CtaRoleMetric {
+  jobId: string;
+  role: LinkRole;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  source: GrowthDataSource;
+}
+
 /** Tín hiệu học được từ dữ liệu hiệu suất/comment. refId trỏ entity theo scope. */
 export interface LearningSignal {
   signalId: string;
@@ -258,6 +272,7 @@ export interface GrowthSnapshot {
   replyTemplates: ReplyTemplate[];
   commentActionLog: CommentActionLog[];
   affiliateCtaPlans: AffiliateCtaPlan[];
+  ctaRoleMetrics: CtaRoleMetric[];
   learningSignals: LearningSignal[];
   growthRecommendations: GrowthRecommendation[];
 }

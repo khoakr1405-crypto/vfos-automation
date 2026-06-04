@@ -12,11 +12,13 @@
  *   3. Referential integrity hợp lệ.
  *   4. Enum intent hợp lệ + safe-auto vs escalate phân tách rõ.
  *   5. AffiliateCtaPlan integrity: vai trò slot + ctaMode + readiness khớp rule.
+ *   6. CtaRoleMetric (mock analytics): jobId khớp plan, role hợp lệ, số liệu nhất quán.
  * ========================================================================== */
 
 import { loadGrowthSnapshot } from '../src/lib/growth-data/load';
 import {
   checkCtaPlanIntegrity,
+  checkCtaRoleMetrics,
   checkIntentTaxonomy,
   checkReferentialIntegrity,
   findSecretViolations,
@@ -42,6 +44,7 @@ function main(): number {
     ['replyTemplates', snap.replyTemplates.length],
     ['commentActionLog', snap.commentActionLog.length],
     ['affiliateCtaPlans', snap.affiliateCtaPlans.length],
+    ['ctaRoleMetrics', snap.ctaRoleMetrics.length],
     ['learningSignals', snap.learningSignals.length],
     ['growthRecommendations', snap.growthRecommendations.length],
   ];
@@ -112,6 +115,22 @@ function main(): number {
   } else {
     failed = true;
     for (const e of ctaErrors) console.log(`  FAIL ${e}`);
+  }
+
+  // 6) CtaRoleMetric (mock analytics) — clicks theo role
+  printSection('6) CtaRoleMetric (mock analytics — clicks theo role)');
+  const roleClicks = new Map<string, number>();
+  for (const m of snap.ctaRoleMetrics) {
+    roleClicks.set(m.role, (roleClicks.get(m.role) ?? 0) + m.clicks);
+  }
+  const roleSummary = [...roleClicks.entries()].map(([r, c]) => `${r}=${c}`).join(', ');
+  console.log(`  Clicks theo role: ${roleSummary || '(none)'}`);
+  const roleErrors = checkCtaRoleMetrics(snap);
+  if (roleErrors.length === 0) {
+    console.log('  OK   jobId khớp plan, role hợp lệ, số liệu nhất quán (MOCK)');
+  } else {
+    failed = true;
+    for (const e of roleErrors) console.log(`  FAIL ${e}`);
   }
 
   printSection('KẾT QUẢ');

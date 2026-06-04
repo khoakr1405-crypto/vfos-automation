@@ -13,6 +13,7 @@ import { ESCALATE_INTENTS, type GrowthSnapshot, SAFE_AUTO_INTENTS } from './type
 
 const SECONDARY_ROLES = new Set(['CAPTION_LINK', 'PINNED_COMMENT']);
 const CTA_MODES = new Set(['SINGLE_PRODUCT_REVIEW', 'MULTI_TOUCH_NICHE', 'CONTEXTUAL_CONTENT']);
+const LINK_ROLES = new Set(['HUB_NATIVE', 'CAPTION_LINK', 'PINNED_COMMENT', 'REPLY_LINK']);
 
 /** Các thuật ngữ nhạy cảm bị cấm xuất hiện ở key HOẶC value (case-insensitive). */
 const SECRET_TERMS = [
@@ -219,6 +220,28 @@ export function checkCtaPlanIntegrity(snap: GrowthSnapshot): string[] {
         `${tag}: productId "${plan.productId}" lệch PublishedPost "${post.productId}" cùng jobId`,
       );
     }
+  }
+
+  return errors;
+}
+
+/**
+ * Kiểm tra CtaRoleMetric (Round Affiliate Hub 05 — MOCK analytics):
+ *   - jobId phải khớp 1 AffiliateCtaPlan (CTA role bắt nguồn từ plan).
+ *   - role hợp lệ trong LinkRole.
+ *   - impressions/clicks/conversions không âm; clicks ≤ impressions; conversions ≤ clicks.
+ */
+export function checkCtaRoleMetrics(snap: GrowthSnapshot): string[] {
+  const errors: string[] = [];
+  const planJobIds = new Set(snap.affiliateCtaPlans.map((p) => p.jobId));
+
+  for (const m of snap.ctaRoleMetrics) {
+    const tag = `CtaRoleMetric ${m.jobId}/${m.role}`;
+    if (!planJobIds.has(m.jobId)) errors.push(`${tag}: jobId không khớp AffiliateCtaPlan nào`);
+    if (!LINK_ROLES.has(m.role)) errors.push(`${tag}: role "${m.role}" không hợp lệ`);
+    if (m.impressions < 0 || m.clicks < 0 || m.conversions < 0) errors.push(`${tag}: số liệu âm`);
+    if (m.clicks > m.impressions) errors.push(`${tag}: clicks (${m.clicks}) > impressions`);
+    if (m.conversions > m.clicks) errors.push(`${tag}: conversions (${m.conversions}) > clicks`);
   }
 
   return errors;
