@@ -14,6 +14,8 @@ import { ESCALATE_INTENTS, type GrowthSnapshot, SAFE_AUTO_INTENTS } from './type
 const SECONDARY_ROLES = new Set(['CAPTION_LINK', 'PINNED_COMMENT']);
 const CTA_MODES = new Set(['SINGLE_PRODUCT_REVIEW', 'MULTI_TOUCH_NICHE', 'CONTEXTUAL_CONTENT']);
 const LINK_ROLES = new Set(['HUB_NATIVE', 'CAPTION_LINK', 'PINNED_COMMENT', 'REPLY_LINK']);
+const PLATFORMS = new Set(['facebook', 'tiktok', 'youtube']);
+const MANUAL_METRIC_SOURCES = new Set(['fixture', 'manual', 'manual_import', 'api_future']);
 
 /** Các thuật ngữ nhạy cảm bị cấm xuất hiện ở key HOẶC value (case-insensitive). */
 const SECRET_TERMS = [
@@ -242,6 +244,51 @@ export function checkCtaRoleMetrics(snap: GrowthSnapshot): string[] {
     if (m.impressions < 0 || m.clicks < 0 || m.conversions < 0) errors.push(`${tag}: số liệu âm`);
     if (m.clicks > m.impressions) errors.push(`${tag}: clicks (${m.clicks}) > impressions`);
     if (m.conversions > m.clicks) errors.push(`${tag}: conversions (${m.conversions}) > clicks`);
+  }
+
+  return errors;
+}
+
+/**
+ * Kiểm tra ManualPerformanceSnapshot (Round Real Analytics 01 — manual/import):
+ *   - jobId phải khớp 1 PublishedPost HOẶC 1 AffiliateCtaPlan (số liệu neo vào nội dung thật).
+ *   - publishedPostId (nếu có) phải tồn tại trong publishedPosts.
+ *   - platform + source hợp lệ; ctaRole (nếu có) ∈ LinkRole.
+ *   - mọi số liệu không âm; clicks ≤ views (khi views>0); conversions ≤ clicks (khi clicks>0).
+ *   - measuredAt không rỗng.
+ */
+export function checkManualPerformanceSnapshots(snap: GrowthSnapshot): string[] {
+  const errors: string[] = [];
+  const postIds = new Set(snap.publishedPosts.map((p) => p.publishedPostId));
+  const knownJobIds = new Set<string>([
+    ...snap.publishedPosts.map((p) => p.jobId),
+    ...snap.affiliateCtaPlans.map((p) => p.jobId),
+  ]);
+  const seen = new Set<string>();
+
+  for (const s of snap.manualPerformanceSnapshots) {
+    const tag = `ManualPerformanceSnapshot ${s.snapshotId}`;
+
+    if (seen.has(s.snapshotId)) errors.push(`${tag}: snapshotId trùng lặp`);
+    seen.add(s.snapshotId);
+
+    if (!knownJobIds.has(s.jobId))
+      errors.push(`${tag}: jobId "${s.jobId}" không khớp PublishedPost/AffiliateCtaPlan nào`);
+    if (s.publishedPostId !== null && !postIds.has(s.publishedPostId))
+      errors.push(`${tag}: publishedPostId "${s.publishedPostId}" không tồn tại`);
+    if (!PLATFORMS.has(s.platform)) errors.push(`${tag}: platform "${s.platform}" không hợp lệ`);
+    if (!MANUAL_METRIC_SOURCES.has(s.source))
+      errors.push(`${tag}: source "${s.source}" không hợp lệ`);
+    if (s.ctaRole !== null && !LINK_ROLES.has(s.ctaRole))
+      errors.push(`${tag}: ctaRole "${s.ctaRole}" không hợp lệ`);
+    if (!s.measuredAt) errors.push(`${tag}: thiếu measuredAt`);
+
+    const nums = [s.views, s.clicks, s.comments, s.reactions, s.shares, s.conversions];
+    if (nums.some((n) => n < 0)) errors.push(`${tag}: có số liệu âm`);
+    if (s.views > 0 && s.clicks > s.views)
+      errors.push(`${tag}: clicks (${s.clicks}) > views (${s.views})`);
+    if (s.clicks > 0 && s.conversions > s.clicks)
+      errors.push(`${tag}: conversions (${s.conversions}) > clicks (${s.clicks})`);
   }
 
   return errors;

@@ -237,6 +237,49 @@ export interface CtaRoleMetric {
   source: GrowthDataSource;
 }
 
+/* ---- Manual / imported performance (Round Real Analytics 01) --------------- */
+
+/**
+ * Nguồn số liệu manual analytics — TÁCH biệt để Operator KHÔNG nhầm mock với số thật:
+ *   - 'fixture'       : demo seed (mock, không phải số thật).
+ *   - 'manual'        : Operator nhập tay sau khi đăng.
+ *   - 'manual_import' : import từ file (CSV/clipboard) thủ công.
+ *   - 'api_future'    : chỗ dành cho số liệu API thật sau này (CHƯA dùng round này).
+ */
+export type ManualMetricSource = 'fixture' | 'manual' | 'manual_import' | 'api_future';
+
+/**
+ * Một lần đo hiệu suất Operator NHẬP/IMPORT thủ công cho 1 post/job (Round Real Analytics 01).
+ * Lớp này TÁCH khỏi PerformanceMetric (fixture overview) + CtaRoleMetric (mock theo role) để
+ * không trộn số mock với số nhập tay. CHƯA gọi Facebook/Shopee API — nguồn là manual/import.
+ * KHÔNG token/secret/raw runtime link. ctaRole=null ⇒ dòng tổng post-level; ctaRole set ⇒
+ * dòng theo vai trò CTA (views/comments/... có thể 0 vì đo ở mức role).
+ */
+export interface ManualPerformanceSnapshot {
+  snapshotId: string;
+  jobId: string;
+  /** publishedPostId nếu đã map (null khi chưa publish/chưa map). */
+  publishedPostId: string | null;
+  /** Public Facebook post id nếu có. KHÔNG phải token. */
+  facebookPostId: string | null;
+  channelId: string | null;
+  platform: Platform;
+  /** Thời điểm Operator đo/nhập số (ISO). Khác capturedAt của fixture. */
+  measuredAt: string;
+  views: number;
+  clicks: number;
+  comments: number;
+  reactions: number;
+  shares: number;
+  /** Đơn/chuyển đổi affiliate (manual/import). */
+  conversions: number;
+  /** Vai trò CTA nếu dòng thuộc 1 role; null = tổng post-level. */
+  ctaRole: LinkRole | null;
+  source: ManualMetricSource;
+  /** Ghi chú Operator (vd "nhập tay từ Meta Business Suite"). Optional. */
+  note?: string;
+}
+
 /** Tín hiệu học được từ dữ liệu hiệu suất/comment. refId trỏ entity theo scope. */
 export interface LearningSignal {
   signalId: string;
@@ -273,6 +316,7 @@ export interface GrowthSnapshot {
   commentActionLog: CommentActionLog[];
   affiliateCtaPlans: AffiliateCtaPlan[];
   ctaRoleMetrics: CtaRoleMetric[];
+  manualPerformanceSnapshots: ManualPerformanceSnapshot[];
   learningSignals: LearningSignal[];
   growthRecommendations: GrowthRecommendation[];
 }

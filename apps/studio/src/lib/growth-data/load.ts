@@ -24,6 +24,7 @@ import type {
   GrowthRecommendation,
   GrowthSnapshot,
   LearningSignal,
+  ManualPerformanceSnapshot,
   PerformanceMetric,
   PostingPlan,
   PublishedPost,
@@ -87,6 +88,10 @@ export function loadCtaRoleMetrics(): CtaRoleMetric[] {
   return loadArray<CtaRoleMetric>('cta-role-metrics.json');
 }
 
+export function loadManualPerformanceSnapshots(): ManualPerformanceSnapshot[] {
+  return loadArray<ManualPerformanceSnapshot>('manual-performance-snapshots.json');
+}
+
 export function loadLearningSignals(): LearningSignal[] {
   return loadArray<LearningSignal>('learning-signals.json');
 }
@@ -95,7 +100,7 @@ export function loadGrowthRecommendations(): GrowthRecommendation[] {
   return loadArray<GrowthRecommendation>('growth-recommendations.json');
 }
 
-/** Gộp toàn bộ 11 entity thành 1 snapshot. source='mock' ở Growth 02. */
+/** Gộp toàn bộ 14 entity thành 1 snapshot. source='mock' ở Growth 02. */
 export function loadGrowthSnapshot(): GrowthSnapshot {
   return {
     source: 'mock',
@@ -111,6 +116,7 @@ export function loadGrowthSnapshot(): GrowthSnapshot {
     commentActionLog: loadCommentActionLog(),
     affiliateCtaPlans: loadAffiliateCtaPlans(),
     ctaRoleMetrics: loadCtaRoleMetrics(),
+    manualPerformanceSnapshots: loadManualPerformanceSnapshots(),
     learningSignals: loadLearningSignals(),
     growthRecommendations: loadGrowthRecommendations(),
   };

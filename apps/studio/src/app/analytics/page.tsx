@@ -1,3 +1,4 @@
+import { ManualPerformanceSection } from '@/components/analytics/manual-performance-section';
 import { Badge, LanePill, PlatformPill } from '@/components/badge';
 import { Card, CardBody, CardHeader } from '@/components/card';
 import { MockBanner } from '@/components/mock-banner';
@@ -10,6 +11,7 @@ import {
   loadChannels,
   loadContentAngles,
   loadCtaRoleMetrics,
+  loadManualPerformanceSnapshots,
   loadPerformanceMetrics,
   loadPublishedPosts,
 } from '@/lib/growth-data/load';
@@ -232,6 +234,10 @@ export default function AnalyticsPage() {
     })
     .sort((a, b) => b.totalClicks - a.totalClicks);
 
+  // 6. Manual performance input foundation (Real Analytics 01 — manual/import, read-only).
+  const manualSnapshots = loadManualPerformanceSnapshots();
+  const fixturePostIdByJob = new Map(posts.map((p) => [p.jobId, p.publishedPostId]));
+
   return (
     <div className="space-y-6">
       <MockBanner />
@@ -445,6 +451,13 @@ export default function AnalyticsPage() {
           </p>
         </CardBody>
       </Card>
+
+      {/* Manual Performance Input — Foundation (Real Analytics 01) */}
+      <ManualPerformanceSection
+        snapshots={manualSnapshots}
+        fixtureMetrics={metrics}
+        fixturePostIdByJob={fixturePostIdByJob}
+      />
 
       {/* Top performers */}
       <Card>

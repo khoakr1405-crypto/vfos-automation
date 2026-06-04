@@ -13,6 +13,7 @@
  *   4. Enum intent hợp lệ + safe-auto vs escalate phân tách rõ.
  *   5. AffiliateCtaPlan integrity: vai trò slot + ctaMode + readiness khớp rule.
  *   6. CtaRoleMetric (mock analytics): jobId khớp plan, role hợp lệ, số liệu nhất quán.
+ *   7. ManualPerformanceSnapshot (manual/import): jobId khớp post/plan, số liệu hợp lệ, source rõ.
  * ========================================================================== */
 
 import { loadGrowthSnapshot } from '../src/lib/growth-data/load';
@@ -20,6 +21,7 @@ import {
   checkCtaPlanIntegrity,
   checkCtaRoleMetrics,
   checkIntentTaxonomy,
+  checkManualPerformanceSnapshots,
   checkReferentialIntegrity,
   findSecretViolations,
   intentTaxonomy,
@@ -45,6 +47,7 @@ function main(): number {
     ['commentActionLog', snap.commentActionLog.length],
     ['affiliateCtaPlans', snap.affiliateCtaPlans.length],
     ['ctaRoleMetrics', snap.ctaRoleMetrics.length],
+    ['manualPerformanceSnapshots', snap.manualPerformanceSnapshots.length],
     ['learningSignals', snap.learningSignals.length],
     ['growthRecommendations', snap.growthRecommendations.length],
   ];
@@ -131,6 +134,22 @@ function main(): number {
   } else {
     failed = true;
     for (const e of roleErrors) console.log(`  FAIL ${e}`);
+  }
+
+  // 7) ManualPerformanceSnapshot (manual/import) — đếm theo source
+  printSection('7) ManualPerformanceSnapshot (manual/import — theo source)');
+  const bySource = new Map<string, number>();
+  for (const m of snap.manualPerformanceSnapshots) {
+    bySource.set(m.source, (bySource.get(m.source) ?? 0) + 1);
+  }
+  const srcSummary = [...bySource.entries()].map(([s, n]) => `${s}=${n}`).join(', ');
+  console.log(`  Theo source: ${srcSummary || '(none)'}`);
+  const manualErrors = checkManualPerformanceSnapshots(snap);
+  if (manualErrors.length === 0) {
+    console.log('  OK   jobId khớp post/plan, số liệu hợp lệ, source phân biệt mock/manual');
+  } else {
+    failed = true;
+    for (const e of manualErrors) console.log(`  FAIL ${e}`);
   }
 
   printSection('KẾT QUẢ');
