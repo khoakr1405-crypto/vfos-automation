@@ -2,6 +2,7 @@ import { FacebookInsightsFetchCard } from '@/components/analytics/facebook-insig
 import { FacebookPreflightCard } from '@/components/analytics/facebook-preflight-card';
 import { ManualInputPreview } from '@/components/analytics/manual-input-preview';
 import { ManualPerformanceSection } from '@/components/analytics/manual-performance-section';
+import { TikTokInsightsFetchCard } from '@/components/analytics/tiktok-insights-fetch-card';
 import { TikTokPreflightCard } from '@/components/analytics/tiktok-preflight-card';
 import { WeeklyReportCard } from '@/components/analytics/weekly-report-card';
 import { Badge, LanePill, PlatformPill } from '@/components/badge';
@@ -469,6 +470,9 @@ export default function AnalyticsPage() {
 
       {/* Facebook Insights Fetcher — Real API 02B */}
       <FacebookInsightsFetchCard />
+
+      {/* TikTok Insights Fetcher (read-only, list-only) — Real API 05C */}
+      <TikTokInsightsFetchCard />
 
       {/* Weekly Growth Review Report — Real API 04A */}
       <WeeklyReportCard />

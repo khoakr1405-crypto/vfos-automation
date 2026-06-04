@@ -322,15 +322,26 @@ export interface GrowthSnapshot {
   apiPerformanceSnapshots?: ApiPerformanceSnapshot[];
 }
 
-/* ---- API performance snapshot (Round Real API 02B) ------------------------- */
+/* ---- API performance snapshot (Round Real API 02B → mở rộng TikTok 05C) ------
+ * jobId/publishedPostId/facebookPostId nullable từ 05C: TikTok Display API
+ * list-only ingest CHƯA map về job (Facebook vẫn luôn set đủ 3 field này).
+ * platformPostId = id công khai cross-platform; tiktokVideoId = id TikTok riêng.
+ * Cả 2 KHÔNG phải token/secret. */
 
 export interface ApiPerformanceSnapshot {
   snapshotId: string;
   platform: Platform;
-  jobId: string;
-  publishedPostId: string;
-  facebookPostId: string;
-  channelId: string;
+  /** null khi snapshot chưa map về job (vd TikTok list-only). */
+  jobId: string | null;
+  /** null khi chưa map về PublishedPost. */
+  publishedPostId: string | null;
+  /** Public Facebook post id. null cho platform khác Facebook. KHÔNG token. */
+  facebookPostId: string | null;
+  /** Public TikTok video id (từ /v2/video/list/). null cho platform khác. KHÔNG token. */
+  tiktokVideoId?: string | null;
+  /** Id bài/video công khai cross-platform (fallback dedupe). KHÔNG token. */
+  platformPostId?: string | null;
+  channelId: string | null;
   measuredAt: string;
   periodStart: string;
   periodEnd: string;
@@ -343,7 +354,7 @@ export interface ApiPerformanceSnapshot {
   saves: number | null;
   conversions: number | null;
   ctaRole?: LinkRole | null;
-  source: 'facebook_api';
+  source: 'facebook_api' | 'tiktok_api';
   fetchStatus: 'success' | 'partial' | 'blocked' | 'failed';
   blockedReason?: string;
   rawMetricAvailability: {

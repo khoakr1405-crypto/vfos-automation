@@ -14,6 +14,7 @@ export interface WeeklyGrowthReport {
   dataConfidence: 'low' | 'medium' | 'high';
   dataSources: {
     facebookApiSnapshots: number;
+    tiktokApiSnapshots: number;
     manualSnapshots: number;
     fixtureFallbackUsed: boolean;
   };
@@ -175,9 +176,11 @@ function getChannelDisplayName(channelId: string | null): string {
 }
 
 interface DeduplicatedSnapshot {
-  jobId: string;
+  jobId: string | null;
   publishedPostId: string | null;
   facebookPostId: string | null;
+  /** Id công khai cross-platform (vd TikTok video id) — dùng dedupe khi chưa map job. */
+  platformPostId: string | null;
   channelId: string | null;
   platform: string;
   measuredAt: string;
@@ -193,7 +196,16 @@ interface DeduplicatedSnapshot {
   source: string;
 }
 
+/**
+ * Khoá thực thể để dedupe/group: ưu tiên jobId; fallback platformPostId/post id
+ * khi snapshot CHƯA map job (vd TikTok list-only) — tránh gộp nhiều video vào 1 bucket.
+ */
+function entityKeyOf(s: DeduplicatedSnapshot): string {
+  return s.jobId ?? s.platformPostId ?? s.facebookPostId ?? s.publishedPostId ?? 'unknown';
+}
+
 interface JobAggregate {
+  /** entityKey (jobId nếu có, ngược lại platformPostId/post id). */
   jobId: string;
   platform: string;
   channelId: string | null;
@@ -206,6 +218,20 @@ interface JobAggregate {
   shares: number;
   saves: number;
   conversions: number;
+  /** false ⇒ nền tảng không cung cấp click (vd TikTok) → CTR phải là N/A, không phải 0. */
+  clicksAvailable: boolean;
+  /** false ⇒ không có dữ liệu conversion (vd TikTok) → CVR phải là N/A, không phải 0. */
+  conversionsAvailable: boolean;
+}
+
+/** Bộ cộng dồn cho breakdown, mang cờ availability để CTR/CVR ra N/A đúng. */
+interface BreakdownAccum {
+  views: number;
+  impressions: number;
+  clicks: number;
+  conversions: number;
+  clicksAvailable: boolean;
+  conversionsAvailable: boolean;
 }
 
 export function generateWeeklyReport(options: {
@@ -253,6 +279,7 @@ export function generateWeeklyReport(options: {
       jobId: s.jobId,
       publishedPostId: s.publishedPostId || null,
       facebookPostId: s.facebookPostId || null,
+      platformPostId: s.platformPostId ?? s.tiktokVideoId ?? s.facebookPostId ?? null,
       channelId: s.channelId || null,
       platform: s.platform,
       measuredAt: s.measuredAt,
@@ -271,6 +298,7 @@ export function generateWeeklyReport(options: {
       jobId: s.jobId,
       publishedPostId: s.publishedPostId || null,
       facebookPostId: s.facebookPostId || null,
+      platformPostId: s.facebookPostId || null,
       channelId: s.channelId || null,
       platform: s.platform,
       measuredAt: s.measuredAt,
@@ -290,7 +318,8 @@ export function generateWeeklyReport(options: {
   // Deduplicate by (jobId, ctaRole, source) -> select latest measuredAt
   const latestMap = new Map<string, DeduplicatedSnapshot>();
   for (const s of normalized) {
-    const key = `${s.jobId}__${s.ctaRole || 'post'}__${s.source}`;
+    // Key gồm entityKey + platform → TikTok list-only (chưa map job) không gộp nhầm.
+    const key = `${entityKeyOf(s)}__${s.ctaRole || 'post'}__${s.source}__${s.platform}`;
     const existing = latestMap.get(key);
     if (!existing || new Date(s.measuredAt) > new Date(existing.measuredAt)) {
       latestMap.set(key, s);
@@ -298,12 +327,13 @@ export function generateWeeklyReport(options: {
   }
   const deduped = Array.from(latestMap.values());
 
-  // Aggregate by job
+  // Aggregate theo entityKey (jobId nếu có, ngược lại post id) — mỗi TikTok video riêng.
   const snapsByJob = new Map<string, DeduplicatedSnapshot[]>();
   for (const s of deduped) {
-    const arr = snapsByJob.get(s.jobId) || [];
+    const ek = entityKeyOf(s);
+    const arr = snapsByJob.get(ek) || [];
     arr.push(s);
-    snapsByJob.set(s.jobId, arr);
+    snapsByJob.set(ek, arr);
   }
 
   const jobAggregates: JobAggregate[] = [];
@@ -360,12 +390,18 @@ export function generateWeeklyReport(options: {
 
     let clicks = 0;
     let conversions = 0;
+    let clicksAvailable = false;
+    let conversionsAvailable = false;
     if (roleSnaps.length > 0) {
       clicks = roleSnaps.reduce((acc, s) => acc + (s.clicks || 0), 0);
       conversions = roleSnaps.reduce((acc, s) => acc + (s.conversions || 0), 0);
+      clicksAvailable = roleSnaps.some((s) => s.clicks !== null);
+      conversionsAvailable = roleSnaps.some((s) => s.conversions !== null);
     } else if (bestPostSnap) {
       clicks = bestPostSnap.clicks || 0;
       conversions = bestPostSnap.conversions || 0;
+      clicksAvailable = bestPostSnap.clicks !== null;
+      conversionsAvailable = bestPostSnap.conversions !== null;
     }
 
     jobAggregates.push({
@@ -381,6 +417,8 @@ export function generateWeeklyReport(options: {
       shares,
       saves,
       conversions,
+      clicksAvailable,
+      conversionsAvailable,
     });
   }
 
@@ -409,53 +447,69 @@ export function generateWeeklyReport(options: {
     kpi.conversions += job.conversions;
   }
 
-  if (kpi.views > 0) {
+  // CTR/CVR chỉ tính khi metric thực sự KHẢ DỤNG. TikTok không trả clicks/conversions
+  // ⇒ giữ null (N/A), KHÔNG để null→0 biến thành "0%" giả.
+  const kpiClicksAvailable = jobAggregates.some((j) => j.clicksAvailable);
+  const kpiConversionsAvailable = jobAggregates.some((j) => j.conversionsAvailable);
+
+  if (kpiClicksAvailable && kpi.views > 0) {
     kpi.ctr = kpi.clicks / kpi.views;
   }
-  if (kpi.clicks > 0) {
+  if (kpiConversionsAvailable && kpiClicksAvailable && kpi.clicks > 0) {
     kpi.conversionRate = kpi.conversions / kpi.clicks;
   }
 
-  // Determine Data Confidence
-  const facebookApiSnapshots = apiSnapshots.length;
+  // Determine Data Confidence — tách nguồn theo platform (không gộp TikTok vào Facebook).
+  const facebookApiSnapshots = apiSnapshots.filter((s) => s.source === 'facebook_api').length;
+  const tiktokApiSnapshots = apiSnapshots.filter((s) => s.source === 'tiktok_api').length;
+  const apiSnapshotsCount = apiSnapshots.length;
   const manualSnapshotsCount = manualSnapshots.length;
   let dataConfidence: 'low' | 'medium' | 'high' = 'low';
-  if (facebookApiSnapshots > 0 && manualSnapshotsCount > 0) {
+  if (apiSnapshotsCount > 0 && manualSnapshotsCount > 0) {
     dataConfidence = 'high';
-  } else if (facebookApiSnapshots > 0 || manualSnapshotsCount > 0) {
+  } else if (apiSnapshotsCount > 0 || manualSnapshotsCount > 0) {
     dataConfidence = 'medium';
   }
 
-  // Breakdowns
-  const byPlatformMap = new Map<string, typeof kpi>();
-  const byChannelMap = new Map<string, typeof kpi>();
-  const byLaneMap = new Map<string, typeof kpi>();
+  // Breakdowns — cộng dồn kèm availability để CTR/CVR ra N/A đúng (không 0 giả cho TikTok).
+  const newAccum = (): BreakdownAccum => ({
+    views: 0,
+    impressions: 0,
+    clicks: 0,
+    conversions: 0,
+    clicksAvailable: false,
+    conversionsAvailable: false,
+  });
+  const accumAdd = (acc: BreakdownAccum, job: JobAggregate): void => {
+    acc.views += job.views;
+    acc.impressions += job.impressions;
+    acc.clicks += job.clicks;
+    acc.conversions += job.conversions;
+    acc.clicksAvailable = acc.clicksAvailable || job.clicksAvailable;
+    acc.conversionsAvailable = acc.conversionsAvailable || job.conversionsAvailable;
+  };
+  const ctrOf = (a: BreakdownAccum): number | null =>
+    a.clicksAvailable && a.views > 0 ? a.clicks / a.views : null;
+  const cvrOf = (a: BreakdownAccum): number | null =>
+    a.conversionsAvailable && a.clicksAvailable && a.clicks > 0 ? a.conversions / a.clicks : null;
+
+  const byPlatformMap = new Map<string, BreakdownAccum>();
+  const byChannelMap = new Map<string, BreakdownAccum>();
+  const byLaneMap = new Map<string, BreakdownAccum>();
 
   for (const job of jobAggregates) {
-    // Platform
-    const plat = byPlatformMap.get(job.platform) || { ...kpi, ctr: 0, conversionRate: 0 };
-    plat.views += job.views;
-    plat.impressions += job.impressions;
-    plat.clicks += job.clicks;
-    plat.conversions += job.conversions;
+    const plat = byPlatformMap.get(job.platform) || newAccum();
+    accumAdd(plat, job);
     byPlatformMap.set(job.platform, plat);
 
-    // Channel
     if (job.channelId) {
-      const chan = byChannelMap.get(job.channelId) || { ...kpi, ctr: 0, conversionRate: 0 };
-      chan.views += job.views;
-      chan.impressions += job.impressions;
-      chan.clicks += job.clicks;
-      chan.conversions += job.conversions;
+      const chan = byChannelMap.get(job.channelId) || newAccum();
+      accumAdd(chan, job);
       byChannelMap.set(job.channelId, chan);
     }
 
-    // Lane
-    const ln = byLaneMap.get(job.lane) || { ...kpi, ctr: 0, conversionRate: 0 };
-    ln.views += job.views;
-    ln.impressions += job.impressions;
-    ln.clicks += job.clicks;
-    ln.conversions += job.conversions;
+    const ln = byLaneMap.get(job.lane) || newAccum();
+    accumAdd(ln, job);
     byLaneMap.set(job.lane, ln);
   }
 
@@ -464,8 +518,8 @@ export function generateWeeklyReport(options: {
     views: stats.views,
     clicks: stats.clicks,
     conversions: stats.conversions,
-    ctr: stats.views > 0 ? stats.clicks / stats.views : null,
-    conversionRate: stats.clicks > 0 ? stats.conversions / stats.clicks : null,
+    ctr: ctrOf(stats),
+    conversionRate: cvrOf(stats),
   }));
 
   const byChannel = Array.from(byChannelMap.entries()).map(([channelId, stats]) => ({
@@ -474,8 +528,8 @@ export function generateWeeklyReport(options: {
     views: stats.views,
     clicks: stats.clicks,
     conversions: stats.conversions,
-    ctr: stats.views > 0 ? stats.clicks / stats.views : null,
-    conversionRate: stats.clicks > 0 ? stats.conversions / stats.clicks : null,
+    ctr: ctrOf(stats),
+    conversionRate: cvrOf(stats),
   }));
 
   const byLane = Array.from(byLaneMap.entries()).map(([lane, stats]) => ({
@@ -483,8 +537,8 @@ export function generateWeeklyReport(options: {
     views: stats.views,
     clicks: stats.clicks,
     conversions: stats.conversions,
-    ctr: stats.views > 0 ? stats.clicks / stats.views : null,
-    conversionRate: stats.clicks > 0 ? stats.conversions / stats.clicks : null,
+    ctr: ctrOf(stats),
+    conversionRate: cvrOf(stats),
   }));
 
   // byCtaRole (sum only from role-level snapshots)
@@ -644,8 +698,9 @@ export function generateWeeklyReport(options: {
       );
     }
 
-    // Problem 4: Comments cao, clicks thấp
-    if (kpi.comments > 10 && kpi.clicks < 5) {
+    // Problem 4: Comments cao, clicks thấp — CHỈ khi clicks khả dụng
+    // (TikTok không trả clicks ⇒ không kết luận "comment cao click thấp").
+    if (kpiClicksAvailable && kpi.comments > 10 && kpi.clicks < 5) {
       problems.push({
         type: 'HIGH_COMMENTS_LOW_CLICKS',
         severity: 'medium',
@@ -708,6 +763,7 @@ export function generateWeeklyReport(options: {
     dataConfidence,
     dataSources: {
       facebookApiSnapshots,
+      tiktokApiSnapshots,
       manualSnapshots: manualSnapshotsCount,
       fixtureFallbackUsed: false,
     },
@@ -741,7 +797,7 @@ export function generateWeeklyReport(options: {
       ? 'Hệ thống hiện thiếu dữ liệu đo lường thực tế (snapshots). Cần bổ sung dữ liệu trước khi thực hiện đánh giá.'
       : decisions.map((d) => d.message).join(' ')
   }
-- **Chi tiết nguồn**: API Snapshots: ${facebookApiSnapshots} | Manual Snapshots: ${manualSnapshotsCount}
+- **Chi tiết nguồn**: Facebook API: ${facebookApiSnapshots} | TikTok API: ${tiktokApiSnapshots} | Manual: ${manualSnapshotsCount}
 
 ## 2. KPI tuần
 | Chỉ số | Giá trị |
