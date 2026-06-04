@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-06-02 (Round UI-02 — *Wire Operator Dashboard với job thật read-only* đã chốt + commit. Master Plan VFOS Studio UI đã được duyệt.)
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `ee19e1c` (HEAD local — `feat(studio): wire operator dashboard to real job data (read-only, UI-02)`)
+> **Cập nhật lần cuối**: 2026-06-04 (Facebook Affiliate Hub Integration Track — Hub 02–06 đã hoàn tất + push. Mô hình multi-touch CTA + `ctaMode` tích hợp vào Growth OS dashboard, read-only/mock/manual.)
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `b6bddd9` (remote HEAD — `feat(growth): add manual Hub tagging guide to schedule`, Hub 06 — round cuối của Affiliate Hub Track)
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task → luôn chạy `pnpm vfos:daily` để có chỉ dẫn trạng thái mới nhất
 
 > ⚠️ **ĐƯỜNG VẬN HÀNH CHÍNH THỨC**: dùng `docs/00_DIEU_HANH/HUONG_DAN_VAN_HANH_CHINH_THUC_VFOS.md` (operator guide chuẩn, flow A-Z `commerce:intake` → `job:run-review` → `job:publish-facebook`).
@@ -1874,6 +1874,39 @@ Commit: `docs: add chay aliases for shopee cdp extraction`.
 **Master Plan**: `docs/00_DIEU_HANH/VFOS_STUDIO_UI_MASTER_PLAN.md` (đã được Operator duyệt) — bản đồ UI tổng thể 7 phòng ban + roadmap 10 phase.
 
 **Bước tiếp theo dự kiến (CHƯA làm nếu Operator chưa ra lệnh)**: **Phase 3 theo Master Plan — Approve/Reject an toàn**: POST `/api/studio/jobs/:id/approve|reject` gọi lại command `job:approve`/`job:reject` (không reimplement gate), approve chỉ khi `READY_FOR_OPERATOR_REVIEW` + QA PASS, reject bắt buộc notes, **không publish thật**. Kích hoạt nút Approve/Reject (hiện disabled placeholder).
+
+---
+
+### ✅ Facebook Affiliate Hub Integration Track (Hub 02–06): ĐÃ HOÀN TẤT (2026-06-04)
+
+**Mục tiêu**: Đưa mô hình **multi-touch CTA** (Facebook Affiliate Hub native CTA + caption/comment/reply) vào Growth OS dashboard (`apps/studio`) như một lớp **kế hoạch CTA theo job**, giúp Operator nhìn 1 chỗ biết mỗi video sẵn bao nhiêu CTA, vai trò gì, readiness ra sao. Toàn track **read-only/mock/manual**.
+
+**Đã có (data + UI)**:
+- **`AffiliateCtaPlan`** (entity neo `jobId`) + `LinkRole` (HUB_NATIVE / CAPTION_LINK / PINNED_COMMENT / REPLY_LINK) + `computeCtaReadiness`, với **`ctaMode`** quyết định readiness rule:
+  - `SINGLE_PRODUCT_REVIEW` — review 1 sản phẩm, **1 Primary CTA hợp lệ là đủ**.
+  - `MULTI_TOUCH_NICHE` — ngách nhiều sản phẩm (câu cá, rửa xe…), dùng multi-touch đầy đủ.
+  - `CONTEXTUAL_CONTENT` — content theo bối cảnh, linh hoạt.
+- **`/publish`**: CTA Readiness card (Primary/Caption/Pinned/Reply + fallback).
+- **`/comments`**: Reply CTA trong Draft Reply Assistant — `AffiliateCtaPlan` quyết link nào, `shouldIncludeLink` (intent-gated) vẫn quyết có gắn hay không.
+- **`/analytics`**: CTA-role analytics **mock** breakdown (4 role + per-job table).
+- **`/schedule`**: manual Hub tagging guide (Operator) + CTA readiness badge theo posting plan.
+
+**Chiến lược đã chốt (KHÔNG ép cứng 2–3 link)**:
+- Facebook Affiliate Hub là **native CTA chính nếu có**; caption/comment/reply vẫn là **fallback / lớp phụ**, không bị thay thế.
+- **Review 1 sản phẩm không bị ép 2–3 link** — `secondaryCtas` được phép rỗng vẫn `ready`.
+- **Ngách nhiều sản phẩm mới dùng multi-touch đầy đủ** (Primary + secondary + reply).
+
+**Ranh giới an toàn (đã verify từng round)**: read-only/mock/manual — **không gọi Meta/Shopee/tracking API**, không publish/upload/reply/auto-reply, không browser automation gắn tag, **không dùng runtime link thật** từ `data/temp/jobs` trong fixtures, **không token/secret** (summary transport-safe, UI không dùng chữ "token"), không POST route, không DB. Affiliate owner giữ `an_17376660568`.
+
+**Commit history Track (remote HEAD `b6bddd9`)**:
+
+| Round | Nội dung | Commit |
+|---|---|---|
+| Hub 02 | `AffiliateCtaPlan` + `LinkRole` + `CtaMode` data model + fixtures + loader + validate + smoke | `1517083` |
+| Hub 03 | CTA Readiness card ở `/publish` | `3e2206b` |
+| Hub 04 | Reply CTA vào Draft Reply Assistant `/comments` | `53f9452` |
+| Hub 05 | CTA-role analytics mock breakdown `/analytics` | `ec3cc3f` |
+| Hub 06 | Manual Hub tagging guide + CTA readiness badge `/schedule` | **`b6bddd9`** |
 
 ---
 
