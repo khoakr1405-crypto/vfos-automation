@@ -2,6 +2,7 @@ import { FacebookInsightsFetchCard } from '@/components/analytics/facebook-insig
 import { FacebookPreflightCard } from '@/components/analytics/facebook-preflight-card';
 import { ManualInputPreview } from '@/components/analytics/manual-input-preview';
 import { ManualPerformanceSection } from '@/components/analytics/manual-performance-section';
+import { WeeklyReportCard } from '@/components/analytics/weekly-report-card';
 import { Badge, LanePill, PlatformPill } from '@/components/badge';
 import { Card, CardBody, CardHeader } from '@/components/card';
 import { MockBanner } from '@/components/mock-banner';
@@ -464,6 +465,9 @@ export default function AnalyticsPage() {
 
       {/* Facebook Insights Fetcher — Real API 02B */}
       <FacebookInsightsFetchCard />
+
+      {/* Weekly Growth Review Report — Real API 04A */}
+      <WeeklyReportCard />
 
       {/* Manual Performance Input — Foundation (Real Analytics 01) */}
       <ManualPerformanceSection
