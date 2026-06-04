@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-06-04 (Facebook Affiliate Hub Integration Track — Hub 02–06 đã hoàn tất + push. Mô hình multi-touch CTA + `ctaMode` tích hợp vào Growth OS dashboard, read-only/mock/manual.)
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `b6bddd9` (remote HEAD — `feat(growth): add manual Hub tagging guide to schedule`, Hub 06 — round cuối của Affiliate Hub Track)
+> **Cập nhật lần cuối**: 2026-06-04 (Facebook Affiliate Hub Track & Real API 02A/02B/03 đã hoàn tất + push/local. Báo cáo Weekly Growth Review Report CLI đã sinh thành công.)
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `2ea7b1c` (remote HEAD — `feat(growth): add Facebook Insights read-only connector`)
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task → luôn chạy `pnpm vfos:daily` để có chỉ dẫn trạng thái mới nhất
 
 > ⚠️ **ĐƯỜNG VẬN HÀNH CHÍNH THỨC**: dùng `docs/00_DIEU_HANH/HUONG_DAN_VAN_HANH_CHINH_THUC_VFOS.md` (operator guide chuẩn, flow A-Z `commerce:intake` → `job:run-review` → `job:publish-facebook`).
@@ -1910,6 +1910,31 @@ Commit: `docs: add chay aliases for shopee cdp extraction`.
 
 ---
 
+### ✅ Real API 02A & 02B & 03 — Facebook Insights read-only connector & Weekly Growth Review Report Generator: ĐÃ HOÀN TẤT (2026-06-04)
+
+**Mục tiêu**:
+1. Triển khai Facebook API Preflight Capability Check (`Real API 02A`) và Facebook Insights Read-only Connector (`Real API 02B`) để truy xuất an toàn dữ liệu bài đăng Facebook thực tế.
+2. Triển khai bộ sinh báo cáo tuần Weekly Growth Review Report (`Real API 03`) từ dữ liệu runtime/manual/API snapshots hiện có, xuất báo cáo `.json` và `.md` vào runtime gitignored.
+3. Thiết lập chế độ `META_MODE=mock` bảo mật cao: không gọi Graph API, không ghi runtime API snapshot, không sinh random metrics và không lưu vào `api-performance-snapshots.json`.
+
+**Files đã commit/thêm**:
+- `apps/studio/src/app/analytics/page.tsx`
+- `apps/studio/src/app/api/studio/analytics/facebook-preflight/route.ts`
+- `apps/studio/src/app/api/studio/analytics/facebook-insights/fetch/route.ts`
+- `apps/studio/src/components/analytics/facebook-insights-fetch-card.tsx`
+- `apps/studio/src/lib/growth-data/runtime-store.ts`
+- `apps/studio/src/lib/growth-data/types.ts`
+- `apps/studio/scripts/generate-weekly-report.ts` (mới)
+
+**Kết quả verify**:
+- `pnpm --filter @vfos/studio typecheck` -> PASS
+- `pnpm growth:smoke` -> PASS
+- `pnpm growth:weekly-report --dry-run` -> PASS
+- `biome check` -> PASS
+- Báo cáo tuần JSON và MD sinh thành công tại `data/growth/runtime/reports/weekly/` (đã gitignored).
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
@@ -2106,10 +2131,10 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| HEAD local | `9921431` `feat: add production reel archive packager` (2026-05-29 state-sync — sẽ +1 nếu user duyệt commit doc-only phiên này) |
+| HEAD local | `2ea7b1c` `feat(growth): add Facebook Insights read-only connector` (2026-06-04) |
 | Remote | `origin` (GitHub) |
-| Sync status | **Ahead origin 1, behind 0** — Round 29 Operator/Safety Hardening Suite (50+ commit từ `15c2210`) đã commit LOCAL nhưng **chưa push**. Cần `git push origin master` sau khi user duyệt. |
-| Working tree | **DIRTY** — 23 untracked files đã được phân loại Nhóm A/B/C trong Round 29 narrative ở mục 4. |
+| Sync status | **Up to date** |
+| Working tree | **DIRTY** — 1 modified file (package.json) và 1 untracked file (apps/studio/scripts/generate-weekly-report.ts) đang chờ Operator duyệt để commit Real API 03. |
 
 **Trạng thái artifacts production** (tính đến 2026-05-29 phiên sync):
 - `production/batch_001/yt_007/` (text artifacts): ĐÃ commit ở `df1609e` — reference cho vòng Voice Sync autonomy.
