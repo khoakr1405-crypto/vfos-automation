@@ -48,8 +48,8 @@ Document này chốt **biên giới giữa các agent** để 3 điều:
 5 agent — 4 đã spec ở Phần 23 (SKILL.md) + 1 thêm trong v0 (Git & Artifact Agent).
 
 ### 3.1 Shopee Product Agent (Commerce Product Agent)
-- **Responsibility**: Resolve link/short link Shopee, fetch metadata (giá / hoa hồng / sales / rating khi có quyền), persist Shopee Product Card đầy đủ 24 field, chấm 6-trục Product Selection Scoring, validate affiliate link (xem Round 3C). **Round 26B (2026-05-26)**: lấy link Shopee Affiliate qua `BROWSER_CDP_TARGETED_CLICK` flow (primary) + duy trì global dedupe registry với lock + atomic write.
-- **Input**: URL Shopee canonical / `s.shopee.vn/...` short link / lane keyword (Discovery Mode) / CDP browser session (Cốc Cốc/Chrome user đang chạy với `--remote-debugging-port=9222`).
+- **Responsibility**: Resolve link/short link Shopee, fetch metadata (giá / hoa hồng / sales / rating khi có quyền), persist Shopee Product Card đầy đủ 24 field, chấm 6-trục Product Selection Scoring, validate affiliate link (xem Round 3C). **Round 26B (2026-05-26)**: lấy link Shopee Affiliate qua `BROWSER_CDP_TARGETED_CLICK` flow (primary) + duy trì global dedupe registry với lock + atomic write. **Round 27B (2026-05-26)**: CDP flow có **controlled browser auto-launch** — Operator KHÔNG còn bắt buộc tự mở browser trước; hệ thống attach vào browser đang mở hoặc tự launch có kiểm soát bằng profile đã cấu hình.
+- **Input**: URL Shopee canonical / `s.shopee.vn/...` short link / lane keyword (Discovery Mode) / CDP browser session. **Round 27B**: nếu CDP port `9222` đã mở → attach thẳng vào browser đang chạy; nếu chưa mở → **controlled auto-launch** Cốc Cốc (ưu tiên) bằng profile `VFOS_BROWSER_USER_DATA_DIR`. Operator KHÔNG bắt buộc tự mở browser trước — chỉ cần cấu hình 1 lần profile đã login Shopee Affiliate.
 - **Output artifact**: `shopee_product_card.json` + `production/_commerce/shopee_link_registry.json` (global dedupe registry, schema v0.1.0 — Round 26B).
 - **HARD GATE**: Card phải PERSIST trên disk trước khi pipeline sang Demo Match (Phần 23).
 - **KHÔNG bịa**: giá / hoa hồng / sales / rating / review / shop_name — unknown ghi `"unknown"`, `data_confidence` phản ánh trung thực.
@@ -58,11 +58,19 @@ Document này chốt **biên giới giữa các agent** để 3 điều:
   - Mọi write registry phải qua `upsertEntry()` / `appendRejected()` (module [packages/shopee/src/link-registry.ts](../../packages/shopee/src/link-registry.ts)) với file lock + atomic rename + read-after-lock + merge-safe update.
   - Dedup key priority: `shopid+itemid` > `canonical_url` normalized > `short_link` > normalized `product_name`.
   - Selector strategy: text/aria > product-card scoped > stable data-* > controlled CSS fallback. **KHÔNG** random class hash / tọa độ click.
-  - CDP connect fail → `ERR_CDP_BROWSER_NOT_FOUND` (max 3 retry). KHÔNG tự fallback sang shopee:login / private API.
-  - Target tab missing → `ERR_CDP_TARGET_TAB_NOT_FOUND`. Login wall → `SUSPENDED` + `ERR_AUTH_REQUIRED` (user tự login).
+  - CDP connect fail (sau bootstrap) → `ERR_CDP_BROWSER_NOT_FOUND` (max 3 retry). KHÔNG tự fallback sang shopee:login / private API.
+  - Target tab missing → `ERR_CDP_TARGET_TAB_NOT_FOUND`. Login/CAPTCHA/OTP wall → `SUSPENDED` (human-assist, user tự xử lý) — agent KHÔNG nhập password/OTP/CAPTCHA.
   - **`target_count = 1` default (Round 26 single-link policy)** — agent chỉ lấy 1 link mới hợp lệ mỗi lần, DỪNG ngay sau validate + upsert registry. Batch mode chỉ khi user yêu cầu rõ ("lấy N link" / "lấy N sản phẩm" / "tìm nhiều để so sánh") hoặc CLI `--target-count=N`.
   - `max_clicks_per_batch = 5` là **safety ceiling**, KHÔNG phải mục tiêu — chỉ chạm khi gặp duplicate liên tiếp. KHÔNG click setting/account/security/logout/payment/publish.
   - Owner validation: canonical URL `utm_source` / `mmp_pid` phải khớp `expected_affiliate_owner_id` (eg `an_17376660568`). Mismatch → `appendRejected`, không vào `entries`.
+- **Round 27B HARD rules (controlled browser bootstrap)** — chỉ Commerce Product Agent Shopee CDP flow được tự `spawn` browser (module [packages/shopee/src/cdp-bootstrap.ts](../../packages/shopee/src/cdp-bootstrap.ts)):
+  - Probe `127.0.0.1:9222` trước. Đã listening → attach vào browser đang chạy. Chưa → **controlled auto-launch** Cốc Cốc (ưu tiên; Chrome fallback) với `--remote-debugging-port=9222 --user-data-dir=<profile>`, spawn `{detached:true}`, KHÔNG đóng browser khi CLI exit.
+  - `VFOS_BROWSER_USER_DATA_DIR` **BẮT BUỘC** cho auto-launch: phải trỏ profile Cốc Cốc/Chrome **đã login Shopee Affiliate**, KHÔNG trỏ profile trống/random (tránh login wall). Thiếu env (và không có `--browser-user-data-dir` override) → fail an toàn `ERR_CDP_USER_DATA_DIR_REQUIRED`, KHÔNG spawn profile trống.
+  - `VFOS_BROWSER_PATH` **optional** — chỉ dùng khi không auto-detect được browser executable (else dò Cốc Cốc Program Files / `(x86)` / LOCALAPPDATA → Chrome).
+  - Profile đang bị khoá (`SingletonLock` / `SingletonCookie` / `LockFile`) → `ERR_CDP_PROFILE_LOCKED`, KHÔNG xoá lock, KHÔNG spawn lần 2. Spawn lỗi / `--no-auto-launch` khi port đóng → `ERR_CDP_BROWSER_LAUNCH_FAILED`.
+  - CAPTCHA / login-wall human-assist: phát hiện → cảnh báo + chờ `--captcha-wait-seconds` (default 20, range `[10, 60]`), poll DOM mỗi 1s. Quá hạn chưa giải → `SUSPENDED` + `ERR_CAPTCHA_TIMEOUT`. Agent **KHÔNG** nhập password/OTP/CAPTCHA. Auto-launch **KHÔNG** áp dụng cho Facebook / publish / payment / OTP.
+  - **Targeted-click giữ nguyên**: không random click; `target_count` default 1; `max_clicks` safety ceiling 5; validate owner `an_17376660568`; login/OTP/CAPTCHA hoặc popup không rõ → `SUSPENDED`/`FAIL` an toàn kèm reason code.
+  - Cold start tóm tắt: Operator cấu hình profile login **1 lần**; hệ thống attach vào browser đang mở **hoặc** controlled auto-launch bằng profile đó; nếu profile/session chưa login hoặc bị khoá → fail an toàn và báo reason.
 
 ### 3.2 Demo Match Agent
 - **Responsibility**: Tìm video/demo tương đồng từ TikTok / Douyin / AliExpress / Temu / YouTube, chấm GUARD 8 Product Match (5 trục), retry candidate theo AUTO-SOURCE RETRY POLICY (max 3 vòng).
