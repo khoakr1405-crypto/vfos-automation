@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-06-04 (Real API 05A — TikTok API Capability Preflight đã hoàn tất + push. Trước đó: Facebook Affiliate Hub Track & Real API 02A/02B/03/04A/04B.)
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `8d18c9d` (remote HEAD — `feat(growth): add TikTok API capability preflight`)
+> **Cập nhật lần cuối**: 2026-06-04 (Real API 05C — TikTok Display API Read-only Connector đã hoàn tất + push. Trước đó: Real API 05A Preflight & Facebook Affiliate Hub Track & Real API 02A/02B/03/04A/04B.)
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `53ceea5` (remote HEAD — `feat(growth): add TikTok Display API read-only connector`)
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task → luôn chạy `pnpm vfos:daily` để có chỉ dẫn trạng thái mới nhất
 
 > ⚠️ **ĐƯỜNG VẬN HÀNH CHÍNH THỨC**: dùng `docs/00_DIEU_HANH/HUONG_DAN_VAN_HANH_CHINH_THUC_VFOS.md` (operator guide chuẩn, flow A-Z `commerce:intake` → `job:run-review` → `job:publish-facebook`).
@@ -1975,6 +1975,45 @@ Commit: `docs: add chay aliases for shopee cdp extraction`.
 
 ---
 
+### ✅ Real API 05C — TikTok Display API Read-only Connector (safe list-only foundation): ĐÃ HOÀN TẤT + PUSHED (2026-06-04)
+
+**Commit**: `53ceea5` `feat(growth): add TikTok Display API read-only connector` — remote HEAD, đã push (origin/master = `53ceea5`, sync 0/0). Trước đó 05B = planning-only (không tạo commit).
+
+**Mục tiêu**: Thêm **TikTok Display API read-only connector foundation** theo hướng an toàn list-only; đồng thời sửa weekly report để KHÔNG đánh giá sai clicks/conversions khi TikTok không cung cấp các metric đó.
+
+**Files đã commit (đúng 6 file)**:
+- `apps/studio/src/app/analytics/page.tsx` — mount `<TikTokInsightsFetchCard />`
+- `apps/studio/src/app/api/studio/analytics/tiktok-insights/fetch/route.ts` (mới) — route local-only fetch
+- `apps/studio/src/components/analytics/tiktok-insights-fetch-card.tsx` (mới) — UI card read-only
+- `apps/studio/src/lib/tiktok/tiktok-client.ts` (mới) — module server-only, read-only `/v2/video/list/`
+- `apps/studio/src/lib/growth-data/types.ts` — mở rộng `ApiPerformanceSnapshot` (source `tiktok_api`, `tiktokVideoId`/`platformPostId`, nullable jobId/postId)
+- `apps/studio/src/lib/growth-data/weekly-report-generator.ts` — fix tách nguồn + availability-aware CTR/CVR + dedup key + decision guards
+
+**Ranh giới an toàn đã xác nhận (verify thật)**:
+- Chỉ **TikTok Display read-only**; thêm **TikTok Insights Fetch card** trong `/analytics`; route **local-only** `/api/studio/analytics/tiktok-insights/fetch`; module server-only `tiktok-client.ts`.
+- Mode `disabled`/`mock`: **KHÔNG gọi TikTok API** và **KHÔNG ghi runtime snapshot** (verify: POST mock → file runtime vẫn absent, external TikTok request = 0).
+- Mode `display`: chỉ read-only khi Operator bật env/mode đủ. `source=tiktok_api` **chỉ tạo khi live display fetch thật**.
+- KHÔNG upload/publish/comment · KHÔNG unofficial API/scraping/bypass · **KHÔNG log/trả raw/masked** TikTok client key / private value / access value.
+- `clicks/conversions/saves/impressions` của TikTok Display đánh dấu **unavailable** bằng `rawMetricAvailability=false` (không phải 0 thật).
+- **Weekly report đã sửa**: tách `facebookApiSnapshots` vs `tiktokApiSnapshots`; CTR/CVR ra **N/A** khi clicks/conversions unavailable (không "0% giả"); dedup key gồm post id (TikTok unmapped không gộp nhầm); decision engine không kết luận TikTok CTR/CVR thấp khi metric unavailable.
+- Runtime `data/growth/runtime/api-performance-snapshots.json` vẫn **gitignored**; KHÔNG commit runtime/env/secret/docs tạm.
+
+**Kết quả verify**:
+- `pnpm --filter @vfos/studio typecheck` → PASS
+- `pnpm growth:smoke` → PASS
+- `pnpm --filter @vfos/studio build` → PASS (route = `ƒ Dynamic`)
+- `biome check` 6 file → PASS
+- `pnpm growth:weekly-report --dry-run` → PASS (dữ liệu manual có click vẫn hiển thị đúng — không regression)
+- Browser review (dev server sạch): HTTP 200, console 0, page 0, network 0, external TikTok 0, DOM không lộ secret/token.
+
+**Bước tiếp theo đề xuất — TikTok Mapping Round**:
+- Gắn `tiktokVideoId ↔ jobId / PublishedPost` để weekly report biết video TikTok nào thuộc job nào.
+- **Operator-provided mapping trước** (không heuristic đoán bừa).
+- Sau khi có mapping → dùng `/v2/video/query/` refresh chính xác theo `video_id` đã map.
+- KHÔNG làm Business API/demographics trong bước tiếp theo.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
@@ -2171,11 +2210,11 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| HEAD local | `8d18c9d` `feat(growth): add TikTok API capability preflight` (2026-06-04) |
+| HEAD local | `53ceea5` `feat(growth): add TikTok Display API read-only connector` (2026-06-04) |
 | Remote | `origin` (GitHub) |
-| origin/master | `8d18c9d` — Real API 05A đã push |
+| origin/master | `53ceea5` — Real API 05C đã push |
 | Sync status | **0 / 0** (up to date, không ahead/behind) |
-| Working tree | **Sạch** sau push Real API 05A. Thay đổi đang mở duy nhất: chính file điều hành này (`docs/00_DIEU_HANH/TRANG_THAI_VFOS_HIEN_TAI.md`) — chờ Operator duyệt commit `docs: record TikTok API preflight completion`. |
+| Working tree | **Sạch** sau push Real API 05C. Thay đổi đang mở duy nhất: chính file điều hành này (`docs/00_DIEU_HANH/TRANG_THAI_VFOS_HIEN_TAI.md`) — chờ Operator duyệt commit `docs: record TikTok Display connector completion`. |
 | Dev server | Port 3002 **đang TẮT** (đã dừng trước khi build để tránh `.next` collision). Khi cần review chạy: `pnpm --filter @vfos/studio dev` |
 
 **Trạng thái artifacts production** (tính đến 2026-05-29 phiên sync):
