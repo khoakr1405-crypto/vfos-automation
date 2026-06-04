@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-06-04 (Facebook Affiliate Hub Track & Real API 02A/02B/03/04A/04B đã hoàn tất + push. Báo cáo Weekly Growth Review Report UI & Scheduler Guide đã sẵn sàng.)
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `a405f56` (remote HEAD — `feat(growth): add weekly report generation UI`)
+> **Cập nhật lần cuối**: 2026-06-04 (Real API 05A — TikTok API Capability Preflight đã hoàn tất + push. Trước đó: Facebook Affiliate Hub Track & Real API 02A/02B/03/04A/04B.)
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `8d18c9d` (remote HEAD — `feat(growth): add TikTok API capability preflight`)
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task → luôn chạy `pnpm vfos:daily` để có chỉ dẫn trạng thái mới nhất
 
 > ⚠️ **ĐƯỜNG VẬN HÀNH CHÍNH THỨC**: dùng `docs/00_DIEU_HANH/HUONG_DAN_VAN_HANH_CHINH_THUC_VFOS.md` (operator guide chuẩn, flow A-Z `commerce:intake` → `job:run-review` → `job:publish-facebook`).
@@ -1944,6 +1944,37 @@ Commit: `docs: add chay aliases for shopee cdp extraction`.
 
 ---
 
+### ✅ Real API 05A — TikTok API Capability Preflight: ĐÃ HOÀN TẤT + PUSHED (2026-06-04)
+
+**Commit**: `8d18c9d` `feat(growth): add TikTok API capability preflight` — remote HEAD, đã push (origin/master = `8d18c9d`, sync 0/0).
+
+**Mục tiêu**: Thêm **TikTok API Preflight/Capability check (read-only)** trong `/analytics`, song song Facebook Preflight (02A). Chỉ kiểm cấu hình TikTok dạng boolean, KHÔNG gọi API live, KHÔNG fetch metrics.
+
+**Files đã commit (đúng 3 file)**:
+- `apps/studio/src/app/analytics/page.tsx` — mount `<TikTokPreflightCard />`
+- `apps/studio/src/app/api/studio/analytics/tiktok-preflight/route.ts` (mới) — GET local-only, sanitized boolean response
+- `apps/studio/src/components/analytics/tiktok-preflight-card.tsx` (mới) — UI card, wording an toàn (KHÔNG dùng chữ secret/token)
+
+**Ranh giới an toàn đã xác nhận (verify thật, không suy đoán)**:
+- Route **local-only** (host không phải localhost → 403) + `force-dynamic`.
+- Chỉ đọc `process.env.TIKTOK_*` để trả boolean `*Configured` — **KHÔNG log/return raw/masked** TikTok client key / private value (secret) / access value.
+- Mode `disabled`/`mock` **KHÔNG gọi external TikTok domain** (Playwright verify: 0 request ra ngoài).
+- Route response **chỉ boolean/sanitized**: `mode`, `clientKeyConfigured`, `clientSecretConfigured`, `accessConfigured`, `openIdConfigured`, `businessAccessConfigured`, `capabilityStatus`, `blockedReasons`, `checkedAt`.
+- KHÔNG fetch metrics · KHÔNG upload/publish/comment · KHÔNG unofficial API/scraping/bypass.
+- KHÔNG commit runtime/env/secret.
+
+**Kết quả verify**:
+- `pnpm --filter @vfos/studio typecheck` → PASS
+- `pnpm growth:smoke` → PASS
+- `pnpm --filter @vfos/studio build` → PASS (route = `ƒ Dynamic`)
+- `biome check` 3 file → PASS
+- Browser review (dev server sạch): HTTP 200, console error 0, page error 0, network failed 0, external TikTok 0, DOM không lộ secret/token.
+
+**Bước tiếp theo đề xuất**:
+- **Real API 05B — TikTok read-only connector**: CHỈ triển khai sau khi Operator xác nhận `TIKTOK_MODE=display` hoặc `business` + quyền/scope đủ. Nếu chưa chắc scope TikTok → làm **planning/checklist trước**, KHÔNG code connector.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
@@ -2140,10 +2171,12 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| HEAD local | `a405f56` `feat(growth): add weekly report generation UI` (2026-06-04) |
+| HEAD local | `8d18c9d` `feat(growth): add TikTok API capability preflight` (2026-06-04) |
 | Remote | `origin` (GitHub) |
-| Sync status | **Up to date** |
-| Working tree | **DIRTY** — 3 modified/new files (docs/00_DIEU_HANH/TRANG_THAI_VFOS_HIEN_TAI.md, package.json, verify-weekly-report-scheduler.ts) đang chờ Operator duyệt để commit Real API 04B. |
+| origin/master | `8d18c9d` — Real API 05A đã push |
+| Sync status | **0 / 0** (up to date, không ahead/behind) |
+| Working tree | **Sạch** sau push Real API 05A. Thay đổi đang mở duy nhất: chính file điều hành này (`docs/00_DIEU_HANH/TRANG_THAI_VFOS_HIEN_TAI.md`) — chờ Operator duyệt commit `docs: record TikTok API preflight completion`. |
+| Dev server | Port 3002 **đang TẮT** (đã dừng trước khi build để tránh `.next` collision). Khi cần review chạy: `pnpm --filter @vfos/studio dev` |
 
 **Trạng thái artifacts production** (tính đến 2026-05-29 phiên sync):
 - `production/batch_001/yt_007/` (text artifacts): ĐÃ commit ở `df1609e` — reference cho vòng Voice Sync autonomy.
