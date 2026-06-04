@@ -133,6 +133,9 @@ importers:
 
   apps/studio:
     dependencies:
+      '@vfos/facebook':
+        specifier: workspace:*
+        version: link:../../packages/facebook
       next:
         specifier: ^15.1.6
         version: 15.5.18(@opentelemetry/api@1.9.1)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)

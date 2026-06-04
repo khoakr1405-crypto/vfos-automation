@@ -1,3 +1,4 @@
+import { FacebookPreflightCard } from '@/components/analytics/facebook-preflight-card';
 import { ManualInputPreview } from '@/components/analytics/manual-input-preview';
 import { ManualPerformanceSection } from '@/components/analytics/manual-performance-section';
 import { Badge, LanePill, PlatformPill } from '@/components/badge';
@@ -456,6 +457,9 @@ export default function AnalyticsPage() {
           </p>
         </CardBody>
       </Card>
+
+      {/* Facebook Preflight Capability — Real API 02A */}
+      <FacebookPreflightCard />
 
       {/* Manual Performance Input — Foundation (Real Analytics 01) */}
       <ManualPerformanceSection
