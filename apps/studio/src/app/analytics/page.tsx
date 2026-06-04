@@ -2,6 +2,7 @@ import { FacebookInsightsFetchCard } from '@/components/analytics/facebook-insig
 import { FacebookPreflightCard } from '@/components/analytics/facebook-preflight-card';
 import { ManualInputPreview } from '@/components/analytics/manual-input-preview';
 import { ManualPerformanceSection } from '@/components/analytics/manual-performance-section';
+import { TikTokPreflightCard } from '@/components/analytics/tiktok-preflight-card';
 import { WeeklyReportCard } from '@/components/analytics/weekly-report-card';
 import { Badge, LanePill, PlatformPill } from '@/components/badge';
 import { Card, CardBody, CardHeader } from '@/components/card';
@@ -462,6 +463,9 @@ export default function AnalyticsPage() {
 
       {/* Facebook Preflight Capability — Real API 02A */}
       <FacebookPreflightCard />
+
+      {/* TikTok Preflight Capability — Real API 05A */}
+      <TikTokPreflightCard />
 
       {/* Facebook Insights Fetcher — Real API 02B */}
       <FacebookInsightsFetchCard />
