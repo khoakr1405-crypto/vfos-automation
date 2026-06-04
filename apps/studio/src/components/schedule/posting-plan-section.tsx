@@ -9,9 +9,11 @@
 
 import { Badge, LanePill, PlatformPill } from '@/components/badge';
 import { Card, CardBody, CardHeader } from '@/components/card';
+import type { CtaReadinessSummary } from '@/lib/growth-data/cta-readiness';
 import type { Channel, PostingPlan, PublishedPost } from '@/lib/growth-data/types';
 import { LANES, type LaneId, type PlatformId } from '@/lib/mock-data';
 import type { AccentKey } from '@/lib/nav';
+import { CtaScheduleCell, NoCtaPlanCell } from './cta-status';
 
 const KNOWN_LANES = new Set<string>(LANES.map((l) => l.id));
 const isLaneId = (lane: string): lane is LaneId => KNOWN_LANES.has(lane);
@@ -39,10 +41,13 @@ export function PostingPlanSection({
   plans,
   channels,
   publishedPosts,
+  ctaByJobId,
 }: {
   plans: PostingPlan[];
   channels: Channel[];
   publishedPosts: PublishedPost[];
+  /** jobId → CTA readiness summary (Hub 06). Thiếu plan → ô "Chưa có plan". */
+  ctaByJobId: Map<string, CtaReadinessSummary>;
 }) {
   if (plans.length === 0) {
     return (
@@ -66,7 +71,7 @@ export function PostingPlanSection({
         subtitle={`${count('planned')} đã lên lịch · ${count('posted')} đã đăng · ${count('skipped')} bỏ qua`}
       />
       <CardBody className="overflow-x-auto !p-0">
-        <table className="w-full min-w-[760px] text-left text-xs">
+        <table className="w-full min-w-[940px] text-left text-xs">
           <thead className="text-[10px] uppercase tracking-wider text-neutral-600">
             <tr className="border-b border-hairline">
               <th className="px-5 py-2.5 font-medium">Thời gian (UTC)</th>
@@ -76,12 +81,14 @@ export function PostingPlanSection({
               <th className="px-5 py-2.5 font-medium">Job</th>
               <th className="px-5 py-2.5 font-medium">Bài đã đăng</th>
               <th className="px-5 py-2.5 font-medium">Trạng thái</th>
+              <th className="px-5 py-2.5 font-medium">CTA Readiness</th>
             </tr>
           </thead>
           <tbody>
             {sorted.map((plan) => {
               const ch = channelById.get(plan.channelId);
               const post = plan.jobId ? postByJobId.get(plan.jobId) : undefined;
+              const cta = plan.jobId ? ctaByJobId.get(plan.jobId) : undefined;
               return (
                 <tr
                   key={plan.planId}
@@ -125,6 +132,9 @@ export function PostingPlanSection({
                   </td>
                   <td className="px-5 py-3">
                     <PlanStatusBadge status={plan.status} />
+                  </td>
+                  <td className="px-5 py-3 align-top">
+                    {cta ? <CtaScheduleCell summary={cta} /> : <NoCtaPlanCell />}
                   </td>
                 </tr>
               );
