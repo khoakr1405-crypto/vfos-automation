@@ -1,3 +1,4 @@
+import { ManualInputPreview } from '@/components/analytics/manual-input-preview';
 import { ManualPerformanceSection } from '@/components/analytics/manual-performance-section';
 import { Badge, LanePill, PlatformPill } from '@/components/badge';
 import { Card, CardBody, CardHeader } from '@/components/card';
@@ -238,6 +239,10 @@ export default function AnalyticsPage() {
   const manualSnapshots = loadManualPerformanceSnapshots();
   const fixturePostIdByJob = new Map(posts.map((p) => [p.jobId, p.publishedPostId]));
 
+  // 7. Known ids cho preview validate (Real Analytics 02A — chỉ cảnh báo match, không ghi).
+  const knownJobIds = [...new Set([...posts.map((p) => p.jobId), ...ctaPlanByJobId.keys()])];
+  const knownPostIds = posts.map((p) => p.publishedPostId);
+
   return (
     <div className="space-y-6">
       <MockBanner />
@@ -458,6 +463,9 @@ export default function AnalyticsPage() {
         fixtureMetrics={metrics}
         fixturePostIdByJob={fixturePostIdByJob}
       />
+
+      {/* Manual Performance Input — Preview Only (Real Analytics 02A) */}
+      <ManualInputPreview knownJobIds={knownJobIds} knownPostIds={knownPostIds} />
 
       {/* Top performers */}
       <Card>
