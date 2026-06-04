@@ -1,3 +1,4 @@
+import { FacebookInsightsFetchCard } from '@/components/analytics/facebook-insights-fetch-card';
 import { FacebookPreflightCard } from '@/components/analytics/facebook-preflight-card';
 import { ManualInputPreview } from '@/components/analytics/manual-input-preview';
 import { ManualPerformanceSection } from '@/components/analytics/manual-performance-section';
@@ -460,6 +461,9 @@ export default function AnalyticsPage() {
 
       {/* Facebook Preflight Capability — Real API 02A */}
       <FacebookPreflightCard />
+
+      {/* Facebook Insights Fetcher — Real API 02B */}
+      <FacebookInsightsFetchCard />
 
       {/* Manual Performance Input — Foundation (Real Analytics 01) */}
       <ManualPerformanceSection

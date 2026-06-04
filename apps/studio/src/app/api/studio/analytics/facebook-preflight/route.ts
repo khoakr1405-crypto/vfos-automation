@@ -34,6 +34,11 @@ export async function GET(req: Request) {
   const pageIdConfigured = !!pageId;
   const pageAccessConfigured = !!pageAccessToken;
 
+  const posts = loadPublishedPosts();
+  const validPostsCount = posts.filter(
+    (p) => p.facebookPostId && p.facebookPostId !== 'N/A' && p.facebookPostId.includes('_'),
+  ).length;
+
   let pageConnectionStatus: 'not_run' | 'pass' | 'blocked' | 'failed' = 'not_run';
   let insightsCapabilityStatus: 'not_run' | 'pass' | 'partial' | 'blocked' | 'failed' = 'not_run';
   const blockedReasons: string[] = [];
@@ -148,6 +153,7 @@ export async function GET(req: Request) {
     pageConnectionStatus,
     insightsCapabilityStatus,
     blockedReasons,
+    validPostsCount,
     checkedAt: new Date().toISOString(),
   });
 }

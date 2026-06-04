@@ -11,7 +11,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { resolveInsideRepo } from './paths';
-import type { ManualPerformanceSnapshot } from './types';
+import type { ApiPerformanceSnapshot, ManualPerformanceSnapshot } from './types';
 
 const RUNTIME_REL = join('data', 'growth', 'runtime', 'manual-performance-snapshots.json');
 const SCHEMA_VERSION = 1;
@@ -69,7 +69,8 @@ export function readRuntimeStore(): RuntimeStoreFile {
 
 /**
  * Append snapshot mới (đã validate + có snapshotId). Dedupe theo snapshotId
- * (vs existing + trong payload). Ghi atomic. KHÔNG overwrite duplicate ở 02B.
+ * (vs existing + trong payload). Ghi file dạng atomic append/update store.
+ * KHÔNG ghi đè (overwrite) duplicate (skip/reject nếu trùng snapshotId).
  */
 export function appendSnapshots(incoming: StoredSnapshot[]): AppendResult {
   const p = runtimePath();
@@ -90,6 +91,88 @@ export function appendSnapshots(incoming: StoredSnapshot[]): AppendResult {
   }
 
   const next: RuntimeStoreFile = {
+    schemaVersion: SCHEMA_VERSION,
+    updatedAt: new Date().toISOString(),
+    snapshots: [...store.snapshots, ...toAdd],
+  };
+
+  try {
+    mkdirSync(dirname(p), { recursive: true });
+    const tmp = `${p}.tmp`;
+    writeFileSync(tmp, JSON.stringify(next, null, 2), 'utf8');
+    renameSync(tmp, p);
+  } catch {
+    return { ok: false, savedCount: 0, duplicateIds, totalAfter: store.snapshots.length };
+  }
+
+  return { ok: true, savedCount: toAdd.length, duplicateIds, totalAfter: next.snapshots.length };
+}
+
+/* =============================================================================
+ * API Performance Store Helpers (Round Real API 02B)
+ * ========================================================================== */
+
+const API_RUNTIME_REL = join('data', 'growth', 'runtime', 'api-performance-snapshots.json');
+
+export interface ApiRuntimeStoreFile {
+  schemaVersion: number;
+  updatedAt: string;
+  snapshots: ApiPerformanceSnapshot[];
+}
+
+function apiRuntimePath(): string | null {
+  return resolveInsideRepo(API_RUNTIME_REL);
+}
+
+export function apiRuntimePathConfigured(): boolean {
+  return apiRuntimePath() !== null;
+}
+
+function emptyApiStore(): ApiRuntimeStoreFile {
+  return { schemaVersion: SCHEMA_VERSION, updatedAt: new Date().toISOString(), snapshots: [] };
+}
+
+export function readApiRuntimeStore(): ApiRuntimeStoreFile {
+  const p = apiRuntimePath();
+  if (!p || !existsSync(p)) return emptyApiStore();
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(p, 'utf8'));
+    if (!parsed || typeof parsed !== 'object') return emptyApiStore();
+    const obj = parsed as Partial<ApiRuntimeStoreFile>;
+    if (!Array.isArray(obj.snapshots)) return emptyApiStore();
+    return {
+      schemaVersion: typeof obj.schemaVersion === 'number' ? obj.schemaVersion : SCHEMA_VERSION,
+      updatedAt: typeof obj.updatedAt === 'string' ? obj.updatedAt : '',
+      snapshots: obj.snapshots as ApiPerformanceSnapshot[],
+    };
+  } catch {
+    return emptyApiStore();
+  }
+}
+
+/**
+ * Append API performance snapshots mới. Thực hiện atomic append/update store.
+ * Kiểm tra trùng lặp và skip/reject nếu trùng snapshotId, tuyệt đối không overwrite.
+ */
+export function appendApiPerformanceSnapshots(incoming: ApiPerformanceSnapshot[]): AppendResult {
+  const p = apiRuntimePath();
+  if (!p) return { ok: false, savedCount: 0, duplicateIds: [], totalAfter: 0 };
+
+  const store = readApiRuntimeStore();
+  const existingIds = new Set(store.snapshots.map((s) => s.snapshotId));
+  const duplicateIds: string[] = [];
+  const toAdd: ApiPerformanceSnapshot[] = [];
+
+  for (const s of incoming) {
+    if (existingIds.has(s.snapshotId)) {
+      duplicateIds.push(s.snapshotId);
+      continue;
+    }
+    existingIds.add(s.snapshotId);
+    toAdd.push(s);
+  }
+
+  const next: ApiRuntimeStoreFile = {
     schemaVersion: SCHEMA_VERSION,
     updatedAt: new Date().toISOString(),
     snapshots: [...store.snapshots, ...toAdd],

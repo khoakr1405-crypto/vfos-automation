@@ -319,4 +319,41 @@ export interface GrowthSnapshot {
   manualPerformanceSnapshots: ManualPerformanceSnapshot[];
   learningSignals: LearningSignal[];
   growthRecommendations: GrowthRecommendation[];
+  apiPerformanceSnapshots?: ApiPerformanceSnapshot[];
+}
+
+/* ---- API performance snapshot (Round Real API 02B) ------------------------- */
+
+export interface ApiPerformanceSnapshot {
+  snapshotId: string;
+  platform: Platform;
+  jobId: string;
+  publishedPostId: string;
+  facebookPostId: string;
+  channelId: string;
+  measuredAt: string;
+  periodStart: string;
+  periodEnd: string;
+  views: number | null;
+  impressions: number | null;
+  clicks: number | null;
+  comments: number | null;
+  reactions: number | null;
+  shares: number | null;
+  saves: number | null;
+  conversions: number | null;
+  ctaRole?: LinkRole | null;
+  source: 'facebook_api';
+  fetchStatus: 'success' | 'partial' | 'blocked' | 'failed';
+  blockedReason?: string;
+  rawMetricAvailability: {
+    views: boolean;
+    impressions: boolean;
+    clicks: boolean;
+    comments: boolean;
+    reactions: boolean;
+    shares: boolean;
+    saves: boolean;
+    conversions: boolean;
+  };
 }
