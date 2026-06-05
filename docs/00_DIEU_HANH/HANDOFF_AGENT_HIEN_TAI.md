@@ -6,12 +6,13 @@
 
 ## 1. Git / Repo State
 - Branch: `master`
-- Remote HEAD: `origin/master = 92943f9`
+- Remote HEAD: `origin/master = 963bc2a` (`feat(shopee): capture product image through product card flow`)
 - Local sync: 0 ahead / 0 behind (đồng bộ với remote)
 - Working tree: clean (không có file chưa commit khi handoff được ghi)
 - Dev server: Studio dev chạy trên port 3002 (chạy bằng `pnpm studio:dev:clean`). Trạng thái dev server KHÔNG bền giữa các phiên — nếu mở phiên mới mà `/products` không lên, chạy lại `pnpm studio:dev:clean`.
 
 ## 2. Latest Completed Milestones
+- `963bc2a` — Product Image 04B: capture product image through product card flow (DOM card img → registry.product_image_url → artifact/card `productImageUrl` → API → `/create` `<img>`; helper `sanitizeProductImageUrl()` + test). BABYJOY cũ thiếu ảnh → fallback "Chưa có ảnh sản phẩm".
 - `c4cb729` — Auto-Pilot Priority 3: cleanup orphaned single-link CDP POC.
 - `e17fa6a` — Shopee no-click command: `pnpm shopee:card-from-registry` (registry → Product Card, không click/không browser).
 - `bd607c2` — Studio UI: section "Shopee Affiliate Registry" trong `/products` (promote link verified → Product Card qua UI).
@@ -39,6 +40,9 @@
 - Không build khi dev server còn sống; dùng `pnpm studio:dev:clean --no-start` trước khi build.
 - Không sửa `.env` hoặc commit `.env`.
 - Không click Shopee / login / CAPTCHA / OTP.
+- **[Product Image 04B]** Không chạy lại 04B-1 no-auth image spike: đã fail (Shopee SPA shell/anti-bot, không có `og:image`; `api/v4/item/get` no-auth trả 403).
+- **[Product Image 04B]** Không dùng CDP re-attach chỉ để backfill ảnh BABYJOY (rủi ro chạm session thật; dedupe skip entry cũ; upsert không merge field).
+- **[Product Image 04B]** BABYJOY cũ thiếu ảnh là ĐÚNG kỳ vọng → `/create` fallback "Chưa có ảnh sản phẩm". Sản phẩm MỚI sau Shopee extraction sẽ có `productImageUrl` nếu DOM card có image URL hợp lệ.
 
 ## 5. Next Recommended Step
 - Continuity (round này) xong → bước tiếp đề xuất: BABYJOY Product Card → Create Job / Video — **chỉ sau khi Operator duyệt**.

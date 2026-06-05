@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-06-04 (Real API 05C — TikTok Display API Read-only Connector đã hoàn tất + push. Trước đó: Real API 05A Preflight & Facebook Affiliate Hub Track & Real API 02A/02B/03/04A/04B.)
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `53ceea5` (remote HEAD — `feat(growth): add TikTok Display API read-only connector`)
+> **Cập nhật lần cuối**: 2026-06-05 (Product Image 04B — capture product image through product card flow, DONE + PUSHED `963bc2a`. Trước đó: Real API 05C TikTok Display Connector + Studio UI wiring `/products` → `/create`.)
+> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `963bc2a` (remote HEAD — `feat(shopee): capture product image through product card flow`)
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task → luôn chạy `pnpm vfos:daily` để có chỉ dẫn trạng thái mới nhất
 
 > ⚠️ **ĐƯỜNG VẬN HÀNH CHÍNH THỨC**: dùng `docs/00_DIEU_HANH/HUONG_DAN_VAN_HANH_CHINH_THUC_VFOS.md` (operator guide chuẩn, flow A-Z `commerce:intake` → `job:run-review` → `job:publish-facebook`).
@@ -2014,6 +2014,49 @@ Commit: `docs: add chay aliases for shopee cdp extraction`.
 
 ---
 
+### ✅ Phần 25 — Product Image 04B (capture ảnh tại extraction source): ĐÃ CHỐT + PUSHED (2026-06-05)
+
+**Commit**: `963bc2a feat(shopee): capture product image through product card flow` (pushed, remote HEAD).
+
+**Mục tiêu**: Để từ các lần Shopee CDP extraction sau, ảnh sản phẩm được capture ngay tại DOM card, chảy qua registry → Product Card → render trên `/create`. Phục vụ Operator so sánh sản phẩm khi đi tìm nguồn video Trung Quốc/Douyin/TikTok.
+
+**Data flow đã thêm**:
+```
+DOM card img
+→ registry.product_image_url
+→ artifact.productImageUrl
+→ selected_product_card.productImageUrl
+→ API current-product-card productImageUrl
+→ /create preview image
+```
+
+**Helper (single source of truth)**: `sanitizeProductImageUrl()` trong `packages/shopee/src/url-sanitize.ts` — trim, `//`→https, chỉ http(s), reject 12 chuỗi credential/tracking (credential_token, mmp_pid, utm_source, gads_t_sig, session, cookie…), validate URL. Có test trong `packages/shopee/tests/url-sanitize.test.ts`. Dùng ở extraction (Node boundary) + bridge + builder; route Studio có guard local defense-in-depth.
+
+**Capture an toàn**: trong `discoverProductCards` (`extract-links-cdp.ts`) chỉ capture **raw** image URL trong `page.evaluate` (self-contained, KHÔNG closure Node helper theo DOM-helper contract), sanitize ở **Node** sau khi trả về.
+
+**UI**: `/create` panel "Xem trước sản phẩm" dùng `<img>` **thường** (KHÔNG `next/image` — tránh cấu hình external `remotePatterns`), có `onError` fallback. Product Card thiếu ảnh → fallback **"Chưa có ảnh sản phẩm"**.
+
+**Finding 04B-1 (HTTP no-auth image spike — FAIL an toàn)**:
+- Public product page (`shopee.vn/product/<shopid>/<itemid>`, `-i.<shopid>.<itemid>`): HTTP 200 nhưng là **SPA shell/anti-bot**, KHÔNG có `og:image`/`twitter:image` (không server-render, không nhắc itemid, có captcha markers).
+- No-auth `api/v4/item/get?itemid=&shopid=`: HTTP **403**.
+- → Ảnh Shopee KHÔNG lấy được bằng HTTP no-auth từ ngoài session. Đã loại đường CDP re-attach riêng (rủi ro chạm session thật + dedupe skip + upsert không merge).
+
+**Giới hạn trung thực**:
+- **BABYJOY hiện CHƯA có ảnh** vì là Product Card cũ (extract trước khi có logic ảnh) → `/create` hiện fallback "Chưa có ảnh sản phẩm". **Đúng kỳ vọng.**
+- Code path capture đã thêm nhưng **chưa chứng minh ảnh thật cho BABYJOY** (dedupe skip entry cũ + upsert không merge field vào duplicate).
+- **Ảnh thật chỉ proof được ở lần Shopee extraction MỚI cho sản phẩm MỚI** khi DOM card có image URL hợp lệ.
+
+**Test (báo trung thực)**:
+- `@vfos/shopee test` PASS · `@vfos/studio typecheck` PASS · `@vfos/studio build` PASS · builder smoke (`--output data/temp/debug/card_test.json`) PASS (`productImageUrl: null` cho BABYJOY, registry + `selected_product_card.json` KHÔNG đổi).
+- `@vfos/shopee typecheck` và `biome`: còn **baseline đỏ pre-existing** (lỗi ở code không thuộc round này: `extract-links-cdp` bubble-sort, `fetch-offers-cookie`, `secret-redaction`, `noExplicitAny` builder + CRLF môi trường repo-wide). Verify bằng git stash: **changeset thêm 0 lỗi/0 violation mới**. KHÔNG sửa baseline (ngoài scope).
+
+**Bước tiếp theo (KHÔNG cần làm lại)**:
+- KHÔNG chạy lại spike 04B-1 (đã biết kết quả FAIL).
+- KHÔNG dùng CDP re-attach chỉ để backfill ảnh BABYJOY.
+- Proof ảnh thật để dành lần Operator chạy Shopee extraction cho sản phẩm mới.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
@@ -2210,12 +2253,12 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `master` |
-| HEAD local | `53ceea5` `feat(growth): add TikTok Display API read-only connector` (2026-06-04) |
+| HEAD local | `963bc2a` `feat(shopee): capture product image through product card flow` (2026-06-05) |
 | Remote | `origin` (GitHub) |
-| origin/master | `53ceea5` — Real API 05C đã push |
+| origin/master | `963bc2a` — Product Image 04B đã push |
 | Sync status | **0 / 0** (up to date, không ahead/behind) |
-| Working tree | **Sạch** sau push Real API 05C. Thay đổi đang mở duy nhất: chính file điều hành này (`docs/00_DIEU_HANH/TRANG_THAI_VFOS_HIEN_TAI.md`) — chờ Operator duyệt commit `docs: record TikTok Display connector completion`. |
-| Dev server | Port 3002 **đang TẮT** (đã dừng trước khi build để tránh `.next` collision). Khi cần review chạy: `pnpm --filter @vfos/studio dev` |
+| Working tree | **Sạch** sau push Product Image 04B. Thay đổi đang mở duy nhất: 2 file điều hành (`TRANG_THAI_VFOS_HIEN_TAI.md` + `HANDOFF_AGENT_HIEN_TAI.md`) — chờ Operator duyệt commit `docs: record product image capture flow completion`. |
+| Dev server | Port 3002 **đang CHẠY** (bật ở bước browser review 04B). Dừng bằng `pnpm studio:dev:clean --no-start`. |
 
 **Trạng thái artifacts production** (tính đến 2026-05-29 phiên sync):
 - `production/batch_001/yt_007/` (text artifacts): ĐÃ commit ở `df1609e` — reference cho vòng Voice Sync autonomy.
