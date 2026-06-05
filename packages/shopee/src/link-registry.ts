@@ -50,6 +50,9 @@ export interface LinkRegistryEntry {
   last_seen_at: string;
   times_seen: number;
   notes: string;
+  /** Safe public CDN image URL captured at extraction. Optional — entries
+   *  written before this field existed simply omit it (backward compatible). */
+  product_image_url?: string | null;
 }
 
 export interface LinkRegistryRejected {

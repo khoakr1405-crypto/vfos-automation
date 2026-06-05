@@ -66,6 +66,7 @@ import {
   shouldSkipPreClick,
 } from '../src/cdp-extract-helpers.js';
 import { type LinkRegistryConfig, appendRejected, upsertEntry } from '../src/link-registry.js';
+import { sanitizeProductImageUrl } from '../src/url-sanitize.js';
 
 // ── workspace + env ─────────────────────────────────────────────────────────
 
@@ -154,6 +155,8 @@ interface ProductCard {
   price_vnd: number | 'unknown';
   commission_pct: string | 'unknown';
   sales_count: string | 'unknown';
+  /** RAW image URL captured from the card DOM; sanitised in Node before persist. */
+  image_url?: string | null;
   score?: number;
   criteria?: string;
 }
@@ -200,6 +203,28 @@ async function discoverProductCards(page: Page): Promise<ProductCard[]> {
       );
       if (a?.href) href = a.href;
 
+      // Capture RAW image URL from the card thumbnail. SELF-CONTAINED in the
+      // browser context — no closure over Node helpers (DOM-helper contract).
+      // Sanitised later in Node via sanitizeProductImageUrl().
+      let image_url: string | null = null;
+      const imgEl = card?.querySelector('img');
+      if (imgEl) {
+        image_url =
+          imgEl.currentSrc ||
+          imgEl.getAttribute('src') ||
+          imgEl.getAttribute('data-src') ||
+          imgEl.getAttribute('data-original') ||
+          null;
+        if (!image_url) {
+          const ss = imgEl.getAttribute('srcset');
+          if (ss) image_url = ss.split(',')[0]?.trim().split(/\s+/)[0] ?? null;
+        }
+      }
+      if (!image_url && card instanceof HTMLElement) {
+        const m = (card.style.backgroundImage || '').match(/url\(["']?([^"')]+)["']?\)/);
+        if (m) image_url = m[1] ?? null;
+      }
+
       let price_vnd: number | 'unknown' = 'unknown';
       let commission_pct = 'unknown';
       let sales_count = 'unknown';
@@ -226,7 +251,7 @@ async function discoverProductCards(page: Page): Promise<ProductCard[]> {
         }
       }
 
-      return { index: idx, name, href, price_vnd, commission_pct, sales_count };
+      return { index: idx, name, href, price_vnd, commission_pct, sales_count, image_url };
     });
   });
 }
@@ -946,6 +971,8 @@ async function main(): Promise<number> {
       affiliate_link_status: linkStatus,
       source: 'cdp_browser_targeted_click',
       notes: `score: ${target.score}/10 | criteria: ${target.criteria} | round_27 cli — ${outcome.notes}`,
+      // Sanitised at Node boundary — never persist a credential/tracking URL.
+      product_image_url: sanitizeProductImageUrl(target.image_url) ?? null,
       // Extra fields for downstream coordinate parsing
       score: target.score,
       criteria: target.criteria,

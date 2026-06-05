@@ -5,6 +5,7 @@ import {
   containsSensitiveParams,
   isSensitiveParamName,
   maskUrlForLog,
+  sanitizeProductImageUrl,
   sanitizeShopeeCanonicalUrl,
 } from "../src/url-sanitize.ts";
 
@@ -58,6 +59,47 @@ describe("containsSensitiveParams", () => {
   });
   test("does not flag a path segment that merely contains 'token'", () => {
     assert.equal(containsSensitiveParams("https://shopee.vn/token-store/1/2?utm_source=" + OWNER), false);
+  });
+});
+
+describe("sanitizeProductImageUrl", () => {
+  const CDN = "https://down-vn.img.susercontent.com/file/abc123";
+
+  test("accepts a safe Shopee CDN image URL unchanged", () => {
+    assert.equal(sanitizeProductImageUrl(CDN), CDN);
+  });
+
+  test("normalizes a protocol-relative CDN URL to https", () => {
+    assert.equal(
+      sanitizeProductImageUrl("//down-vn.img.susercontent.com/file/abc123"),
+      CDN,
+    );
+  });
+
+  test("rejects URLs carrying credential/tracking/signature substrings", () => {
+    for (const bad of [
+      `${CDN}?credential_token=x`,
+      `${CDN}?mmp_pid=${OWNER}`,
+      `${CDN}?gads_t_sig=sig`,
+      `${CDN}?utm_source=${OWNER}`,
+      `${CDN}?session=1`,
+    ]) {
+      assert.equal(sanitizeProductImageUrl(bad), null, `${bad} should be rejected`);
+    }
+  });
+
+  test("rejects non-http(s) and unparseable input", () => {
+    assert.equal(sanitizeProductImageUrl("javascript:alert(1)"), null);
+    assert.equal(sanitizeProductImageUrl("not a url"), null);
+    assert.equal(sanitizeProductImageUrl("ftp://host/file/x"), null);
+  });
+
+  test("returns null for empty/null/undefined/non-string", () => {
+    assert.equal(sanitizeProductImageUrl(""), null);
+    assert.equal(sanitizeProductImageUrl("   "), null);
+    assert.equal(sanitizeProductImageUrl(null), null);
+    assert.equal(sanitizeProductImageUrl(undefined), null);
+    assert.equal(sanitizeProductImageUrl(123), null);
   });
 });
 

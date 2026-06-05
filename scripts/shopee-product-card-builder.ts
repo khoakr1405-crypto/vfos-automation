@@ -12,7 +12,11 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { maskUrlForLog, sanitizeShopeeCanonicalUrl } from '../packages/shopee/src/url-sanitize.js';
+import {
+  maskUrlForLog,
+  sanitizeProductImageUrl,
+  sanitizeShopeeCanonicalUrl,
+} from '../packages/shopee/src/url-sanitize.js';
 
 const EXPECTED_OWNER = 'an_17376660568';
 const REGISTRY_PATH = resolve('production/_commerce/shopee_link_registry.json');
@@ -95,6 +99,7 @@ async function main() {
     validationStatus: 'VERIFIED',
     score: rawArtifact.score || 'unknown',
     scoringCriteria: rawArtifact.criteria || 'unknown',
+    productImageUrl: sanitizeProductImageUrl(rawArtifact.productImageUrl) ?? null,
     createdAt: new Date().toISOString(),
   };
 

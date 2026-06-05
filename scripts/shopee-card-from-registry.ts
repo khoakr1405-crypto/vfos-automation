@@ -31,6 +31,7 @@ import { parseArgs } from 'node:util';
 import {
   containsSensitiveParams,
   maskUrlForLog,
+  sanitizeProductImageUrl,
   sanitizeShopeeCanonicalUrl,
 } from '../packages/shopee/src/url-sanitize.js';
 
@@ -50,6 +51,7 @@ interface RegistryEntry {
   affiliate_link_status?: string | null;
   score?: number | string;
   criteria?: string;
+  product_image_url?: string | null;
   last_seen_at?: string;
 }
 
@@ -176,6 +178,7 @@ async function main() {
     ownerVerified: true,
     score: entry.score ?? 'unknown',
     criteria: entry.criteria ?? 'unknown',
+    productImageUrl: sanitizeProductImageUrl(entry.product_image_url),
     source: 'card-from-registry (no-click)',
     generatedAt: new Date().toISOString(),
   };

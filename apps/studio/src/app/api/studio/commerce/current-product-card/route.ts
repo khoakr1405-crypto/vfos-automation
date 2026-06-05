@@ -34,6 +34,21 @@ interface CardSummary {
   score?: number;
   commissionRate?: string;
   price?: string;
+  productImageUrl: string | null;
+}
+
+/**
+ * Defense-in-depth guard for the product image URL before echoing to the client.
+ * The bridge/builder already sanitise via @vfos/shopee sanitizeProductImageUrl;
+ * this keeps a minimal local check (not the full token list) so the route never
+ * leaks a credential/tracking-shaped URL even if a stale card slips through.
+ */
+function safeImageUrl(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const s = v.trim();
+  if (!/^https?:\/\//i.test(s)) return null;
+  if (/credential|token|session|cookie|signature|mmp_pid|utm_/i.test(s)) return null;
+  return s;
 }
 
 /** Extract commission% / price from scoringCriteria, e.g.
@@ -69,6 +84,7 @@ function readCurrentCard(): CardSummary | null {
       affiliateOwnerId,
       ownerVerified: affiliateOwnerId === EXPECTED_OWNER,
       validationStatus: String(c.validationStatus ?? 'UNKNOWN'),
+      productImageUrl: safeImageUrl(c.productImageUrl),
       ...(typeof c.score === 'number' ? { score: c.score } : {}),
       ...(commissionRate ? { commissionRate } : {}),
       ...(price ? { price } : {}),

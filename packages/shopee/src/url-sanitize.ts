@@ -114,6 +114,52 @@ export function containsSensitiveParams(url: string | null | undefined): boolean
   }
 }
 
+/**
+ * Substrings that disqualify a product-image URL. Unlike the canonical-URL
+ * sanitiser (which KEEPS public utm_ and mmp_pid tracking on the affiliate
+ * link), a real product image is a credential-free CDN URL such as
+ * `https://down-vn.img.susercontent.com/file/<hash>`. If any of these tokens
+ * appear, the value is a tracking/redirect/credential URL, not a plain image —
+ * so we reject it outright.
+ */
+const IMAGE_URL_FORBIDDEN_SUBSTRINGS: readonly string[] = [
+  'credential',
+  'credential_token',
+  'token',
+  'access_token',
+  'session',
+  'cookie',
+  'storage_state',
+  'mmp_pid',
+  'utm_source',
+  'utm_medium',
+  'signature',
+  'gads_t_sig',
+];
+
+/**
+ * Sanitise a product-image URL captured from a Shopee DOM card.
+ *
+ * Accepts unknown input. Trims, upgrades a protocol-relative `//host/path` to
+ * https, requires an http(s) scheme, rejects any credential/session/tracking
+ * substring (see IMAGE_URL_FORBIDDEN_SUBSTRINGS), and validates it parses as a
+ * URL. Returns a safe URL string, or null when missing/unsafe/unparseable.
+ */
+export function sanitizeProductImageUrl(url: unknown): string | null {
+  if (typeof url !== 'string') return null;
+  let candidate = url.trim();
+  if (candidate === '') return null;
+  if (candidate.startsWith('//')) candidate = `https:${candidate}`;
+  if (!/^https?:\/\//i.test(candidate)) return null;
+  const lower = candidate.toLowerCase();
+  if (IMAGE_URL_FORBIDDEN_SUBSTRINGS.some((s) => lower.includes(s))) return null;
+  try {
+    return new URL(candidate).toString();
+  } catch {
+    return null;
+  }
+}
+
 /** Mask a URL for logging: keep host+path, replace the query with param NAMES only. */
 export function maskUrlForLog(url: string | null | undefined): string {
   if (!url) return '(none)';

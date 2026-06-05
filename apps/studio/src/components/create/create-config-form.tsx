@@ -33,6 +33,7 @@ interface CardSummary {
   score?: number;
   commissionRate?: string;
   price?: string;
+  productImageUrl?: string | null;
 }
 
 interface CardResponse {
@@ -84,6 +85,7 @@ export function CreateConfigForm() {
   const [sourceKind, setSourceKind] = useState<'none' | 'url' | 'local'>('none');
   const [sourceUrl, setSourceUrl] = useState('');
   const [copiedText, setCopiedText] = useState<string | null>(null);
+  const [imgError, setImgError] = useState(false);
 
   const handleCopy = (text: string) => {
     if (navigator.clipboard?.writeText) {
@@ -102,6 +104,7 @@ export function CreateConfigForm() {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setImgError(false);
     try {
       const res = await fetch('/api/studio/commerce/current-product-card');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -428,11 +431,26 @@ export function CreateConfigForm() {
             accentClass="text-accent-violet"
           />
           <CardBody className="space-y-3">
-            <div className="flex aspect-[9/16] max-h-72 w-full items-center justify-center rounded-xl border border-hairline bg-gradient-to-br from-raised to-panel">
-              <div className="text-center">
-                <Icon name="rawvisual" width={34} height={34} />
-                <p className="mt-2 text-[11px] text-neutral-500">Preview 9:16</p>
-              </div>
+            <div className="flex aspect-[9/16] max-h-72 w-full items-center justify-center overflow-hidden rounded-xl border border-hairline bg-gradient-to-br from-raised to-panel">
+              {card?.productImageUrl && !imgError ? (
+                // Plain <img> on purpose: Shopee CDN is an external host, and
+                // next/image would require remotePatterns config. onError falls
+                // back to the "no image" placeholder below.
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={card.productImageUrl}
+                  alt={card.name}
+                  className="h-full w-full object-contain"
+                  onError={() => setImgError(true)}
+                />
+              ) : (
+                <div className="text-center">
+                  <Icon name="rawvisual" width={34} height={34} />
+                  <p className="mt-2 text-[11px] text-neutral-500">
+                    {card ? 'Chưa có ảnh sản phẩm' : 'Preview 9:16'}
+                  </p>
+                </div>
+              )}
             </div>
             {card ? (
               <div className="rounded-xl border border-hairline bg-raised/40 px-3.5 py-3">
