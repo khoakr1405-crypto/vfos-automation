@@ -15,7 +15,7 @@
 import { PlatformPill } from '@/components/badge';
 import { Badge } from '@/components/badge';
 import { Card, CardBody, CardHeader } from '@/components/card';
-import { Icon } from '@/components/icons';
+import { Icon, UtilIcon } from '@/components/icons';
 import { Button, FakeSelect, Field } from '@/components/ui';
 import { PLATFORMS } from '@/lib/mock-data';
 import { useCallback, useEffect, useState } from 'react';
@@ -42,6 +42,40 @@ interface CardResponse {
   card: CardSummary | null;
 }
 
+function getChineseSearchKeywords(productName: string): string[] {
+  const nameLower = productName.toLowerCase();
+  const hasBaby =
+    nameLower.includes('bé') ||
+    nameLower.includes('sơ sinh') ||
+    nameLower.includes('trẻ em') ||
+    nameLower.includes('baby');
+  const hasCarrier =
+    nameLower.includes('địu') || nameLower.includes('đai') || nameLower.includes('bế');
+  const hasNeck = nameLower.includes('đỡ cổ') || nameLower.includes('hỗ trợ cổ');
+
+  if (hasBaby && hasCarrier) {
+    if (hasNeck) {
+      return ['婴儿护颈背带 多功能抱带', '婴儿背带 护颈 多功能'];
+    }
+    return ['婴儿背带 多功能抱带', '婴儿腰凳 抱娃神器'];
+  }
+
+  if (nameLower.includes('áo') || nameLower.includes('quần') || nameLower.includes('váy')) {
+    return ['儿童衣服 韩版童装', '宝宝衣服 纯棉'];
+  }
+
+  if (nameLower.includes('đồ chơi') || nameLower.includes('toy')) {
+    return ['儿童玩具 益智玩具', '益智玩具 趣味'];
+  }
+
+  const words = productName
+    .split(/\s+/)
+    .filter((w) => w.length > 1)
+    .slice(0, 3)
+    .join(' ');
+  return ['婴儿用品 推荐', `${words} 厂家直销`];
+}
+
 export function CreateConfigForm() {
   const [data, setData] = useState<CardResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -49,6 +83,21 @@ export function CreateConfigForm() {
   const [step, setStep] = useState(0); // 0 = Thông tin, 1 = Nguồn, 2 = Kiểm tra nguồn
   const [sourceKind, setSourceKind] = useState<'none' | 'url' | 'local'>('none');
   const [sourceUrl, setSourceUrl] = useState('');
+  const [copiedText, setCopiedText] = useState<string | null>(null);
+
+  const handleCopy = (text: string) => {
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard
+        .writeText(text)
+        .then(() => {
+          setCopiedText(text);
+          setTimeout(() => {
+            setCopiedText(null);
+          }, 2000);
+        })
+        .catch(() => {});
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -173,6 +222,47 @@ export function CreateConfigForm() {
                 <Field label="Ngôn ngữ">
                   <FakeSelect value="Tiếng Việt" />
                 </Field>
+
+                {card && (
+                  <div className="sm:col-span-2 rounded-lg border border-hairline bg-raised/20 p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-semibold text-neutral-200">
+                        Gợi ý tìm nguồn video Trung Quốc
+                      </span>
+                      <span className="text-[10px] text-neutral-500">
+                        Dùng để tìm nguồn video Trung Quốc/Douyin/TikTok
+                      </span>
+                    </div>
+                    <div className="space-y-1.5">
+                      {getChineseSearchKeywords(card.name).map((query) => {
+                        const isCopied = copiedText === query;
+                        return (
+                          <div
+                            key={query}
+                            className="flex items-center justify-between gap-3 rounded border border-hairline/60 bg-panel/50 px-2.5 py-1.5"
+                          >
+                            <span className="font-mono text-xs text-neutral-200 selection:bg-accent-violet/30 selection:text-white">
+                              {query}
+                            </span>
+                            <Button
+                              variant={isCopied ? 'primary' : 'outline'}
+                              className="!py-0.5 !px-2 text-[10px] h-6 flex items-center gap-1 font-medium min-w-[70px] justify-center transition-all duration-200"
+                              onClick={() => handleCopy(query)}
+                            >
+                              {isCopied ? (
+                                <>
+                                  <UtilIcon name="check" width={10} height={10} /> Đã copy
+                                </>
+                              ) : (
+                                'Copy'
+                              )}
+                            </Button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : step === 1 ? (
               <div className="space-y-3 text-xs text-neutral-300">
