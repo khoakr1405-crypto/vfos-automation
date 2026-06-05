@@ -6,7 +6,7 @@
 
 ## 1. Git / Repo State
 - Branch: `master`
-- Remote HEAD: `origin/master = eda358a`
+- Remote HEAD: `origin/master = 92943f9`
 - Local sync: 0 ahead / 0 behind (đồng bộ với remote)
 - Working tree: clean (không có file chưa commit khi handoff được ghi)
 - Dev server: Studio dev chạy trên port 3002 (chạy bằng `pnpm studio:dev:clean`). Trạng thái dev server KHÔNG bền giữa các phiên — nếu mở phiên mới mà `/products` không lên, chạy lại `pnpm studio:dev:clean`.
@@ -16,6 +16,7 @@
 - `e17fa6a` — Shopee no-click command: `pnpm shopee:card-from-registry` (registry → Product Card, không click/không browser).
 - `bd607c2` — Studio UI: section "Shopee Affiliate Registry" trong `/products` (promote link verified → Product Card qua UI).
 - `eda358a` — Studio clean dev restart guard: `pnpm studio:dev:clean` (dập gốc lỗi stale `.next` "Cannot find module './801.js'").
+- `92943f9` — VFOS Continuity 01: thêm chính file handoff này (handoff file itself was pushed as `92943f9`).
 - (Đã verify run-time 2 lần) `/products` HTTP 200, không còn lỗi `801.js`, registry API 200, BABYJOY Product Card đúng.
 
 ## 3. Current Runtime State
