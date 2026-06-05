@@ -36,6 +36,7 @@ interface RegistryEntry {
   criteria?: string;
   last_seen_at?: string;
   times_seen?: number;
+  product_image_url?: string | null;
 }
 
 interface RegistryItem {
@@ -46,6 +47,7 @@ interface RegistryItem {
   affiliateOwnerId: string;
   ownerVerified: boolean;
   status: string;
+  productImageUrl?: string | null;
   score?: number;
   commissionRate?: string;
   price?: string;
@@ -101,6 +103,7 @@ function readRegistry(): { items: RegistryItem[]; updatedAt: string | null } {
           affiliateOwnerId: e.affiliate_owner_id ?? '',
           ownerVerified,
           status: e.affiliate_link_status ?? 'UNKNOWN',
+          productImageUrl: e.product_image_url ?? null,
           ...(typeof e.score === 'number' ? { score: e.score } : {}),
           ...(commissionRate ? { commissionRate } : {}),
           ...(price ? { price } : {}),
