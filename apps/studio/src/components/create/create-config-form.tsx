@@ -46,7 +46,9 @@ export function CreateConfigForm() {
   const [data, setData] = useState<CardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [step, setStep] = useState(0); // 0 = Thông tin, 1 = Nguồn (only 0↔1 wired)
+  const [step, setStep] = useState(0); // 0 = Thông tin, 1 = Nguồn, 2 = Kiểm tra nguồn
+  const [sourceKind, setSourceKind] = useState<'none' | 'url' | 'local'>('none');
+  const [sourceUrl, setSourceUrl] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -71,6 +73,12 @@ export function CreateConfigForm() {
   const ownerOk = card?.ownerVerified ?? false;
   const canContinue = card !== null && ownerOk;
 
+  // Step 2 source state — client-only, never written to runtime this round.
+  const trimmedUrl = sourceUrl.trim();
+  const urlValid = /^https?:\/\/\S+/i.test(trimmedUrl);
+  const urlInvalid = sourceKind === 'url' && trimmedUrl.length > 0 && !urlValid;
+  const sourceReady = sourceKind === 'url' && urlValid;
+
   return (
     <div className="space-y-6">
       {/* Step indicator */}
@@ -78,7 +86,7 @@ export function CreateConfigForm() {
         <CardBody className="flex flex-wrap items-center gap-2">
           {STEPS.map((label, i) => {
             const active = i === step;
-            const reachable = i <= 1; // only first two steps are wired this round
+            const reachable = i <= 2; // first three steps are wired this round
             return (
               <div key={label} className="flex items-center gap-2">
                 <span
@@ -111,7 +119,13 @@ export function CreateConfigForm() {
         <Card className="lg:col-span-2">
           <CardHeader
             title="Cấu hình job"
-            subtitle={step === 0 ? 'Bước 1 — Thông tin (sản phẩm thật)' : 'Bước 2 — Nguồn video'}
+            subtitle={
+              step === 0
+                ? 'Bước 1 — Thông tin (sản phẩm thật)'
+                : step === 1
+                  ? 'Bước 2 — Nguồn video'
+                  : 'Bước 3 — Kiểm tra nguồn'
+            }
             no={4}
             accentClass="text-accent-violet"
           />
@@ -160,15 +174,104 @@ export function CreateConfigForm() {
                   <FakeSelect value="Tiếng Việt" />
                 </Field>
               </div>
+            ) : step === 1 ? (
+              <div className="space-y-3 text-xs text-neutral-300">
+                <p className="text-neutral-400">
+                  Nguồn video cho sản phẩm:{' '}
+                  <span className="font-medium text-neutral-100">{card?.name}</span>
+                  {card && <span className="ml-1 text-neutral-500">· itemid {card.itemId}</span>}
+                </p>
+
+                {/* Source kind selector */}
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant={sourceKind === 'none' ? 'primary' : 'outline'}
+                    className="!py-1 !px-2.5 text-[10px]"
+                    onClick={() => setSourceKind('none')}
+                  >
+                    Chưa có nguồn
+                  </Button>
+                  <Button
+                    variant={sourceKind === 'url' ? 'primary' : 'outline'}
+                    className="!py-1 !px-2.5 text-[10px]"
+                    onClick={() => setSourceKind('url')}
+                  >
+                    Dán URL video
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="!py-1 !px-2.5 text-[10px]"
+                    disabled
+                    title="File local — sẽ làm sau"
+                  >
+                    File local (coming soon)
+                  </Button>
+                </div>
+
+                {/* URL input — client state only, no download, no fetch */}
+                {sourceKind === 'url' && (
+                  <div className="space-y-1.5">
+                    <input
+                      type="url"
+                      aria-label="URL video nguồn"
+                      value={sourceUrl}
+                      onChange={(e) => setSourceUrl(e.target.value)}
+                      placeholder="https://… URL video nguồn"
+                      className="w-full rounded-lg border border-hairline bg-panel/80 px-3 py-2 text-xs text-neutral-100 outline-none focus:border-accent-violet"
+                    />
+                    {urlInvalid ? (
+                      <p className="text-[11px] text-rose-400">
+                        URL không hợp lệ — phải bắt đầu bằng http:// hoặc https://
+                      </p>
+                    ) : sourceReady ? (
+                      <p className="text-[11px] text-accent-green">
+                        URL hợp lệ. Chưa tải video, chỉ giữ nháp trong client.
+                      </p>
+                    ) : (
+                      <p className="text-[11px] text-neutral-500">
+                        Dán URL video nguồn. Round này chưa tải/clip, chưa tạo job.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                <div className="rounded-lg border border-hairline bg-raised/30 p-3 text-[11px] text-neutral-500">
+                  Chưa tạo job · chưa render · chưa download · chưa publish. Nguồn chỉ lưu trong
+                  client state ở round này.
+                </div>
+              </div>
             ) : (
               <div className="space-y-3 text-xs text-neutral-300">
                 <p className="text-neutral-400">
-                  Bước nguồn video cho sản phẩm:{' '}
+                  Kiểm tra nguồn cho sản phẩm:{' '}
                   <span className="font-medium text-neutral-100">{card?.name}</span>
                 </p>
-                <div className="rounded-lg border border-hairline bg-raised/30 p-3 text-[11px] text-neutral-500">
-                  Chọn / reup nguồn video sẽ nối ở round sau. Round này mới wire bước chọn sản phẩm
-                  thật + chuyển bước. Chưa tạo job, chưa render, chưa publish.
+                <div className="space-y-1 rounded-lg border border-hairline bg-raised/30 p-3 text-[11px]">
+                  <div>
+                    Sản phẩm: <span className="text-neutral-100">{card?.name}</span>
+                  </div>
+                  <div>
+                    itemid: <span className="font-mono text-neutral-300">{card?.itemId}</span>
+                  </div>
+                  <div>
+                    Kiểu nguồn:{' '}
+                    <span className="text-neutral-100">
+                      {sourceKind === 'url'
+                        ? 'URL video'
+                        : sourceKind === 'local'
+                          ? 'File local'
+                          : 'Chưa có nguồn'}
+                    </span>
+                  </div>
+                  {sourceKind === 'url' && (
+                    <div className="break-all">
+                      URL: <span className="font-mono text-accent-blue">{trimmedUrl}</span>
+                    </div>
+                  )}
+                </div>
+                <div className="rounded-lg border border-accent-amber/30 bg-accent-amber/10 p-3 text-[11px] text-accent-amber">
+                  Đây là nháp client. Chưa ghi runtime, chưa tạo job, chưa render, chưa publish. Tạo
+                  job thật sẽ wire ở round sau (cần Operator duyệt).
                 </div>
               </div>
             )}
@@ -180,12 +283,12 @@ export function CreateConfigForm() {
                   : `Owner bắt buộc: ${expectedOwner}`}
               </div>
               <div className="flex gap-2">
-                {step === 1 && (
-                  <Button variant="ghost" onClick={() => setStep(0)}>
+                {step > 0 && (
+                  <Button variant="ghost" onClick={() => setStep(step - 1)}>
                     ← Quay lại
                   </Button>
                 )}
-                {step === 0 ? (
+                {step === 0 && (
                   <Button
                     variant="primary"
                     onClick={() => setStep(1)}
@@ -198,7 +301,22 @@ export function CreateConfigForm() {
                   >
                     Tiếp tục → Nguồn
                   </Button>
-                ) : (
+                )}
+                {step === 1 && (
+                  <Button
+                    variant="primary"
+                    onClick={() => setStep(2)}
+                    disabled={!sourceReady}
+                    title={
+                      sourceReady
+                        ? 'Sang bước kiểm tra nguồn'
+                        : 'Cần URL video hợp lệ (http:// hoặc https://) để tiếp tục'
+                    }
+                  >
+                    Tiếp tục → Kiểm tra nguồn
+                  </Button>
+                )}
+                {step === 2 && (
                   <Button
                     variant="primary"
                     disabled
