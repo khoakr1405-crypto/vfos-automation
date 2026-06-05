@@ -1,4 +1,5 @@
 import { Card, CardBody } from '@/components/card';
+import { LaneBanner } from '@/components/create/lane-banner';
 import { Icon, UtilIcon } from '@/components/icons';
 import { MockBanner } from '@/components/mock-banner';
 import { PageHeader } from '@/components/page-header';
@@ -7,10 +8,16 @@ import { QaSummaryKpis } from '@/components/qa/qa-summary-kpis';
 import { Button } from '@/components/ui';
 import Link from 'next/link';
 
-export default function QaPage() {
+type PageProps = {
+  searchParams: Promise<{ lane?: string }>;
+};
+
+export default async function QaPage({ searchParams }: PageProps) {
+  const { lane } = await searchParams;
   return (
     <div className="space-y-6">
       <MockBanner />
+      <LaneBanner lane={lane} />
 
       <PageHeader
         no={8}

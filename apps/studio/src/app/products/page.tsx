@@ -1,16 +1,23 @@
 import { Badge, LanePill, StatusBadge } from '@/components/badge';
 import { Card, CardBody, CardHeader } from '@/components/card';
 import { ShopeeRegistrySection } from '@/components/commerce/shopee-registry-section';
+import { LaneBanner } from '@/components/create/lane-banner';
 import { UtilIcon } from '@/components/icons';
 import { MockBanner } from '@/components/mock-banner';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui';
 import { PRODUCTS, SHOPEE_OWNER } from '@/lib/mock-data';
 
-export default function ProductsPage() {
+type PageProps = {
+  searchParams: Promise<{ lane?: string }>;
+};
+
+export default async function ProductsPage({ searchParams }: PageProps) {
+  const { lane } = await searchParams;
   return (
     <div className="space-y-6">
       <MockBanner />
+      <LaneBanner lane={lane} />
       <PageHeader
         no={3}
         icon="products"

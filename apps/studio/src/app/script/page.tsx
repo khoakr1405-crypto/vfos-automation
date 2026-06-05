@@ -1,15 +1,22 @@
 import { Badge } from '@/components/badge';
 import { Card, CardBody, CardHeader } from '@/components/card';
+import { LaneBanner } from '@/components/create/lane-banner';
 import { UtilIcon } from '@/components/icons';
 import { MockBanner } from '@/components/mock-banner';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui';
 import { BGM_LIBRARY, BGM_RULES, SAMPLE_SCRIPT, VOICE_SETTINGS } from '@/lib/mock-data';
 
-export default function ScriptPage() {
+type PageProps = {
+  searchParams: Promise<{ lane?: string }>;
+};
+
+export default async function ScriptPage({ searchParams }: PageProps) {
+  const { lane } = await searchParams;
   return (
     <div className="space-y-6">
       <MockBanner />
+      <LaneBanner lane={lane} />
       <PageHeader
         no={6}
         icon="script"

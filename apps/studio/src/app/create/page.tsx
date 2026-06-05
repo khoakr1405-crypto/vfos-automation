@@ -1,14 +1,21 @@
 import { LanePill, PlatformPill, StatusBadge } from '@/components/badge';
 import { Card, CardBody, CardHeader } from '@/components/card';
 import { CreateConfigForm } from '@/components/create/create-config-form';
+import { LaneBanner } from '@/components/create/lane-banner';
 import { MockBanner } from '@/components/mock-banner';
 import { PageHeader } from '@/components/page-header';
 import { JOBS, PIPELINE_STAGES, PRODUCTS } from '@/lib/mock-data';
 
-export default function CreatePage() {
+type PageProps = {
+  searchParams: Promise<{ lane?: string }>;
+};
+
+export default async function CreatePage({ searchParams }: PageProps) {
+  const { lane } = await searchParams;
   return (
     <div className="space-y-6">
       <MockBanner />
+      <LaneBanner lane={lane} />
       <PageHeader
         no={4}
         icon="create"

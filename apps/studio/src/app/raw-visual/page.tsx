@@ -1,15 +1,22 @@
 import { StatusBadge } from '@/components/badge';
 import { Card, CardBody, CardHeader } from '@/components/card';
+import { LaneBanner } from '@/components/create/lane-banner';
 import { Icon, UtilIcon } from '@/components/icons';
 import { MockBanner } from '@/components/mock-banner';
 import { PageHeader } from '@/components/page-header';
 import { Button, FakeSelect, Field } from '@/components/ui';
 import { RAW_VISUALS, RAW_VISUAL_ENGINES } from '@/lib/mock-data';
 
-export default function RawVisualPage() {
+type PageProps = {
+  searchParams: Promise<{ lane?: string }>;
+};
+
+export default async function RawVisualPage({ searchParams }: PageProps) {
+  const { lane } = await searchParams;
   return (
     <div className="space-y-6">
       <MockBanner />
+      <LaneBanner lane={lane} />
       <PageHeader
         no={5}
         icon="rawvisual"

@@ -1,6 +1,6 @@
 // Navigation model for the VFOS Studio shell.
-// Each of the 11 modules from the UI reference is its OWN route/page — the
-// overview ("/") only aggregates; deep work lives on dedicated pages.
+// Sidebar is organized strictly by Operator business structure.
+// Technical routes are accessed internally within Review Sản phẩm or direct URL.
 
 export type AccentKey = 'blue' | 'violet' | 'green' | 'amber' | 'cyan' | 'rose';
 export type IconKey =
@@ -18,7 +18,6 @@ export type IconKey =
   | 'comments';
 
 export type NavItem = {
-  /** Module number as shown in the reference (1..11). */
   no: number;
   href: string;
   label: string;
@@ -33,55 +32,55 @@ export type NavGroup = {
 
 export const NAV_GROUPS: NavGroup[] = [
   {
-    title: 'Trung tâm điều hành',
+    title: 'TRUNG TÂM ĐIỀU HÀNH',
     items: [{ no: 1, href: '/', label: 'Tổng quan', icon: 'overview', accent: 'blue' }],
   },
   {
-    title: 'Kênh & Ngách',
-    items: [
-      { no: 2, href: '/channels', label: 'Cụm kênh & Kênh', icon: 'channels', accent: 'blue' },
-    ],
-  },
-  {
-    title: 'Sản phẩm & Link',
-    items: [
-      { no: 3, href: '/products', label: 'Sản phẩm & Link', icon: 'products', accent: 'amber' },
-    ],
-  },
-  {
-    title: 'Tài nguyên đầu vào',
-    items: [
-      { no: 4, href: '/create', label: 'Tạo nội dung mới', icon: 'create', accent: 'violet' },
-      { no: 5, href: '/raw-visual', label: 'Raw Visual AI', icon: 'rawvisual', accent: 'violet' },
-    ],
-  },
-  {
-    title: 'Xưởng Sản Xuất Video',
-    items: [
-      { no: 6, href: '/script', label: 'Script / Voice / BGM', icon: 'script', accent: 'violet' },
-      { no: 7, href: '/render', label: 'Render & Caption', icon: 'render', accent: 'cyan' },
-    ],
-  },
-  {
-    title: 'QA / Xuất bản',
-    items: [
-      { no: 8, href: '/qa', label: 'QA & Duyệt', icon: 'qa', accent: 'green' },
-      { no: 9, href: '/publish', label: 'Xuất bản & Lịch', icon: 'publish', accent: 'green' },
-      { no: 11, href: '/schedule', label: 'Lịch đa nền tảng', icon: 'schedule', accent: 'amber' },
-    ],
-  },
-  {
-    title: 'Hiệu suất / Báo cáo',
+    title: 'LANE NỘI DUNG',
     items: [
       {
-        no: 10,
+        no: 2,
+        href: '/lanes/product-review',
+        label: 'Review Sản phẩm',
+        icon: 'products',
+        accent: 'amber',
+      },
+      {
+        no: 3,
+        href: '/lanes/fishing-vlog',
+        label: 'Vlog Về Câu cá',
+        icon: 'rawvisual',
+        accent: 'cyan',
+      },
+      {
+        no: 4,
+        href: '/lanes/car-vlog',
+        label: 'Vlog Về xe',
+        icon: 'render',
+        accent: 'violet',
+      },
+    ],
+  },
+  {
+    title: 'VẬN HÀNH',
+    items: [
+      { no: 5, href: '/publish', label: 'Xuất bản & Lịch', icon: 'publish', accent: 'green' },
+      { no: 6, href: '/channels', label: 'Cụm kênh & Kênh', icon: 'channels', accent: 'blue' },
+      { no: 7, href: '/schedule', label: 'Lịch đa nền tảng', icon: 'schedule', accent: 'amber' },
+    ],
+  },
+  {
+    title: 'BÁO CÁO / TƯƠNG TÁC',
+    items: [
+      {
+        no: 8,
         href: '/analytics',
         label: 'Hiệu suất / Analytics',
         icon: 'analytics',
         accent: 'green',
       },
       {
-        no: 12,
+        no: 9,
         href: '/comments',
         label: 'Bình luận & Mắt thần',
         icon: 'comments',
@@ -91,11 +90,8 @@ export const NAV_GROUPS: NavGroup[] = [
   },
 ];
 
-/** Flat list, ordered by module number — handy for breadcrumbs / lookups. */
 export const NAV_ITEMS: NavItem[] = NAV_GROUPS.flatMap((g) => g.items).sort((a, b) => a.no - b.no);
 
-// Tailwind needs literal class strings at build time, so accent -> classes is a
-// static lookup rather than interpolated `text-accent-${x}`.
 export const ACCENT_TEXT: Record<AccentKey, string> = {
   blue: 'text-accent-blue',
   violet: 'text-accent-violet',

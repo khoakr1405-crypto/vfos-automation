@@ -1,14 +1,21 @@
 import { Card, CardBody, CardHeader } from '@/components/card';
+import { LaneBanner } from '@/components/create/lane-banner';
 import { Icon, UtilIcon } from '@/components/icons';
 import { MockBanner } from '@/components/mock-banner';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui';
 import { RENDER_SETTINGS } from '@/lib/mock-data';
 
-export default function RenderPage() {
+type PageProps = {
+  searchParams: Promise<{ lane?: string }>;
+};
+
+export default async function RenderPage({ searchParams }: PageProps) {
+  const { lane } = await searchParams;
   return (
     <div className="space-y-6">
       <MockBanner />
+      <LaneBanner lane={lane} />
       <PageHeader
         no={7}
         icon="render"

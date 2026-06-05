@@ -2,11 +2,33 @@
 
 import { ACCENT_TEXT, NAV_GROUPS } from '@/lib/nav';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
+import { Suspense } from 'react';
 import { Icon } from './icons';
 
-export function Sidebar() {
+/**
+ * Determine whether a nav item is "active" given the current pathname + search
+ * params. Lane items use `/create?lane=X` — we match both the pathname AND the
+ * query parameter. Non-lane items just compare pathname.
+ */
+function isActive(itemHref: string, pathname: string, searchParams: URLSearchParams): boolean {
+  const [itemPath, itemQuery] = itemHref.split('?');
+  // If the nav item has a query string (lane items), match pathname + query.
+  if (itemQuery) {
+    if (pathname !== itemPath) return false;
+    const params = new URLSearchParams(itemQuery);
+    for (const [key, value] of params.entries()) {
+      if (searchParams.get(key) !== value) return false;
+    }
+    return true;
+  }
+  // Plain pathname match (exact).
+  return pathname === itemPath;
+}
+
+function SidebarInner() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   return (
     <aside className="hidden h-screen w-64 shrink-0 flex-col border-r border-hairline bg-panel/70 lg:flex">
@@ -26,9 +48,10 @@ export function Sidebar() {
             <p className="px-3 text-[10px] font-bold uppercase tracking-wider text-neutral-500/80">
               {group.title}
             </p>
+
             <ul className="space-y-0.5 border-l border-hairline/30 ml-3.5 pl-2">
               {group.items.map((item) => {
-                const active = pathname === item.href;
+                const active = isActive(item.href, pathname, searchParams);
                 return (
                   <li key={item.href}>
                     <Link
@@ -62,5 +85,13 @@ export function Sidebar() {
         VFOS Studio · v1.0 · Operator Control
       </div>
     </aside>
+  );
+}
+
+export function Sidebar() {
+  return (
+    <Suspense>
+      <SidebarInner />
+    </Suspense>
   );
 }

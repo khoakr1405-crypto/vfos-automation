@@ -1,4 +1,5 @@
 import { Card, CardBody } from '@/components/card';
+import { LaneBanner } from '@/components/create/lane-banner';
 import { UtilIcon } from '@/components/icons';
 import { MockBanner } from '@/components/mock-banner';
 import { PageHeader } from '@/components/page-header';
@@ -9,10 +10,16 @@ import { PublishWarningsPanel } from '@/components/publish/publish-warnings-pane
 import { Button } from '@/components/ui';
 import Link from 'next/link';
 
-export default function PublishPage() {
+type PageProps = {
+  searchParams: Promise<{ lane?: string }>;
+};
+
+export default async function PublishPage({ searchParams }: PageProps) {
+  const { lane } = await searchParams;
   return (
     <div className="space-y-6">
       <MockBanner />
+      <LaneBanner lane={lane} />
 
       <PageHeader
         no={9}
