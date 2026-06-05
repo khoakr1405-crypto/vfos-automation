@@ -50,6 +50,7 @@
     "chay:review": "tsx scripts/review-video-orchestrator.ts",
     "shopee:preflight": "tsx scripts/shopee-cdp-preflight-demo.ts",
     "shopee:builder": "tsx scripts/shopee-product-card-builder.ts",
+    "shopee:card-from-registry": "tsx scripts/shopee-card-from-registry.ts",
     "shopee:bgm": "tsx scripts/bgm-selector-demo.ts",
     "shopee:bgm-gen": "tsx scripts/bgm-generator-demo.ts",
     "production:pack": "tsx scripts/production-packager.ts",
