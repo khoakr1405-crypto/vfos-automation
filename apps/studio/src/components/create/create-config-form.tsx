@@ -86,6 +86,10 @@ export function CreateConfigForm() {
   const [sourceUrl, setSourceUrl] = useState('');
   const [copiedText, setCopiedText] = useState<string | null>(null);
   const [imgError, setImgError] = useState(false);
+  const [savingSource, setSavingSource] = useState(false);
+  const [sourceNotice, setSourceNotice] = useState<string | null>(null);
+  const [savedUrl, setSavedUrl] = useState<string | null>(null);
+  const [draftOtherProduct, setDraftOtherProduct] = useState(false);
 
   const handleCopy = (text: string) => {
     if (navigator.clipboard?.writeText) {
@@ -108,7 +112,40 @@ export function CreateConfigForm() {
     try {
       const res = await fetch('/api/studio/commerce/current-product-card');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setData((await res.json()) as CardResponse);
+      const cardResp = (await res.json()) as CardResponse;
+      setData(cardResp);
+      // Load saved source-URL draft; preload it only if it belongs to the
+      // current Product Card (match by shortLink or shopid/itemid).
+      try {
+        const dres = await fetch('/api/studio/create/source-draft');
+        if (dres.ok) {
+          const dbody = (await dres.json()) as {
+            draft: {
+              product: { shortLink: string; shopid: string; itemid: string } | null;
+              source: { url: string };
+            } | null;
+          };
+          const draft = dbody.draft;
+          const c = cardResp.card;
+          if (draft?.source?.url) {
+            const matches =
+              !!c &&
+              !!draft.product &&
+              (draft.product.shortLink === c.shortLink ||
+                (draft.product.shopid === c.shopId && draft.product.itemid === c.itemId));
+            if (matches) {
+              setSourceKind('url');
+              setSourceUrl(draft.source.url);
+              setSavedUrl(draft.source.url);
+              setDraftOtherProduct(false);
+            } else {
+              setDraftOtherProduct(true);
+            }
+          }
+        }
+      } catch {
+        // Draft load is best-effort — never block the Product Card.
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không tải được Product Card.');
     } finally {
@@ -125,11 +162,52 @@ export function CreateConfigForm() {
   const ownerOk = card?.ownerVerified ?? false;
   const canContinue = card !== null && ownerOk;
 
-  // Step 2 source state — client-only, never written to runtime this round.
+  // Step 2 source state — persisted as a runtime draft via
+  // /api/studio/create/source-draft (gitignored). No download, no fetch.
   const trimmedUrl = sourceUrl.trim();
   const urlValid = /^https?:\/\/\S+/i.test(trimmedUrl);
   const urlInvalid = sourceKind === 'url' && trimmedUrl.length > 0 && !urlValid;
   const sourceReady = sourceKind === 'url' && urlValid;
+
+  const saveSource = async () => {
+    setSavingSource(true);
+    setSourceNotice(null);
+    try {
+      const res = await fetch('/api/studio/create/source-draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceKind: 'url', sourceUrl: trimmedUrl }),
+      });
+      const body = await res.json();
+      if (!res.ok || !body.ok)
+        throw new Error(body?.message ?? `Lưu thất bại (HTTP ${res.status}).`);
+      setSavedUrl(body.draft?.source?.url ?? trimmedUrl);
+      setDraftOtherProduct(false);
+      setSourceNotice('Đã lưu nguồn nháp');
+    } catch (err) {
+      setSourceNotice(err instanceof Error ? err.message : 'Lưu nguồn nháp thất bại.');
+    } finally {
+      setSavingSource(false);
+    }
+  };
+
+  const clearSource = async () => {
+    setSavingSource(true);
+    setSourceNotice(null);
+    try {
+      const res = await fetch('/api/studio/create/source-draft', { method: 'DELETE' });
+      const body = await res.json();
+      if (!res.ok || !body.ok) throw new Error(body?.message ?? 'Xoá thất bại.');
+      setSavedUrl(null);
+      setSourceUrl('');
+      setDraftOtherProduct(false);
+      setSourceNotice('Đã xoá nguồn nháp');
+    } catch (err) {
+      setSourceNotice(err instanceof Error ? err.message : 'Xoá nguồn nháp thất bại.');
+    } finally {
+      setSavingSource(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -301,9 +379,9 @@ export function CreateConfigForm() {
                   </Button>
                 </div>
 
-                {/* URL input — client state only, no download, no fetch */}
+                {/* URL input + runtime draft save — no download, no fetch */}
                 {sourceKind === 'url' && (
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     <input
                       type="url"
                       aria-label="URL video nguồn"
@@ -318,11 +396,44 @@ export function CreateConfigForm() {
                       </p>
                     ) : sourceReady ? (
                       <p className="text-[11px] text-accent-green">
-                        URL hợp lệ. Chưa tải video, chỉ giữ nháp trong client.
+                        URL hợp lệ. Bấm “Lưu nguồn nháp” để giữ lại sau khi refresh.
                       </p>
                     ) : (
                       <p className="text-[11px] text-neutral-500">
                         Dán URL video nguồn. Round này chưa tải/clip, chưa tạo job.
+                      </p>
+                    )}
+
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        variant="primary"
+                        className="!py-1 !px-2.5 text-[10px]"
+                        onClick={saveSource}
+                        disabled={!sourceReady || savingSource}
+                      >
+                        {savingSource ? 'Đang lưu...' : 'Lưu nguồn nháp'}
+                      </Button>
+                      {(savedUrl || sourceUrl) && (
+                        <Button
+                          variant="outline"
+                          className="!py-1 !px-2.5 text-[10px]"
+                          onClick={clearSource}
+                          disabled={savingSource}
+                        >
+                          Xoá nguồn nháp
+                        </Button>
+                      )}
+                      {savedUrl && (
+                        <span className="text-[10px] text-accent-green">
+                          ✓ Đã lưu nháp — giữ sau khi refresh
+                        </span>
+                      )}
+                    </div>
+
+                    {sourceNotice && <p className="text-[11px] text-neutral-300">{sourceNotice}</p>}
+                    {draftOtherProduct && (
+                      <p className="text-[11px] text-accent-amber">
+                        Có draft nguồn của sản phẩm khác — không áp cho Product Card hiện tại.
                       </p>
                     )}
                   </div>
@@ -359,6 +470,9 @@ export function CreateConfigForm() {
                   {sourceKind === 'url' && (
                     <div className="break-all">
                       URL: <span className="font-mono text-accent-blue">{trimmedUrl}</span>
+                      {savedUrl === trimmedUrl && trimmedUrl !== '' && (
+                        <span className="ml-2 text-accent-green">· đã lưu nháp ✓</span>
+                      )}
                     </div>
                   )}
                 </div>
