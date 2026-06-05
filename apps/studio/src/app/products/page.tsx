@@ -1,5 +1,6 @@
 import { Badge, LanePill, StatusBadge } from '@/components/badge';
 import { Card, CardBody, CardHeader } from '@/components/card';
+import { ShopeeRegistrySection } from '@/components/commerce/shopee-registry-section';
 import { UtilIcon } from '@/components/icons';
 import { MockBanner } from '@/components/mock-banner';
 import { PageHeader } from '@/components/page-header';
@@ -35,6 +36,8 @@ export default function ProductsPage() {
           }
         />
       </Card>
+
+      <ShopeeRegistrySection />
 
       <Card>
         <CardHeader
