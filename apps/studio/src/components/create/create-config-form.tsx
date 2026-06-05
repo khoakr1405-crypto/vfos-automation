@@ -90,6 +90,10 @@ export function CreateConfigForm() {
   const [sourceNotice, setSourceNotice] = useState<string | null>(null);
   const [savedUrl, setSavedUrl] = useState<string | null>(null);
   const [draftOtherProduct, setDraftOtherProduct] = useState(false);
+  const [confirmInput, setConfirmInput] = useState('');
+  const [creatingJob, setCreatingJob] = useState(false);
+  const [createdJobId, setCreatedJobId] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const handleCopy = (text: string) => {
     if (navigator.clipboard?.writeText) {
@@ -206,6 +210,28 @@ export function CreateConfigForm() {
       setSourceNotice(err instanceof Error ? err.message : 'Xoá nguồn nháp thất bại.');
     } finally {
       setSavingSource(false);
+    }
+  };
+
+  const createJob = async () => {
+    if (confirmInput !== 'CREATE JOB') return;
+    setCreatingJob(true);
+    setCreateError(null);
+    try {
+      const res = await fetch('/api/studio/create/job-draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmPhrase: confirmInput }),
+      });
+      const body = await res.json();
+      if (!res.ok || !body.ok) {
+        throw new Error(body?.message ?? `Tạo job thất bại (HTTP ${res.status}).`);
+      }
+      setCreatedJobId(body.jobId);
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : 'Tạo job thất bại.');
+    } finally {
+      setCreatingJob(false);
     }
   };
 
@@ -444,15 +470,74 @@ export function CreateConfigForm() {
                   client state ở round này.
                 </div>
               </div>
-            ) : (
-              <div className="space-y-3 text-xs text-neutral-300">
-                <p className="text-neutral-400">
-                  Kiểm tra nguồn cho sản phẩm:{' '}
-                  <span className="font-medium text-neutral-100">{card?.name}</span>
-                </p>
-                <div className="space-y-1 rounded-lg border border-hairline bg-raised/30 p-3 text-[11px]">
+            ) : createdJobId ? (
+              <div className="space-y-4 text-xs text-neutral-300">
+                <div className="rounded-lg border border-accent-green/30 bg-accent-green/10 p-4 text-center space-y-2">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent-green/20 text-accent-green mx-auto">
+                    <UtilIcon name="check" width={20} height={20} />
+                  </div>
+                  <h4 className="text-sm font-bold text-neutral-100">Tạo Job Draft thành công!</h4>
+                  <p className="text-[11px] text-neutral-400">
+                    Job draft đã được tạo và lưu vào registry. Operator có thể theo dõi và thực hiện
+                    các bước tiếp theo từ Dashboard.
+                  </p>
+                </div>
+
+                <div className="space-y-1 rounded-lg border border-hairline bg-raised/35 p-3.5 text-[11px] font-mono">
+                  <div>
+                    Mã Job ID: <span className="text-accent-blue font-bold">{createdJobId}</span>
+                  </div>
                   <div>
                     Sản phẩm: <span className="text-neutral-100">{card?.name}</span>
+                  </div>
+                  <div className="break-all">
+                    URL nguồn: <span className="text-neutral-300">{trimmedUrl}</span>
+                  </div>
+                  <div>
+                    Trạng thái:{' '}
+                    <span className="text-accent-amber font-semibold">
+                      WAITING_FOR_SOURCE_VIDEO
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3 pt-2">
+                  <a href="/" className="flex-1">
+                    <Button variant="primary" className="w-full justify-center">
+                      Đi đến Dashboard
+                    </Button>
+                  </a>
+                  <Button
+                    variant="outline"
+                    className="flex-1 justify-center"
+                    onClick={() => {
+                      setCreatedJobId(null);
+                      setConfirmInput('');
+                      setSourceUrl('');
+                      setSavedUrl(null);
+                      setSourceKind('none');
+                      setStep(0);
+                    }}
+                  >
+                    Tạo job mới
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-4 text-xs text-neutral-300">
+                <p className="text-neutral-400">
+                  Kiểm tra thông tin trước khi khởi tạo job sản xuất video:
+                </p>
+
+                {createError && (
+                  <div className="rounded-lg border border-rose-500/20 bg-rose-500/10 p-3 text-xs text-rose-400">
+                    {createError}
+                  </div>
+                )}
+
+                <div className="space-y-2 rounded-lg border border-hairline bg-raised/30 p-3.5 text-[11px] leading-relaxed">
+                  <div>
+                    Sản phẩm: <span className="text-neutral-100 font-semibold">{card?.name}</span>
                   </div>
                   <div>
                     itemid: <span className="font-mono text-neutral-300">{card?.itemId}</span>
@@ -460,80 +545,125 @@ export function CreateConfigForm() {
                   <div>
                     Kiểu nguồn:{' '}
                     <span className="text-neutral-100">
-                      {sourceKind === 'url'
-                        ? 'URL video'
-                        : sourceKind === 'local'
-                          ? 'File local'
-                          : 'Chưa có nguồn'}
+                      {sourceKind === 'url' ? 'URL video' : 'Chưa có nguồn'}
                     </span>
                   </div>
                   {sourceKind === 'url' && (
                     <div className="break-all">
-                      URL: <span className="font-mono text-accent-blue">{trimmedUrl}</span>
+                      URL video nguồn:{' '}
+                      <span className="font-mono text-accent-blue">{trimmedUrl}</span>
                       {savedUrl === trimmedUrl && trimmedUrl !== '' && (
-                        <span className="ml-2 text-accent-green">· đã lưu nháp ✓</span>
+                        <span className="ml-2 text-accent-green font-medium">· đã lưu nháp ✓</span>
                       )}
                     </div>
                   )}
+                  <div>
+                    Trạng thái ban đầu:{' '}
+                    <span className="text-accent-amber font-semibold">
+                      WAITING_FOR_SOURCE_VIDEO
+                    </span>
+                  </div>
                 </div>
-                <div className="rounded-lg border border-accent-amber/30 bg-accent-amber/10 p-3 text-[11px] text-accent-amber">
-                  Đây là nháp client. Chưa ghi runtime, chưa tạo job, chưa render, chưa publish. Tạo
-                  job thật sẽ wire ở round sau (cần Operator duyệt).
+
+                <div className="space-y-2 rounded-lg border border-hairline bg-raised/20 p-3.5">
+                  <label
+                    htmlFor="confirm-phrase-input"
+                    className="block text-[11px] font-bold text-neutral-200"
+                  >
+                    Nhập cụm từ xác nhận để tạo job:
+                  </label>
+                  <p className="text-[10px] text-neutral-500 mb-1.5">
+                    Gõ chính xác{' '}
+                    <span className="font-mono text-neutral-300 select-all font-bold">
+                      CREATE JOB
+                    </span>{' '}
+                    để xác nhận
+                  </p>
+                  <input
+                    id="confirm-phrase-input"
+                    type="text"
+                    value={confirmInput}
+                    onChange={(e) => setConfirmInput(e.target.value)}
+                    placeholder="Gõ CREATE JOB"
+                    disabled={creatingJob}
+                    className="w-full rounded-lg border border-hairline bg-panel/80 px-3 py-2 text-xs text-neutral-100 outline-none focus:border-accent-violet disabled:opacity-50"
+                  />
                 </div>
               </div>
             )}
 
-            <div className="flex items-center justify-between gap-2 border-t border-hairline pt-3">
-              <div className="text-[10px] text-neutral-500">
-                {card
-                  ? `shop/item ${card.shopId}/${card.itemId} · owner ${card.affiliateOwnerId}`
-                  : `Owner bắt buộc: ${expectedOwner}`}
+            {!createdJobId && (
+              <div className="flex items-center justify-between gap-2 border-t border-hairline pt-3">
+                <div className="text-[10px] text-neutral-500">
+                  {card
+                    ? `shop/item ${card.shopId}/${card.itemId} · owner ${card.affiliateOwnerId}`
+                    : `Owner bắt buộc: ${expectedOwner}`}
+                </div>
+                <div className="flex gap-2">
+                  {step > 0 && (
+                    <Button
+                      variant="ghost"
+                      onClick={() => setStep(step - 1)}
+                      disabled={creatingJob}
+                    >
+                      ← Quay lại
+                    </Button>
+                  )}
+                  {step === 0 && (
+                    <Button
+                      variant="primary"
+                      onClick={() => setStep(1)}
+                      disabled={!canContinue}
+                      title={
+                        canContinue
+                          ? 'Sang bước nguồn video'
+                          : 'Cần Product Card hợp lệ (đúng owner) để tiếp tục'
+                      }
+                    >
+                      Tiếp tục → Nguồn
+                    </Button>
+                  )}
+                  {step === 1 && (
+                    <Button
+                      variant="primary"
+                      onClick={() => setStep(2)}
+                      disabled={!sourceReady}
+                      title={
+                        sourceReady
+                          ? 'Sang bước kiểm tra nguồn'
+                          : 'Cần URL video hợp lệ (http:// hoặc https://) để tiếp tục'
+                      }
+                    >
+                      Tiếp tục → Kiểm tra nguồn
+                    </Button>
+                  )}
+                  {step === 2 && (
+                    <Button
+                      variant="primary"
+                      onClick={createJob}
+                      disabled={confirmInput !== 'CREATE JOB' || !sourceReady || creatingJob}
+                      title={
+                        confirmInput !== 'CREATE JOB'
+                          ? 'Nhập đúng cụm từ xác nhận để kích hoạt'
+                          : 'Bấm để tạo job draft mới'
+                      }
+                    >
+                      {creatingJob ? (
+                        <span className="flex items-center gap-1">
+                          <span className="h-3 w-3 animate-spin border-2 border-white/30 border-t-white rounded-full" />
+                          Đang tạo job...
+                        </span>
+                      ) : (
+                        <>
+                          <Icon name="create" width={14} height={14} className="mr-1" />
+                          Tạo job
+                        </>
+                      )}
+                    </Button>
+                  )}
+                </div>
               </div>
-              <div className="flex gap-2">
-                {step > 0 && (
-                  <Button variant="ghost" onClick={() => setStep(step - 1)}>
-                    ← Quay lại
-                  </Button>
-                )}
-                {step === 0 && (
-                  <Button
-                    variant="primary"
-                    onClick={() => setStep(1)}
-                    disabled={!canContinue}
-                    title={
-                      canContinue
-                        ? 'Sang bước nguồn video'
-                        : 'Cần Product Card hợp lệ (đúng owner) để tiếp tục'
-                    }
-                  >
-                    Tiếp tục → Nguồn
-                  </Button>
-                )}
-                {step === 1 && (
-                  <Button
-                    variant="primary"
-                    onClick={() => setStep(2)}
-                    disabled={!sourceReady}
-                    title={
-                      sourceReady
-                        ? 'Sang bước kiểm tra nguồn'
-                        : 'Cần URL video hợp lệ (http:// hoặc https://) để tiếp tục'
-                    }
-                  >
-                    Tiếp tục → Kiểm tra nguồn
-                  </Button>
-                )}
-                {step === 2 && (
-                  <Button
-                    variant="primary"
-                    disabled
-                    title="Tạo job thật sẽ wire ở round sau — cần Operator duyệt"
-                  >
-                    <Icon name="create" width={14} height={14} /> Tạo job (chờ duyệt)
-                  </Button>
-                )}
-              </div>
-            </div>
+            )}
           </CardBody>
         </Card>
 
