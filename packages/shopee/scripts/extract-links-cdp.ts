@@ -62,6 +62,7 @@ import {
   classifyResolvedLink,
   extractShopidItemid,
   parseCliValues,
+  parseShortLinkFromModalText,
   resolveShortLink,
   shouldSkipPreClick,
 } from '../src/cdp-extract-helpers.js';
@@ -257,32 +258,49 @@ async function discoverProductCards(page: Page): Promise<ProductCard[]> {
 }
 
 async function clickGetLinkButton(page: Page, index: number): Promise<boolean> {
-  return page.evaluate((idx) => {
-    // Đồng bộ tuyệt đối thuật toán tìm nút "Lấy link" sát chữ thực tế nhất
-    // (case-insensitive + giới hạn độ dài, khớp với discoverProductCards)
-    const buttons = Array.from(document.querySelectorAll<HTMLElement>('*')).filter((el) => {
-      const t = (el.textContent ?? '').trim().toLowerCase();
+  try {
+    return await page.evaluate((idx) => {
+      // Đồng bộ tuyệt đối thuật toán tìm nút "Lấy link" sát chữ thực tế nhất
+      // (case-insensitive + giới hạn độ dài, khớp với discoverProductCards)
+      const buttons = Array.from(document.querySelectorAll<HTMLElement>('*')).filter((el) => {
+        const t = (el.textContent ?? '').trim().toLowerCase();
 
-      if (!t.includes('lấy link') && !t.includes('get link')) return false;
-      if (t.length > 15) return false; // Loại trừ nút "Lấy link hàng loạt"
+        if (!t.includes('lấy link') && !t.includes('get link')) return false;
+        if (t.length > 15) return false; // Loại trừ nút "Lấy link hàng loạt"
 
-      const hasChildWithSameText = Array.from(el.children).some((child) => {
-        const ct = (child.textContent ?? '').trim().toLowerCase();
-        return ct.includes('lấy link') || ct.includes('get link');
+        const hasChildWithSameText = Array.from(el.children).some((child) => {
+          const ct = (child.textContent ?? '').trim().toLowerCase();
+          return ct.includes('lấy link') || ct.includes('get link');
+        });
+        return !hasChildWithSameText;
       });
-      return !hasChildWithSameText;
-    });
 
-    const targetBtn = buttons[idx];
-    if (!targetBtn) return false;
+      const targetBtn = buttons[idx];
+      if (!targetBtn) return false;
 
-    targetBtn.click();
-    return true;
-  }, index);
+      targetBtn.click();
+      return true;
+    }, index);
+  } catch (err) {
+    const msg = (err as Error).message;
+    if (
+      msg.includes('context was destroyed') ||
+      msg.includes('navigation') ||
+      msg.includes('navigating')
+    ) {
+      process.stdout.write(
+        '  [CDP] Context destroyed during click, likely due to a navigation/redirect.\n',
+      );
+      return true; // Treat as click initiated, let outer loop handle page state
+    }
+    throw err;
+  }
 }
 
+// biome-ignore lint/suspicious/noExplicitAny: returns raw evaluated page details
 async function inspectModalDetails(page: Page): Promise<any> {
   return page.evaluate(() => {
+    // biome-ignore lint/suspicious/noExplicitAny: accumulator object
     const details: any = {
       inputs: [],
       links: [],
@@ -478,6 +496,96 @@ async function extractShortLinkFromModal(page: Page): Promise<string | null> {
   });
 }
 
+/**
+ * Collect raw text that may contain the generated short link, from the Shopee
+ * "Link Hoa hồng Sản phẩm" modal. SELF-CONTAINED browser helper (DOM-helper
+ * contract): reads textarea/input `.value`, modal-container textContent, anchor
+ * hrefs, and the body text as a last resort. Never touches cookies/storage.
+ * Returns one joined string; the Node side parses the short link out of it.
+ */
+async function collectModalLinkText(page: Page): Promise<string> {
+  return page.evaluate(() => {
+    const parts: string[] = [];
+
+    // 1. textarea / input values — Shopee renders the short link in a readonly
+    //    field next to the "Sao chép Link" button.
+    for (const el of Array.from(
+      document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input, textarea'),
+    )) {
+      if (el.value) parts.push(el.value);
+    }
+
+    // 2. Modal/dialog containers: textContent + any anchor hrefs inside them.
+    const modals = Array.from(
+      document.querySelectorAll(
+        '[class*="modal"], [class*="popup"], [class*="dialog"], [role="dialog"], .shopee-popup__container',
+      ),
+    );
+    for (const m of modals) {
+      parts.push(m.textContent ?? '');
+      for (const a of Array.from(m.querySelectorAll<HTMLAnchorElement>('a[href]'))) {
+        parts.push(a.href);
+      }
+    }
+
+    // 3. Page anchors + body text fallback (in case the modal markup is detached).
+    for (const a of Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href]'))) {
+      parts.push(a.href);
+    }
+    if (document.body) parts.push(document.body.textContent ?? '');
+
+    return parts.join('\n');
+  });
+}
+
+/**
+ * Read the generated short link from the Shopee modal, POLLING until it appears.
+ *
+ * Root-cause fix: Shopee opens the "Link Hoa hồng Sản phẩm" modal first and
+ * generates the `s.shopee.vn/<code>` short link asynchronously a moment later.
+ * A single read right after the click often hits the modal before the link is
+ * ready → ERR_MODAL_UNRECOGNIZED even though the operator sees the link a beat
+ * later. So we re-read every `pollMs` until a clean short link shows up or we
+ * hit `timeoutMs`.
+ *
+ * Reads DOM directly (textarea/input/textContent) — never the clipboard, never
+ * clicks "Sao chép Link". Falls back to the broader scorer only at the deadline.
+ */
+async function readShortLinkFromShopeeModal(
+  page: Page,
+  opts: { timeoutMs: number; pollMs: number },
+): Promise<string | null> {
+  const deadline = Date.now() + opts.timeoutMs;
+  let polls = 0;
+  while (Date.now() < deadline) {
+    polls++;
+    try {
+      const text = await collectModalLinkText(page);
+      const short = parseShortLinkFromModalText(text);
+      if (short) {
+        process.stdout.write(`  modal short link found after ${polls} poll(s)\n`);
+        return short;
+      }
+    } catch (err) {
+      const msg = (err as Error).message;
+      if (msg.includes('context was destroyed') || msg.includes('navigation')) {
+        process.stdout.write('  [CDP] Context destroyed during modal polling.\n');
+        return null;
+      }
+      throw err;
+    }
+    await page.waitForTimeout(opts.pollMs);
+  }
+  // Deadline reached — last-ditch try via the broader scorer (may surface a
+  // canonical link), so a present-but-non-short link is still better than null.
+  process.stdout.write(`  modal poll exhausted after ${polls} poll(s) — trying scorer fallback\n`);
+  try {
+    return await extractShortLinkFromModal(page);
+  } catch {
+    return null;
+  }
+}
+
 async function closeModal(page: Page): Promise<void> {
   await page.keyboard.press('Escape');
   await page.waitForTimeout(800);
@@ -565,6 +673,20 @@ function sleep(ms: number): Promise<void> {
   return new Promise((res) => setTimeout(res, ms));
 }
 
+/**
+ * Emit the machine-readable result marker for an EARLY exit (before the
+ * extraction loop). Keeps the Studio API on one parse contract for every exit
+ * path. Carries only non-secret fields.
+ */
+function emitEarlyResult(
+  status: 'SUSPENDED' | 'FAIL',
+  stage: string,
+  reasonCode: string,
+  reason?: string,
+): void {
+  process.stdout.write(`\nVFOS_RESULT ${JSON.stringify({ status, stage, reasonCode, reason })}\n`);
+}
+
 async function main(): Promise<number> {
   const rawArgs = parseArgs({
     options: {
@@ -601,6 +723,7 @@ async function main(): Promise<number> {
     });
   } catch (e) {
     process.stderr.write(`ERR_INVALID_ARGS: ${(e as Error).message}\n`);
+    emitEarlyResult('FAIL', 'cli_exit', 'ERR_INVALID_ARGS');
     return 2;
   }
 
@@ -653,11 +776,14 @@ async function main(): Promise<number> {
     }
     process.stdout.write('\n');
   } catch (e) {
+    const reasonCode =
+      e instanceof CdpBootstrapError ? e.reason_code : 'ERR_CDP_BROWSER_LAUNCH_FAILED';
     if (e instanceof CdpBootstrapError) {
       process.stderr.write(`${e.reason_code}\n  ${e.message}\n`);
     } else {
       process.stderr.write(`ERR_CDP_BROWSER_LAUNCH_FAILED\n  ${(e as Error).message}\n`);
     }
+    emitEarlyResult('FAIL', 'bootstrap', reasonCode);
     return 2;
   }
 
@@ -668,6 +794,7 @@ async function main(): Promise<number> {
     chromium = (await import('playwright')).chromium;
   } catch {
     process.stderr.write('ERR_PLAYWRIGHT_NOT_INSTALLED\n  Install with: pnpm add -D playwright\n');
+    emitEarlyResult('FAIL', 'cdp_connect', 'ERR_PLAYWRIGHT_NOT_INSTALLED');
     return 2;
   }
 
@@ -688,13 +815,17 @@ async function main(): Promise<number> {
         process.stderr.write(
           'ERR_CDP_BROWSER_NOT_FOUND\n  Bootstrap reported port open but Playwright still cannot attach.\n',
         );
+        emitEarlyResult('FAIL', 'cdp_connect', 'ERR_CDP_BROWSER_NOT_FOUND');
         return 2;
       }
       await sleep(2000);
     }
   }
 
-  if (!browser) return 2;
+  if (!browser) {
+    emitEarlyResult('FAIL', 'cdp_connect', 'ERR_CDP_BROWSER_NOT_FOUND');
+    return 2;
+  }
 
   // ── locate target tab ─────────────────────────────────────────────────────
 
@@ -719,6 +850,7 @@ async function main(): Promise<number> {
     process.stderr.write(
       'ERR_CDP_TARGET_TAB_NOT_FOUND\n  Open https://affiliate.shopee.vn/offer/product_offer in the logged-in browser.\n',
     );
+    emitEarlyResult('SUSPENDED', 'locate_tab', 'ERR_CDP_TARGET_TAB_NOT_FOUND');
     await browser.close();
     return 2;
   }
@@ -745,7 +877,13 @@ async function main(): Promise<number> {
     });
     if (!wait.cleared) {
       process.stderr.write(
-        `\n${wait.reason_code}\n  Captcha/login overlay still present after ${wait.waited_seconds}s.\n  Resolve in browser manually then rerun /chay shopee-cdp-test.\n`,
+        `\n${wait.reason_code}\n  Captcha/login overlay still present after ${wait.waited_seconds}s.\n  Resolve in browser manually then rerun.\n`,
+      );
+      emitEarlyResult(
+        'SUSPENDED',
+        'captcha',
+        wait.reason_code,
+        `Xác minh CAPTCHA/Login chưa được giải sau ${wait.waited_seconds}s.`,
       );
       await browser.close();
       return 2;
@@ -771,6 +909,29 @@ async function main(): Promise<number> {
   const attemptedNames = new Set<string>();
   let finalStatus: 'SUCCESS' | 'SUSPENDED' | 'FAIL' = 'FAIL';
   let finalReason = '';
+  // Stage = where the run ended; reasonCode = machine-readable cause. Both feed
+  // the VFOS_RESULT marker so the Studio API can show the operator an accurate,
+  // sanitized failure stage instead of a generic "Trích xuất link thất bại".
+  let finalStage:
+    | 'discover'
+    | 'click'
+    | 'modal_read'
+    | 'resolve'
+    | 'owner_validate'
+    | 'registry_write'
+    | 'done' = 'discover';
+  let finalReasonCode: string | null = null;
+  // Data of the winning link (only set on a real insert) — surfaced to the UI.
+  let winning: {
+    shortLink: string;
+    productName: string;
+    shopid: string | null;
+    itemid: string | null;
+    ownerVerified: boolean;
+    inserted: boolean;
+    duplicate: boolean;
+    productImageCaptured: boolean;
+  } | null = null;
 
   while (extracted < cli.target_count && clicks < cli.max_clicks) {
     process.stdout.write(
@@ -800,6 +961,8 @@ async function main(): Promise<number> {
     process.stdout.write(`  visible cards: ${cards.length}\n`);
     if (cards.length === 0) {
       finalStatus = 'SUSPENDED';
+      finalStage = 'discover';
+      finalReasonCode = 'NO_PRODUCT_CARDS';
       finalReason = 'no visible product cards';
       break;
     }
@@ -833,6 +996,8 @@ async function main(): Promise<number> {
 
     if (candidates.length === 0) {
       finalStatus = 'SUSPENDED';
+      finalStage = 'discover';
+      finalReasonCode = 'ALL_CARDS_EXHAUSTED';
       finalReason = 'all visible cards exhausted (attempted or pre-click duplicates)';
       break;
     }
@@ -850,6 +1015,8 @@ async function main(): Promise<number> {
     const target = candidates[0];
     if (!target) {
       finalStatus = 'SUSPENDED';
+      finalStage = 'discover';
+      finalReasonCode = 'NO_CANDIDATE_SELECTED';
       finalReason = 'no valid candidate selected';
       break;
     }
@@ -870,20 +1037,78 @@ async function main(): Promise<number> {
     attemptedNames.add(target.name);
     clicks++;
 
-    const clicked = await clickGetLinkButton(page, target.index);
+    finalStage = 'click';
+    let clicked = false;
+    try {
+      clicked = await clickGetLinkButton(page, target.index);
+    } catch (err) {
+      process.stderr.write(`  Error during clickGetLinkButton: ${(err as Error).message}\n`);
+    }
+
+    // Check if the click triggered a CAPTCHA / login verification screen immediately
+    const postClickCaptcha = await detectCaptchaGuard(page);
+    if (postClickCaptcha.detected) {
+      process.stdout.write(
+        `\n⚠️  VFOS WARNING: phát hiện CAPTCHA/Login/Xác minh sau khi click — signals=[${postClickCaptcha.signals.join(', ')}]\n` +
+          `   Hệ thống tạm dừng chờ tối đa ${cli.captcha_wait_seconds}s. Hãy giải thủ công trên cửa sổ browser.\n`,
+      );
+      const wait = await waitForCaptchaResolution(page, {
+        waitSeconds: cli.captcha_wait_seconds,
+        pollIntervalMs: 1000,
+        onTick: ({ secondsElapsed, secondsRemaining, detection }) => {
+          if (detection.detected && secondsElapsed > 0 && secondsElapsed % 5 === 0) {
+            process.stdout.write(
+              `   captcha guard: elapsed=${secondsElapsed}s remaining=${secondsRemaining}s\n`,
+            );
+          }
+        },
+      });
+      if (!wait.cleared) {
+        process.stderr.write(
+          `\n${wait.reason_code}\n  Captcha/login overlay still present after ${wait.waited_seconds}s.\n  Resolve in browser manually.\n`,
+        );
+        finalStatus = 'SUSPENDED';
+        finalStage = 'click';
+        finalReasonCode = wait.reason_code;
+        finalReason = `Xác minh CAPTCHA/Login chưa được giải sau ${wait.waited_seconds}s.`;
+        break;
+      }
+      process.stdout.write(
+        `   captcha guard cleared after ${wait.waited_seconds}s — continuing.\n`,
+      );
+
+      // Navigate/return to catalog page if not there yet
+      if (!page.url().includes('offer/product_offer')) {
+        process.stdout.write('  [CDP] Returning to offer catalog page...\n');
+        await page.goto('https://affiliate.shopee.vn/offer/product_offer');
+        await page.waitForTimeout(3000);
+      }
+      continue; // Restart loop to try discovery again now that captcha is solved
+    }
+
     if (!clicked) {
+      finalReasonCode = 'ERR_LINK_BUTTON_NOT_FOUND';
       process.stderr.write(`  ERR_LINK_BUTTON_NOT_FOUND for index ${target.index}\n`);
       continue;
     }
 
-    await page.waitForTimeout(2500);
-
-    const shortLink = await extractShortLinkFromModal(page);
+    // Small settle wait so the modal mounts, then POLL for the async short link.
+    // The single fixed-wait read was the root cause of false ERR_MODAL_UNRECOGNIZED.
+    finalStage = 'modal_read';
+    await page.waitForTimeout(1000);
+    const shortLink = await readShortLinkFromShopeeModal(page, { timeoutMs: 9000, pollMs: 600 });
 
     if (!shortLink) {
+      finalReasonCode = 'ERR_MODAL_UNRECOGNIZED';
       process.stderr.write('  ERR_MODAL_UNRECOGNIZED — no Shopee URL in modal\n');
-      const details = await inspectModalDetails(page);
-      process.stderr.write(`  [Inspection Details]: ${JSON.stringify(details, null, 2)}\n`);
+      // biome-ignore lint/suspicious/noExplicitAny: details from page inspection
+      let details: any = null;
+      try {
+        details = await inspectModalDetails(page);
+        process.stderr.write(`  [Inspection Details]: ${JSON.stringify(details, null, 2)}\n`);
+      } catch {
+        process.stderr.write('  [Inspection Details]: Failed to inspect modal\n');
+      }
 
       if (cli.dry_run) {
         process.stdout.write('  [dry-run] would appendRejected ERR_MODAL_UNRECOGNIZED\n');
@@ -892,17 +1117,20 @@ async function main(): Promise<number> {
           short_link: null,
           canonical_url: null,
           reason_code: 'ERR_MODAL_UNRECOGNIZED',
-          notes: `modal missing Shopee URL for: ${target.name.slice(0, 80)} | inspect: ${JSON.stringify(details).slice(0, 200)}`,
+          notes: `modal missing Shopee URL for: ${target.name.slice(0, 80)}${details ? ` | inspect: ${JSON.stringify(details).slice(0, 200)}` : ''}`,
         });
         process.stdout.write('  appendRejected (ERR_MODAL_UNRECOGNIZED)\n');
       }
-      await closeModal(page);
+      try {
+        await closeModal(page);
+      } catch {}
       continue;
     }
 
     process.stdout.write(`  short_link: ${shortLink}\n`);
     await closeModal(page);
 
+    finalStage = 'resolve';
     const canonical = await resolveShortLink(shortLink, fetch);
     process.stdout.write(`  canonical : ${canonical ?? '(resolve failed)'}\n`);
 
@@ -922,6 +1150,8 @@ async function main(): Promise<number> {
       consecutivePostResolveDuplicates++;
       if (consecutivePostResolveDuplicates >= 3) {
         finalStatus = 'SUSPENDED';
+        finalStage = 'registry_write';
+        finalReasonCode = 'POST_RESOLVE_DUPLICATE';
         finalReason = '3 consecutive post-resolve duplicates';
         break;
       }
@@ -929,12 +1159,14 @@ async function main(): Promise<number> {
     }
     consecutivePostResolveDuplicates = 0;
 
+    finalStage = 'owner_validate';
     const outcome = classifyResolvedLink(canonical, cli.expected_owner);
     process.stdout.write(`  validation: ${outcome.kind} — ${outcome.notes}\n`);
 
     if (outcome.kind !== 'ACCEPT') {
       const reasonCode =
         outcome.kind === 'REJECT' ? outcome.reason_code : 'ERR_AFFILIATE_OWNER_MISMATCH';
+      finalReasonCode = reasonCode;
       if (cli.dry_run) {
         process.stdout.write(`  [dry-run] would appendRejected ${reasonCode}\n`);
       } else {
@@ -961,6 +1193,8 @@ async function main(): Promise<number> {
       continue;
     }
 
+    finalStage = 'registry_write';
+    const sanitizedImage = sanitizeProductImageUrl(target.image_url) ?? null;
     const upsert = await upsertEntry(registryConfig, {
       product_name: target.name,
       shopid,
@@ -972,16 +1206,28 @@ async function main(): Promise<number> {
       source: 'cdp_browser_targeted_click',
       notes: `score: ${target.score}/10 | criteria: ${target.criteria} | round_27 cli — ${outcome.notes}`,
       // Sanitised at Node boundary — never persist a credential/tracking URL.
-      product_image_url: sanitizeProductImageUrl(target.image_url) ?? null,
+      product_image_url: sanitizedImage,
       // Extra fields for downstream coordinate parsing
       score: target.score,
       criteria: target.criteria,
+      // biome-ignore lint/suspicious/noExplicitAny: type safety bypass for custom attributes
     } as any);
     process.stdout.write(
       `  upsert: inserted=${upsert.inserted} duplicate=${upsert.duplicate} times_seen=${upsert.entry.times_seen}\n`,
     );
     if (upsert.inserted) {
       extracted++;
+      finalStage = 'done';
+      winning = {
+        shortLink,
+        productName: target.name,
+        shopid,
+        itemid,
+        ownerVerified: outcome.kind === 'ACCEPT',
+        inserted: upsert.inserted,
+        duplicate: upsert.duplicate,
+        productImageCaptured: !!sanitizedImage,
+      };
       process.stdout.write(`  ✓ NEW LINK (${extracted}/${cli.target_count})\n`);
     } else {
       process.stdout.write('  duplicate (race with concurrent writer) — try next\n');
@@ -990,26 +1236,60 @@ async function main(): Promise<number> {
 
   if (extracted >= cli.target_count) {
     finalStatus = 'SUCCESS';
+    finalStage = 'done';
+    finalReasonCode = null;
   } else if (finalStatus === 'FAIL') {
     if (clicks === 0) {
       finalStatus = 'SUSPENDED';
+      finalReasonCode = finalReasonCode ?? 'NO_CLICKABLE_PRODUCTS';
       finalReason = 'no clickable products';
     } else if (clicks >= cli.max_clicks) {
       finalStatus = 'SUSPENDED';
+      finalReasonCode = finalReasonCode ?? 'MAX_CLICKS_EXHAUSTED';
       finalReason = `reached max_clicks=${cli.max_clicks} without reaching target_count`;
     } else {
       finalStatus = 'SUSPENDED';
+      finalReasonCode = finalReasonCode ?? 'EXHAUSTED_VISIBLE_PRODUCTS';
       finalReason = finalReason || 'exhausted visible products';
     }
   }
 
   process.stdout.write('\n=== RESULT ===\n');
   process.stdout.write(`  status    : ${finalStatus}\n`);
+  process.stdout.write(`  stage     : ${finalStage}\n`);
+  if (finalReasonCode) process.stdout.write(`  reasonCode: ${finalReasonCode}\n`);
   process.stdout.write(`  extracted : ${extracted}/${cli.target_count}\n`);
   process.stdout.write(`  clicks    : ${clicks}/${cli.max_clicks}\n`);
   if (finalReason) process.stdout.write(`  reason    : ${finalReason}\n`);
   process.stdout.write(`  registry  : ${cli.registry_path}\n`);
   process.stdout.write(`  dry_run   : ${cli.dry_run}\n`);
+
+  // Machine-readable result marker — the single source of truth for the Studio
+  // API. Carries ONLY non-secret, operator-safe fields (no canonical/credential
+  // URL, no cookies/tokens/paths). Parsed by shopee-extract-one-link/route.ts.
+  const resultMarker = {
+    status: finalStatus,
+    stage: finalStage,
+    reasonCode: finalReasonCode,
+    extracted,
+    targetCount: cli.target_count,
+    clicks,
+    maxClicks: cli.max_clicks,
+    dryRun: cli.dry_run,
+    ...(winning
+      ? {
+          shortLink: winning.shortLink,
+          productName: winning.productName,
+          shopid: winning.shopid,
+          itemid: winning.itemid,
+          ownerVerified: winning.ownerVerified,
+          inserted: winning.inserted,
+          duplicate: winning.duplicate,
+          productImageCaptured: winning.productImageCaptured,
+        }
+      : {}),
+  };
+  process.stdout.write(`\nVFOS_RESULT ${JSON.stringify(resultMarker)}\n`);
 
   await browser.close();
   return finalStatus === 'SUCCESS' ? 0 : 1;

@@ -19,6 +19,57 @@ export interface ShopidItemid {
   itemid: string | null;
 }
 
+/** Global matcher for any Shopee URL embedded in free text (modal value/textContent). */
+const SHOPEE_URL_RE_G = /https?:\/\/(?:[a-zA-Z0-9-]+\.)*shopee\.vn\/[^\s'"<>]+/g;
+
+/** Strip trailing punctuation that clings to a URL when copied from modal text. */
+function trimTrailingPunctuation(raw: string): string {
+  return raw.trim().replace(/[)\]'".,;]+$/, "");
+}
+
+/**
+ * True if `url` is a clean Shopee short link (`s.shopee.vn/<code>`) that is safe
+ * to surface to the operator: short host, has a path, and carries NO query
+ * params. The no-query rule is the guard against leaking a canonical/credential
+ * URL (which always carries `gads_t_sig`, `utm_source`, `mmp_pid`, etc.) — those
+ * must never be returned as the "short link".
+ */
+export function isShopeeShortLink(url: string): boolean {
+  let u: URL;
+  try {
+    u = new URL(url);
+  } catch {
+    return false;
+  }
+  if (u.hostname !== "s.shopee.vn") return false;
+  if (u.pathname.length <= 1) return false;
+  return Array.from(u.searchParams.keys()).length === 0;
+}
+
+/**
+ * Extract the Shopee short link (`s.shopee.vn/<code>`) from arbitrary modal text
+ * — a textarea `.value`, an `<input>` value, or the modal's `textContent`.
+ *
+ * This is the pure, browser-free core of the "read link from the Shopee
+ * 'Link Hoa hồng Sản phẩm' modal" fix: the CLI collects raw modal text in the
+ * page context, then this resolves the single short link from it. We do NOT rely
+ * on the clipboard or the "Sao chép Link" button.
+ *
+ * Returns ONLY a clean short link (no query params) so a canonical credential
+ * URL can never be mistaken for the affiliate short link. Returns null if no
+ * short link is present yet (e.g. Shopee is still generating it).
+ */
+export function parseShortLinkFromModalText(text: string | null | undefined): string | null {
+  if (!text) return null;
+  const matches = text.match(SHOPEE_URL_RE_G);
+  if (!matches) return null;
+  for (const raw of matches) {
+    const candidate = trimTrailingPunctuation(raw);
+    if (isShopeeShortLink(candidate)) return candidate;
+  }
+  return null;
+}
+
 /**
  * Extract `shopid` and `itemid` from a Shopee canonical URL.
  *

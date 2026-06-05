@@ -31,36 +31,36 @@
  *     fakes; production wires up real fs/net/child_process implementations.
  */
 
-import { connect, type Socket } from "node:net";
-import { spawn as nodeSpawn } from "node:child_process";
+import { spawn as nodeSpawn } from 'node:child_process';
 import {
+  closeSync,
+  mkdirSync,
   existsSync as nodeExistsSync,
   lstatSync as nodeLstatSync,
-  mkdirSync,
   openSync,
-  closeSync,
-} from "node:fs";
-import { dirname } from "node:path";
+} from 'node:fs';
+import { type Socket, connect } from 'node:net';
+import { dirname } from 'node:path';
 
 export type CdpBootstrapReasonCode =
-  | "ERR_CDP_BROWSER_NOT_FOUND_ON_DISK"
-  | "ERR_CDP_PORT_TIMEOUT_AFTER_LAUNCH"
-  | "ERR_CDP_PROFILE_LOCKED"
-  | "ERR_CDP_USER_DATA_DIR_REQUIRED"
-  | "ERR_CDP_BROWSER_LAUNCH_FAILED";
+  | 'ERR_CDP_BROWSER_NOT_FOUND_ON_DISK'
+  | 'ERR_CDP_PORT_TIMEOUT_AFTER_LAUNCH'
+  | 'ERR_CDP_PROFILE_LOCKED'
+  | 'ERR_CDP_USER_DATA_DIR_REQUIRED'
+  | 'ERR_CDP_BROWSER_LAUNCH_FAILED';
 
 export class CdpBootstrapError extends Error {
   reason_code: CdpBootstrapReasonCode;
   constructor(reason_code: CdpBootstrapReasonCode, message: string) {
     super(message);
     this.reason_code = reason_code;
-    this.name = "CdpBootstrapError";
+    this.name = 'CdpBootstrapError';
   }
 }
 
 /** Outcome of `bootstrapBrowser` */
 export interface BootstrapResult {
-  status: "already_running" | "launched";
+  status: 'already_running' | 'launched';
   browser_path: string | null;
   user_data_dir: string | null;
   port: number;
@@ -110,7 +110,7 @@ export interface BootstrapDeps {
   spawn: (
     cmd: string,
     args: string[],
-    opts: { detached: boolean; stdio: ["ignore", number, number] | "ignore" },
+    opts: { detached: boolean; stdio: ['ignore', number, number] | 'ignore' },
   ) => SpawnHandle;
   openLogFds: (path: string) => { stdout_fd: number; stderr_fd: number; close: () => void };
   sleep: (ms: number) => Promise<void>;
@@ -118,12 +118,12 @@ export interface BootstrapDeps {
   envGet: (key: string) => string | undefined;
 }
 
-const DEFAULT_HOST = "127.0.0.1";
+const DEFAULT_HOST = '127.0.0.1';
 const DEFAULT_PORT = 9222;
 const DEFAULT_PORT_WAIT_TIMEOUT_MS = 15_000;
 const DEFAULT_PORT_POLL_INTERVAL_MS = 1_000;
 const DEFAULT_PORT_PROBE_TIMEOUT_MS = 500;
-const DEFAULT_START_URL = "https://affiliate.shopee.vn/offer/product_offer";
+const DEFAULT_START_URL = 'https://affiliate.shopee.vn/offer/product_offer';
 export const DEFAULT_CAPTCHA_WAIT_SECONDS = 20;
 export const MIN_CAPTCHA_WAIT_SECONDS = 10;
 export const MAX_CAPTCHA_WAIT_SECONDS = 60;
@@ -136,10 +136,10 @@ export const MAX_CAPTCHA_WAIT_SECONDS = 60;
  * if Cốc Cốc is installed at a non-standard location.
  */
 export const DEFAULT_BROWSER_PATHS_WIN32 = [
-  "C:\\Program Files\\CocCoc\\Browser\\Application\\browser.exe",
-  "C:\\Program Files (x86)\\CocCoc\\Browser\\Application\\browser.exe",
+  'C:\\Program Files\\CocCoc\\Browser\\Application\\browser.exe',
+  'C:\\Program Files (x86)\\CocCoc\\Browser\\Application\\browser.exe',
   // %LOCALAPPDATA% expansion happens at runtime in resolveBrowserPath()
-  "%LOCALAPPDATA%\\CocCoc\\Browser\\Application\\browser.exe",
+  '%LOCALAPPDATA%\\CocCoc\\Browser\\Application\\browser.exe',
 ] as const;
 
 /**
@@ -148,7 +148,7 @@ export const DEFAULT_BROWSER_PATHS_WIN32 = [
  * directory either silently joins the running one (defeating debug flag) or
  * crashes (corrupting state). Bail early.
  */
-const PROFILE_LOCK_FILES = ["SingletonLock", "SingletonCookie", "LockFile"] as const;
+const PROFILE_LOCK_FILES = ['SingletonLock', 'SingletonCookie', 'LockFile'] as const;
 
 // ── Real-world default deps ──────────────────────────────────────────────────
 
@@ -164,8 +164,8 @@ export function realProbePort(host: string, port: number, timeoutMs: number): Pr
       } catch {}
       resolveProbe(ok);
     };
-    sock.once("connect", () => done(true));
-    sock.once("error", () => done(false));
+    sock.once('connect', () => done(true));
+    sock.once('error', () => done(false));
     sock.setTimeout(timeoutMs, () => done(false));
   });
 }
@@ -191,7 +191,7 @@ export const realDeps: BootstrapDeps = {
   openLogFds: (path) => {
     const dir = dirname(path);
     if (!nodeExistsSync(dir)) mkdirSync(dir, { recursive: true });
-    const fd = openSync(path, "a");
+    const fd = openSync(path, 'a');
     return {
       stdout_fd: fd,
       stderr_fd: fd,
@@ -229,13 +229,10 @@ export function expandEnvPath(p: string, envGet: (k: string) => string | undefin
  *
  * Throws ERR_CDP_BROWSER_NOT_FOUND_ON_DISK if no candidate exists.
  */
-export function resolveBrowserPath(
-  config: BootstrapConfig,
-  deps: BootstrapDeps,
-): string {
+export function resolveBrowserPath(config: BootstrapConfig, deps: BootstrapDeps): string {
   const candidates: string[] = [];
   if (config.browser_path_override) candidates.push(config.browser_path_override);
-  const envPath = deps.envGet("VFOS_BROWSER_PATH");
+  const envPath = deps.envGet('VFOS_BROWSER_PATH');
   if (envPath) candidates.push(envPath);
   for (const p of DEFAULT_BROWSER_PATHS_WIN32) candidates.push(expandEnvPath(p, deps.envGet));
 
@@ -244,8 +241,8 @@ export function resolveBrowserPath(
   }
 
   throw new CdpBootstrapError(
-    "ERR_CDP_BROWSER_NOT_FOUND_ON_DISK",
-    `Could not find Cốc Cốc. Install Cốc Cốc or set VFOS_BROWSER_PATH to its browser.exe. (Cốc Cốc is the only supported browser for the Shopee Affiliate flow.) Tried: ${candidates.join(", ")}`,
+    'ERR_CDP_BROWSER_NOT_FOUND_ON_DISK',
+    `Could not find Cốc Cốc. Install Cốc Cốc or set VFOS_BROWSER_PATH to its browser.exe. (Cốc Cốc is the only supported browser for the Shopee Affiliate flow.) Tried: ${candidates.join(', ')}`,
   );
 }
 
@@ -264,11 +261,11 @@ export function resolveBrowserPath(
  */
 export function resolveUserDataDir(config: BootstrapConfig, deps: BootstrapDeps): string {
   if (config.user_data_dir_override) return config.user_data_dir_override;
-  const envDir = deps.envGet("VFOS_BROWSER_USER_DATA_DIR");
-  if (envDir && envDir.trim() !== "") return envDir;
+  const envDir = deps.envGet('VFOS_BROWSER_USER_DATA_DIR');
+  if (envDir && envDir.trim() !== '') return envDir;
   throw new CdpBootstrapError(
-    "ERR_CDP_USER_DATA_DIR_REQUIRED",
-    "Set VFOS_BROWSER_USER_DATA_DIR to a Cốc Cốc profile path that already has Shopee logged in. We never spawn a blank profile (login wall) or silently reuse a default profile that may be locked by an open browser window.",
+    'ERR_CDP_USER_DATA_DIR_REQUIRED',
+    'Set VFOS_BROWSER_USER_DATA_DIR to a Cốc Cốc profile path that already has Shopee logged in. We never spawn a blank profile (login wall) or silently reuse a default profile that may be locked by an open browser window.',
   );
 }
 
@@ -283,15 +280,15 @@ export function resolveUserDataDir(config: BootstrapConfig, deps: BootstrapDeps)
  * to a repo-local (gitignored) path.
  */
 export function resolveDefaultUserDataDir(deps: BootstrapDeps): string {
-  const localAppData = deps.envGet("LOCALAPPDATA");
-  if (localAppData && localAppData.trim() !== "") {
-    return `${localAppData.replace(/[\\/]+$/, "")}\\VFOS\\coccoc-cdp-profile`;
+  const localAppData = deps.envGet('LOCALAPPDATA');
+  if (localAppData && localAppData.trim() !== '') {
+    return `${localAppData.replace(/[\\/]+$/, '')}\\VFOS\\coccoc-cdp-profile`;
   }
-  const home = deps.envGet("USERPROFILE") ?? deps.envGet("HOME");
-  if (home && home.trim() !== "") {
-    return `${home.replace(/[\\/]+$/, "")}\\.vfos\\coccoc-cdp-profile`;
+  const home = deps.envGet('USERPROFILE') ?? deps.envGet('HOME');
+  if (home && home.trim() !== '') {
+    return `${home.replace(/[\\/]+$/, '')}\\.vfos\\coccoc-cdp-profile`;
   }
-  return "production/_commerce/coccoc_cdp_profile";
+  return 'production/_commerce/coccoc_cdp_profile';
 }
 
 /**
@@ -301,7 +298,7 @@ export function resolveDefaultUserDataDir(deps: BootstrapDeps): string {
  */
 export function detectProfileLock(userDataDir: string, deps: BootstrapDeps): string | null {
   for (const lockName of PROFILE_LOCK_FILES) {
-    const path = `${userDataDir.replace(/[\\/]+$/, "")}/${lockName}`;
+    const path = `${userDataDir.replace(/[\\/]+$/, '')}/${lockName}`;
     if (deps.fileExists(path)) return path;
   }
   return null;
@@ -326,7 +323,7 @@ export async function bootstrapBrowser(
 
   if (await deps.probePort(host, port, probeTimeout)) {
     return {
-      status: "already_running",
+      status: 'already_running',
       browser_path: null,
       user_data_dir: null,
       port,
@@ -336,7 +333,7 @@ export async function bootstrapBrowser(
 
   if (config.no_auto_launch) {
     throw new CdpBootstrapError(
-      "ERR_CDP_BROWSER_LAUNCH_FAILED",
+      'ERR_CDP_BROWSER_LAUNCH_FAILED',
       `--no-auto-launch was set and ${host}:${port} is not listening`,
     );
   }
@@ -352,7 +349,7 @@ export async function bootstrapBrowser(
     if (
       config.use_default_user_data_dir &&
       err instanceof CdpBootstrapError &&
-      err.reason_code === "ERR_CDP_USER_DATA_DIR_REQUIRED"
+      err.reason_code === 'ERR_CDP_USER_DATA_DIR_REQUIRED'
     ) {
       userDataDir = resolveDefaultUserDataDir(deps);
       deps.ensureDir(userDataDir);
@@ -364,12 +361,12 @@ export async function bootstrapBrowser(
   const lockPath = detectProfileLock(userDataDir, deps);
   if (lockPath) {
     throw new CdpBootstrapError(
-      "ERR_CDP_PROFILE_LOCKED",
+      'ERR_CDP_PROFILE_LOCKED',
       `Profile at ${userDataDir} is locked (${lockPath}). Close the existing browser window using this profile, or set VFOS_BROWSER_USER_DATA_DIR to a dedicated VFOS profile.`,
     );
   }
 
-  const logPath = config.log_path ?? "production/_commerce/cdp_bootstrap.log";
+  const logPath = config.log_path ?? 'production/_commerce/cdp_bootstrap.log';
   let logFds: { stdout_fd: number; stderr_fd: number; close: () => void } | null = null;
   try {
     logFds = deps.openLogFds(logPath);
@@ -380,21 +377,21 @@ export async function bootstrapBrowser(
   const args = [
     `--remote-debugging-port=${port}`,
     `--user-data-dir=${userDataDir}`,
-    "--no-first-run",
-    "--no-default-browser-check",
+    '--no-first-run',
+    '--no-default-browser-check',
     config.start_url ?? DEFAULT_START_URL,
   ];
 
   try {
     const child = deps.spawn(browserPath, args, {
       detached: true,
-      stdio: logFds ? ["ignore", logFds.stdout_fd, logFds.stderr_fd] : "ignore",
+      stdio: logFds ? ['ignore', logFds.stdout_fd, logFds.stderr_fd] : 'ignore',
     });
     child.unref();
   } catch (err) {
     if (logFds) logFds.close();
     throw new CdpBootstrapError(
-      "ERR_CDP_BROWSER_LAUNCH_FAILED",
+      'ERR_CDP_BROWSER_LAUNCH_FAILED',
       `spawn() failed for ${browserPath}: ${(err as Error).message}`,
     );
   }
@@ -407,7 +404,7 @@ export async function bootstrapBrowser(
     if (await deps.probePort(host, port, probeTimeout)) {
       if (logFds) logFds.close();
       return {
-        status: "launched",
+        status: 'launched',
         browser_path: browserPath,
         user_data_dir: userDataDir,
         port,
@@ -418,7 +415,7 @@ export async function bootstrapBrowser(
 
   if (logFds) logFds.close();
   throw new CdpBootstrapError(
-    "ERR_CDP_PORT_TIMEOUT_AFTER_LAUNCH",
+    'ERR_CDP_PORT_TIMEOUT_AFTER_LAUNCH',
     `Browser launched but ${host}:${port} did not start listening within ${totalTimeout}ms. Check ${logPath} for stderr.`,
   );
 }
@@ -442,11 +439,11 @@ export interface CaptchaDetection {
 }
 
 const CAPTCHA_URL_PATTERNS = [
-  "verify.shopee.vn",
-  "shopee.vn/security",
-  "shopee.vn/verify",
-  "/buyer/login",
-  "shopee.vn/account/login",
+  'verify.shopee.vn',
+  'shopee.vn/security',
+  'shopee.vn/verify',
+  '/buyer/login',
+  'shopee.vn/account/login',
 ] as const;
 
 /**
@@ -460,14 +457,14 @@ function captchaDomScript(): string[] {
     'div[class*="captcha"]',
     'iframe[src*="captcha"]',
     'iframe[src*="security"]',
-    ".shopee-popup__container",
+    '.shopee-popup__container',
     'div[role="dialog"][class*="login"]',
   ];
   for (const s of sel) {
     if (document.querySelector(s)) signals.push(`dom:${s}`);
   }
-  const text = (document.body?.innerText ?? "").toLowerCase();
-  for (const kw of ["xác minh", "captcha", "verify", "security check", "đăng nhập"]) {
+  const text = (document.body?.innerText ?? '').toLowerCase();
+  for (const kw of ['xác minh', 'captcha', 'verify', 'security check', 'đăng nhập']) {
     if (text.includes(kw)) signals.push(`text:${kw}`);
   }
   return signals;
@@ -476,9 +473,24 @@ function captchaDomScript(): string[] {
 export async function detectCaptchaGuard(page: CaptchaPage): Promise<CaptchaDetection> {
   const url = page.url();
   const urlMatches = CAPTCHA_URL_PATTERNS.filter((p) => url.includes(p)).map((p) => `url:${p}`);
-  const domMatches = await page.evaluate(captchaDomScript);
-  const signals = [...urlMatches, ...domMatches];
-  return { detected: signals.length > 0, signals };
+  if (urlMatches.length > 0) {
+    return { detected: true, signals: urlMatches };
+  }
+  try {
+    const domMatches = await page.evaluate(captchaDomScript);
+    const signals = [...urlMatches, ...domMatches];
+    return { detected: signals.length > 0, signals };
+  } catch (err) {
+    const msg = (err as Error).message;
+    if (
+      msg.includes('context was destroyed') ||
+      msg.includes('navigation') ||
+      msg.includes('navigating')
+    ) {
+      return { detected: true, signals: ['transient-redirect'] };
+    }
+    throw err;
+  }
 }
 
 export interface CaptchaWaitOptions {
@@ -490,19 +502,23 @@ export interface CaptchaWaitOptions {
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
   /** Optional progress hook (called once per poll). */
-  onTick?: (info: { secondsElapsed: number; secondsRemaining: number; detection: CaptchaDetection }) => void;
+  onTick?: (info: {
+    secondsElapsed: number;
+    secondsRemaining: number;
+    detection: CaptchaDetection;
+  }) => void;
 }
 
 export interface CaptchaWaitResult {
   cleared: boolean;
   signals: string[];
   waited_seconds: number;
-  reason_code: "ERR_CAPTCHA_TIMEOUT" | null;
+  reason_code: 'ERR_CAPTCHA_TIMEOUT' | null;
 }
 
 /** Clamp waitSeconds into the configured min/max range. */
 export function clampCaptchaWaitSeconds(raw: number | undefined): number {
-  const n = typeof raw === "number" && Number.isFinite(raw) ? raw : DEFAULT_CAPTCHA_WAIT_SECONDS;
+  const n = typeof raw === 'number' && Number.isFinite(raw) ? raw : DEFAULT_CAPTCHA_WAIT_SECONDS;
   return Math.max(MIN_CAPTCHA_WAIT_SECONDS, Math.min(MAX_CAPTCHA_WAIT_SECONDS, Math.round(n)));
 }
 
@@ -521,7 +537,7 @@ export async function waitForCaptchaResolution(
 
   const start = nowFn();
   const deadline = start + waitSeconds * 1000;
-  let lastDetection: CaptchaDetection = { detected: true, signals: ["initial"] };
+  let lastDetection: CaptchaDetection = { detected: true, signals: ['initial'] };
 
   while (nowFn() < deadline) {
     lastDetection = await detectCaptchaGuard(page);
@@ -548,6 +564,6 @@ export async function waitForCaptchaResolution(
     cleared: false,
     signals: lastDetection.signals,
     waited_seconds: waitSeconds,
-    reason_code: "ERR_CAPTCHA_TIMEOUT",
+    reason_code: 'ERR_CAPTCHA_TIMEOUT',
   };
 }

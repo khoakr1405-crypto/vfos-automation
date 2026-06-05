@@ -70,6 +70,22 @@ interface RegistryItem {
   price?: string;
 }
 
+// Shape returned by POST /api/studio/commerce/shopee-extract-one-link
+interface ExtractionResult {
+  ok: boolean;
+  status: 'SUCCESS' | 'SUSPENDED' | 'FAIL';
+  message: string;
+  shortLink?: string;
+  productName?: string;
+  shopid?: string;
+  itemid?: string;
+  ownerVerified?: boolean;
+  expectedOwner?: string;
+  productImageCaptured?: boolean;
+  inserted?: boolean;
+  duplicate?: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // biome-ignore lint/style/noDefaultExport: Next.js page requires default export
 export default function ProductReviewLanePage() {
@@ -87,15 +103,8 @@ export default function ProductReviewLanePage() {
   const [confirmPhrase, setConfirmPhrase] = useState('');
   const [isPromoting, setIsPromoting] = useState<string>('');
   const [isExtracting, setIsExtracting] = useState(false);
-  const [extractionResult, setExtractionResult] = useState<{
-    ok: boolean;
-    status: 'SUCCESS' | 'SUSPENDED' | 'FAIL';
-    message: string;
-    shortLink?: string;
-    productName?: string;
-    shopid?: string;
-    itemid?: string;
-  } | null>(null);
+  const [extractionResult, setExtractionResult] = useState<ExtractionResult | null>(null);
+  const [highlightShortLink, setHighlightShortLink] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
@@ -170,27 +179,29 @@ export default function ProductReviewLanePage() {
     setErrorMessage('');
     setSuccessMessage('');
     setExtractionResult(null);
+    setHighlightShortLink('');
     try {
       const res = await fetch('/api/studio/commerce/shopee-extract-one-link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ confirmPhrase }),
       });
-      const data = await res.json();
+      const data = (await res.json()) as ExtractionResult;
       setExtractionResult(data);
       if (data.ok) {
-        setSuccessMessage(`Đã trích xuất thành công: ${data.productName || 'Sản phẩm mới'}`);
-        // Reload registry to show the new item
+        // Refresh registry picker so the new link shows up, then highlight it.
+        // KHÔNG tạo job, KHÔNG render, KHÔNG publish — chỉ làm giàu kho link.
         const registryRes = await fetch('/api/studio/commerce/shopee-registry').then((r) =>
           r.json(),
         );
         if (registryRes.ok) {
           setRegistry(registryRes.items ?? []);
         }
+        if (data.shortLink) setHighlightShortLink(data.shortLink);
         setConfirmPhrase('');
-      } else {
-        setErrorMessage(data.message || 'Trích xuất thất bại.');
       }
+      // SUSPENDED / FAIL: khu "Kết quả lấy link mới" hiển thị chi tiết + hướng dẫn,
+      // không dùng banner đỏ gây hiểu nhầm là lỗi hệ thống.
     } catch {
       setErrorMessage('Lỗi hệ thống khi trích xuất.');
     } finally {
@@ -325,60 +336,72 @@ export default function ProductReviewLanePage() {
               </p>
             ) : (
               <div className="divide-y divide-hairline/40 max-h-60 overflow-y-auto pr-1">
-                {verifiedRegistryItems.map((item) => (
-                  <div
-                    key={item.shortLink}
-                    className="flex items-start justify-between py-2.5 gap-3"
-                  >
-                    <div className="flex gap-2.5 min-w-0 flex-1">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded border border-hairline bg-gradient-to-br from-raised to-panel">
-                        {item.productImageUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={item.productImageUrl}
-                            alt={item.productName}
-                            className="h-full w-full object-contain"
-                          />
-                        ) : (
-                          <Icon name="rawvisual" width={16} height={16} />
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1 space-y-1">
-                        <p className="text-xs font-medium text-neutral-200 truncate">
-                          {item.productName}
-                        </p>
-                        <div className="flex flex-wrap gap-1 items-center">
-                          {item.score !== undefined && (
-                            <span className="rounded bg-cyan-950/40 text-cyan-400 border border-cyan-500/20 px-1 text-[9px]">
-                              score {item.score}
-                            </span>
+                {verifiedRegistryItems.map((item) => {
+                  const isNew = highlightShortLink !== '' && item.shortLink === highlightShortLink;
+                  return (
+                    <div
+                      key={item.shortLink}
+                      className={`flex items-start justify-between py-2.5 gap-3 ${
+                        isNew
+                          ? 'rounded-md border border-accent-green/40 bg-accent-green/10 px-2'
+                          : ''
+                      }`}
+                    >
+                      <div className="flex gap-2.5 min-w-0 flex-1">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded border border-hairline bg-gradient-to-br from-raised to-panel">
+                          {item.productImageUrl ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={item.productImageUrl}
+                              alt={item.productName}
+                              className="h-full w-full object-contain"
+                            />
+                          ) : (
+                            <Icon name="rawvisual" width={16} height={16} />
                           )}
-                          {item.commissionRate && (
-                            <span className="rounded bg-violet-950/40 text-violet-400 border border-violet-500/20 px-1 text-[9px]">
-                              {item.commissionRate}
+                        </div>
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <p className="text-xs font-medium text-neutral-200 truncate">
+                            {isNew && (
+                              <span className="mr-1 rounded border border-accent-green/30 bg-accent-green/20 px-1 text-[9px] align-middle text-accent-green">
+                                Mới
+                              </span>
+                            )}
+                            {item.productName}
+                          </p>
+                          <div className="flex flex-wrap gap-1 items-center">
+                            {item.score !== undefined && (
+                              <span className="rounded bg-cyan-950/40 text-cyan-400 border border-cyan-500/20 px-1 text-[9px]">
+                                score {item.score}
+                              </span>
+                            )}
+                            {item.commissionRate && (
+                              <span className="rounded bg-violet-950/40 text-violet-400 border border-violet-500/20 px-1 text-[9px]">
+                                {item.commissionRate}
+                              </span>
+                            )}
+                            {item.price && (
+                              <span className="rounded bg-blue-950/40 text-blue-400 border border-blue-500/20 px-1 text-[9px]">
+                                {item.price}
+                              </span>
+                            )}
+                            <span className="font-mono text-[9px] text-neutral-400 truncate max-w-[120px]">
+                              {item.shortLink}
                             </span>
-                          )}
-                          {item.price && (
-                            <span className="rounded bg-blue-950/40 text-blue-400 border border-blue-500/20 px-1 text-[9px]">
-                              {item.price}
-                            </span>
-                          )}
-                          <span className="font-mono text-[9px] text-neutral-400 truncate max-w-[120px]">
-                            {item.shortLink}
-                          </span>
+                          </div>
                         </div>
                       </div>
+                      <Button
+                        variant={isPromoting === item.shortLink ? 'primary' : 'outline'}
+                        disabled={isPromoting !== '' || isExtracting}
+                        onClick={() => handlePromote(item.shortLink)}
+                        className="shrink-0 !py-1 !px-2 text-[10px]"
+                      >
+                        {isPromoting === item.shortLink ? 'Đang chọn...' : 'Dùng sản phẩm này'}
+                      </Button>
                     </div>
-                    <Button
-                      variant={isPromoting === item.shortLink ? 'primary' : 'outline'}
-                      disabled={isPromoting !== '' || isExtracting}
-                      onClick={() => handlePromote(item.shortLink)}
-                      className="shrink-0 !py-1 !px-2 text-[10px]"
-                    >
-                      {isPromoting === item.shortLink ? 'Đang chọn...' : 'Dùng sản phẩm này'}
-                    </Button>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -400,40 +423,6 @@ export default function ProductReviewLanePage() {
               </div>
             </div>
 
-            {extractionResult && (
-              <div
-                className={`p-2.5 rounded text-xs border ${
-                  extractionResult.status === 'SUCCESS'
-                    ? 'bg-accent-green/10 border-accent-green/30 text-accent-green'
-                    : extractionResult.status === 'SUSPENDED'
-                      ? 'bg-accent-amber/10 border-accent-amber/30 text-accent-amber'
-                      : 'bg-accent-rose/10 border-accent-rose/30 text-accent-rose'
-                }`}
-              >
-                <p className="font-semibold mb-1">Kết quả: {extractionResult.status}</p>
-                <p className="text-[11px] text-neutral-300">{extractionResult.message}</p>
-                {extractionResult.productName && (
-                  <p className="mt-1 text-[11px]">
-                    Sản phẩm:{' '}
-                    <span className="text-neutral-100 font-medium">
-                      {extractionResult.productName}
-                    </span>
-                  </p>
-                )}
-                {extractionResult.shortLink && (
-                  <p className="text-[10px] font-mono mt-0.5 text-accent-blue">
-                    {extractionResult.shortLink}
-                  </p>
-                )}
-                {extractionResult.status === 'SUCCESS' && (
-                  <p className="mt-2 text-[10px] text-accent-green font-medium">
-                    ✓ Link mới đã được lưu vào registry. Nhấn "Chọn từ kho link" bên dưới để sử dụng
-                    sản phẩm này.
-                  </p>
-                )}
-              </div>
-            )}
-
             <form
               onSubmit={handleExtract}
               className="flex flex-col gap-2.5 sm:flex-row sm:items-end"
@@ -443,10 +432,13 @@ export default function ProductReviewLanePage() {
                   htmlFor="confirmPhraseInput"
                   className="block text-[10px] text-neutral-400 font-medium mb-1"
                 >
-                  Nhập cụm xác nhận:{' '}
+                  Nhập cụm xác nhận để chạy:{' '}
                   <code className="bg-neutral-800 px-1 py-0.5 rounded text-neutral-200">
                     GET 1 SHOPEE LINK
                   </code>
+                  <span className="ml-1 text-neutral-500">
+                    (đây là ô xác nhận, không phải ô link)
+                  </span>
                 </label>
                 <input
                   id="confirmPhraseInput"
@@ -468,6 +460,7 @@ export default function ProductReviewLanePage() {
                     setShowExtractor(false);
                     setConfirmPhrase('');
                     setExtractionResult(null);
+                    setHighlightShortLink('');
                   }}
                   className="!py-1.5 !px-2.5 text-[11px]"
                 >
@@ -490,6 +483,22 @@ export default function ProductReviewLanePage() {
                 </Button>
               </div>
             </form>
+
+            {/* ===== Khu kết quả lấy link mới (tách riêng khỏi ô xác nhận) ===== */}
+            {extractionResult && (
+              <ExtractionResultBox
+                result={extractionResult}
+                inRegistry={
+                  !!extractionResult.shortLink &&
+                  registry.some((i) => i.shortLink === extractionResult.shortLink)
+                }
+                isPromoting={isPromoting === extractionResult.shortLink}
+                promoteDisabled={isPromoting !== '' || isExtracting}
+                onUseProduct={() => {
+                  if (extractionResult.shortLink) handlePromote(extractionResult.shortLink);
+                }}
+              />
+            )}
           </div>
         )}
 
@@ -849,4 +858,125 @@ function NoticeBox({ accent, children }: { accent: 'amber' | 'rose'; children: R
       ? 'border-accent-amber/30 bg-accent-amber/10 text-accent-amber'
       : 'border-accent-rose/30 bg-accent-rose/10 text-accent-rose';
   return <div className={`rounded-lg border px-3 py-2 text-[11px] ${cls}`}>{children}</div>;
+}
+
+/** Một dòng nhãn: giá trị trong khu kết quả lấy link. */
+function ResultRow({
+  label,
+  value,
+  mono = false,
+}: { label: string; value?: string; mono?: boolean }) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <dt className="shrink-0 text-neutral-500">{label}</dt>
+      <dd
+        className={`text-right break-all text-neutral-200 ${mono ? 'font-mono text-[10px]' : ''}`}
+      >
+        {value ?? '—'}
+      </dd>
+    </div>
+  );
+}
+
+/**
+ * Khu hiển thị kết quả của /api/studio/commerce/shopee-extract-one-link.
+ * TÁCH RIÊNG khỏi ô nhập cụm xác nhận để Operator không nhầm ô confirm với ô link.
+ * SUCCESS → chi tiết link + nút dùng sản phẩm. SUSPENDED → hướng dẫn xử lý tay.
+ * FAIL → message đã sanitize từ API. KHÔNG tạo job / render / publish.
+ */
+function ExtractionResultBox({
+  result,
+  inRegistry,
+  isPromoting,
+  promoteDisabled,
+  onUseProduct,
+}: {
+  result: ExtractionResult;
+  inRegistry: boolean;
+  isPromoting: boolean;
+  promoteDisabled: boolean;
+  onUseProduct: () => void;
+}) {
+  return (
+    <div className="space-y-2.5 rounded-lg border border-hairline bg-panel/60 p-3">
+      <div className="flex items-center justify-between border-b border-hairline/60 pb-2">
+        <span className="text-xs font-semibold text-neutral-200">Kết quả lấy link mới</span>
+        <span className="font-mono text-[9px] text-neutral-500">shopee-extract-one-link</span>
+      </div>
+
+      {result.status === 'SUCCESS' ? (
+        <div className="space-y-2.5">
+          <p className="text-xs font-semibold text-accent-green">✅ Đã lấy link Shopee mới</p>
+
+          <dl className="space-y-1.5 text-[11px]">
+            <ResultRow label="Tên sản phẩm" value={result.productName} />
+            <ResultRow label="Short link" value={result.shortLink} mono />
+            <ResultRow
+              label="shopid / itemid"
+              value={
+                result.shopid && result.itemid ? `${result.shopid} / ${result.itemid}` : undefined
+              }
+              mono
+            />
+          </dl>
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            <StatusChip accent={result.ownerVerified ? 'green' : 'rose'}>
+              owner {result.ownerVerified ? 'OK' : 'mismatch'}
+            </StatusChip>
+            <StatusChip accent={result.inserted ? 'green' : result.duplicate ? 'blue' : 'amber'}>
+              {result.inserted
+                ? 'mới thêm registry'
+                : result.duplicate
+                  ? 'đã có sẵn (duplicate)'
+                  : 'không thay đổi registry'}
+            </StatusChip>
+            <StatusChip accent={result.productImageCaptured ? 'green' : 'amber'}>
+              ảnh {result.productImageCaptured ? 'đã chụp' : 'chưa có'}
+            </StatusChip>
+          </div>
+
+          <p className="text-[10px] text-neutral-500">
+            Owner mong đợi:{' '}
+            <span className="font-mono text-neutral-300">
+              {result.expectedOwner ?? 'an_17376660568'}
+            </span>
+          </p>
+
+          {inRegistry && result.shortLink && (
+            <Button
+              variant="success"
+              disabled={promoteDisabled}
+              onClick={onUseProduct}
+              className="!py-1.5 !px-3 text-[11px]"
+            >
+              {isPromoting ? 'Đang chọn...' : 'Dùng sản phẩm này'}
+            </Button>
+          )}
+
+          <p className="border-t border-hairline/40 pt-2 text-[10px] leading-relaxed text-neutral-500">
+            Link mới đã lưu vào kho link và được đánh dấu “Mới” trong picker. KHÔNG tạo job, KHÔNG
+            render, KHÔNG publish — chọn sản phẩm rồi tiếp tục ở Hành động 2.
+          </p>
+        </div>
+      ) : result.status === 'SUSPENDED' ? (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-accent-amber">
+            ⚠️ SUSPENDED — cần Operator xử lý
+          </p>
+          <p className="text-[11px] leading-relaxed text-neutral-300">{result.message}</p>
+          <p className="border-t border-hairline/40 pt-2 text-[11px] leading-relaxed text-neutral-400">
+            Hệ thống đã dừng an toàn. Mở Cốc Cốc, xử lý <strong>login / CAPTCHA / OTP</strong> trên
+            Shopee Affiliate cho tới khi vào được trang lấy link, rồi bấm{' '}
+            <strong>“Xác nhận &amp; Chạy”</strong> lại. Không tạo job, không render, không publish.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-accent-rose">❌ FAIL</p>
+          <p className="text-[11px] leading-relaxed text-neutral-300">{result.message}</p>
+        </div>
+      )}
+    </div>
+  );
 }
