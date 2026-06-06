@@ -132,6 +132,15 @@ export default function ProductReviewLanePage() {
   const [submittingApprove, setSubmittingApprove] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  // Round C3 states (Action 2 — chạy sản xuất video)
+  const [showRunConfirm, setShowRunConfirm] = useState(false);
+  const [runConfirmInput, setRunConfirmInput] = useState('');
+  const [submittingRun, setSubmittingRun] = useState(false);
+  const [runNotice, setRunNotice] = useState<string | null>(null);
+  const [runStage, setRunStage] = useState<string | null>(null);
+  const [runReport, setRunReport] = useState<string | null>(null);
+  const [productionLaunched, setProductionLaunched] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -342,6 +351,57 @@ export default function ProductReviewLanePage() {
     }
   };
 
+  // Round C3 — chạy pipeline sản xuất video (script→voice→BGM→render→caption→QA)
+  const handleRunProduction = async (jobId: string, dryRun: boolean) => {
+    if (!dryRun && runConfirmInput !== 'RUN PRODUCTION') {
+      setActionError('Cụm từ xác nhận không khớp. Nhập đúng "RUN PRODUCTION".');
+      return;
+    }
+    setSubmittingRun(true);
+    setActionError(null);
+    setRunNotice(null);
+    setRunReport(null);
+    try {
+      const res = await fetch(`/api/studio/jobs/${jobId}/run-production`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(dryRun ? { dryRun: true } : { confirmPhrase: runConfirmInput }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setRunConfirmInput('');
+        setShowRunConfirm(false);
+        setRunStage(data.status ?? null);
+        setRunReport(data.reportSummary ?? null);
+        setRunNotice(data.message ?? (dryRun ? 'Dry-run thành công.' : 'Đã khởi chạy sản xuất.'));
+        if (!dryRun) setProductionLaunched(true);
+        await load();
+      } else {
+        setRunStage(data.reasonCode ? `${data.status ?? 'FAILED'} · ${data.reasonCode}` : null);
+        setRunReport(data.reportSummary ?? null);
+        setActionError(data.message || 'Chạy sản xuất video thất bại.');
+      }
+    } catch {
+      setActionError('Lỗi kết nối đến API server.');
+    } finally {
+      setSubmittingRun(false);
+    }
+  };
+
+  // Poll job state trong lúc pipeline chạy nền cho tới khi tới trạng thái terminal.
+  useEffect(() => {
+    if (!productionLaunched) return;
+    const terminal = ['READY_FOR_OPERATOR_REVIEW', 'APPROVED', 'PACKAGED', 'FAILED', 'REJECTED'];
+    if (latestJob && terminal.includes(latestJob.state)) {
+      setProductionLaunched(false);
+      return;
+    }
+    const timer = setInterval(() => {
+      load();
+    }, 6000);
+    return () => clearInterval(timer);
+  }, [productionLaunched, latestJob, load]);
+
   // ---- Action 1 handlers ---------------------------------------------------
   const handlePromote = async (shortLink: string) => {
     setIsPromoting(shortLink);
@@ -432,6 +492,17 @@ export default function ProductReviewLanePage() {
     latestJob?.state === 'APPROVED' ||
     latestJob?.state === 'PACKAGED';
 
+  // Round C3 — production gates derived from real job state
+  const sourceApproved = latestJob?.cleanlinessStatus === 'WATERMARK_NOT_DETECTED';
+  const productionRunning =
+    productionLaunched ||
+    latestJob?.state === 'READY_TO_RENDER' ||
+    latestJob?.state === 'RENDERING';
+  const productionDone =
+    latestJob?.state === 'READY_FOR_OPERATOR_REVIEW' ||
+    latestJob?.state === 'APPROVED' ||
+    latestJob?.state === 'PACKAGED';
+
   // Filter registry to verified items & latest 10
   const verifiedRegistryItems = registry.filter((item) => item.ownerVerified).slice(0, 10);
 
@@ -449,9 +520,10 @@ export default function ProductReviewLanePage() {
       <div className="flex items-center gap-2 rounded-xl border border-hairline bg-raised/30 px-3.5 py-2 text-[11px] text-neutral-400">
         <UtilIcon name="clock" width={13} height={13} className="text-neutral-500" />
         <span>
-          <strong className="text-neutral-300">Hoạt động Action 1.</strong> Kho link Shopee đã wire.
-          Trích xuất link qua CDP hoạt động thật (cần confirm phrase). Action 2 & 3 tiếp tục wire ở
-          round sau.
+          <strong className="text-neutral-300">Action 1 & 2 đã wire.</strong> Action 1: kho link
+          Shopee + trích xuất CDP. Action 2: nguồn → clean source → duyệt sạch → chạy sản xuất video
+          (script→voice→BGM→render→caption→QA) ngay trong Command Center. Action 3 (đóng gói/đăng
+          bài) tiếp tục wire ở round sau.
         </span>
       </div>
 
@@ -1216,12 +1288,177 @@ export default function ProductReviewLanePage() {
           </div>
         </div>
 
-        <PanelActions>
-          <ComingNext round="D" primary>
-            Chạy sản xuất video
-          </ComingNext>
-          <ComingNext round="D">Xem tiến độ</ComingNext>
-        </PanelActions>
+        {/* Bước 3–7 — Chạy sản xuất video (Round C3) */}
+        <div className="rounded-lg border border-hairline bg-raised/30 p-3 space-y-3">
+          <div className="flex items-center justify-between border-b border-hairline/60 pb-2">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+              Bước 3–7 — Sản xuất video (Script · Voice · BGM · Render · QA)
+            </span>
+            {runStage && <span className="font-mono text-[10px] text-neutral-400">{runStage}</span>}
+          </div>
+
+          {/* QA result inline — QA luôn nằm TRONG Action 2 */}
+          {latestJob?.qaStatus && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <StatusChip
+                accent={
+                  latestJob.qaStatus === 'PASS'
+                    ? 'green'
+                    : latestJob.qaStatus === 'FAIL'
+                      ? 'rose'
+                      : 'amber'
+                }
+              >
+                QA: {latestJob.qaStatus}
+              </StatusChip>
+              {latestJob.hasPreview && <StatusChip accent="green">có preview</StatusChip>}
+            </div>
+          )}
+
+          {!latestJob ? (
+            <p className="text-[11px] text-neutral-500">
+              Tạo job + duyệt nguồn sạch (Bước 1–2) để mở bước sản xuất.
+            </p>
+          ) : !sourceApproved ? (
+            <NoticeBox accent="amber">
+              Cần duyệt nguồn sạch (Bước 2 → WATERMARK_NOT_DETECTED) trước khi chạy sản xuất video.
+            </NoticeBox>
+          ) : productionDone ? (
+            <div className="space-y-2">
+              <p className="flex items-center gap-1 text-xs font-semibold text-accent-green">
+                <span>✓</span> Video đã sản xuất — {latestJob.statusLabel}.
+              </p>
+              {latestJob.previewUrl && (
+                <a
+                  href={latestJob.previewUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-block text-[11px] text-accent-blue underline"
+                >
+                  Mở preview video
+                </a>
+              )}
+              <div className="pt-1">
+                <Button
+                  variant="outline"
+                  className="!py-1 !px-2.5 text-[10px]"
+                  onClick={() => load()}
+                  disabled={loading}
+                >
+                  Làm mới trạng thái
+                </Button>
+              </div>
+            </div>
+          ) : productionRunning ? (
+            <div className="space-y-2">
+              <p className="flex items-center gap-1.5 text-xs font-semibold text-accent-cyan">
+                <span className="h-3 w-3 animate-spin rounded-full border border-accent-cyan border-t-transparent" />
+                Đang sản xuất video… (script → voice → BGM → render → caption → QA)
+              </p>
+              <p className="text-[10px] text-neutral-500">
+                Pipeline chạy nền vài phút. Trạng thái tự cập nhật, hoặc bấm làm mới.
+              </p>
+              <Button
+                variant="outline"
+                className="!py-1 !px-2.5 text-[10px]"
+                onClick={() => load()}
+                disabled={loading}
+              >
+                Làm mới trạng thái
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              <p className="text-xs text-neutral-400">
+                Nguồn đã duyệt sạch. Chạy pipeline sản xuất từ clean source đã duyệt (không nhảy
+                route kỹ thuật).
+              </p>
+              {!showRunConfirm ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="success"
+                    className="!py-1.5 !px-3 text-[11px] bg-accent-violet hover:bg-accent-violet text-white border-none font-semibold"
+                    onClick={() => {
+                      setShowRunConfirm(true);
+                      setRunConfirmInput('');
+                      setActionError(null);
+                    }}
+                    disabled={submittingRun}
+                  >
+                    Chạy sản xuất video
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="!py-1.5 !px-3 text-[11px]"
+                    onClick={() => handleRunProduction(latestJob.id, true)}
+                    disabled={submittingRun}
+                  >
+                    {submittingRun ? 'Đang chạy thử…' : 'Chạy thử (dry-run)'}
+                  </Button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2.5 sm:flex-row sm:items-end">
+                  <div className="flex-1 min-w-0">
+                    <label
+                      htmlFor="runConfirmInput"
+                      className="block text-[10px] text-neutral-400 font-medium mb-1"
+                    >
+                      Nhập cụm xác nhận để chạy:{' '}
+                      <code className="bg-neutral-800 px-1 py-0.5 rounded text-neutral-200">
+                        RUN PRODUCTION
+                      </code>
+                    </label>
+                    <input
+                      id="runConfirmInput"
+                      type="text"
+                      required
+                      disabled={submittingRun}
+                      value={runConfirmInput}
+                      onChange={(e) => setRunConfirmInput(e.target.value)}
+                      placeholder="RUN PRODUCTION"
+                      className="w-full rounded-lg border border-hairline bg-panel px-3 py-1.5 text-xs text-neutral-200 focus:outline-none focus:border-accent-violet disabled:opacity-50"
+                    />
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      disabled={submittingRun}
+                      onClick={() => {
+                        setShowRunConfirm(false);
+                        setRunConfirmInput('');
+                        setActionError(null);
+                      }}
+                      className="!py-1.5 !px-2.5 text-[11px]"
+                    >
+                      Hủy
+                    </Button>
+                    <Button
+                      variant="success"
+                      disabled={submittingRun || runConfirmInput !== 'RUN PRODUCTION'}
+                      onClick={() => handleRunProduction(latestJob.id, false)}
+                      className="!py-1.5 !px-3 text-[11px] bg-accent-violet hover:bg-accent-violet text-white border-none font-semibold disabled:opacity-30"
+                    >
+                      {submittingRun ? 'Đang khởi chạy…' : 'Xác nhận chạy'}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {runNotice && <p className="text-[10px] text-accent-green">{runNotice}</p>}
+          {runReport && (
+            <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded border border-hairline/60 bg-panel/40 p-2 text-[9px] leading-relaxed text-neutral-400">
+              {runReport}
+            </pre>
+          )}
+
+          <PanelActions>
+            <DebugLink href="/render?lane=product-review">Xem tiến độ render (debug)</DebugLink>
+            <DebugLink href="/qa?lane=product-review">Xem QA (debug)</DebugLink>
+          </PanelActions>
+        </div>
 
         <GateHint
           ok={!!jobApproved}

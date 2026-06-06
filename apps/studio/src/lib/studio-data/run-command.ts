@@ -11,7 +11,8 @@
  * Đây đúng cách `pnpm <script>` gọi tới (package.json map `tsx scripts/...`).
  * ========================================================================== */
 
-import { type SpawnSyncReturns, spawnSync } from 'node:child_process';
+import { type SpawnSyncReturns, spawn, spawnSync } from 'node:child_process';
+import { closeSync, openSync } from 'node:fs';
 import { repoRoot, resolveInsideRepo } from './paths';
 
 const TSX_CLI_REL = 'node_modules/tsx/dist/cli.mjs';
@@ -31,4 +32,39 @@ export function runRepoScript(scriptRelPath: string, args: string[]): SpawnSyncR
     timeout: 120_000,
     maxBuffer: 1024 * 1024,
   });
+}
+
+/**
+ * Khởi chạy một script TS NỀN (detached), trả về ngay không chờ kết thúc.
+ * WHY: pipeline sản xuất video (script→voice→BGM→render→caption→QA) chạy vài phút,
+ * vượt timeout 120s của runRepoScript và sẽ làm treo route handler. Detached + unref
+ * cho process chạy độc lập; UI poll lại job state từ manifest sau đó.
+ * stdio ghi vào 1 file log (runtime gitignored). shell:false + argv mảng ⇒ an toàn
+ * injection như runRepoScript.
+ * @param logAbsPath đường dẫn tuyệt đối file log (đã resolveInsideRepo ở route)
+ */
+export function runRepoScriptDetached(
+  scriptRelPath: string,
+  args: string[],
+  logAbsPath: string,
+): { pid: number | undefined } {
+  const tsxCli = resolveInsideRepo(TSX_CLI_REL) ?? TSX_CLI_REL;
+  const logFd = openSync(logAbsPath, 'a');
+  try {
+    const child = spawn(process.execPath, [tsxCli, scriptRelPath, ...args], {
+      cwd: repoRoot(),
+      env: { ...process.env },
+      shell: false,
+      detached: true,
+      stdio: ['ignore', logFd, logFd],
+    });
+    const pid = child.pid;
+    child.unref();
+    return { pid };
+  } finally {
+    // child giữ bản sao fd của riêng nó; đóng fd phía parent để không leak handle.
+    try {
+      closeSync(logFd);
+    } catch {}
+  }
 }
