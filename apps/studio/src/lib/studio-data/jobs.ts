@@ -85,6 +85,7 @@ interface RegistryEntry {
   captionedPreviewPath?: string | null;
   operatorDecision?: 'PENDING' | 'APPROVED' | 'REJECTED';
   updatedAt?: string;
+  sourceVideoUrl?: string | null;
 }
 
 interface ManifestArtifacts {
@@ -104,7 +105,9 @@ interface Manifest {
   source?: {
     productCardPath?: string | null;
     sourceVideoPath?: string | null;
+    approvedSourceVideoPath?: string | null;
     cleanlinessStatus?: string | null;
+    sourceVideoUrl?: string | null;
   };
   artifacts?: ManifestArtifacts;
   state?: string;
@@ -119,6 +122,10 @@ interface Manifest {
 interface ProductCard {
   affiliateOwnerId?: string | null;
   validationStatus?: string | null;
+  shortLink?: string | null;
+  shopId?: string | null;
+  itemId?: string | null;
+  name?: string | null;
 }
 
 // ---- safe JSON read (never throws) -----------------------------------------
@@ -223,6 +230,14 @@ function buildJobDTO(entry: RegistryEntry): OperatorJobDTO {
   const ownerId = card?.affiliateOwnerId ?? null;
   const ownerValid = ownerId === EXPECTED_OWNER && card?.validationStatus === 'VERIFIED';
 
+  // Identity của product ĐÃ BIND vào job (snapshot trong job_dir). Source of truth
+  // cho Action 2 — KHÔNG phải global selected card.
+  const productBinding = {
+    shortLink: card?.shortLink ? String(card.shortLink) : null,
+    shopId: card?.shopId ? String(card.shopId) : null,
+    itemId: card?.itemId ? String(card.itemId) : null,
+  };
+
   const qaStatus = resolveQa(manifest);
 
   // Pipeline gates — downstream artifact implies upstream done (tránh false-warn
@@ -272,6 +287,13 @@ function buildJobDTO(entry: RegistryEntry): OperatorJobDTO {
     statusLabel,
     statusAccent,
     cleanlinessStatus: cleanliness,
+    sourceVideoPath:
+      manifest?.source?.approvedSourceVideoPath ??
+      manifest?.source?.sourceVideoPath ??
+      entry.sourceVideoPath ??
+      null,
+    sourceVideoUrl: manifest?.source?.sourceVideoUrl ?? entry.sourceVideoUrl ?? null,
+    productBinding,
     operatorDecision: manifest?.review?.operatorDecision ?? entry.operatorDecision ?? 'PENDING',
     qaStatus,
     canReview,

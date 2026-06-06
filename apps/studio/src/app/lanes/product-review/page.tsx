@@ -362,10 +362,19 @@ export default function ProductReviewLanePage() {
     setRunNotice(null);
     setRunReport(null);
     try {
+      // Gửi product đang chọn ở Action 1 để server đối chiếu với binding của job
+      // (chống "chọn sản phẩm A nhưng job đang là B"). Server tự load card thật.
+      const expectedProduct = card
+        ? { shortLink: card.shortLink, shopId: card.shopId, itemId: card.itemId }
+        : undefined;
       const res = await fetch(`/api/studio/jobs/${jobId}/run-production`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(dryRun ? { dryRun: true } : { confirmPhrase: runConfirmInput }),
+        body: JSON.stringify(
+          dryRun
+            ? { dryRun: true, expectedProduct }
+            : { confirmPhrase: runConfirmInput, expectedProduct },
+        ),
       });
       const data = await res.json();
       if (res.ok && data.ok) {
@@ -491,6 +500,21 @@ export default function ProductReviewLanePage() {
     latestJob?.operatorDecision === 'APPROVED' ||
     latestJob?.state === 'APPROVED' ||
     latestJob?.state === 'PACKAGED';
+
+  // Product binding coherence: Product Card đang chọn ở Action 1 có khớp sản phẩm
+  // ĐÃ BIND vào job hiện tại (Action 2) không. Job mang binding riêng (snapshot lúc
+  // tạo), nên global card có thể lệch nếu Operator chọn sản phẩm khác mà chưa tạo job.
+  const jobBinding = latestJob?.productBinding ?? null;
+  const cardMatchesJob =
+    !!card &&
+    !!jobBinding &&
+    ((!!card.shopId &&
+      !!card.itemId &&
+      card.shopId === jobBinding.shopId &&
+      card.itemId === jobBinding.itemId) ||
+      (!!card.shortLink && card.shortLink === jobBinding.shortLink));
+  // Mismatch chỉ "thật" khi có cả card lẫn job nhưng identity khác nhau.
+  const cardJobMismatch = !!card && !!latestJob && !cardMatchesJob;
 
   // Round C3 — production gates derived from real job state
   const sourceApproved = latestJob?.cleanlinessStatus === 'WATERMARK_NOT_DETECTED';
@@ -811,11 +835,23 @@ export default function ProductReviewLanePage() {
           <DebugLink href="/products?lane=product-review">Mở kho sản phẩm (debug)</DebugLink>
         </PanelActions>
 
-        <GateHint
-          ok={cardReady}
-          okText="Product Card hợp lệ → mở Hành động 2"
-          waitText="Cần Product Card đúng owner để mở Hành động 2"
-        />
+        {cardReady && cardJobMismatch ? (
+          <NoticeBox accent="rose">
+            Product Card hợp lệ nhưng KHÁC sản phẩm của job hiện tại ở Hành động 2 (
+            <strong>{latestJob?.product}</strong>). Tạo job mới cho sản phẩm này, hoặc chọn lại sản
+            phẩm khớp job — sản xuất đang khoá để tránh chạy nhầm.
+          </NoticeBox>
+        ) : (
+          <GateHint
+            ok={cardReady}
+            okText={
+              latestJob && cardMatchesJob
+                ? 'Product Card khớp job hiện tại → Hành động 2 sẵn sàng'
+                : 'Product Card hợp lệ → tạo job ở Hành động 2'
+            }
+            waitText="Cần Product Card đúng owner để mở Hành động 2"
+          />
+        )}
       </ActionPanel>
 
       {/* ===================== HÀNH ĐỘNG 2 ===================== */}
@@ -1297,6 +1333,56 @@ export default function ProductReviewLanePage() {
             {runStage && <span className="font-mono text-[10px] text-neutral-400">{runStage}</span>}
           </div>
 
+          {/* Binding hiện tại — Operator thấy rõ job nào + sản phẩm nào sẽ được sản xuất */}
+          {latestJob && (
+            <div className="rounded-lg border border-hairline/60 bg-panel/30 p-3 space-y-2 text-[11px] leading-relaxed">
+              <div className="flex justify-between items-center border-b border-hairline pb-1.5 mb-1.5">
+                <span className="font-medium text-neutral-400">CHI TIẾT WORKFLOW INTEGRITY</span>
+                {(() => {
+                  if (!card || !latestJob?.productBinding) {
+                    return (
+                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-950/40 text-accent-amber border border-accent-amber/30">
+                        MISSING
+                      </span>
+                    );
+                  }
+                  return cardMatchesJob ? (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-950/40 text-accent-green border border-accent-green/30">
+                      PASS
+                    </span>
+                  ) : (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-950/40 text-accent-rose border border-accent-rose/30">
+                      MISMATCH
+                    </span>
+                  );
+                })()}
+              </div>
+              <div className="grid grid-cols-[110px_1fr] gap-x-2 gap-y-1">
+                <span className="text-neutral-500">Mã Job hiện tại:</span>
+                <span className="font-mono text-neutral-300 font-semibold">{latestJob.id}</span>
+
+                <span className="text-neutral-500">Sản phẩm của Job:</span>
+                <span className="text-neutral-200 font-medium">{latestJob.product}</span>
+
+                <span className="text-neutral-500 font-medium">Sản phẩm đang chọn:</span>
+                <span className="text-neutral-300">
+                  {card ? card.name : <em className="text-neutral-600">Chưa chọn</em>}
+                </span>
+
+                <span className="text-neutral-500">Video nguồn của Job:</span>
+                <span className="text-neutral-300 font-mono break-all leading-normal">
+                  {latestJob.sourceVideoPath ? (
+                    <span className="text-accent-cyan">📁 {latestJob.sourceVideoPath}</span>
+                  ) : latestJob.sourceVideoUrl ? (
+                    <span className="text-accent-blue">🔗 {latestJob.sourceVideoUrl}</span>
+                  ) : (
+                    <span className="text-neutral-500">Chưa cấu hình</span>
+                  )}
+                </span>
+              </div>
+            </div>
+          )}
+
           {/* QA result inline — QA luôn nằm TRONG Action 2 */}
           {latestJob?.qaStatus && (
             <div className="flex flex-wrap items-center gap-1.5">
@@ -1367,11 +1453,33 @@ export default function ProductReviewLanePage() {
                 Làm mới trạng thái
               </Button>
             </div>
+          ) : cardJobMismatch ? (
+            <div className="space-y-2">
+              <NoticeBox accent="rose">
+                Product Card đang chọn ở Action 1 (<strong>{card?.name}</strong>) KHÔNG khớp sản
+                phẩm đã bind vào job hiện tại (<strong>{latestJob.product}</strong>). Vui lòng chọn
+                lại sản phẩm khớp với job, hoặc tạo job mới cho sản phẩm đang chọn. (Sản xuất bị
+                khoá để tránh chạy nhầm sản phẩm.)
+              </NoticeBox>
+              <Button
+                variant="outline"
+                className="!py-1 !px-2.5 text-[10px]"
+                onClick={() => load()}
+                disabled={loading}
+              >
+                Làm mới trạng thái
+              </Button>
+            </div>
+          ) : !card ? (
+            <NoticeBox accent="amber">
+              Chưa chọn Product Card ở Action 1. Chọn sản phẩm để xác nhận đúng sản phẩm trước khi
+              chạy sản xuất.
+            </NoticeBox>
           ) : (
             <div className="space-y-2.5">
               <p className="text-xs text-neutral-400">
-                Nguồn đã duyệt sạch. Chạy pipeline sản xuất từ clean source đã duyệt (không nhảy
-                route kỹ thuật).
+                Nguồn đã duyệt sạch & Product Card khớp job. Chạy pipeline sản xuất từ clean source
+                đã duyệt (không nhảy route kỹ thuật).
               </p>
               {!showRunConfirm ? (
                 <div className="flex flex-wrap items-center gap-2">

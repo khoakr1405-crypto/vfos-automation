@@ -39,6 +39,15 @@ export interface OperatorJobDTO {
   statusLabel: string;
   statusAccent: StatusAccent;
   cleanlinessStatus: string | null;
+  sourceVideoPath: string | null;
+  sourceVideoUrl: string | null;
+  /** Identity của Product Card đã BIND vào job (snapshot lúc tạo job). Dùng để
+   * đối chiếu với Product Card đang chọn ở Action 1 → phát hiện mismatch. */
+  productBinding: {
+    shortLink: string | null;
+    shopId: string | null;
+    itemId: string | null;
+  };
   operatorDecision: 'PENDING' | 'APPROVED' | 'REJECTED';
   qaStatus: 'PASS' | 'FAIL' | 'PENDING' | null;
   canReview: boolean;

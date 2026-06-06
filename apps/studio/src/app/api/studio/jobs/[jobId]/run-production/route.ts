@@ -4,11 +4,21 @@ import { findSensitiveTerms } from '@/lib/growth-data/manual-input';
 import { loadJobById } from '@/lib/studio-data/jobs';
 import { repoRoot, resolveInsideRepo } from '@/lib/studio-data/paths';
 import { runRepoScript, runRepoScriptDetached } from '@/lib/studio-data/run-command';
+import { validateProductionReadiness } from '@/lib/studio-data/workflow-integrity';
 
 export const dynamic = 'force-dynamic';
 
 const JOBS_ROOT_REL = 'data/temp/jobs';
 const EXPECTED_OWNER = 'an_17376660568';
+
+interface ProductCard {
+  affiliateOwnerId?: string | null;
+  validationStatus?: string | null;
+  shortLink?: string | null;
+  shopId?: string | null;
+  itemId?: string | null;
+  name?: string | null;
+}
 
 /**
  * Round C3 — Action 2 wiring: chạy pipeline sản xuất video (script → voice → BGM →
@@ -44,7 +54,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ jobId: string 
 
   try {
     // 2. Parse + scan body
-    let body: { confirmPhrase?: string; dryRun?: boolean } = {};
+    let body: {
+      confirmPhrase?: string;
+      dryRun?: boolean;
+      expectedProduct?: { shortLink?: string; shopId?: string; itemId?: string };
+    } = {};
     try {
       body = (await req.json()) ?? {};
     } catch {
@@ -69,6 +83,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ jobId: string 
 
     const dryRun = body?.dryRun === true;
     const confirmPhrase = body?.confirmPhrase ?? '';
+    const expectedProduct = body?.expectedProduct;
 
     // 3. Confirm phrase bắt buộc cho REAL run (dry-run an toàn, không cần)
     if (!dryRun && confirmPhrase !== 'RUN PRODUCTION') {
@@ -85,51 +100,20 @@ export async function POST(req: Request, ctx: { params: Promise<{ jobId: string 
       );
     }
 
-    // 4. Load manifest
-    const manifestRel = `${JOBS_ROOT_REL}/${jobId}/job_manifest.json`;
-    const manifestAbs = resolveInsideRepo(manifestRel);
-    if (!manifestAbs || !existsSync(manifestAbs)) {
-      return Response.json(
-        {
-          ok: false,
-          action: 'run-production',
-          jobId,
-          status: 'FAILED',
-          reasonCode: 'JOB_NOT_FOUND',
-          message: `Không tìm thấy Job có ID: ${jobId}`,
-        },
-        { status: 404 },
+    // 4. Validate Production Readiness & Product Binding
+    const readiness = validateProductionReadiness(jobId);
+    if (!readiness.ok) {
+      const firstIssue = readiness.issues.find(
+        (i) => i.severity === 'blocker' || i.severity === 'error',
       );
-    }
+      const reasonCode = firstIssue?.code ?? 'READINESS_BLOCKED';
+      const status =
+        reasonCode === 'PRODUCT_JOB_MISMATCH' ||
+        reasonCode === 'PRODUCT_BINDING_MISSING' ||
+        reasonCode === 'PRODUCT_BINDING_UNREADABLE'
+          ? 409
+          : 400;
 
-    let manifest: {
-      source?: {
-        cleanlinessStatus?: string | null;
-        sourceVideoUrl?: string | null;
-        sourceVideoPath?: string | null;
-        approvedSourceVideoPath?: string | null;
-        productCardPath?: string | null;
-      };
-    };
-    try {
-      manifest = JSON.parse(readFileSync(manifestAbs, 'utf8'));
-    } catch {
-      return Response.json(
-        {
-          ok: false,
-          action: 'run-production',
-          jobId,
-          status: 'FAILED',
-          reasonCode: 'MANIFEST_UNREADABLE',
-          message: 'Không thể đọc file manifest của Job.',
-        },
-        { status: 500 },
-      );
-    }
-
-    // 5. Clean source gate — chỉ chạy khi đã duyệt sạch
-    const cleanlinessStatus = manifest?.source?.cleanlinessStatus ?? null;
-    if (cleanlinessStatus !== 'WATERMARK_NOT_DETECTED') {
       return Response.json(
         {
           ok: false,
@@ -137,66 +121,16 @@ export async function POST(req: Request, ctx: { params: Promise<{ jobId: string 
           jobId,
           status: 'SUSPENDED',
           stage: 'gate',
-          reasonCode: 'SOURCE_NOT_APPROVED',
-          cleanlinessStatus,
-          message:
-            'Nguồn chưa được duyệt sạch (cần WATERMARK_NOT_DETECTED ở Bước 2 trước khi sản xuất).',
+          reasonCode,
+          jobProductName: readiness.productBinding?.productTitle ?? null,
+          message: firstIssue?.message ?? 'Điều kiện chạy sản xuất không đạt yêu cầu.',
+          issues: readiness.issues,
         },
-        { status: 400 },
+        { status },
       );
     }
 
-    // 6. Owner gate (nếu Product Card có metadata)
-    const cardRel = manifest?.source?.productCardPath;
-    if (cardRel) {
-      const cardAbs = resolveInsideRepo(cardRel);
-      if (cardAbs && existsSync(cardAbs)) {
-        try {
-          const card = JSON.parse(readFileSync(cardAbs, 'utf8')) as {
-            affiliateOwnerId?: string | null;
-            validationStatus?: string | null;
-          };
-          const ownerValid =
-            card?.affiliateOwnerId === EXPECTED_OWNER && card?.validationStatus === 'VERIFIED';
-          if (!ownerValid) {
-            return Response.json(
-              {
-                ok: false,
-                action: 'run-production',
-                jobId,
-                status: 'SUSPENDED',
-                stage: 'gate',
-                reasonCode: 'OWNER_INVALID',
-                message: 'Product Card sai affiliate owner hoặc chưa xác thực (VERIFIED).',
-              },
-              { status: 400 },
-            );
-          }
-        } catch {
-          // card không đọc được → bỏ qua owner gate (không chặn cứng vì thiếu metadata)
-        }
-      }
-    }
-
-    // 7. Resolve clean source TỪ jobId (không nhận path từ client). Chỉ chấp nhận
-    //    path nằm trong runs/<jobId>/ hoặc data/temp/jobs/<jobId>/.
-    const candidateRels = [
-      manifest?.source?.approvedSourceVideoPath,
-      manifest?.source?.sourceVideoPath,
-      `runs/${jobId}/source/clean_source_video.mp4`,
-    ];
-    let cleanSourceRel: string | null = null;
-    for (const rel of candidateRels) {
-      if (!rel || typeof rel !== 'string') continue;
-      if (!(rel.startsWith(`runs/${jobId}/`) || rel.startsWith(`${JOBS_ROOT_REL}/${jobId}/`))) {
-        continue;
-      }
-      const abs = resolveInsideRepo(rel);
-      if (abs && existsSync(abs)) {
-        cleanSourceRel = rel;
-        break;
-      }
-    }
+    const cleanSourceRel = readiness.cleanSourceRel;
     if (!cleanSourceRel) {
       return Response.json(
         {
@@ -213,6 +147,21 @@ export async function POST(req: Request, ctx: { params: Promise<{ jobId: string 
       );
     }
 
+    // Load manifest to extract source url
+    let manifest: {
+      source?: { sourceVideoUrl?: string | null; cleanlinessStatus?: string | null };
+    } = {};
+    try {
+      const manifestRel = `${JOBS_ROOT_REL}/${jobId}/job_manifest.json`;
+      const manifestAbs = resolveInsideRepo(manifestRel);
+      if (manifestAbs && existsSync(manifestAbs)) {
+        manifest = JSON.parse(readFileSync(manifestAbs, 'utf8'));
+      }
+    } catch {
+      // Ignored, fallback to defaults
+    }
+
+    const cleanlinessStatus = manifest?.source?.cleanlinessStatus ?? null;
     const sourceVideoUrl = extractFirstUrl(manifest?.source?.sourceVideoUrl);
 
     // 8. Build args — REUSE đúng command vận hành chính thức
