@@ -67,6 +67,12 @@ export interface OperatorJobDTO {
   ownerValid: boolean;
   notes: string | null;
   updatedAt: string | null;
+  source?: {
+    sourceMode?: string | null;
+    sourceJobId?: string | null;
+    productionAllowed?: boolean | null;
+    warning?: string | null;
+  } | null;
 }
 
 export interface ProductRowDTO {

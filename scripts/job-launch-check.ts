@@ -261,6 +261,17 @@ function main() {
     detail: safetyPass ? 'Clean. Ready for initial publish.' : 'Locks show already uploaded or published.',
   });
   if (isAlreadyPublished) reasons.push('ALREADY_UPLOADED_OR_PUBLISHED');
+  
+  // Check 10: Fallback source check
+  const sourceMode = (manifest.source as any)?.sourceMode ?? null;
+  const productionAllowed = (manifest.source as any)?.productionAllowed ?? null;
+  const isFallback = sourceMode === 'fallback' || productionAllowed === false;
+  checklist.push({
+    name: 'Is real source (not fallback)',
+    status: !isFallback ? 'PASS' : 'FAIL',
+    detail: !isFallback ? 'Real source approved.' : 'Current source is fallback/demo video.',
+  });
+  if (isFallback) reasons.push('SOURCE_IS_FALLBACK');
 
   // Final Decision inference
   const allPass = checklist.every((c) => c.status === 'PASS');

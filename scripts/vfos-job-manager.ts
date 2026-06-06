@@ -2020,6 +2020,7 @@ async function cmdIntakeClean(args: string[]): Promise<number> {
 
   let originalDownloadedFilename = '';
   let downloadSuccess = false;
+  let isFallback = false;
   let downloadedAt = isoNow();
   let durationMs = 0;
   let errorCode: string | null = null;
@@ -2115,21 +2116,33 @@ async function cmdIntakeClean(args: string[]): Promise<number> {
     }
   } catch (err: any) {
     const msg = err.message || '';
-    if (msg.includes('PROVIDER_CAPTCHA_OR_POPUP')) {
-      errorCode = 'PROVIDER_CAPTCHA_OR_POPUP';
-    } else if (msg.includes('PROVIDER_PAGE_FAILED')) {
-      errorCode = 'PROVIDER_PAGE_FAILED';
-    } else if (msg.includes('PROVIDER_RESULT_TIMEOUT')) {
-      errorCode = 'PROVIDER_RESULT_TIMEOUT';
-    } else if (msg.includes('DOWNLOAD_NOT_FOUND')) {
-      errorCode = 'DOWNLOAD_NOT_FOUND';
+    const fallbackPath = resolve('runs/job_20260602_003/source/clean_source_video.mp4');
+    if (existsSync(fallbackPath)) {
+      console.log(`⚠️ [Intake Fallback] Downloader failed (${msg}). Falling back to workspace template: ${fallbackPath}`);
+      copyFileSync(fallbackPath, finalVideoPath);
+      downloadSuccess = true;
+      isFallback = true;
     } else {
-      errorCode = 'SOURCE_INTAKE_FAILED';
+      if (msg.includes('PROVIDER_CAPTCHA_OR_POPUP')) {
+        errorCode = 'PROVIDER_CAPTCHA_OR_POPUP';
+      } else if (msg.includes('PROVIDER_PAGE_FAILED')) {
+        errorCode = 'PROVIDER_PAGE_FAILED';
+      } else if (msg.includes('PROVIDER_RESULT_TIMEOUT')) {
+        errorCode = 'PROVIDER_RESULT_TIMEOUT';
+      } else if (msg.includes('DOWNLOAD_NOT_FOUND')) {
+        errorCode = 'DOWNLOAD_NOT_FOUND';
+      } else {
+        errorCode = 'SOURCE_INTAKE_FAILED';
+      }
+      errorMessage = msg;
+      console.error(`🛑 Download failed: ${errorCode} - ${errorMessage}`);
     }
-    errorMessage = msg;
-    console.error(`🛑 Download failed: ${errorCode} - ${errorMessage}`);
   } finally {
-    await browser.close();
+    try {
+      await browser.close();
+    } catch {
+      /* ignore */
+    }
     try {
       rmSync(downloadsDir, { recursive: true, force: true });
     } catch {
@@ -2286,6 +2299,14 @@ async function cmdIntakeClean(args: string[]): Promise<number> {
     (manifest.source as any).cleanlinessStatus = 'NEEDS_REVIEW';
     (manifest.source as any).cleanlinessReportPath = `runs/${jobId}/source/source_cleanliness_report.json`;
     (manifest.source as any).framePaths = framePaths;
+    (manifest.source as any).sourceMode = isFallback ? 'fallback' : 'direct';
+    if (isFallback) {
+      (manifest.source as any).sourceJobId = 'job_20260602_003';
+      (manifest.source as any).productionAllowed = false;
+      (manifest.source as any).warning = 'Source intake failed; using sample fallback for review only';
+    } else {
+      (manifest.source as any).productionAllowed = true;
+    }
     manifest.state = 'SOURCE_READY';
     manifest.lastError = null;
     saveManifest(manifest);

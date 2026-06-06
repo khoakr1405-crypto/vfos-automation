@@ -108,6 +108,10 @@ interface Manifest {
     approvedSourceVideoPath?: string | null;
     cleanlinessStatus?: string | null;
     sourceVideoUrl?: string | null;
+    sourceMode?: string | null;
+    sourceJobId?: string | null;
+    productionAllowed?: boolean | null;
+    warning?: string | null;
   };
   artifacts?: ManifestArtifacts;
   state?: string;
@@ -305,6 +309,12 @@ function buildJobDTO(entry: RegistryEntry): OperatorJobDTO {
     notes: manifest?.review?.notes ?? null,
     errorLog,
     updatedAt: manifest?.updatedAt ?? entry.updatedAt ?? null,
+    source: {
+      sourceMode: manifest?.source?.sourceMode ?? null,
+      sourceJobId: manifest?.source?.sourceJobId ?? null,
+      productionAllowed: manifest?.source?.productionAllowed !== false,
+      warning: manifest?.source?.warning ?? null,
+    },
   };
 }
 
@@ -515,12 +525,55 @@ export function evaluateLivePublishGates(jobId: string): LivePublishGateResult {
     manifest.safety?.published === true ||
     rawState === 'PUBLISHED';
 
+  const selectedAbs = resolveInsideRepo('data/temp/selected_product_card.json');
+  let cardMatchesSelected = false;
+  if (selectedAbs && existsSync(selectedAbs)) {
+    try {
+      const selectedCard = JSON.parse(readFileSync(selectedAbs, 'utf8'));
+      const jobBinding = {
+        shortLink: card?.shortLink ? String(card.shortLink).trim() : '',
+        shopId: card?.shopId ? String(card.shopId).trim() : '',
+        itemId: card?.itemId ? String(card.itemId).trim() : '',
+      };
+      const activeBinding = {
+        shortLink: selectedCard.shortLink ? String(selectedCard.shortLink).trim() : '',
+        shopId: selectedCard.shopId ? String(selectedCard.shopId).trim() : '',
+        itemId: selectedCard.itemId ? String(selectedCard.itemId).trim() : '',
+      };
+      cardMatchesSelected =
+        (!!activeBinding.shopId &&
+          !!activeBinding.itemId &&
+          activeBinding.shopId === jobBinding.shopId &&
+          activeBinding.itemId === jobBinding.itemId) ||
+        (!!activeBinding.shortLink && activeBinding.shortLink === jobBinding.shortLink);
+    } catch {
+      // ignore
+    }
+  }
+
+  const sourceMode = manifest.source?.sourceMode ?? null;
+  const productionAllowed = manifest.source?.productionAllowed ?? null;
+
   const gates: LivePublishGate[] = [
     {
       key: 'job_exists',
       label: 'Job tồn tại',
       passed: true,
       detail: 'Tìm thấy manifest của Job.',
+    },
+    {
+      key: 'not_fallback_source',
+      label: 'Không phải fallback/demo source',
+      passed: sourceMode !== 'fallback' && productionAllowed !== false,
+      detail: sourceMode !== 'fallback' ? 'Nguồn video sạch thật.' : 'Nguồn video hiện tại là fallback mẫu.',
+    },
+    {
+      key: 'product_matches_selected',
+      label: 'Khớp sản phẩm đang chọn',
+      passed: cardMatchesSelected,
+      detail: cardMatchesSelected
+        ? 'Job khớp sản phẩm đang chọn ở Hành động 1.'
+        : 'Sản phẩm của Job lệch với sản phẩm đang chọn ở Hành động 1.',
     },
     {
       key: 'state',

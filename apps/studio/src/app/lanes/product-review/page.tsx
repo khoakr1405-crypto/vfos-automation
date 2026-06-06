@@ -163,7 +163,24 @@ export default function ProductReviewLanePage() {
       if (jobsRes.status === 'fulfilled') {
         const body = jobsRes.value as JobsResponse;
         setJobCount(body.count ?? 0);
-        setLatestJob(body.jobs?.[0] ?? null); // adapter sorts newest-first
+
+        let foundJob: OperatorJobDTO | null = null;
+        if (currentCard && body.jobs) {
+          foundJob =
+            body.jobs.find((j) => {
+              const b = j.productBinding;
+              return (
+                b &&
+                ((currentCard.shopId &&
+                  currentCard.itemId &&
+                  b.shopId === currentCard.shopId &&
+                  b.itemId === currentCard.itemId) ||
+                  (currentCard.shortLink && b.shortLink === currentCard.shortLink))
+              );
+            }) ?? null;
+        }
+
+        setLatestJob(foundJob ?? body.jobs?.[0] ?? null);
       }
       if (registryRes.status === 'fulfilled') {
         setRegistry((registryRes.value as unknown as { items?: RegistryItem[] }).items ?? []);
@@ -496,10 +513,7 @@ export default function ProductReviewLanePage() {
       (draft.product.shopid === card.shopId && draft.product.itemid === card.itemId));
   const sourceUrl = draftMatchesCard ? (draft?.source?.url ?? null) : null;
 
-  const jobApproved =
-    latestJob?.operatorDecision === 'APPROVED' ||
-    latestJob?.state === 'APPROVED' ||
-    latestJob?.state === 'PACKAGED';
+  const isFallbackSource = latestJob?.source?.sourceMode === 'fallback';
 
   // Product binding coherence: Product Card đang chọn ở Action 1 có khớp sản phẩm
   // ĐÃ BIND vào job hiện tại (Action 2) không. Job mang binding riêng (snapshot lúc
@@ -515,6 +529,13 @@ export default function ProductReviewLanePage() {
       (!!card.shortLink && card.shortLink === jobBinding.shortLink));
   // Mismatch chỉ "thật" khi có cả card lẫn job nhưng identity khác nhau.
   const cardJobMismatch = !!card && !!latestJob && !cardMatchesJob;
+
+  const jobApproved =
+    (latestJob?.operatorDecision === 'APPROVED' ||
+      latestJob?.state === 'APPROVED' ||
+      latestJob?.state === 'PACKAGED') &&
+    !isFallbackSource &&
+    cardMatchesJob;
 
   // Round C3 — production gates derived from real job state
   const sourceApproved = latestJob?.cleanlinessStatus === 'WATERMARK_NOT_DETECTED';
@@ -1074,6 +1095,9 @@ export default function ProductReviewLanePage() {
             <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-1.5">
                 <StatusChip accent={latestJob.statusAccent}>{latestJob.statusLabel}</StatusChip>
+                {isFallbackSource && (
+                  <StatusChip accent="rose">Demo / Fallback Source</StatusChip>
+                )}
                 {latestJob.duration !== '—' && (
                   <StatusChip accent="blue">{latestJob.duration}</StatusChip>
                 )}
@@ -1273,6 +1297,11 @@ export default function ProductReviewLanePage() {
                 <p className="text-xs text-accent-green flex items-center gap-1 font-semibold">
                   <span>✓</span> Nguồn video đã được duyệt sạch (Không phát hiện logo/watermark).
                 </p>
+                {isFallbackSource && (
+                  <NoticeBox accent="rose">
+                    Nguồn hiện tại là fallback mẫu, không được dùng để sản xuất video thật cho sản phẩm này.
+                  </NoticeBox>
+                )}
                 {latestJob.notes && (
                   <div className="rounded-lg border border-hairline/60 bg-panel/30 p-2.5 text-xs text-neutral-300 leading-relaxed">
                     <span className="font-semibold text-neutral-400">Ghi chú duyệt:</span>{' '}
@@ -1481,7 +1510,11 @@ export default function ProductReviewLanePage() {
                 Nguồn đã duyệt sạch & Product Card khớp job. Chạy pipeline sản xuất từ clean source
                 đã duyệt (không nhảy route kỹ thuật).
               </p>
-              {!showRunConfirm ? (
+              {isFallbackSource ? (
+                <NoticeBox accent="rose">
+                  Nguồn hiện tại là fallback mẫu, không được dùng để sản xuất video thật cho sản phẩm này.
+                </NoticeBox>
+              ) : !showRunConfirm ? (
                 <div className="flex flex-wrap items-center gap-2">
                   <Button
                     variant="success"
@@ -1590,7 +1623,13 @@ export default function ProductReviewLanePage() {
               : { label: 'Khoá — chờ duyệt', accent: 'amber' }
         }
         locked={!jobApproved}
-        lockReason="Cần job đã APPROVED (QA PASS + Operator duyệt preview) để mở bước đóng gói."
+        lockReason={
+          isFallbackSource
+            ? "Nguồn hiện tại là fallback mẫu, không được dùng để sản xuất video thật cho sản phẩm này."
+            : cardJobMismatch
+              ? "Product Card đang chọn ở Hành động 1 không khớp với sản phẩm đã bind vào job hiện tại."
+              : "Cần job đã APPROVED (QA PASS + Operator duyệt preview) để mở bước đóng gói."
+        }
       >
         <div className="grid gap-2 sm:grid-cols-2">
           <PackItem

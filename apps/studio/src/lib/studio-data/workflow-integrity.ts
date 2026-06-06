@@ -287,6 +287,18 @@ export function validateProductionReadiness(jobId: string) {
     });
   }
 
+  // Check if source is fallback/demo source and block production
+  const sourceMode = (manifest.source as any)?.sourceMode ?? null;
+  const productionAllowed = (manifest.source as any)?.productionAllowed ?? null;
+  if (sourceMode === 'fallback' || productionAllowed === false) {
+    issues.push({
+      code: 'SOURCE_IS_FALLBACK',
+      severity: 'blocker',
+      message: 'Nguồn hiện tại là fallback mẫu, không được dùng để sản xuất video thật cho sản phẩm này.',
+      details: { sourceMode, productionAllowed },
+    });
+  }
+
   // Check source video file exists and is secure
   const candidateRels = [
     manifest.source?.approvedSourceVideoPath,

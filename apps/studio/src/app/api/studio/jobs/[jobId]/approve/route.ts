@@ -38,6 +38,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ jobId: string 
 
     // 3. Rà soát điều kiện phê duyệt (Approve Guards)
     const details: string[] = [];
+    if (job.source?.sourceMode === 'fallback' || job.source?.productionAllowed === false) {
+      details.push('Nguồn hiện tại là fallback mẫu, không được dùng để sản xuất video thật cho sản phẩm này.');
+    }
     if (job.state !== 'READY_FOR_OPERATOR_REVIEW') {
       details.push(
         `Trạng thái của Job phải là READY_FOR_OPERATOR_REVIEW (hiện tại: ${job.state}).`,
