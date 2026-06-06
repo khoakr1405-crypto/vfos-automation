@@ -124,6 +124,14 @@ export default function ProductReviewLanePage() {
   const [jobError, setJobError] = useState<string | null>(null);
   const [showConfirmJob, setShowConfirmJob] = useState(false);
 
+  // Round C2 states
+  const [intakeConfirmInput, setIntakeConfirmInput] = useState('');
+  const [approveConfirmInput, setApproveConfirmInput] = useState('');
+  const [cleanlinessNotes, setCleanlinessNotes] = useState('');
+  const [submittingIntake, setSubmittingIntake] = useState(false);
+  const [submittingApprove, setSubmittingApprove] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -268,6 +276,69 @@ export default function ProductReviewLanePage() {
       setJobError('Lỗi kết nối đến API server.');
     } finally {
       setCreatingJob(false);
+    }
+  };
+
+  const handleRunSourceIntake = async (jobId: string) => {
+    if (intakeConfirmInput !== 'RUN SOURCE INTAKE') {
+      setActionError('Cụm từ xác nhận không khớp. Nhập đúng "RUN SOURCE INTAKE".');
+      return;
+    }
+    setSubmittingIntake(true);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/studio/jobs/${jobId}/source-intake`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmPhrase: intakeConfirmInput }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setIntakeConfirmInput('');
+        await load();
+      } else {
+        setActionError(data.message || 'Chạy tải / clean nguồn thất bại.');
+      }
+    } catch {
+      setActionError('Lỗi kết nối đến API server.');
+    } finally {
+      setSubmittingIntake(false);
+    }
+  };
+
+  const handleApproveCleanliness = async (jobId: string, status: 'pass' | 'fail') => {
+    if (status === 'pass' && approveConfirmInput !== 'APPROVE SOURCE') {
+      setActionError('Cụm từ xác nhận không khớp. Nhập đúng "APPROVE SOURCE".');
+      return;
+    }
+    if (!cleanlinessNotes.trim()) {
+      setActionError('Ghi chú là bắt buộc và không được để trống.');
+      return;
+    }
+    setSubmittingApprove(true);
+    setActionError(null);
+    try {
+      const res = await fetch(`/api/studio/jobs/${jobId}/source-approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status,
+          notes: cleanlinessNotes,
+          confirmPhrase: status === 'pass' ? approveConfirmInput : undefined,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setApproveConfirmInput('');
+        setCleanlinessNotes('');
+        await load();
+      } else {
+        setActionError(data.message || 'Xử lý duyệt nguồn sạch thất bại.');
+      }
+    } catch {
+      setActionError('Lỗi kết nối đến API server.');
+    } finally {
+      setSubmittingApprove(false);
     }
   };
 
@@ -911,6 +982,214 @@ export default function ProductReviewLanePage() {
             </p>
           )}
         </div>
+
+        {/* Bước 2 — Tải / clean nguồn */}
+        {latestJob && (
+          <div className="rounded-lg border border-hairline bg-raised/30 p-3 space-y-3">
+            <div className="flex items-center justify-between border-b border-hairline/60 pb-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+                Bước 2 — Tải / clean nguồn
+              </span>
+              {latestJob.cleanlinessStatus && (
+                <StatusChip
+                  accent={
+                    latestJob.cleanlinessStatus === 'WATERMARK_NOT_DETECTED'
+                      ? 'green'
+                      : latestJob.cleanlinessStatus === 'WATERMARK_DETECTED'
+                        ? 'rose'
+                        : 'amber'
+                  }
+                >
+                  {latestJob.cleanlinessStatus === 'WATERMARK_NOT_DETECTED'
+                    ? 'Nguồn sạch'
+                    : latestJob.cleanlinessStatus === 'WATERMARK_DETECTED'
+                      ? 'Bị từ chối'
+                      : 'Chờ duyệt'}
+                </StatusChip>
+              )}
+            </div>
+
+            {actionError && (
+              <div className="rounded-lg border border-accent-rose/30 bg-accent-rose/10 p-2.5 text-xs text-accent-rose">
+                Lỗi: {actionError}
+              </div>
+            )}
+
+            {/* Case 1: Waiting for download / failed to download */}
+            {(latestJob.state === 'WAITING_FOR_SOURCE_VIDEO' ||
+              (latestJob.state === 'FAILED' && !latestJob.cleanlinessStatus)) && (
+              <div className="space-y-2.5">
+                <p className="text-xs text-neutral-400">
+                  Video nguồn chưa được tải hoặc tải lỗi. Tiến hành tải và phân tích frame sạch:
+                </p>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                  <div className="flex-1 min-w-0">
+                    <label
+                      htmlFor="intakeConfirmInput"
+                      className="block text-[10px] text-neutral-400 font-medium mb-1"
+                    >
+                      Nhập cụm xác nhận để chạy:{' '}
+                      <code className="bg-neutral-800 px-1 py-0.5 rounded text-neutral-200">
+                        RUN SOURCE INTAKE
+                      </code>
+                    </label>
+                    <input
+                      id="intakeConfirmInput"
+                      type="text"
+                      required
+                      disabled={submittingIntake}
+                      value={intakeConfirmInput}
+                      onChange={(e) => setIntakeConfirmInput(e.target.value)}
+                      placeholder="RUN SOURCE INTAKE"
+                      className="w-full rounded-lg border border-hairline bg-panel px-3 py-1.5 text-xs text-neutral-200 focus:outline-none focus:border-accent-violet disabled:opacity-50"
+                    />
+                  </div>
+                  <Button
+                    onClick={() => handleRunSourceIntake(latestJob.id)}
+                    variant="success"
+                    disabled={submittingIntake || intakeConfirmInput !== 'RUN SOURCE INTAKE'}
+                    className="!py-1.5 !px-3.5 text-[11px] bg-accent-violet hover:bg-accent-violet text-white border-none font-semibold shrink-0 disabled:opacity-30"
+                  >
+                    {submittingIntake ? (
+                      <span className="flex items-center gap-1.5">
+                        <span className="h-3 w-3 animate-spin rounded-full border border-neutral-950 border-t-transparent" />
+                        Đang chạy tải...
+                      </span>
+                    ) : (
+                      'Tải & Clean nguồn'
+                    )}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {/* Case 2: Needs Operator Review (NEEDS_REVIEW or UNKNOWN_NEEDS_OPERATOR_REVIEW) */}
+            {(latestJob.cleanlinessStatus === 'NEEDS_REVIEW' ||
+              latestJob.cleanlinessStatus === 'UNKNOWN_NEEDS_OPERATOR_REVIEW') && (
+              <div className="space-y-3">
+                <p className="text-xs font-medium text-neutral-300">
+                  Rà soát hình ảnh (5 frame trích xuất) để kiểm tra watermark/logo:
+                </p>
+
+                {/* Grid of 5 frame thumbnails */}
+                <div className="grid grid-cols-5 gap-2">
+                  {[1, 2, 3, 4, 5].map((index) => (
+                    <div
+                      key={index}
+                      className="group relative aspect-video overflow-hidden rounded border border-hairline bg-neutral-900 transition hover:border-neutral-500"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={`/api/studio/jobs/${latestJob.id}/source-frame/${index}`}
+                        alt={`Review frame ${index}`}
+                        className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                      />
+                      <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1 text-[8px] font-mono text-neutral-300">
+                        F{index}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="space-y-2">
+                  <div>
+                    <label
+                      htmlFor="cleanlinessNotes"
+                      className="block text-[10px] text-neutral-400 font-medium mb-1"
+                    >
+                      Ghi chú Operator <span className="text-accent-rose">*</span>
+                    </label>
+                    <textarea
+                      id="cleanlinessNotes"
+                      required
+                      rows={2}
+                      disabled={submittingApprove}
+                      value={cleanlinessNotes}
+                      onChange={(e) => setCleanlinessNotes(e.target.value)}
+                      placeholder="Nhập ghi chú rà soát (ví dụ: Video sạch không logo, hoặc Phát hiện logo watermark ở góc dưới)..."
+                      className="w-full rounded-lg border border-hairline bg-panel px-3 py-2 text-xs text-neutral-200 focus:outline-none focus:border-accent-violet disabled:opacity-50"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-2.5 sm:flex-row sm:items-end">
+                    <div className="flex-1 min-w-0">
+                      <label
+                        htmlFor="approveConfirmInput"
+                        className="block text-[10px] text-neutral-400 font-medium mb-1"
+                      >
+                        Gõ để duyệt sạch:{' '}
+                        <code className="bg-neutral-800 px-1 py-0.5 rounded text-neutral-200">
+                          APPROVE SOURCE
+                        </code>
+                      </label>
+                      <input
+                        id="approveConfirmInput"
+                        type="text"
+                        disabled={submittingApprove}
+                        value={approveConfirmInput}
+                        onChange={(e) => setApproveConfirmInput(e.target.value)}
+                        placeholder="APPROVE SOURCE"
+                        className="w-full rounded-lg border border-hairline bg-panel px-3 py-1.5 text-xs text-neutral-200 focus:outline-none focus:border-accent-violet disabled:opacity-50"
+                      />
+                    </div>
+                    <div className="flex gap-2 shrink-0">
+                      <Button
+                        onClick={() => handleApproveCleanliness(latestJob.id, 'fail')}
+                        variant="outline"
+                        disabled={submittingApprove || !cleanlinessNotes.trim()}
+                        className="!py-1.5 !px-3 text-[11px] border-accent-rose hover:bg-accent-rose/10 text-accent-rose font-semibold disabled:opacity-30"
+                      >
+                        {submittingApprove ? 'Từ chối...' : 'Từ chối nguồn'}
+                      </Button>
+                      <Button
+                        onClick={() => handleApproveCleanliness(latestJob.id, 'pass')}
+                        variant="success"
+                        disabled={
+                          submittingApprove ||
+                          !cleanlinessNotes.trim() ||
+                          approveConfirmInput !== 'APPROVE SOURCE'
+                        }
+                        className="!py-1.5 !px-3 text-[11px] bg-accent-green hover:bg-accent-green/90 text-neutral-900 border-none font-semibold disabled:opacity-30"
+                      >
+                        {submittingApprove ? 'Đang duyệt...' : 'Duyệt nguồn sạch'}
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Case 3: Watermark Not Detected (Clean) */}
+            {latestJob.cleanlinessStatus === 'WATERMARK_NOT_DETECTED' && (
+              <div className="space-y-2">
+                <p className="text-xs text-accent-green flex items-center gap-1 font-semibold">
+                  <span>✓</span> Nguồn video đã được duyệt sạch (Không phát hiện logo/watermark).
+                </p>
+                {latestJob.notes && (
+                  <div className="rounded-lg border border-hairline/60 bg-panel/30 p-2.5 text-xs text-neutral-300 leading-relaxed">
+                    <span className="font-semibold text-neutral-400">Ghi chú duyệt:</span>{' '}
+                    {latestJob.notes}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Case 4: Watermark Detected (Rejected) */}
+            {latestJob.cleanlinessStatus === 'WATERMARK_DETECTED' && (
+              <div className="space-y-2">
+                <p className="text-xs text-accent-rose flex items-center gap-1 font-semibold">
+                  <span>✗</span> Nguồn video bị từ chối (Phát hiện logo/watermark).
+                </p>
+                {latestJob.notes && (
+                  <div className="rounded-lg border border-accent-rose/30 bg-accent-rose/10 p-2.5 text-xs text-accent-rose leading-relaxed">
+                    <span className="font-semibold text-neutral-400">Ghi chú từ chối:</span>{' '}
+                    {latestJob.notes}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Pipeline Checklist */}
         <div className="rounded-lg border border-hairline bg-raised/30 p-3 space-y-2.5">
