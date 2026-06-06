@@ -83,6 +83,10 @@ describe("sanitizeProductImageUrl", () => {
       `${CDN}?gads_t_sig=sig`,
       `${CDN}?utm_source=${OWNER}`,
       `${CDN}?session=1`,
+      "https://deo.shopeemobile.com/shopee/shopee-affiliate-live-vn/static/img/label_xtra_vn.ffa19363.svg",
+      "https://example.com/logo.png",
+      "https://example.com/badge.jpg",
+      "https://example.com/icon.png",
     ]) {
       assert.equal(sanitizeProductImageUrl(bad), null, `${bad} should be rejected`);
     }

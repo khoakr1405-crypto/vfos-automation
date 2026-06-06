@@ -207,18 +207,35 @@ async function discoverProductCards(page: Page): Promise<ProductCard[]> {
       // Capture RAW image URL from the card thumbnail. SELF-CONTAINED in the
       // browser context — no closure over Node helpers (DOM-helper contract).
       // Sanitised later in Node via sanitizeProductImageUrl().
+      // Loops through all images to filter out labels/badges (e.g. svg or containing 'label'/'badge'/'icon'/'logo').
       let image_url: string | null = null;
-      const imgEl = card?.querySelector('img');
-      if (imgEl) {
-        image_url =
+      const imgEls = Array.from(card?.querySelectorAll('img') ?? []);
+      for (const imgEl of imgEls) {
+        let candidate =
           imgEl.currentSrc ||
           imgEl.getAttribute('src') ||
           imgEl.getAttribute('data-src') ||
           imgEl.getAttribute('data-original') ||
           null;
-        if (!image_url) {
+        if (!candidate) {
           const ss = imgEl.getAttribute('srcset');
-          if (ss) image_url = ss.split(',')[0]?.trim().split(/\s+/)[0] ?? null;
+          if (ss) candidate = ss.split(',')[0]?.trim().split(/\s+/)[0] ?? null;
+        }
+        if (candidate) {
+          const lowerCand = candidate.toLowerCase();
+          const isBadgeOrIcon =
+            lowerCand.includes('.svg') ||
+            lowerCand.includes('/label_') ||
+            lowerCand.includes('label_xtra') ||
+            lowerCand.includes('badge') ||
+            lowerCand.includes('icon') ||
+            lowerCand.includes('logo');
+          if (!isBadgeOrIcon) {
+            image_url = candidate;
+            break;
+          } else if (!image_url) {
+            image_url = candidate; // Fallback to first badge if no product image found
+          }
         }
       }
       if (!image_url && card instanceof HTMLElement) {

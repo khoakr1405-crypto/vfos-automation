@@ -135,6 +135,11 @@ const IMAGE_URL_FORBIDDEN_SUBSTRINGS: readonly string[] = [
   'utm_medium',
   'signature',
   'gads_t_sig',
+  'label',
+  'badge',
+  'icon',
+  'logo',
+  '.svg',
 ];
 
 /**

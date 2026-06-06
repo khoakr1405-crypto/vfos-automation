@@ -80,6 +80,14 @@ function parseCriteria(criteria?: string): { commissionRate?: string; price?: st
   return out;
 }
 
+function safeImageUrl(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const s = v.trim();
+  if (!/^https?:\/\//i.test(s)) return null;
+  if (/credential|token|session|cookie|signature|mmp_pid|utm_|label|badge|icon|logo|\.svg/i.test(s)) return null;
+  return s;
+}
+
 function readRegistry(): { items: RegistryItem[]; updatedAt: string | null } {
   const abs = resolveInsideRepo(REGISTRY_REL);
   if (!abs || !existsSync(abs)) return { items: [], updatedAt: null };
@@ -103,7 +111,7 @@ function readRegistry(): { items: RegistryItem[]; updatedAt: string | null } {
           affiliateOwnerId: e.affiliate_owner_id ?? '',
           ownerVerified,
           status: e.affiliate_link_status ?? 'UNKNOWN',
-          productImageUrl: e.product_image_url ?? null,
+          productImageUrl: safeImageUrl(e.product_image_url),
           ...(typeof e.score === 'number' ? { score: e.score } : {}),
           ...(commissionRate ? { commissionRate } : {}),
           ...(price ? { price } : {}),

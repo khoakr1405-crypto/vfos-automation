@@ -47,7 +47,7 @@ function safeImageUrl(v: unknown): string | null {
   if (typeof v !== 'string') return null;
   const s = v.trim();
   if (!/^https?:\/\//i.test(s)) return null;
-  if (/credential|token|session|cookie|signature|mmp_pid|utm_/i.test(s)) return null;
+  if (/credential|token|session|cookie|signature|mmp_pid|utm_|label|badge|icon|logo|\.svg/i.test(s)) return null;
   return s;
 }
 
