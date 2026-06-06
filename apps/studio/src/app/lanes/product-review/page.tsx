@@ -108,6 +108,22 @@ export default function ProductReviewLanePage() {
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
+  // Action 2 states
+  const [sourceUrlInput, setSourceUrlInput] = useState('');
+  const [savingSource, setSavingSource] = useState(false);
+  const [sourceNotice, setSourceNotice] = useState<string | null>(null);
+  const [sourceError, setSourceError] = useState<string | null>(null);
+  const [confirmJobPhrase, setConfirmJobPhrase] = useState('');
+  const [creatingJob, setCreatingJob] = useState(false);
+  const [jobCreatedSuccess, setJobCreatedSuccess] = useState<{
+    jobId: string;
+    status: string;
+    productName?: string;
+    sourceUrl?: string;
+  } | null>(null);
+  const [jobError, setJobError] = useState<string | null>(null);
+  const [showConfirmJob, setShowConfirmJob] = useState(false);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -117,9 +133,16 @@ export default function ProductReviewLanePage() {
         fetch('/api/studio/jobs').then((r) => r.json()),
         fetch('/api/studio/commerce/shopee-registry').then((r) => r.json()),
       ]);
-      if (cardRes.status === 'fulfilled') setCard((cardRes.value as CardResponse).card ?? null);
-      if (draftRes.status === 'fulfilled')
-        setDraft((draftRes.value as SourceDraftResponse).draft ?? null);
+      let currentCard: CardSummary | null = null;
+      if (cardRes.status === 'fulfilled') {
+        currentCard = (cardRes.value as CardResponse).card ?? null;
+        setCard(currentCard);
+      }
+      let currentDraft: SourceDraftResponse['draft'] = null;
+      if (draftRes.status === 'fulfilled') {
+        currentDraft = (draftRes.value as SourceDraftResponse).draft ?? null;
+        setDraft(currentDraft);
+      }
       if (jobsRes.status === 'fulfilled') {
         const body = jobsRes.value as JobsResponse;
         setJobCount(body.count ?? 0);
@@ -127,6 +150,18 @@ export default function ProductReviewLanePage() {
       }
       if (registryRes.status === 'fulfilled') {
         setRegistry((registryRes.value as unknown as { items?: RegistryItem[] }).items ?? []);
+      }
+
+      // Auto-populate source input if draft matches card
+      if (currentCard && currentDraft?.source?.url) {
+        const matches =
+          currentDraft.product &&
+          (currentDraft.product.shortLink === currentCard.shortLink ||
+            (currentDraft.product.shopid === currentCard.shopId &&
+              currentDraft.product.itemid === currentCard.itemId));
+        if (matches) {
+          setSourceUrlInput(currentDraft.source.url);
+        }
       }
     } finally {
       setLoading(false);
@@ -136,6 +171,105 @@ export default function ProductReviewLanePage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // ---- Action 2 handlers ---------------------------------------------------
+  const handleSaveSource = async () => {
+    const trimmed = sourceUrlInput.trim();
+    if (!trimmed) {
+      setSourceError('Vui lòng dán link video nguồn.');
+      return;
+    }
+    if (!/^https?:\/\//i.test(trimmed)) {
+      setSourceError('URL không hợp lệ — phải bắt đầu bằng http:// hoặc https://.');
+      return;
+    }
+    if (trimmed.length > 3000) {
+      setSourceError('URL quá dài (giới hạn 3000 ký tự).');
+      return;
+    }
+    setSavingSource(true);
+    setSourceNotice(null);
+    setSourceError(null);
+    try {
+      const res = await fetch('/api/studio/create/source-draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceKind: 'url', sourceUrl: trimmed }),
+      });
+      const body = await res.json();
+      if (res.ok && body.ok) {
+        setSourceNotice('Nguồn đã được lưu thành công.');
+        setDraft(body.draft);
+        await load();
+      } else {
+        setSourceError(body.message || 'Lưu nguồn thất bại.');
+      }
+    } catch {
+      setSourceError('Lỗi kết nối đến API server.');
+    } finally {
+      setSavingSource(false);
+    }
+  };
+
+  const handleDeleteSource = async () => {
+    setSavingSource(true);
+    setSourceNotice(null);
+    setSourceError(null);
+    try {
+      const res = await fetch('/api/studio/create/source-draft', { method: 'DELETE' });
+      const body = await res.json();
+      if (res.ok && body.ok) {
+        setSourceNotice('Đã xóa nguồn nháp thành công.');
+        setSourceUrlInput('');
+        setDraft(null);
+        await load();
+      } else {
+        setSourceError(body.message || 'Xóa nguồn thất bại.');
+      }
+    } catch {
+      setSourceError('Lỗi kết nối đến API server.');
+    } finally {
+      setSavingSource(false);
+    }
+  };
+
+  const handleCreateJob = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (confirmJobPhrase !== 'CREATE JOB') {
+      setJobError('Cụm từ xác nhận không đúng. Cần nhập "CREATE JOB".');
+      return;
+    }
+    setCreatingJob(true);
+    setJobError(null);
+    setJobCreatedSuccess(null);
+    try {
+      const res = await fetch('/api/studio/create/job-draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmPhrase: confirmJobPhrase }),
+      });
+      const body = await res.json();
+      if (res.ok && body.ok) {
+        setJobCreatedSuccess({
+          jobId: body.jobId,
+          status: body.status,
+          productName: body.product?.name,
+          sourceUrl: body.source?.url,
+        });
+        setConfirmJobPhrase('');
+        setShowConfirmJob(false);
+        setSourceUrlInput('');
+        setDraft(null);
+        await load();
+      } else {
+        setJobError(body.message || 'Tạo job thất bại.');
+      }
+    } catch {
+      setJobError('Lỗi kết nối đến API server.');
+    } finally {
+      setCreatingJob(false);
+    }
+  };
 
   // ---- Action 1 handlers ---------------------------------------------------
   const handlePromote = async (shortLink: string) => {
@@ -561,24 +695,192 @@ export default function ProductReviewLanePage() {
         lockReason="Hoàn tất Hành động 1 (Product Card hợp lệ) để mở bước sản xuất."
       >
         {/* Nguồn video */}
-        <div className="rounded-lg border border-hairline bg-raised/30 p-3">
-          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
-            Nguồn video
-          </p>
-          {sourceUrl ? (
-            <p className="font-mono text-[11px] text-neutral-200 break-all">
-              <span className="text-accent-green">✓ đã lưu nháp · </span>
-              {sourceUrl}
-            </p>
-          ) : (
-            <p className="text-[11px] text-neutral-500">
-              Chưa có nguồn nháp cho Product Card hiện tại.
-            </p>
-          )}
+        <div className="rounded-lg border border-hairline bg-raised/30 p-3 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+              Nguồn video
+            </span>
+            {draftMatchesCard && (
+              <span className="text-[10px] text-accent-green font-medium">
+                ✓ Đã khớp Product Card
+              </span>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <input
+              type="url"
+              disabled={savingSource || creatingJob}
+              value={sourceUrlInput}
+              onChange={(e) => setSourceUrlInput(e.target.value)}
+              placeholder="https://... URL video nguồn (TikTok, Douyin, ...)"
+              className="w-full rounded-lg border border-hairline bg-panel/80 px-3 py-2 text-xs text-neutral-100 outline-none focus:border-accent-violet disabled:opacity-50"
+            />
+            {sourceUrlInput.trim().length > 0 && !/^https?:\/\//i.test(sourceUrlInput.trim()) && (
+              <p className="text-[10px] text-accent-rose">
+                URL không hợp lệ — phải bắt đầu bằng http:// hoặc https://
+              </p>
+            )}
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="primary"
+                className="!py-1 !px-2.5 text-[10px] font-semibold"
+                onClick={handleSaveSource}
+                disabled={
+                  savingSource ||
+                  creatingJob ||
+                  !sourceUrlInput.trim() ||
+                  !/^https?:\/\//i.test(sourceUrlInput.trim())
+                }
+              >
+                {savingSource ? 'Đang lưu...' : 'Lưu nguồn'}
+              </Button>
+              {draftMatchesCard && (
+                <Button
+                  variant="outline"
+                  className="!py-1 !px-2.5 text-[10px] font-semibold"
+                  onClick={handleDeleteSource}
+                  disabled={savingSource || creatingJob}
+                >
+                  Xóa nguồn
+                </Button>
+              )}
+            </div>
+
+            {sourceNotice && <p className="text-[10px] text-accent-green">{sourceNotice}</p>}
+            {sourceError && <p className="text-[10px] text-accent-rose">{sourceError}</p>}
+            {!draftMatchesCard && draft?.source?.url && (
+              <NoticeBox accent="amber">
+                Có draft nguồn của sản phẩm khác — không áp cho Product Card hiện tại.
+              </NoticeBox>
+            )}
+          </div>
         </div>
 
-        {/* Job mới nhất + pipeline */}
-        <div className="rounded-lg border border-hairline bg-raised/30 p-3 space-y-2.5">
+        {/* Chuẩn bị job sản xuất / Xác nhận */}
+        {draftMatchesCard && (
+          <div className="rounded-lg border border-hairline bg-raised/30 p-3 space-y-2.5">
+            {!showConfirmJob ? (
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] text-neutral-400">
+                  Nguồn video nháp đã sẵn sàng. Tạo job draft để bắt đầu quy trình sản xuất.
+                </p>
+                <Button
+                  onClick={() => {
+                    setShowConfirmJob(true);
+                    setConfirmJobPhrase('');
+                    setJobError(null);
+                  }}
+                  variant="success"
+                  className="!py-1.5 !px-3 text-[11px] bg-accent-violet hover:bg-accent-violet/90 text-white font-semibold shrink-0"
+                >
+                  Chuẩn bị job sản xuất
+                </Button>
+              </div>
+            ) : (
+              <form onSubmit={handleCreateJob} className="space-y-2.5">
+                <div className="flex items-start gap-2 text-xs text-accent-violet">
+                  <span className="mt-0.5">ℹ️</span>
+                  <div>
+                    <p className="font-semibold text-neutral-200">Xác nhận tạo Job Draft</p>
+                    <p className="text-[11px] text-neutral-400 leading-relaxed">
+                      Hệ thống sẽ khởi tạo Job Draft từ Product Card và nguồn video nháp. Bạn cần gõ
+                      cụm xác nhận.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2.5 sm:flex-row sm:items-end">
+                  <div className="flex-1 min-w-0">
+                    <label
+                      htmlFor="confirmJobPhraseInput"
+                      className="block text-[10px] text-neutral-400 font-medium mb-1"
+                    >
+                      Gõ chính xác:{' '}
+                      <code className="bg-neutral-800 px-1 py-0.5 rounded text-neutral-200 font-mono select-all">
+                        CREATE JOB
+                      </code>
+                    </label>
+                    <input
+                      id="confirmJobPhraseInput"
+                      type="text"
+                      required
+                      disabled={creatingJob}
+                      value={confirmJobPhrase}
+                      onChange={(e) => setConfirmJobPhrase(e.target.value)}
+                      placeholder="CREATE JOB"
+                      className="w-full rounded-lg border border-hairline bg-panel px-3 py-1.5 text-xs text-neutral-200 focus:outline-none focus:border-accent-violet disabled:opacity-50"
+                    />
+                  </div>
+                  <div className="flex gap-2 shrink-0">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      disabled={creatingJob}
+                      onClick={() => {
+                        setShowConfirmJob(false);
+                        setConfirmJobPhrase('');
+                        setJobError(null);
+                      }}
+                      className="!py-1.5 !px-2.5 text-[11px]"
+                    >
+                      Hủy
+                    </Button>
+                    <Button
+                      type="submit"
+                      variant="success"
+                      disabled={creatingJob || confirmJobPhrase !== 'CREATE JOB'}
+                      className="!py-1.5 !px-3 text-[11px] bg-accent-violet hover:bg-accent-violet text-white border-none font-semibold disabled:opacity-30"
+                    >
+                      {creatingJob ? 'Đang tạo...' : 'Xác nhận tạo'}
+                    </Button>
+                  </div>
+                </div>
+              </form>
+            )}
+
+            {jobError && <p className="text-[11px] text-accent-rose">Lỗi: {jobError}</p>}
+          </div>
+        )}
+
+        {/* Job Created Success Box */}
+        {jobCreatedSuccess && (
+          <div className="rounded-lg border border-accent-green/30 bg-accent-green/10 p-3 space-y-2 text-xs">
+            <p className="font-semibold text-accent-green">✅ Job đã tạo thành công!</p>
+            <div className="space-y-1 font-mono text-[11px] text-neutral-300">
+              <div>
+                jobId: <span className="text-accent-blue font-bold">{jobCreatedSuccess.jobId}</span>
+              </div>
+              <div>
+                status:{' '}
+                <span className="text-accent-amber font-semibold">{jobCreatedSuccess.status}</span>
+              </div>
+              {jobCreatedSuccess.sourceUrl && (
+                <div className="break-all">
+                  source URL:{' '}
+                  <span className="text-neutral-400">{jobCreatedSuccess.sourceUrl}</span>
+                </div>
+              )}
+              {jobCreatedSuccess.productName && (
+                <div>
+                  Product Card:{' '}
+                  <span className="text-neutral-200">{jobCreatedSuccess.productName}</span>
+                </div>
+              )}
+            </div>
+            <Button
+              onClick={() => setJobCreatedSuccess(null)}
+              variant="outline"
+              className="!py-1 !px-2 text-[10px]"
+            >
+              Đóng thông báo
+            </Button>
+          </div>
+        )}
+
+        {/* Job mới nhất */}
+        <div className="rounded-lg border border-hairline bg-raised/30 p-3 space-y-2">
           <div className="flex items-center justify-between">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
               Job mới nhất{' '}
@@ -590,7 +892,7 @@ export default function ProductReviewLanePage() {
           </div>
 
           {latestJob ? (
-            <>
+            <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-1.5">
                 <StatusChip accent={latestJob.statusAccent}>{latestJob.statusLabel}</StatusChip>
                 {latestJob.duration !== '—' && (
@@ -599,29 +901,43 @@ export default function ProductReviewLanePage() {
                 {latestJob.hasPreview && <StatusChip accent="green">có preview</StatusChip>}
               </div>
 
-              {/* Pipeline steps — QA là bước con cuối, BÊN TRONG Hành động 2 */}
-              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
-                <StepRow label="Tải / clean nguồn" state={latestJob.pipeline.source} />
-                <StepRow label="Script" state={latestJob.pipeline.script} />
-                <StepRow label="Voice" state={latestJob.pipeline.voice} />
-                <StepRow label="BGM" state={latestJob.pipeline.bgm} />
-                <StepRow label="Render + caption" state={latestJob.pipeline.render} />
-                <StepRow label="QA / Kiểm tra" state={latestJob.pipeline.qa} />
-              </div>
-
               {latestJob.errorLog && (
                 <NoticeBox accent="rose">Lỗi: {latestJob.errorLog.error}</NoticeBox>
               )}
-            </>
+            </div>
           ) : (
             <p className="text-[11px] text-neutral-500">
-              Chưa có job nào trong lane. Sẽ tạo + chạy ở Round C/D.
+              Chưa có job nào trong lane. Tiến hành dán nguồn và tạo job để bắt đầu.
             </p>
           )}
         </div>
 
+        {/* Pipeline Checklist */}
+        <div className="rounded-lg border border-hairline bg-raised/30 p-3 space-y-2.5">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+            Pipeline Checklist
+          </p>
+          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+            <StepRow
+              label="1. Nguồn video"
+              state={latestJob || draftMatchesCard ? 'pass' : 'warn'}
+            />
+            <StepRow
+              label="2. Tải / clean nguồn"
+              state={latestJob ? latestJob.pipeline.source : 'warn'}
+            />
+            <StepRow label="3. Script" state={latestJob ? latestJob.pipeline.script : 'warn'} />
+            <StepRow label="4. Voice" state={latestJob ? latestJob.pipeline.voice : 'warn'} />
+            <StepRow label="5. BGM" state={latestJob ? latestJob.pipeline.bgm : 'warn'} />
+            <StepRow
+              label="6. Render + caption"
+              state={latestJob ? latestJob.pipeline.render : 'warn'}
+            />
+            <StepRow label="7. QA / Kiểm tra" state={latestJob ? latestJob.pipeline.qa : 'warn'} />
+          </div>
+        </div>
+
         <PanelActions>
-          <ComingNext round="C">Lưu nguồn</ComingNext>
           <ComingNext round="D" primary>
             Chạy sản xuất video
           </ComingNext>
