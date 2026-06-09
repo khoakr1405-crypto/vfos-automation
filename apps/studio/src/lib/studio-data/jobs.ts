@@ -14,6 +14,12 @@
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { repoRoot, resolveInsideRepo } from './paths';
+import {
+  compareProductBinding,
+  extractBinding,
+  isFallbackSource,
+  isOwnerValid,
+} from './production-gates';
 
 // Load .env from repo root to ensure Next.js dev server has the same environment variables
 function loadStudioEnv() {
@@ -72,7 +78,6 @@ export type {
 
 const REGISTRY_REL = 'data/temp/vfos_jobs_registry.json';
 const JOBS_ROOT_REL = 'data/temp/jobs';
-const EXPECTED_OWNER = 'an_17376660568';
 const ACTIVE_LANE = 'Review sản phẩm';
 
 // ---- internal raw shapes (only the fields we read) -------------------------
@@ -232,7 +237,7 @@ function buildJobDTO(entry: RegistryEntry): OperatorJobDTO {
     manifest?.source?.productCardPath ?? entry.productCardPath ?? null,
   );
   const ownerId = card?.affiliateOwnerId ?? null;
-  const ownerValid = ownerId === EXPECTED_OWNER && card?.validationStatus === 'VERIFIED';
+  const ownerValid = isOwnerValid(card);
 
   // Identity của product ĐÃ BIND vào job (snapshot trong job_dir). Source of truth
   // cho Action 2 — KHÔNG phải global selected card.
@@ -476,7 +481,10 @@ export function livePublishConfirmPhrase(jobId: string): string {
  * Đánh giá toàn bộ gate live-publish server-side từ manifest + artifact thật.
  * READ-ONLY. KHÔNG xét env flag / local-only / confirm phrase (route lo phần đó).
  */
-export function evaluateLivePublishGates(jobId: string): LivePublishGateResult {
+export function evaluateLivePublishGates(
+  jobId: string,
+  expectedProduct?: { shortLink?: string | null; shopId?: string | null; itemId?: string | null },
+): LivePublishGateResult {
   const empty: LivePublishGateResult = {
     jobId,
     jobExists: false,
@@ -504,8 +512,7 @@ export function evaluateLivePublishGates(jobId: string): LivePublishGateResult {
   const productName = (entry?.productName ?? '')?.trim() || null;
 
   const card = readJson<ProductCard>(manifest.source?.productCardPath ?? entry?.productCardPath);
-  const ownerValid =
-    card?.affiliateOwnerId === EXPECTED_OWNER && card?.validationStatus === 'VERIFIED';
+  const ownerValid = isOwnerValid(card);
 
   const qa = resolveQa(manifest);
   const a = manifest.artifacts ?? {};
@@ -525,34 +532,10 @@ export function evaluateLivePublishGates(jobId: string): LivePublishGateResult {
     manifest.safety?.published === true ||
     rawState === 'PUBLISHED';
 
-  const selectedAbs = resolveInsideRepo('data/temp/selected_product_card.json');
-  let cardMatchesSelected = false;
-  if (selectedAbs && existsSync(selectedAbs)) {
-    try {
-      const selectedCard = JSON.parse(readFileSync(selectedAbs, 'utf8'));
-      const jobBinding = {
-        shortLink: card?.shortLink ? String(card.shortLink).trim() : '',
-        shopId: card?.shopId ? String(card.shopId).trim() : '',
-        itemId: card?.itemId ? String(card.itemId).trim() : '',
-      };
-      const activeBinding = {
-        shortLink: selectedCard.shortLink ? String(selectedCard.shortLink).trim() : '',
-        shopId: selectedCard.shopId ? String(selectedCard.shopId).trim() : '',
-        itemId: selectedCard.itemId ? String(selectedCard.itemId).trim() : '',
-      };
-      cardMatchesSelected =
-        (!!activeBinding.shopId &&
-          !!activeBinding.itemId &&
-          activeBinding.shopId === jobBinding.shopId &&
-          activeBinding.itemId === jobBinding.itemId) ||
-        (!!activeBinding.shortLink && activeBinding.shortLink === jobBinding.shortLink);
-    } catch {
-      // ignore
-    }
-  }
-
-  const sourceMode = manifest.source?.sourceMode ?? null;
-  const productionAllowed = manifest.source?.productionAllowed ?? null;
+  // SSOT: extractBinding + compareProductBinding (default-deny nếu thiếu expectedProduct)
+  const jobBinding = extractBinding(card);
+  const cardMatchesSelected = compareProductBinding(jobBinding, expectedProduct);
+  const sourceIsFallback = isFallbackSource(manifest.source);
 
   const gates: LivePublishGate[] = [
     {
@@ -564,8 +547,8 @@ export function evaluateLivePublishGates(jobId: string): LivePublishGateResult {
     {
       key: 'not_fallback_source',
       label: 'Không phải fallback/demo source',
-      passed: sourceMode !== 'fallback' && productionAllowed !== false,
-      detail: sourceMode !== 'fallback' ? 'Nguồn video sạch thật.' : 'Nguồn video hiện tại là fallback mẫu.',
+      passed: !sourceIsFallback,
+      detail: !sourceIsFallback ? 'Nguồn video sạch thật.' : 'Nguồn video hiện tại là fallback mẫu.',
     },
     {
       key: 'product_matches_selected',
@@ -716,7 +699,8 @@ export function loadPublishQueueItems(): PublishQueueItemDTO[] {
 
   return filtered.map((job) => {
     const id = job.id;
-    const liveGate = evaluateLivePublishGates(id);
+    // Đã sửa: Truyền context explicit từ job snapshot để đối chiếu gate, không dùng floating state.
+    const liveGate = evaluateLivePublishGates(id, job.productBinding);
     const pkgPath = `production/archive/${id}/package_manifest.json`;
     const pkgExists = fileExistsInside(pkgPath);
 
@@ -845,6 +829,7 @@ export function loadPublishQueueItems(): PublishQueueItemDTO[] {
       jobId: id,
       laneId: 'review',
       productName: job.product,
+      productBinding: job.productBinding,
       status: job.state as PublishQueueItemDTO['status'],
       previewUrl: job.previewUrl,
       suggestedChannel,

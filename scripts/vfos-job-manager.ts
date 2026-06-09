@@ -1322,7 +1322,24 @@ async function cmdRunReview(args: string[]): Promise<number> {
     return 2;
   }
 
-  // Gate check: Block pipeline if source cleanliness is not verified
+  // Gate check (Rule 5): Block production if source is fallback/demo.
+  // Canonical predicate mirrors isFallbackSource() in
+  // apps/studio/src/lib/studio-data/production-gates.ts (SSOT). Scripts replicate
+  // the one-liner instead of importing across the workspace boundary.
+  const sourceMode = (manifest.source as any).sourceMode ?? null;
+  const productionAllowed = (manifest.source as any).productionAllowed ?? null;
+  if (sourceMode === 'fallback' || productionAllowed === false) {
+    console.error('======================================================');
+    console.error('🛑 PIPELINE_GATE_BLOCKED: Source is fallback/demo, not allowed for real production.');
+    console.error(`Job ID:             ${jobId}`);
+    console.error(`sourceMode:         ${sourceMode ?? '(none)'}`);
+    console.error(`productionAllowed:  ${productionAllowed === false ? 'false' : '(unset)'}`);
+    console.error('Fallback source is review/dev only. Attach a real approved source before production.');
+    console.error('======================================================');
+    return 21;
+  }
+
+  // Gate check (Rule 4): Block pipeline if source cleanliness is not verified
   const cleanlinessStatus = (manifest.source as any).cleanlinessStatus;
   if (cleanlinessStatus !== 'WATERMARK_NOT_DETECTED') {
     console.error('======================================================');
@@ -1462,7 +1479,24 @@ async function cmdScript(args: string[]): Promise<number> {
     return 2;
   }
 
-  // Gate check: Block pipeline if source cleanliness is not verified
+  // Gate check (Rule 5): Block production if source is fallback/demo.
+  // Canonical predicate mirrors isFallbackSource() in
+  // apps/studio/src/lib/studio-data/production-gates.ts (SSOT). Scripts replicate
+  // the one-liner instead of importing across the workspace boundary.
+  const sourceMode = (manifest.source as any).sourceMode ?? null;
+  const productionAllowed = (manifest.source as any).productionAllowed ?? null;
+  if (sourceMode === 'fallback' || productionAllowed === false) {
+    console.error('======================================================');
+    console.error('🛑 PIPELINE_GATE_BLOCKED: Source is fallback/demo, not allowed for real production.');
+    console.error(`Job ID:             ${jobId}`);
+    console.error(`sourceMode:         ${sourceMode ?? '(none)'}`);
+    console.error(`productionAllowed:  ${productionAllowed === false ? 'false' : '(unset)'}`);
+    console.error('Fallback source is review/dev only. Attach a real approved source before production.');
+    console.error('======================================================');
+    return 21;
+  }
+
+  // Gate check (Rule 4): Block pipeline if source cleanliness is not verified
   const cleanlinessStatus = (manifest.source as any).cleanlinessStatus;
   if (cleanlinessStatus !== 'WATERMARK_NOT_DETECTED') {
     console.error('======================================================');

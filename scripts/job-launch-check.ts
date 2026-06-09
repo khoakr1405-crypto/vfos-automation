@@ -261,8 +261,11 @@ function main() {
     detail: safetyPass ? 'Clean. Ready for initial publish.' : 'Locks show already uploaded or published.',
   });
   if (isAlreadyPublished) reasons.push('ALREADY_UPLOADED_OR_PUBLISHED');
-  
-  // Check 10: Fallback source check
+
+  // Check 10: Fallback source check (Rule 5)
+  // Canonical predicate mirrors isFallbackSource() in
+  // apps/studio/src/lib/studio-data/production-gates.ts (SSOT). Scripts replicate
+  // the one-liner instead of importing across the workspace boundary.
   const sourceMode = (manifest.source as any)?.sourceMode ?? null;
   const productionAllowed = (manifest.source as any)?.productionAllowed ?? null;
   const isFallback = sourceMode === 'fallback' || productionAllowed === false;

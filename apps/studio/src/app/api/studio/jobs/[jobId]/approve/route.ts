@@ -1,4 +1,5 @@
 import { loadJobById } from '@/lib/studio-data/jobs';
+import { isFallbackSource } from '@/lib/studio-data/production-gates';
 import { runRepoScript } from '@/lib/studio-data/run-command';
 
 export const dynamic = 'force-dynamic';
@@ -38,7 +39,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ jobId: string 
 
     // 3. Rà soát điều kiện phê duyệt (Approve Guards)
     const details: string[] = [];
-    if (job.source?.sourceMode === 'fallback' || job.source?.productionAllowed === false) {
+    // Rule 5 (SSOT: isFallbackSource) — fallback chỉ review/dev, không được approve.
+    if (isFallbackSource(job.source)) {
       details.push('Nguồn hiện tại là fallback mẫu, không được dùng để sản xuất video thật cho sản phẩm này.');
     }
     if (job.state !== 'READY_FOR_OPERATOR_REVIEW') {

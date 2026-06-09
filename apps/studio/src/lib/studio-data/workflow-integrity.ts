@@ -10,6 +10,14 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { resolveInsideRepo } from './paths';
+import {
+  compareProductBinding,
+  extractBinding,
+  isFallbackSource,
+  isOwnerValid,
+  isSourceApproved,
+  resolveCleanSourceRel,
+} from './production-gates';
 
 export type WorkflowIntegrityStatus = 'PASS' | 'MISSING' | 'MISMATCH' | 'BLOCKED';
 
@@ -29,7 +37,6 @@ export interface JobProductBindingCheck {
   issues: WorkflowIntegrityIssue[];
 }
 
-const EXPECTED_OWNER = 'an_17376660568';
 const JOBS_ROOT_REL = 'data/temp/jobs';
 const SELECTED_CARD_REL = 'data/temp/selected_product_card.json';
 
@@ -51,6 +58,8 @@ interface JobManifest {
     approvedSourceVideoPath?: string | null;
     cleanlinessStatus?: string | null;
     sourceVideoUrl?: string | null;
+    sourceMode?: string | null;
+    productionAllowed?: boolean | null;
   };
   lastError?: string | null;
 }
@@ -58,7 +67,10 @@ interface JobManifest {
 /**
  * Validate that the global active Product Card matches the job's bound Product Card
  */
-export function validateJobProductBinding(jobId: string): JobProductBindingCheck {
+export function validateJobProductBinding(
+  jobId: string,
+  expectedProduct?: { shortLink?: string; shopId?: string; itemId?: string },
+): JobProductBindingCheck {
   const issues: WorkflowIntegrityIssue[] = [];
 
   const manifestRel = `${JOBS_ROOT_REL}/${jobId}/job_manifest.json`;
@@ -136,8 +148,7 @@ export function validateJobProductBinding(jobId: string): JobProductBindingCheck
   const productTitle = jobCard.name ?? null;
 
   // Owner validation of the job's snapshot card
-  const ownerValid =
-    jobCard.affiliateOwnerId === EXPECTED_OWNER && jobCard.validationStatus === 'VERIFIED';
+  const ownerValid = isOwnerValid(jobCard);
   if (!ownerValid) {
     issues.push({
       code: 'OWNER_INVALID',
@@ -150,75 +161,21 @@ export function validateJobProductBinding(jobId: string): JobProductBindingCheck
     });
   }
 
-  // Load the current active selected card (global selection at Action 1)
-  const selectedAbs = resolveInsideRepo(SELECTED_CARD_REL);
-  if (!selectedAbs || !existsSync(selectedAbs)) {
-    return {
-      ok: issues.length === 0,
-      status: 'MISMATCH',
-      jobId,
-      productTitle,
-      productCardPath: cardRel,
-      issues: [
-        ...issues,
-        {
-          code: 'ACTIVE_CARD_MISSING',
-          severity: 'error',
-          message: 'Chưa chọn Product Card hoạt động tại Hành động 1.',
-        },
-      ],
-    };
-  }
-
-  let selectedCard: ProductCard;
-  try {
-    selectedCard = JSON.parse(readFileSync(selectedAbs, 'utf8'));
-  } catch {
-    return {
-      ok: false,
-      status: 'BLOCKED',
-      jobId,
-      productTitle,
-      productCardPath: cardRel,
-      issues: [
-        ...issues,
-        {
-          code: 'ACTIVE_CARD_UNREADABLE',
-          severity: 'blocker',
-          message: 'Không thể đọc Product Card hoạt động hiện tại.',
-        },
-      ],
-    };
-  }
-
-  // Compare bindings
-  const jobBinding = {
-    shortLink: jobCard.shortLink ? String(jobCard.shortLink).trim() : '',
-    shopId: jobCard.shopId ? String(jobCard.shopId).trim() : '',
-    itemId: jobCard.itemId ? String(jobCard.itemId).trim() : '',
-  };
-
-  const activeBinding = {
-    shortLink: selectedCard.shortLink ? String(selectedCard.shortLink).trim() : '',
-    shopId: selectedCard.shopId ? String(selectedCard.shopId).trim() : '',
-    itemId: selectedCard.itemId ? String(selectedCard.itemId).trim() : '',
-  };
-
-  const idMatch =
-    (!!activeBinding.shopId &&
-      !!activeBinding.itemId &&
-      activeBinding.shopId === jobBinding.shopId &&
-      activeBinding.itemId === jobBinding.itemId) ||
-    (!!activeBinding.shortLink && activeBinding.shortLink === jobBinding.shortLink);
+  // Compare bindings with expectedProduct (Explicit Context).
+  // SSOT: compareProductBinding default-deny khi thiếu expectedProduct.
+  const jobBinding = extractBinding(jobCard);
+  const idMatch = compareProductBinding(jobBinding, expectedProduct);
 
   if (!idMatch) {
     issues.push({
       code: 'PRODUCT_JOB_MISMATCH',
       severity: 'blocker',
-      message: `Product Card đang chọn ở Hành động 1 không khớp với sản phẩm đã bind vào Job hiện tại (${productTitle || 'Không rõ'}).`,
+      message: expectedProduct
+        ? `Product Card đang thao tác không khớp với sản phẩm đã bind vào Job hiện tại (${productTitle || 'Không rõ'}).`
+        : `Yêu cầu thao tác thiếu context (expectedProduct) để đối chiếu bảo mật với Job hiện tại (${productTitle || 'Không rõ'}).`,
       details: {
         jobProduct: { title: productTitle, ...jobBinding },
-        activeProduct: { title: selectedCard.name ?? null, ...activeBinding },
+        activeProduct: expectedProduct ? extractBinding(expectedProduct) : null,
       },
     });
 
@@ -245,9 +202,12 @@ export function validateJobProductBinding(jobId: string): JobProductBindingCheck
 /**
  * Perform a full validation check on the job readiness for production.
  */
-export function validateProductionReadiness(jobId: string) {
+export function validateProductionReadiness(
+  jobId: string,
+  expectedProduct?: { shortLink?: string; shopId?: string; itemId?: string },
+) {
   const issues: WorkflowIntegrityIssue[] = [];
-  const productBinding = validateJobProductBinding(jobId);
+  const productBinding = validateJobProductBinding(jobId, expectedProduct);
 
   // Collect product binding issues
   issues.push(...productBinding.issues);
@@ -276,9 +236,9 @@ export function validateProductionReadiness(jobId: string) {
     };
   }
 
-  // Check cleanliness
+  // Check cleanliness (Rule 4) — SSOT: isSourceApproved
   const cleanlinessStatus = manifest.source?.cleanlinessStatus ?? null;
-  if (cleanlinessStatus !== 'WATERMARK_NOT_DETECTED') {
+  if (!isSourceApproved(cleanlinessStatus)) {
     issues.push({
       code: 'SOURCE_NOT_APPROVED',
       severity: 'blocker',
@@ -287,38 +247,21 @@ export function validateProductionReadiness(jobId: string) {
     });
   }
 
-  // Check if source is fallback/demo source and block production
-  const sourceMode = (manifest.source as any)?.sourceMode ?? null;
-  const productionAllowed = (manifest.source as any)?.productionAllowed ?? null;
-  if (sourceMode === 'fallback' || productionAllowed === false) {
+  // Check if source is fallback/demo source and block production (Rule 5) — SSOT
+  if (isFallbackSource(manifest.source)) {
     issues.push({
       code: 'SOURCE_IS_FALLBACK',
       severity: 'blocker',
       message: 'Nguồn hiện tại là fallback mẫu, không được dùng để sản xuất video thật cho sản phẩm này.',
-      details: { sourceMode, productionAllowed },
+      details: {
+        sourceMode: manifest.source?.sourceMode ?? null,
+        productionAllowed: manifest.source?.productionAllowed ?? null,
+      },
     });
   }
 
-  // Check source video file exists and is secure
-  const candidateRels = [
-    manifest.source?.approvedSourceVideoPath,
-    manifest.source?.sourceVideoPath,
-    `runs/${jobId}/source/clean_source_video.mp4`,
-  ];
-  let cleanSourceRel: string | null = null;
-  for (const rel of candidateRels) {
-    if (!rel || typeof rel !== 'string') continue;
-    // Security check: must reside inside runs/<jobId>/ or data/temp/jobs/<jobId>/
-    if (!(rel.startsWith(`runs/${jobId}/`) || rel.startsWith(`${JOBS_ROOT_REL}/${jobId}/`))) {
-      continue;
-    }
-    const abs = resolveInsideRepo(rel);
-    if (abs && existsSync(abs)) {
-      cleanSourceRel = rel;
-      break;
-    }
-  }
-
+  // Check clean source video file exists & is secure (Rule 1/4) — SSOT
+  const cleanSourceRel = resolveCleanSourceRel(jobId, manifest.source);
   if (!cleanSourceRel) {
     issues.push({
       code: 'CLEAN_SOURCE_MISSING',
