@@ -35,6 +35,16 @@ interface CardSummary {
   commissionRate?: string;
   price?: string;
   productImageUrl: string | null;
+  description: string | null;
+}
+
+/** Plain product text (name/description) — trim + cap length. Local-only read;
+ * product copy is not credential-shaped, so just bound the size. */
+function safeText(v: unknown, max: number): string | null {
+  if (typeof v !== 'string') return null;
+  const s = v.trim();
+  if (!s) return null;
+  return s.length > max ? `${s.slice(0, max)}…` : s;
 }
 
 /**
@@ -85,6 +95,7 @@ function readCurrentCard(): CardSummary | null {
       ownerVerified: affiliateOwnerId === EXPECTED_OWNER,
       validationStatus: String(c.validationStatus ?? 'UNKNOWN'),
       productImageUrl: safeImageUrl(c.productImageUrl),
+      description: safeText(c.description, 500),
       ...(typeof c.score === 'number' ? { score: c.score } : {}),
       ...(commissionRate ? { commissionRate } : {}),
       ...(price ? { price } : {}),

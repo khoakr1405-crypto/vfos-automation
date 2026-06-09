@@ -18,6 +18,7 @@ import { Icon, UtilIcon } from '@/components/icons';
 import { MockBanner } from '@/components/mock-banner';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui';
+import { buildChineseSearchName } from '@/lib/cn-search-keywords';
 import { ACCENT_BG_SOFT, ACCENT_TEXT, type AccentKey } from '@/lib/nav';
 import type { GateState, OperatorJobDTO } from '@/lib/studio-data/types';
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
@@ -35,6 +36,7 @@ interface CardSummary {
   commissionRate?: string;
   price?: string;
   productImageUrl?: string | null;
+  description?: string | null;
 }
 interface CardResponse {
   ok: boolean;
@@ -87,6 +89,47 @@ interface ExtractionResult {
 }
 
 // ---------------------------------------------------------------------------
+type ProductBinding = { shortLink: string | null; shopId: string | null; itemId: string | null };
+type CardIdentity = Pick<CardSummary, 'shopId' | 'itemId' | 'shortLink'>;
+
+// Quy tắc khớp sản phẩm DUY NHẤT cho toàn lane: ưu tiên (shopId,itemId), fallback
+// shortLink. Dùng chung ở mọi nơi để tránh lệch định nghĩa giữa các gate.
+function bindingMatchesCard(
+  binding: ProductBinding | null | undefined,
+  card: CardIdentity | null | undefined,
+): boolean {
+  if (!binding || !card) return false;
+  if (card.shopId && card.itemId && binding.shopId === card.shopId && binding.itemId === card.itemId) {
+    return true;
+  }
+  return !!card.shortLink && binding.shortLink === card.shortLink;
+}
+
+// Phát hiện ký tự CJK (Hán) — dùng để báo metadata nguồn tiếng Trung cần Việt hóa.
+function hasCJK(s: string): boolean {
+  return /[㐀-䶿一-鿿豈-﫿]/.test(s);
+}
+
+// Tìm job có productBinding khớp Product Card hiện tại (nguồn sự thật).
+function findJobForCard(
+  jobs: OperatorJobDTO[],
+  card: CardIdentity | null | undefined,
+): OperatorJobDTO | null {
+  if (!card) return null;
+  return jobs.find((j) => bindingMatchesCard(j.productBinding, card)) ?? null;
+}
+
+// Trich URL http/https DAU TIEN trong chuoi. Operator thuong paste nguyen doan
+// share Douyin/Trung (hashtag + URL + text Trung). Dung o khoang trang / ky tu
+// CJK / dau cau fullwidth, roi cat dau cau ASCII bam duoi. null neu khong co URL.
+function extractFirstUrl(raw: string): string | null {
+  if (!raw) return null;
+  const m = raw.match(/https?:\/\/[^\s　-〿㐀-䶿一-鿿豈-﫿＀-￯<>"'`]+/i);
+  if (!m) return null;
+  const url = m[0].replace(/[.,;:!?)\]}>'"]+$/u, '');
+  return url.length > 0 ? url : null;
+}
+
 // biome-ignore lint/style/noDefaultExport: Next.js page requires default export
 export default function ProductReviewLanePage() {
   const [card, setCard] = useState<CardSummary | null>(null);
@@ -96,6 +139,7 @@ export default function ProductReviewLanePage() {
   const [jobCount, setJobCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [imgError, setImgError] = useState(false);
+  const [copiedCn, setCopiedCn] = useState(false);
 
   // Action 1 states
   const [registry, setRegistry] = useState<RegistryItem[]>([]);
@@ -169,21 +213,7 @@ export default function ProductReviewLanePage() {
         setJobs(fetchedJobs);
         setJobCount(body.count ?? 0);
 
-        let foundJob: OperatorJobDTO | null = null;
-        if (currentCard && fetchedJobs.length > 0) {
-          foundJob =
-            fetchedJobs.find((j) => {
-              const b = j.productBinding;
-              return (
-                b &&
-                ((currentCard.shopId &&
-                  currentCard.itemId &&
-                  b.shopId === currentCard.shopId &&
-                  b.itemId === currentCard.itemId) ||
-                  (currentCard.shortLink && b.shortLink === currentCard.shortLink))
-              );
-            }) ?? null;
-        }
+        const foundJob = findJobForCard(fetchedJobs, currentCard);
 
         const urlParams = new URLSearchParams(window.location.search);
         const queryJobId = urlParams.get('jobId') || '';
@@ -220,18 +250,43 @@ export default function ProductReviewLanePage() {
     load();
   }, [load]);
 
+  // Chọn job + giữ URL ?jobId đồng bộ. URL rỗng khi clear để load() sau không tái
+  // chọn job cũ đã lệch sản phẩm.
+  const applySelectedJob = useCallback((jobId: string) => {
+    setSelectedJobId(jobId);
+    const url = new URL(window.location.href);
+    if (jobId) {
+      url.searchParams.set('jobId', jobId);
+    } else {
+      url.searchParams.delete('jobId');
+    }
+    window.history.pushState({}, '', url.toString());
+  }, []);
+
+  const handleCopyChineseName = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedCn(true);
+      setTimeout(() => setCopiedCn(false), 1500);
+    } catch {
+      // Clipboard bị chặn (không phải lỗi workflow) — không làm gì thêm.
+    }
+  };
+
   // ---- Action 2 handlers ---------------------------------------------------
   const handleSaveSource = async () => {
-    const trimmed = sourceUrlInput.trim();
-    if (!trimmed) {
+    if (!sourceUrlInput.trim()) {
       setSourceError('Vui lòng dán link video nguồn.');
       return;
     }
-    if (!/^https?:\/\//i.test(trimmed)) {
-      setSourceError('URL không hợp lệ — phải bắt đầu bằng http:// hoặc https://.');
+    // Trích URL từ chuỗi pasted (có thể kèm hashtag/text Trung). Chỉ báo lỗi khi
+    // KHÔNG có URL http/https nào trong đoạn văn bản.
+    const url = extractFirstUrl(sourceUrlInput);
+    if (!url) {
+      setSourceError('Không tìm thấy URL http/https trong đoạn văn bản đã dán.');
       return;
     }
-    if (trimmed.length > 3000) {
+    if (url.length > 3000) {
       setSourceError('URL quá dài (giới hạn 3000 ký tự).');
       return;
     }
@@ -242,7 +297,7 @@ export default function ProductReviewLanePage() {
       const res = await fetch('/api/studio/create/source-draft', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sourceKind: 'url', sourceUrl: trimmed }),
+        body: JSON.stringify({ sourceKind: 'url', sourceUrl: url }),
       });
       const body = await res.json();
       if (res.ok && body.ok) {
@@ -308,6 +363,9 @@ export default function ProductReviewLanePage() {
         setShowConfirmJob(false);
         setSourceUrlInput('');
         setDraft(null);
+        // Linear continuity: job mới là job vận hành → chọn tường minh + sync URL
+        // trước load() (queryJobId precedence giữ đúng job mới) → bindingStatus PASS.
+        if (body.jobId) applySelectedJob(body.jobId);
         await load();
       } else {
         setJobError(body.message || 'Tạo job thất bại.');
@@ -455,15 +513,24 @@ export default function ProductReviewLanePage() {
       });
       const data = await res.json();
       if (data.ok) {
-        setSuccessMessage(`Đã chọn sản phẩm: ${data.card.name}`);
         setImgError(false); // Reset image error for new image
-        // Refresh current card
+        // Product Card mới là nguồn sự thật — refresh card thật từ API.
         const cardRes = await fetch('/api/studio/commerce/current-product-card').then((r) =>
           r.json(),
         );
-        if (cardRes.ok) {
-          setCard(cardRes.card);
-        }
+        const newCard: CardSummary | null = cardRes.ok ? cardRes.card : (data.card ?? null);
+        if (newCard) setCard(newCard);
+        // Re-bind job theo sản phẩm MỚI: có job khớp → chọn job đó (PASS); không có
+        // → clear về rỗng (MISSING). KHÔNG giữ job cũ lệch sản phẩm — đổi Product Card
+        // KHÔNG được để lại MISMATCH mặc định.
+        const matched = findJobForCard(jobs, newCard);
+        applySelectedJob(matched?.id ?? '');
+        const name = newCard?.name ?? data.card?.name ?? 'sản phẩm';
+        setSuccessMessage(
+          matched
+            ? `Đã chọn sản phẩm: ${name} — tự khớp job [${matched.id}].`
+            : `Đã chọn sản phẩm: ${name} — chưa có job khớp, hãy chuẩn bị job mới ở Hành động 2.`,
+        );
       } else {
         setErrorMessage(data.message || 'Lỗi promote sản phẩm.');
       }
@@ -517,6 +584,17 @@ export default function ProductReviewLanePage() {
   // ---- derived gates -------------------------------------------------------
   const ownerOk = card?.ownerVerified ?? false;
   const cardReady = card !== null && ownerOk;
+  // Metadata nguồn tiếng Trung → cần bản dịch tiếng Việt trước khi tạo job.
+  const cardNeedsTranslation = !!card && (hasCJK(card.name) || hasCJK(card.description ?? ''));
+  // Từ khóa tiếng Trung (local, không API) để Operator copy đi tìm source video.
+  const chineseSearchName = card ? buildChineseSearchName(card.name) : null;
+
+  // Source intake: URL trích từ chuỗi pasted (Douyin/Trung). Preview cho Operator
+  // trước khi lưu; chỉ chặn lưu khi không có URL nào.
+  const extractedSourceUrl = extractFirstUrl(sourceUrlInput);
+  const sourceInputHasText = sourceUrlInput.trim().length > 0;
+  const sourceUrlWasExtracted =
+    !!extractedSourceUrl && extractedSourceUrl !== sourceUrlInput.trim();
 
   // Draft only counts if it belongs to the CURRENT Product Card.
   const draftMatchesCard =
@@ -533,14 +611,7 @@ export default function ProductReviewLanePage() {
   // ĐÃ BIND vào job hiện tại (Action 2) không. Job mang binding riêng (snapshot lúc
   // tạo), nên global card có thể lệch nếu Operator chọn sản phẩm khác mà chưa tạo job.
   const jobBinding = latestJob?.productBinding ?? null;
-  const cardMatchesJob =
-    !!card &&
-    !!jobBinding &&
-    ((!!card.shopId &&
-      !!card.itemId &&
-      card.shopId === jobBinding.shopId &&
-      card.itemId === jobBinding.itemId) ||
-      (!!card.shortLink && card.shortLink === jobBinding.shortLink));
+  const cardMatchesJob = bindingMatchesCard(jobBinding, card);
   // Mismatch chỉ "thật" khi có cả card lẫn job nhưng identity khác nhau.
   const cardJobMismatch = !!card && !!latestJob && !cardMatchesJob;
 
@@ -616,35 +687,102 @@ export default function ProductReviewLanePage() {
         }
       >
         {card ? (
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
-            <div className="flex aspect-square w-24 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-hairline bg-gradient-to-br from-raised to-panel">
-              {card.productImageUrl && !imgError ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={card.productImageUrl}
-                  alt={card.name}
-                  className="h-full w-full object-contain"
-                  onError={() => setImgError(true)}
-                />
-              ) : (
-                <Icon name="rawvisual" width={26} height={26} />
-              )}
-            </div>
-            <div className="min-w-0 flex-1 space-y-1.5">
-              <p className="text-sm font-semibold text-neutral-100">{card.name}</p>
-              <div className="flex flex-wrap items-center gap-1.5">
-                <StatusChip accent={ownerOk ? 'green' : 'rose'}>
-                  owner {ownerOk ? 'OK' : 'mismatch'}
-                </StatusChip>
-                {typeof card.score === 'number' && (
-                  <StatusChip accent="cyan">score {card.score}/10</StatusChip>
-                )}
-                {card.commissionRate && (
-                  <StatusChip accent="violet">hoa hồng {card.commissionRate}</StatusChip>
-                )}
-                {card.price && <StatusChip accent="blue">{card.price}</StatusChip>}
+          <div className="space-y-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
+              <div className="flex shrink-0 flex-col items-center gap-1">
+                <div className="flex aspect-square w-24 items-center justify-center overflow-hidden rounded-lg border border-hairline bg-gradient-to-br from-raised to-panel">
+                  {card.productImageUrl && !imgError ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={card.productImageUrl}
+                      alt={card.name}
+                      className="h-full w-full object-contain"
+                      onError={() => setImgError(true)}
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center gap-1 text-neutral-500">
+                      <Icon name="rawvisual" width={24} height={24} />
+                      <span className="text-[9px] font-semibold text-accent-amber">ảnh chưa có</span>
+                    </div>
+                  )}
+                </div>
               </div>
-              <p className="font-mono text-[10px] text-accent-blue break-all">{card.shortLink}</p>
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <p className="text-sm font-semibold text-neutral-100">{card.name}</p>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <StatusChip accent={ownerOk ? 'green' : 'rose'}>
+                    owner {ownerOk ? 'OK' : 'mismatch'}
+                  </StatusChip>
+                  {typeof card.score === 'number' && (
+                    <StatusChip accent="cyan">score {card.score}/10</StatusChip>
+                  )}
+                  {card.commissionRate && (
+                    <StatusChip accent="violet">hoa hồng {card.commissionRate}</StatusChip>
+                  )}
+                  {card.price && <StatusChip accent="blue">{card.price}</StatusChip>}
+                </div>
+                <p className="font-mono text-[10px] text-accent-blue break-all">{card.shortLink}</p>
+              </div>
+            </div>
+
+            {/* Product Card Enrichment — Operator hiểu sản phẩm trước khi tạo job.
+                Display-only: KHÔNG đổi nguồn sự thật cho binding (vẫn shopId/itemId/shortLink). */}
+            <div className="space-y-2 rounded-lg border border-hairline/70 bg-panel/30 p-3 text-[11px] leading-relaxed">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
+                Thông tin sản phẩm (Việt hóa)
+              </p>
+              <div className="grid grid-cols-[88px_1fr] gap-x-2 gap-y-1.5">
+                <span className="text-neutral-500">Tên (VI):</span>
+                <span className="text-neutral-200">{card.name}</span>
+
+                <span className="text-neutral-500">Mô tả:</span>
+                <span className={card.description ? 'text-neutral-300' : 'italic text-neutral-600'}>
+                  {card.description ?? 'Chưa có mô tả — sẽ bổ sung khi trích xuất chi tiết.'}
+                </span>
+
+                {cardNeedsTranslation && (
+                  <>
+                    <span className="text-neutral-500">Bản dịch VI:</span>
+                    <span className="italic text-accent-amber">
+                      Chưa có bản dịch — metadata nguồn tiếng Trung, cần Việt hóa trước khi tạo job.
+                    </span>
+                  </>
+                )}
+              </div>
+
+              {/* Tên tìm kiếm tiếng Trung — copy đi tìm source video/sản phẩm trên
+                  Douyin/Taobao/1688. Suy ra cục bộ từ tên VI (không gọi translate API).
+                  Display-only: KHÔNG ảnh hưởng job binding. */}
+              <div className="flex flex-wrap items-center gap-2 border-t border-hairline/50 pt-2">
+                <span className="text-[10px] font-medium text-neutral-500">
+                  Tên tìm kiếm tiếng Trung:
+                </span>
+                {chineseSearchName ? (
+                  <>
+                    <span lang="zh" className="font-medium text-neutral-100">
+                      {chineseSearchName}
+                    </span>
+                    <Button
+                      variant="outline"
+                      className="!py-0.5 !px-1.5 text-[9px]"
+                      onClick={() => handleCopyChineseName(chineseSearchName)}
+                    >
+                      {copiedCn ? '✓ Đã copy' : 'Copy từ khóa Trung'}
+                    </Button>
+                  </>
+                ) : (
+                  <span className="text-[10px] italic text-neutral-600">
+                    Chưa có tên Trung sát nghĩa
+                  </span>
+                )}
+              </div>
+
+              {!card.productImageUrl && (
+                <p className="text-[10px] text-accent-amber">
+                  ⚠ Ảnh minh họa chưa có. Bấm “Lấy link Shopee mới” để trích xuất lại kèm ảnh — hoặc
+                  vẫn tạo job được (ảnh không bắt buộc cho binding).
+                </p>
+              )}
             </div>
           </div>
         ) : (
@@ -914,16 +1052,27 @@ export default function ProductReviewLanePage() {
             : !cardReady
               ? { label: 'Khoá — cần sản phẩm', accent: 'amber' }
               : bindingStatus === 'MISMATCH'
-                ? { label: 'Khoá — lệch sản phẩm', accent: 'rose' }
+                ? { label: 'Lệch job — khoá render', accent: 'rose' }
                 : bindingStatus === 'MISSING'
-                  ? { label: 'Khoá — thiếu binding', accent: 'amber' }
+                  ? { label: 'Cần tạo job mới', accent: 'amber' }
                   : latestJob
                     ? { label: latestJob.statusLabel, accent: latestJob.statusAccent }
                     : { label: 'Chưa có job', accent: 'blue' }
         }
-        locked={!cardReady || bindingStatus !== 'PASS'}
-        lockReason={getAction2LockReason()}
+        locked={!cardReady}
+        lockReason="Hoàn tất Hành động 1 (Product Card hợp lệ) để mở bước sản xuất."
       >
+        {/* Linear Workflow Continuity — Product Card hợp lệ nhưng chưa có job khớp:
+            KHÔNG khóa chết panel. Dẫn Operator dán nguồn + tạo job mới cho sản phẩm
+            hiện tại → job mới tự khớp binding (PASS) → mở bước sản xuất. */}
+        {cardReady && !latestJob && (
+          <NoticeBox accent="amber">
+            Product Card <strong>{card?.name}</strong> đã hợp lệ nhưng chưa có job sản xuất khớp. Dán
+            URL video nguồn bên dưới rồi bấm <strong>"Chuẩn bị job sản xuất"</strong> để tạo job mới
+            cho sản phẩm này — job mới sẽ tự khớp binding (PASS) và mở bước chạy sản xuất.
+          </NoticeBox>
+        )}
+
         {/* Nguồn video */}
         <div className="rounded-lg border border-hairline bg-raised/30 p-3 space-y-2.5">
           <div className="flex items-center justify-between">
@@ -939,17 +1088,28 @@ export default function ProductReviewLanePage() {
 
           <div className="space-y-2">
             <input
-              type="url"
+              type="text"
               disabled={savingSource || creatingJob}
               value={sourceUrlInput}
               onChange={(e) => setSourceUrlInput(e.target.value)}
-              placeholder="https://... URL video nguồn (TikTok, Douyin, ...)"
+              placeholder="Dán link hoặc nguyên đoạn share (TikTok, Douyin, ...) — tự trích URL"
               className="w-full rounded-lg border border-hairline bg-panel/80 px-3 py-2 text-xs text-neutral-100 outline-none focus:border-accent-violet disabled:opacity-50"
             />
-            {sourceUrlInput.trim().length > 0 && !/^https?:\/\//i.test(sourceUrlInput.trim()) && (
+            {sourceInputHasText && !extractedSourceUrl && (
               <p className="text-[10px] text-accent-rose">
-                URL không hợp lệ — phải bắt đầu bằng http:// hoặc https://
+                Không tìm thấy URL trong đoạn văn bản — cần một link bắt đầu bằng http:// hoặc
+                https:// (có thể nằm giữa text).
               </p>
+            )}
+            {extractedSourceUrl && (
+              <div className="space-y-0.5 rounded-md border border-hairline/60 bg-panel/40 px-2.5 py-1.5">
+                <span className="text-[9px] font-medium uppercase tracking-wider text-neutral-500">
+                  {sourceUrlWasExtracted ? 'URL trích xuất từ text đã dán' : 'URL nguồn sẽ lưu'}
+                </span>
+                <p className="break-all font-mono text-[10px] text-accent-blue">
+                  {extractedSourceUrl}
+                </p>
+              </div>
             )}
 
             <div className="flex flex-wrap items-center gap-2">
@@ -957,12 +1117,7 @@ export default function ProductReviewLanePage() {
                 variant="primary"
                 className="!py-1 !px-2.5 text-[10px] font-semibold"
                 onClick={handleSaveSource}
-                disabled={
-                  savingSource ||
-                  creatingJob ||
-                  !sourceUrlInput.trim() ||
-                  !/^https?:\/\//i.test(sourceUrlInput.trim())
-                }
+                disabled={savingSource || creatingJob || !extractedSourceUrl}
               >
                 {savingSource ? 'Đang lưu...' : 'Lưu nguồn'}
               </Button>
@@ -1124,17 +1279,7 @@ export default function ProductReviewLanePage() {
             <select
               id="jobSelect"
               value={selectedJobId}
-              onChange={(e) => {
-                const newJobId = e.target.value;
-                setSelectedJobId(newJobId);
-                const url = new URL(window.location.href);
-                if (newJobId) {
-                  url.searchParams.set('jobId', newJobId);
-                } else {
-                  url.searchParams.delete('jobId');
-                }
-                window.history.pushState({}, '', url.toString());
-              }}
+              onChange={(e) => applySelectedJob(e.target.value)}
               className="w-full rounded-lg border border-hairline bg-panel/85 px-3 py-2 text-xs text-neutral-200 focus:outline-none focus:border-accent-violet"
             >
               <option value="">-- Chưa chọn Job --</option>
