@@ -36,6 +36,20 @@ If the relationship is unclear, do not prioritize it.
 * Do not mistake a technically impressive system for a system that improves real business outcomes.
 * When making product or technical recommendations, explicitly connect them back to the VFOS North Star.
 
+## VFOS Global No-Go Rules
+
+> Đây là các **luật cấm nền (repo-level)**. Mặc định **luôn áp dụng** cho mọi task, kể cả khi prompt không nhắc lại. Chỉ được nới lỏng khi một task nêu **rõ ràng, cụ thể** sự cho phép — và ngay cả khi đó vẫn không vượt các ranh giới an toàn của Operator.
+
+1. **Không bypass Product Binding Gate / Production Gate Standard.** Product Card là nguồn sự thật; binding `MISMATCH`/`MISSING` thì khóa, không tự mở khóa Action 2/3 bằng workaround.
+2. **Không chạy production / render / publish / live API** nếu task không cho phép rõ ràng. Mặc định là dừng và hỏi, không tự khởi chạy.
+3. **Không auto-publish khi Operator chưa duyệt.** Publish luôn là cổng duyệt thủ công riêng; READY ≠ được phép đăng.
+4. **Không bypass login / CAPTCHA / OTP.** Gặp các trạng thái này phải dừng **SUSPENDED** để Operator xử lý tay — không tự điền, không né tránh.
+5. **Không commit runtime / secrets / media / logs / session / cookie / registry.** Stage đích danh file mã nguồn trong scope; cấm `git add .` / `-A`.
+6. **Không dùng fallback / demo source** để approve nguồn sạch, publish, hay launch production thật.
+7. **Không dùng `latest` / `jobs[0]` / floating state** làm source of truth cho workflow thật. Job vận hành phải được chọn tường minh và khớp `productBinding`.
+
+Khi một đề xuất hoặc thao tác chạm vào bất kỳ điểm nào ở trên, ưu tiên **dừng và xác nhận với Operator** thay vì tự quyết.
+
 ## Project Memory Protocol
 
 1. **Khi bắt đầu session**
