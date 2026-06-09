@@ -42,6 +42,7 @@ If the relationship is unclear, do not prioritize it.
    - Luôn đọc:
      - `CLAUDE.md`
      - `docs/00_DIEU_HANH/TRANG_THAI_VFOS_HIEN_TAI.md`
+     - `docs/00_DIEU_HANH/VFOS_SIDEBAR_GUARDIAN_STANDARD.md`
    - Sau đó tóm tắt lại trạng thái dự án trước khi thực thi task mới.
 
 2. **Sau mỗi vòng làm việc lớn**
