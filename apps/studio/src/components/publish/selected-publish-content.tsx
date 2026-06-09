@@ -1,4 +1,5 @@
-import { PLATFORMS, type PublishContent, SHOPEE_OWNER } from '@/lib/mock-data';
+import { PLATFORMS, SHOPEE_OWNER } from '@/lib/mock-data';
+import type { PublishContent } from '@/lib/types';
 import { Badge, LanePill, StatusBadge } from '../badge';
 import { Card, CardBody, CardHeader } from '../card';
 import { UtilIcon } from '../icons';

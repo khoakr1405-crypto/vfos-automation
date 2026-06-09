@@ -1,6 +1,6 @@
 'use client';
 
-import type { PublishContent } from '@/lib/mock-data';
+import type { PublishContent } from '@/lib/types';
 import { useState } from 'react';
 import { UtilIcon } from '../icons';
 
@@ -79,7 +79,10 @@ export function LivePublishPanel({ content }: LivePublishPanelProps) {
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ confirmPhrase: phrase.trim() }),
+          body: JSON.stringify({
+            confirmPhrase: phrase.trim(),
+            expectedProduct: content.productBinding,
+          }),
         },
       );
       const data = (await res.json()) as PublishResult;

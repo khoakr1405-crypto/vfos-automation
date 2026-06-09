@@ -1,6 +1,6 @@
 'use client';
 
-import type { PublishContent } from '@/lib/mock-data';
+import type { PublishContent } from '@/lib/types';
 import { useState } from 'react';
 import { UtilIcon } from '../icons';
 

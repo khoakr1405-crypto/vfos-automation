@@ -1,4 +1,5 @@
-import { type PublishContent, contentGateChecklist, contentGatePassed } from '@/lib/mock-data';
+import { contentGateChecklist, contentGatePassed } from '@/lib/mock-data';
+import type { PublishContent } from '@/lib/types';
 import { StatusBadge } from '../badge';
 import { Card, CardBody, CardHeader } from '../card';
 import { UtilIcon } from '../icons';

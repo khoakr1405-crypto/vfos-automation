@@ -1,6 +1,6 @@
 'use client';
 
-import type { PlatformId, PublishContent } from '@/lib/mock-data';
+import type { PlatformId, PublishContent } from '@/lib/types';
 import { LanePill, PublishStatusBadge, StatusBadge } from '../badge';
 import { Card, CardBody, CardHeader } from '../card';
 import { Icon } from '../icons';

@@ -91,7 +91,8 @@ interface ExtractionResult {
 export default function ProductReviewLanePage() {
   const [card, setCard] = useState<CardSummary | null>(null);
   const [draft, setDraft] = useState<SourceDraftResponse['draft']>(null);
-  const [latestJob, setLatestJob] = useState<OperatorJobDTO | null>(null);
+  const [jobs, setJobs] = useState<OperatorJobDTO[]>([]);
+  const [selectedJobId, setSelectedJobId] = useState<string>('');
   const [jobCount, setJobCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [imgError, setImgError] = useState(false);
@@ -141,6 +142,8 @@ export default function ProductReviewLanePage() {
   const [runReport, setRunReport] = useState<string | null>(null);
   const [productionLaunched, setProductionLaunched] = useState(false);
 
+  const latestJob = jobs.find((j) => j.id === selectedJobId) ?? null;
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -162,12 +165,14 @@ export default function ProductReviewLanePage() {
       }
       if (jobsRes.status === 'fulfilled') {
         const body = jobsRes.value as JobsResponse;
+        const fetchedJobs = body.jobs ?? [];
+        setJobs(fetchedJobs);
         setJobCount(body.count ?? 0);
 
         let foundJob: OperatorJobDTO | null = null;
-        if (currentCard && body.jobs) {
+        if (currentCard && fetchedJobs.length > 0) {
           foundJob =
-            body.jobs.find((j) => {
+            fetchedJobs.find((j) => {
               const b = j.productBinding;
               return (
                 b &&
@@ -180,7 +185,16 @@ export default function ProductReviewLanePage() {
             }) ?? null;
         }
 
-        setLatestJob(foundJob ?? body.jobs?.[0] ?? null);
+        const urlParams = new URLSearchParams(window.location.search);
+        const queryJobId = urlParams.get('jobId') || '';
+
+        if (queryJobId && fetchedJobs.some((j) => j.id === queryJobId)) {
+          setSelectedJobId(queryJobId);
+        } else if (foundJob) {
+          setSelectedJobId(foundJob.id);
+        } else {
+          setSelectedJobId('');
+        }
       }
       if (registryRes.status === 'fulfilled') {
         setRegistry((registryRes.value as unknown as { items?: RegistryItem[] }).items ?? []);
@@ -529,6 +543,18 @@ export default function ProductReviewLanePage() {
       (!!card.shortLink && card.shortLink === jobBinding.shortLink));
   // Mismatch chỉ "thật" khi có cả card lẫn job nhưng identity khác nhau.
   const cardJobMismatch = !!card && !!latestJob && !cardMatchesJob;
+
+  const bindingStatus: 'PASS' | 'MISMATCH' | 'MISSING' = (() => {
+    if (!card || !jobBinding) return 'MISSING';
+    return cardMatchesJob ? 'PASS' : 'MISMATCH';
+  })();
+
+  const getAction2LockReason = () => {
+    if (!cardReady) return "Hoàn tất Hành động 1 (Product Card hợp lệ) để mở bước sản xuất.";
+    if (bindingStatus === 'MISSING') return "Thiếu thông tin liên kết sản phẩm (productBinding) hoặc chưa chọn Job.";
+    if (bindingStatus === 'MISMATCH') return "Product Card đang chọn lệch với sản phẩm được bind trong Job hiện tại.";
+    return undefined;
+  };
 
   const jobApproved =
     (latestJob?.operatorDecision === 'APPROVED' ||
@@ -887,12 +913,16 @@ export default function ProductReviewLanePage() {
             ? { label: 'Đang tải…', accent: 'blue' }
             : !cardReady
               ? { label: 'Khoá — cần sản phẩm', accent: 'amber' }
-              : latestJob
-                ? { label: latestJob.statusLabel, accent: latestJob.statusAccent }
-                : { label: 'Chưa có job', accent: 'blue' }
+              : bindingStatus === 'MISMATCH'
+                ? { label: 'Khoá — lệch sản phẩm', accent: 'rose' }
+                : bindingStatus === 'MISSING'
+                  ? { label: 'Khoá — thiếu binding', accent: 'amber' }
+                  : latestJob
+                    ? { label: latestJob.statusLabel, accent: latestJob.statusAccent }
+                    : { label: 'Chưa có job', accent: 'blue' }
         }
-        locked={!cardReady}
-        lockReason="Hoàn tất Hành động 1 (Product Card hợp lệ) để mở bước sản xuất."
+        locked={!cardReady || bindingStatus !== 'PASS'}
+        lockReason={getAction2LockReason()}
       >
         {/* Nguồn video */}
         <div className="rounded-lg border border-hairline bg-raised/30 p-3 space-y-2.5">
@@ -1079,19 +1109,43 @@ export default function ProductReviewLanePage() {
           </div>
         )}
 
-        {/* Job mới nhất */}
-        <div className="rounded-lg border border-hairline bg-raised/30 p-3 space-y-2">
+        {/* Chọn Job vận hành */}
+        <div className="rounded-lg border border-hairline bg-raised/30 p-3 space-y-2.5">
           <div className="flex items-center justify-between">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
-              Job mới nhất{' '}
-              {jobCount > 0 && <span className="text-neutral-600">· {jobCount} job</span>}
-            </p>
+            <label htmlFor="jobSelect" className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+              Chọn Job vận hành
+            </label>
             {latestJob && (
               <span className="font-mono text-[10px] text-neutral-500">{latestJob.id}</span>
             )}
           </div>
 
-          {latestJob ? (
+          <div className="flex flex-col gap-2">
+            <select
+              id="jobSelect"
+              value={selectedJobId}
+              onChange={(e) => {
+                const newJobId = e.target.value;
+                setSelectedJobId(newJobId);
+                const url = new URL(window.location.href);
+                if (newJobId) {
+                  url.searchParams.set('jobId', newJobId);
+                } else {
+                  url.searchParams.delete('jobId');
+                }
+                window.history.pushState({}, '', url.toString());
+              }}
+              className="w-full rounded-lg border border-hairline bg-panel/85 px-3 py-2 text-xs text-neutral-200 focus:outline-none focus:border-accent-violet"
+            >
+              <option value="">-- Chưa chọn Job --</option>
+              {jobs.map((j) => (
+                <option key={j.id} value={j.id}>
+                  [{j.id}] {j.product} ({j.statusLabel})
+                </option>
+              ))}
+            </select>
+
+            {latestJob ? (
             <div className="space-y-2">
               <div className="flex flex-wrap items-center gap-1.5">
                 <StatusChip accent={latestJob.statusAccent}>{latestJob.statusLabel}</StatusChip>
@@ -1110,9 +1164,10 @@ export default function ProductReviewLanePage() {
             </div>
           ) : (
             <p className="text-[11px] text-neutral-500">
-              Chưa có job nào trong lane. Tiến hành dán nguồn và tạo job để bắt đầu.
+              Chưa chọn job. Hãy chọn một job từ danh sách trên hoặc tiến hành dán nguồn và tạo job mới.
             </p>
           )}
+          </div>
         </div>
 
         {/* Bước 2 — Tải / clean nguồn */}
@@ -1363,54 +1418,60 @@ export default function ProductReviewLanePage() {
           </div>
 
           {/* Binding hiện tại — Operator thấy rõ job nào + sản phẩm nào sẽ được sản xuất */}
-          {latestJob && (
-            <div className="rounded-lg border border-hairline/60 bg-panel/30 p-3 space-y-2 text-[11px] leading-relaxed">
-              <div className="flex justify-between items-center border-b border-hairline pb-1.5 mb-1.5">
-                <span className="font-medium text-neutral-400">CHI TIẾT WORKFLOW INTEGRITY</span>
-                {(() => {
-                  if (!card || !latestJob?.productBinding) {
-                    return (
-                      <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-950/40 text-accent-amber border border-accent-amber/30">
-                        MISSING
-                      </span>
-                    );
-                  }
-                  return cardMatchesJob ? (
+          <div className="rounded-lg border border-hairline/60 bg-panel/30 p-3 space-y-2 text-[11px] leading-relaxed">
+            <div className="flex justify-between items-center border-b border-hairline pb-1.5 mb-1.5">
+              <span className="font-medium text-neutral-400">CHI TIẾT WORKFLOW INTEGRITY</span>
+              {(() => {
+                if (bindingStatus === 'PASS') {
+                  return (
                     <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-950/40 text-accent-green border border-accent-green/30">
                       PASS
                     </span>
-                  ) : (
+                  );
+                } else if (bindingStatus === 'MISMATCH') {
+                  return (
                     <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-rose-950/40 text-accent-rose border border-accent-rose/30">
                       MISMATCH
                     </span>
                   );
-                })()}
-              </div>
-              <div className="grid grid-cols-[110px_1fr] gap-x-2 gap-y-1">
-                <span className="text-neutral-500">Mã Job hiện tại:</span>
-                <span className="font-mono text-neutral-300 font-semibold">{latestJob.id}</span>
-
-                <span className="text-neutral-500">Sản phẩm của Job:</span>
-                <span className="text-neutral-200 font-medium">{latestJob.product}</span>
-
-                <span className="text-neutral-500 font-medium">Sản phẩm đang chọn:</span>
-                <span className="text-neutral-300">
-                  {card ? card.name : <em className="text-neutral-600">Chưa chọn</em>}
-                </span>
-
-                <span className="text-neutral-500">Video nguồn của Job:</span>
-                <span className="text-neutral-300 font-mono break-all leading-normal">
-                  {latestJob.sourceVideoPath ? (
-                    <span className="text-accent-cyan">📁 {latestJob.sourceVideoPath}</span>
-                  ) : latestJob.sourceVideoUrl ? (
-                    <span className="text-accent-blue">🔗 {latestJob.sourceVideoUrl}</span>
-                  ) : (
-                    <span className="text-neutral-500">Chưa cấu hình</span>
-                  )}
-                </span>
-              </div>
+                } else {
+                  return (
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-amber-950/40 text-accent-amber border border-accent-amber/30">
+                      MISSING
+                    </span>
+                  );
+                }
+              })()}
             </div>
-          )}
+            <div className="grid grid-cols-[110px_1fr] gap-x-2 gap-y-1">
+              <span className="text-neutral-500">Mã Job hiện tại:</span>
+              <span className="font-mono text-neutral-300 font-semibold">{latestJob ? latestJob.id : <em className="text-neutral-600">Chưa chọn</em>}</span>
+
+              <span className="text-neutral-500">Sản phẩm của Job:</span>
+              <span className="text-neutral-200 font-medium">{latestJob ? latestJob.product : <em className="text-neutral-600">Chưa chọn</em>}</span>
+
+              <span className="text-neutral-500 font-medium">Sản phẩm đang chọn:</span>
+              <span className="text-neutral-300">
+                {card ? card.name : <em className="text-neutral-600">Chưa chọn</em>}
+              </span>
+
+              <span className="text-neutral-500">Video nguồn của Job:</span>
+              <span className="text-neutral-300 font-mono break-all leading-normal">
+                {latestJob?.sourceVideoPath ? (
+                  <span className="text-accent-cyan">📁 {latestJob.sourceVideoPath}</span>
+                ) : latestJob?.sourceVideoUrl ? (
+                  <span className="text-accent-blue">🔗 {latestJob.sourceVideoUrl}</span>
+                ) : (
+                  <span className="text-neutral-500">Chưa cấu hình</span>
+                )}
+              </span>
+
+              <span className="text-neutral-500">Trạng thái Action 2:</span>
+              <span className={bindingStatus === 'PASS' ? 'text-accent-green font-medium' : 'text-accent-rose font-medium'}>
+                {bindingStatus === 'PASS' ? 'Mở khóa (Sẵn sàng chạy sản xuất)' : `Khóa (${getAction2LockReason()})`}
+              </span>
+            </div>
+          </div>
 
           {/* QA result inline — QA luôn nằm TRONG Action 2 */}
           {latestJob?.qaStatus && (
@@ -1620,15 +1681,21 @@ export default function ProductReviewLanePage() {
             ? { label: 'Đang tải…', accent: 'blue' }
             : jobApproved
               ? { label: 'Sẵn sàng đóng gói', accent: 'green' }
-              : { label: 'Khoá — chờ duyệt', accent: 'amber' }
+              : bindingStatus === 'MISMATCH'
+                ? { label: 'Khoá — lệch sản phẩm', accent: 'rose' }
+                : bindingStatus === 'MISSING'
+                  ? { label: 'Khoá — thiếu binding', accent: 'amber' }
+                  : { label: 'Khoá — chờ duyệt', accent: 'amber' }
         }
         locked={!jobApproved}
         lockReason={
           isFallbackSource
             ? "Nguồn hiện tại là fallback mẫu, không được dùng để sản xuất video thật cho sản phẩm này."
-            : cardJobMismatch
-              ? "Product Card đang chọn ở Hành động 1 không khớp với sản phẩm đã bind vào job hiện tại."
-              : "Cần job đã APPROVED (QA PASS + Operator duyệt preview) để mở bước đóng gói."
+            : bindingStatus === 'MISSING'
+              ? "Thiếu thông tin liên kết sản phẩm (productBinding) hoặc chưa chọn Job."
+              : bindingStatus === 'MISMATCH'
+                ? "Product Card đang chọn ở Hành động 1 không khớp với sản phẩm đã bind vào job hiện tại."
+                : "Cần job đã APPROVED (QA PASS + Operator duyệt preview) để mở bước đóng gói."
         }
       >
         <div className="grid gap-2 sm:grid-cols-2">

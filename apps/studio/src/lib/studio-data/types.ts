@@ -105,6 +105,11 @@ export interface PublishQueueItemDTO {
   jobId: string;
   laneId: string;
   productName: string | null;
+  productBinding: {
+    shortLink: string | null;
+    shopId: string | null;
+    itemId: string | null;
+  };
   status: 'APPROVED' | 'PACKAGED' | 'READY_FOR_OPERATOR_REVIEW' | 'PUBLISHED_CANDIDATE' | 'UNKNOWN';
   previewUrl: string | null;
   suggestedChannel: string | null;

@@ -1,14 +1,13 @@
 'use client';
 
-import {
-  type LaneId,
-  PLATFORMS,
-  type PlatformId,
-  type PlatformPublishState,
-  type PublishContent,
-  type PublishPlatformStatus,
-  SHOPEE_OWNER,
-} from '@/lib/mock-data';
+import { PLATFORMS, SHOPEE_OWNER } from '@/lib/mock-data';
+import type {
+  LaneId,
+  PlatformId,
+  PlatformPublishState,
+  PublishContent,
+  PublishPlatformStatus,
+} from '@/lib/types';
 import type { PublishQueueItemDTO } from '@/lib/studio-data/types';
 import { useEffect, useState } from 'react';
 import { UtilIcon } from '../icons';
@@ -68,6 +67,7 @@ function mapDtoToPublishContent(dto: PublishQueueItemDTO): PublishContent {
     title: dto.productName || dto.jobId,
     laneId: (dto.laneId as LaneId) || 'review',
     product: dto.productName || dto.jobId,
+    productBinding: dto.productBinding,
     productPrice: isApproved ? '₫699.000' : '₫0', // or sanitized price
     affiliateLink: `https://shp.ee/sku?aff=${SHOPEE_OWNER}`,
     duration: '00:45',

@@ -11,6 +11,11 @@
 
 import type { CtaReadinessSummary } from './growth-data/cta-readiness';
 import type { AccentKey } from './nav';
+import type {
+  PlatformPublishState,
+  PublishContent,
+  PublishPlatformStatus,
+} from './types';
 
 /** Affiliate owner bắt buộc của VFOS (Shopee). Mismatch = fail-safe. */
 export const SHOPEE_OWNER = 'an_17376660568';
@@ -870,77 +875,7 @@ export const OVERVIEW_PIPELINE: PipelineStageStat[] = [
  * ========================================================================== */
 
 // Trạng thái publish theo nền tảng (uppercase = trạng thái máy publish).
-export type PublishPlatformStatus =
-  | 'READY'
-  | 'MANUAL_REVIEW'
-  | 'MISSING_THUMBNAIL'
-  | 'WAIT_PACKAGE'
-  | 'SCHEDULED'
-  | 'PUBLISHED'
-  | 'BLOCKED';
-
-export type PlatformPublishState = {
-  status: PublishPlatformStatus;
-  channel: string;
-  packageFile: string | null;
-  packageSize: string | null;
-  captionReady: boolean;
-  thumbnailReady: boolean;
-  affiliateLinkReady: boolean;
-  scheduledAt: string | null;
-};
-
-export type PublishContent = {
-  id: string;
-  title: string;
-  laneId: LaneId;
-  product: string;
-  productPrice: string;
-  affiliateLink: string; // MOCK — vẫn gắn owner để gate kiểm tra
-  duration: string;
-  format: string;
-  // gate chung (content-level)
-  qaPassed: boolean;
-  approved: boolean; // operator đã duyệt
-  ownerValid: boolean; // owner_id Shopee khớp
-  captionReady: boolean;
-  voiceBgmReady: boolean;
-  durationValid: boolean;
-  safeAreaOk: boolean;
-  platforms: Record<PlatformId, PlatformPublishState>;
-
-  // Dry-run / payload preview fields
-  captionContent?: string | null;
-  hashtagsContent?: string | null;
-  facebookTokenConfigured?: boolean;
-  livePublishEnabled?: boolean;
-  // Round UI-06 — local-only guarded live publish (sanitized, boolean/string only)
-  livePublishEnabledReason?: string;
-  facebookCredentialsConfigured?: boolean;
-  alreadyPublished?: boolean;
-  confirmPhrase?: string;
-  liveGateBlockedReasons?: string[];
-  dryRunAvailable?: boolean;
-  dryRunCommand?: string;
-  payloadPreview?: {
-    jobId: string;
-    productName: string | null;
-    targetPlatform: string;
-    targetChannel: string | null;
-    videoPackageStatus: 'available' | 'missing';
-    captionStatus: 'available' | 'missing';
-    hashtagsStatus: 'available' | 'missing';
-    affiliateLinkStatus: 'valid' | 'invalid';
-    dryRunCommand: string;
-  };
-  gateChecks?: Array<{
-    label: string;
-    status: 'pass' | 'fail' | 'warn' | 'pending';
-    detail?: string;
-  }>;
-  // Round Affiliate Hub 03 — readiness CTA multi-touch (transport-safe, từ API).
-  ctaReadiness?: CtaReadinessSummary | null;
-};
+// Các type PublishPlatformStatus, PlatformPublishState, PublishContent đã chuyển sang lib/types.ts
 
 const aff = (sku: string) => `https://shp.ee/${sku}?aff=${SHOPEE_OWNER}`;
 

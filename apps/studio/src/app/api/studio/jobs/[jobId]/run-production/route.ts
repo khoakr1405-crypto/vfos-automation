@@ -101,7 +101,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ jobId: string 
     }
 
     // 4. Validate Production Readiness & Product Binding
-    const readiness = validateProductionReadiness(jobId);
+    const readiness = validateProductionReadiness(jobId, expectedProduct);
     if (!readiness.ok) {
       const firstIssue = readiness.issues.find(
         (i) => i.severity === 'blocker' || i.severity === 'error',

@@ -1,10 +1,9 @@
 import {
   PLATFORM_LABEL,
-  type PlatformId,
-  type PublishContent,
   canPublishPlatform,
   platformChecklist,
 } from '@/lib/mock-data';
+import type { PlatformId, PublishContent } from '@/lib/types';
 import { PlatformPill, PublishStatusBadge } from '../badge';
 import { Card, CardBody, CardHeader } from '../card';
 import { Icon, UtilIcon } from '../icons';

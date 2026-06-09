@@ -164,8 +164,22 @@ export async function POST(req: Request, ctx: { params: Promise<{ jobId: string 
     );
   }
 
-  // 3. Job tồn tại
-  const gate = evaluateLivePublishGates(jobId);
+  // Parse options from request body
+  let confirmPhrase = '';
+  let expectedProduct: { shortLink?: string; shopId?: string; itemId?: string } | undefined;
+  try {
+    const body = (await req.json()) as {
+      confirmPhrase?: unknown;
+      expectedProduct?: { shortLink?: string; shopId?: string; itemId?: string };
+    };
+    if (body && typeof body.confirmPhrase === 'string') confirmPhrase = body.confirmPhrase.trim();
+    if (body && body.expectedProduct) expectedProduct = body.expectedProduct;
+  } catch {
+    /* body có thể rỗng */
+  }
+
+  // 3. Job tồn tại & Check gates với explicit context
+  const gate = evaluateLivePublishGates(jobId, expectedProduct);
   if (!gate.jobExists) {
     return Response.json(
       { ok: false, code: 'JOB_NOT_FOUND', message: `Không tìm thấy Job: ${jobId}` },
@@ -188,13 +202,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ jobId: string 
   }
 
   // 5. Confirm phrase + gate server-side (không tin client) — gộp mọi lý do chặn
-  let confirmPhrase = '';
-  try {
-    const body = (await req.json()) as { confirmPhrase?: unknown };
-    if (body && typeof body.confirmPhrase === 'string') confirmPhrase = body.confirmPhrase.trim();
-  } catch {
-    /* body có thể rỗng */
-  }
   const expectedPhrase = livePublishConfirmPhrase(jobId);
   const confirmMatched = confirmPhrase === expectedPhrase;
 

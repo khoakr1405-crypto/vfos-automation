@@ -8,6 +8,7 @@
  * trong lib/data/catalog.ts, không nằm ở đây.
  * ========================================================================== */
 
+import type { CtaReadinessSummary } from './growth-data/cta-readiness';
 import type { AccentKey } from './nav';
 
 // --- Ngách / Lane — đúng 3 lane VFOS ---
@@ -176,6 +177,11 @@ export type PublishContent = {
   title: string;
   laneId: LaneId;
   product: string;
+  productBinding?: {
+    shortLink: string | null;
+    shopId: string | null;
+    itemId: string | null;
+  };
   productPrice: string;
   affiliateLink: string; // MOCK — vẫn gắn owner để gate kiểm tra
   duration: string;
@@ -213,6 +219,12 @@ export type PublishContent = {
     status: 'pass' | 'fail' | 'warn' | 'pending';
     detail?: string;
   }>;
+  livePublishEnabledReason?: string;
+  facebookCredentialsConfigured?: boolean;
+  alreadyPublished?: boolean;
+  confirmPhrase?: string;
+  liveGateBlockedReasons?: string[];
+  ctaReadiness?: CtaReadinessSummary | null;
 };
 export type GateItem = { label: string; ok: boolean };
 export type ScheduleBucket = 'today' | 'tomorrow' | 'week';
