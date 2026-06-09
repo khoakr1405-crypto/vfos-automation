@@ -158,6 +158,9 @@ export default function ProductReviewLanePage() {
   const [savingSource, setSavingSource] = useState(false);
   const [sourceNotice, setSourceNotice] = useState<string | null>(null);
   const [sourceError, setSourceError] = useState<string | null>(null);
+  // Linear orchestrator (Tải & clean nguồn): prep an toàn nhiều bước trong 1 nút.
+  const [preparingSource, setPreparingSource] = useState(false);
+  const [prepStage, setPrepStage] = useState<string | null>(null);
   const [confirmJobPhrase, setConfirmJobPhrase] = useState('');
   const [creatingJob, setCreatingJob] = useState(false);
   const [jobCreatedSuccess, setJobCreatedSuccess] = useState<{
@@ -333,6 +336,93 @@ export default function ProductReviewLanePage() {
       setSourceError('Lỗi kết nối đến API server.');
     } finally {
       setSavingSource(false);
+    }
+  };
+
+  // Linear Workflow Continuity — 1 nút "Tải & clean nguồn" điều phối prep AN TOÀN:
+  // lưu draft → tạo job đúng Product Card (nếu chưa có) → auto-select → source
+  // intake/download/clean → trích frame. KHÔNG tự duyệt sạch, KHÔNG chạy production,
+  // KHÔNG publish, KHÔNG gọi OpenAI/ElevenLabs. Confirm phrase prep do client cấp
+  // tự động (đây là guard UX, không phải Production Gate); 2 gate thật vẫn human.
+  const handlePrepareSource = async () => {
+    if (!cardReady) {
+      setSourceError('Cần Product Card hợp lệ (Hành động 1) trước khi tải nguồn.');
+      return;
+    }
+    // Job vận hành luôn lấy theo Product Card (nguồn sự thật) → không bao giờ chạy
+    // nhầm job lệch, kể cả khi dropdown đang chọn job khác.
+    const existing = findJobForCard(jobs, card);
+    if (!existing && !extractFirstUrl(sourceUrlInput)) {
+      setSourceError('Không tìm thấy URL http/https trong đoạn văn bản đã dán.');
+      return;
+    }
+    setPreparingSource(true);
+    setSourceError(null);
+    setSourceNotice(null);
+    setActionError(null);
+    try {
+      let jobId = existing?.id ?? '';
+      // (a) Chưa có job khớp → lưu nguồn + tạo job (prep an toàn, không cần gõ phrase).
+      if (!jobId) {
+        const url = extractFirstUrl(sourceUrlInput);
+        if (!url) {
+          setSourceError('Không tìm thấy URL http/https trong đoạn văn bản đã dán.');
+          return;
+        }
+        setPrepStage('Đang lưu nguồn…');
+        const draftRes = await fetch('/api/studio/create/source-draft', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sourceKind: 'url', sourceUrl: url }),
+        });
+        const draftBody = await draftRes.json();
+        if (!draftRes.ok || !draftBody.ok) {
+          setSourceError(draftBody.message || 'Lưu nguồn thất bại.');
+          return;
+        }
+        setPrepStage('Đang tạo job cho Product Card…');
+        const jobRes = await fetch('/api/studio/create/job-draft', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ confirmPhrase: 'CREATE JOB' }),
+        });
+        const jobBody = await jobRes.json();
+        if (!jobRes.ok || !jobBody.ok) {
+          setSourceError(jobBody.message || 'Tạo job thất bại.');
+          return;
+        }
+        jobId = jobBody.jobId;
+      }
+      // (b) Auto-select job đúng binding.
+      applySelectedJob(jobId);
+      // (c) Source intake (download + clean) nếu job chưa có nguồn/chưa duyệt. Đây là
+      // prep local, KHÔNG phát sinh production/publish/live cost.
+      const needsIntake = !existing || (!existing.cleanlinessStatus && !existing.sourceVideoPath);
+      if (needsIntake) {
+        setPrepStage('Đang tải & clean nguồn (có thể mất ~30s)…');
+        const intakeRes = await fetch(`/api/studio/jobs/${jobId}/source-intake`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ confirmPhrase: 'RUN SOURCE INTAKE' }),
+        });
+        const intakeBody = await intakeRes.json();
+        if (!intakeRes.ok || !intakeBody.ok) {
+          setSourceError(intakeBody.message || 'Tải / clean nguồn thất bại.');
+          await load();
+          return;
+        }
+      }
+      // (d) DỪNG ở human gate: Operator xem frame + duyệt nguồn sạch (hệ thống KHÔNG tự duyệt).
+      setSourceUrlInput('');
+      setSourceNotice(
+        'Đã chuẩn bị nguồn xong. Xem frame và bấm "Duyệt nguồn sạch" bên dưới để tiếp tục — hệ thống KHÔNG tự duyệt.',
+      );
+      await load();
+    } catch {
+      setSourceError('Lỗi kết nối đến API server.');
+    } finally {
+      setPreparingSource(false);
+      setPrepStage(null);
     }
   };
 
@@ -595,6 +685,8 @@ export default function ProductReviewLanePage() {
   const sourceInputHasText = sourceUrlInput.trim().length > 0;
   const sourceUrlWasExtracted =
     !!extractedSourceUrl && extractedSourceUrl !== sourceUrlInput.trim();
+  // Đã có job khớp Product Card chưa (không phụ thuộc job đang chọn ở dropdown).
+  const cardHasMatchingJob = !!card && findJobForCard(jobs, card) !== null;
 
   // Draft only counts if it belongs to the CURRENT Product Card.
   const draftMatchesCard =
@@ -1068,8 +1160,8 @@ export default function ProductReviewLanePage() {
         {cardReady && !latestJob && (
           <NoticeBox accent="amber">
             Product Card <strong>{card?.name}</strong> đã hợp lệ nhưng chưa có job sản xuất khớp. Dán
-            URL video nguồn bên dưới rồi bấm <strong>"Chuẩn bị job sản xuất"</strong> để tạo job mới
-            cho sản phẩm này — job mới sẽ tự khớp binding (PASS) và mở bước chạy sản xuất.
+            URL video nguồn bên dưới rồi bấm <strong>"Tải & clean nguồn"</strong> — hệ thống tự tạo
+            job đúng sản phẩm, tải & clean nguồn, rồi dừng ở cổng <strong>Duyệt nguồn sạch</strong>.
           </NoticeBox>
         )}
 
@@ -1089,7 +1181,7 @@ export default function ProductReviewLanePage() {
           <div className="space-y-2">
             <input
               type="text"
-              disabled={savingSource || creatingJob}
+              disabled={savingSource || creatingJob || preparingSource}
               value={sourceUrlInput}
               onChange={(e) => setSourceUrlInput(e.target.value)}
               placeholder="Dán link hoặc nguyên đoạn share (TikTok, Douyin, ...) — tự trích URL"
@@ -1112,27 +1204,51 @@ export default function ProductReviewLanePage() {
               </div>
             )}
 
+            {/* Nút CHÍNH của Operator — 1 click điều phối prep an toàn tới cổng duyệt sạch.
+                "Lưu nháp" chỉ là phụ (auto-save thủ công), không còn là CTA chính. */}
             <div className="flex flex-wrap items-center gap-2">
               <Button
                 variant="primary"
-                className="!py-1 !px-2.5 text-[10px] font-semibold"
-                onClick={handleSaveSource}
-                disabled={savingSource || creatingJob || !extractedSourceUrl}
+                className="!py-1.5 !px-3 text-[11px] font-semibold bg-accent-violet hover:bg-accent-violet text-white border-none disabled:opacity-30"
+                onClick={handlePrepareSource}
+                disabled={
+                  preparingSource ||
+                  savingSource ||
+                  creatingJob ||
+                  !cardReady ||
+                  (!extractedSourceUrl && !cardHasMatchingJob)
+                }
               >
-                {savingSource ? 'Đang lưu...' : 'Lưu nguồn'}
+                {preparingSource ? 'Đang chuẩn bị nguồn…' : 'Tải & clean nguồn'}
+              </Button>
+              <Button
+                variant="ghost"
+                className="!py-1 !px-2 text-[10px]"
+                onClick={handleSaveSource}
+                disabled={savingSource || creatingJob || preparingSource || !extractedSourceUrl}
+                title="Chỉ lưu URL nháp (phụ/debug) — không tải/clean."
+              >
+                {savingSource ? 'Đang lưu…' : 'Lưu nháp'}
               </Button>
               {draftMatchesCard && (
                 <Button
                   variant="outline"
                   className="!py-1 !px-2.5 text-[10px] font-semibold"
                   onClick={handleDeleteSource}
-                  disabled={savingSource || creatingJob}
+                  disabled={savingSource || creatingJob || preparingSource}
                 >
-                  Xóa nguồn
+                  Xóa nháp
                 </Button>
               )}
             </div>
 
+            {/* Trạng thái prep tuyến tính: chưa job → tạo job → tải/clean → chờ duyệt. */}
+            {preparingSource && prepStage && (
+              <p className="flex items-center gap-1.5 text-[10px] text-accent-cyan">
+                <span className="h-2.5 w-2.5 animate-spin rounded-full border border-accent-cyan border-t-transparent" />
+                {prepStage}
+              </p>
+            )}
             {sourceNotice && <p className="text-[10px] text-accent-green">{sourceNotice}</p>}
             {sourceError && <p className="text-[10px] text-accent-rose">{sourceError}</p>}
             {!draftMatchesCard && draft?.source?.url && (
