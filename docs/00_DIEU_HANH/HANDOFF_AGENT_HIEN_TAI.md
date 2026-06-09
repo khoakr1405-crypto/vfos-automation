@@ -1,24 +1,23 @@
 # VFOS — Agent Handoff Hiện Tại
 
-> Cập nhật: 2026-06-05 | ĐỌC FILE NÀY ĐẦU PHIÊN, trước khi làm bất cứ việc gì.
+> Cập nhật: 2026-06-09 | ĐỌC FILE NÀY ĐẦU PHIÊN, trước khi làm bất cứ việc gì.
 > Lịch sử đầy đủ: `docs/00_DIEU_HANH/TRANG_THAI_VFOS_HIEN_TAI.md`
 > Tự kiểm tra trước khi tin file này: `git status -s` · `git log --oneline -8` · `git status -sb`
 
 ## 1. Git / Repo State
-- Branch: `master`
-- Remote HEAD: `origin/master = 963bc2a` (`feat(shopee): capture product image through product card flow`)
-- Local sync: 0 ahead / 0 behind (đồng bộ với remote)
-- Working tree: clean (không có file chưa commit khi handoff được ghi)
-- Dev server: Studio dev chạy trên port 3002 (chạy bằng `pnpm studio:dev:clean`). Trạng thái dev server KHÔNG bền giữa các phiên — nếu mở phiên mới mà `/products` không lên, chạy lại `pnpm studio:dev:clean`.
+- Branch: `fix/shopee-modal-read` (CHƯA merge vào `master`, CHƯA push — local only)
+- Local HEAD: `1d47226` (`feat(studio): wire product binding coherence + publish command center`)
+- Working tree: **clean** (đã dọn xong toàn bộ uncommitted của các round trước, không còn file lửng lơ)
+- 3 commit mới nhất round này (chưa push): `1d47226` (publish/binding wiring) ← `7fd4194` (docs guardian) ← `e2d6fd9` (Production Gate Standard).
+- Dev server: Studio dev port 3002 (`pnpm studio:dev:clean`). KHÔNG bền giữa các phiên — nếu `/products` không lên, chạy lại lệnh đó.
 
 ## 2. Latest Completed Milestones
-- `963bc2a` — Product Image 04B: capture product image through product card flow (DOM card img → registry.product_image_url → artifact/card `productImageUrl` → API → `/create` `<img>`; helper `sanitizeProductImageUrl()` + test). BABYJOY cũ thiếu ảnh → fallback "Chưa có ảnh sản phẩm".
-- `c4cb729` — Auto-Pilot Priority 3: cleanup orphaned single-link CDP POC.
-- `e17fa6a` — Shopee no-click command: `pnpm shopee:card-from-registry` (registry → Product Card, không click/không browser).
-- `bd607c2` — Studio UI: section "Shopee Affiliate Registry" trong `/products` (promote link verified → Product Card qua UI).
-- `eda358a` — Studio clean dev restart guard: `pnpm studio:dev:clean` (dập gốc lỗi stale `.next` "Cannot find module './801.js'").
-- `92943f9` — VFOS Continuity 01: thêm chính file handoff này (handoff file itself was pushed as `92943f9`).
-- (Đã verify run-time 2 lần) `/products` HTTP 200, không còn lỗi `801.js`, registry API 200, BABYJOY Product Card đúng.
+- `1d47226` — Wire `expectedProduct` xuyên Action 2 + publish (bindingStatus PASS/MISMATCH/MISSING, không default job đầu, default-deny server-side); Publish Command Center live-gate UI; chuyển type `PublishContent` từ mock-data → `lib/types.ts`.
+- `7fd4194` — Docs: `VFOS_SIDEBAR_GUARDIAN_STANDARD.md` + `INTAKE_FALLBACK_GUARDIAN_AUDIT.md`; wire guardian standard vào protocol đọc đầu phiên (CLAUDE.md).
+- `e2d6fd9` — **VFOS Production Gate Standard**: SSOT `apps/studio/src/lib/studio-data/production-gates.ts` gom 5 luật gate (primitives `isFallbackSource`/`compareProductBinding` default-deny/`isSourceApproved`/`isOwnerValid`/`resolveCleanSourceRel` + `evaluateProductionGates`). Rewire workflow-integrity + evaluateLivePublishGates + approve route (giữ parity). Vá lỗ hổng: `cmdRunReview`/`cmdScript` nay chặn fallback (Rule 5).
+- `700aa36` — Intake fallback safeguard + production run blocker.
+- `ccf3a3f` — Workflow integrity standard + guards trong Action 2.
+- Trạng thái Production Gate Standard: **5/5 luật có code guard, SSOT studio = 1 bản**; scripts (`vfos-job-manager`/`job-launch-check`) mirror predicate canonical do workspace boundary. Typecheck @vfos/studio PASS; smoke test primitives 14/14 PASS.
 
 ## 3. Current Runtime State
 - Studio: `apps/studio` (Next.js 15, port 3002). `/products` 200, section "Shopee Affiliate Registry" visible.
@@ -45,9 +44,10 @@
 - **[Product Image 04B]** BABYJOY cũ thiếu ảnh là ĐÚNG kỳ vọng → `/create` fallback "Chưa có ảnh sản phẩm". Sản phẩm MỚI sau Shopee extraction sẽ có `productImageUrl` nếu DOM card có image URL hợp lệ.
 
 ## 5. Next Recommended Step
-- Continuity (round này) xong → bước tiếp đề xuất: BABYJOY Product Card → Create Job / Video — **chỉ sau khi Operator duyệt**.
-- Hoặc nếu Operator muốn xem UI: mở `http://localhost:3002/products` (chạy `pnpm studio:dev:clean` nếu chưa lên).
-- Hoặc thử promote một link verified khác qua UI (no-click) để xác nhận luồng.
+- Branch `fix/shopee-modal-read` đã sạch + 3 commit mới CHƯA push. Quyết định Operator: **push / mở PR vào `master`** hay tiếp tục round nữa rồi mới push.
+- (Tuỳ chọn, round sau) Rewire `run-production` / `publish-facebook` / `job-launch-check` sang dùng thẳng `evaluateProductionGates` với standardized keys — cần parity test riêng vì đổi reason codes. Hiện chỉ tầng primitives được dùng chung (đã đủ để hết drift trong studio).
+- (Tuỳ chọn) Giảm 2 bản mirror predicate ở scripts: cân nhắc tách 1 module pure dùng chung được cho cả tsx scripts lẫn Next app.
+- Nếu Operator muốn xem UI: `http://localhost:3002/lanes/product-review` (chạy `pnpm studio:dev:clean` nếu chưa lên).
 
 ## 6. Commands / Operational Notes
 - Mở Studio sạch (kill 3002 + wipe `.next` + start dev):
