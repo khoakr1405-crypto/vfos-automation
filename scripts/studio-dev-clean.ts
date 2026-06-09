@@ -26,8 +26,9 @@
  * Command: pnpm studio:dev:clean [--dry-run] [--no-start]
  */
 
-import { execSync, spawnSync } from 'node:child_process';
+import { execSync, spawn } from 'node:child_process';
 import { existsSync, rmSync } from 'node:fs';
+import { connect } from 'node:net';
 import { dirname, join, resolve, sep } from 'node:path';
 
 const PORT = 3002;
@@ -87,10 +88,96 @@ function killPid(pid: number, dryRun: boolean): void {
   }
 }
 
-function main(): void {
+/**
+ * Resolve a Google Chrome executable. VFOS Studio UI MUST open in Chrome —
+ * never Cốc Cốc, which is reserved as the dedicated Shopee Affiliate CDP
+ * controlled browser. Opening the Studio UI in Cốc Cốc shares its profile with
+ * the CDP launch and makes the debug-port spawn get absorbed ("Opening in
+ * existing browser session") → Shopee extraction FAIL. Keeping the browsers
+ * separate prevents that collision. Override with VFOS_STUDIO_BROWSER_PATH.
+ */
+function resolveChromePath(): string | null {
+  const candidates = [
+    process.env.VFOS_STUDIO_BROWSER_PATH,
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    process.env.LOCALAPPDATA
+      ? join(process.env.LOCALAPPDATA, 'Google', 'Chrome', 'Application', 'chrome.exe')
+      : undefined,
+  ].filter((p): p is string => typeof p === 'string' && p.length > 0);
+  for (const c of candidates) {
+    if (existsSync(c)) return c;
+  }
+  return null;
+}
+
+/** Single TCP connect probe — resolves true if the port accepts a connection. */
+function probePortOnce(host: string, port: number, timeoutMs: number): Promise<boolean> {
+  return new Promise((res) => {
+    let settled = false;
+    const sock = connect({ host, port });
+    const done = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      try {
+        sock.destroy();
+      } catch {}
+      res(ok);
+    };
+    sock.once('connect', () => done(true));
+    sock.once('error', () => done(false));
+    sock.setTimeout(timeoutMs, () => done(false));
+  });
+}
+
+/** Poll until the port accepts a connection, or the budget expires. */
+async function waitForPort(port: number, totalMs: number, intervalMs: number): Promise<boolean> {
+  const start = Date.now();
+  while (Date.now() - start < totalMs) {
+    if (await probePortOnce('127.0.0.1', port, 500)) return true;
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  return false;
+}
+
+/**
+ * After the dev server is ready, open the Studio URL in Chrome (detached).
+ * Never falls back to the OS default browser — that could be Cốc Cốc, which we
+ * keep reserved for Shopee CDP. If Chrome is missing, print the URL instead.
+ */
+async function openStudioInChrome(port: number): Promise<void> {
+  const url = `http://localhost:${port}`;
+  const ready = await waitForPort(port, 30_000, 500);
+  if (!ready) {
+    console.log(`  (Chrome auto-open skipped: port ${port} not ready in time)`);
+    console.log(`  Open VFOS Studio in Chrome manually: ${url}`);
+    return;
+  }
+  if (process.platform !== 'win32') {
+    console.log(`  VFOS Studio ready: ${url} — open in Chrome (NOT Cốc Cốc).`);
+    return;
+  }
+  const chrome = resolveChromePath();
+  if (!chrome) {
+    console.log('  Chrome not found at standard paths (set VFOS_STUDIO_BROWSER_PATH).');
+    console.log(`  Open VFOS Studio in Chrome manually: ${url}`);
+    console.log('  Do NOT open VFOS UI in Cốc Cốc — it is reserved for the Shopee Affiliate CDP browser.');
+    return;
+  }
+  try {
+    const sub = spawn(chrome, [url], { detached: true, stdio: 'ignore' });
+    sub.unref();
+    console.log(`  opened VFOS Studio in Chrome: ${url}`);
+  } catch (e) {
+    console.log(`  could not launch Chrome (${(e as Error).message}); open manually: ${url}`);
+  }
+}
+
+async function main(): Promise<void> {
   const argv = new Set(process.argv.slice(2));
   const dryRun = argv.has('--dry-run');
   const noStart = argv.has('--no-start');
+  const openBrowser = !argv.has('--no-open');
 
   const root = resolve(findRepoRoot(resolve(process.cwd())));
   const nextDir = resolve(join(root, 'apps', 'studio', '.next'));
@@ -140,15 +227,29 @@ function main(): void {
   }
   if (dryRun) {
     console.log('  [dry-run] would start: pnpm --filter @vfos/studio dev');
+    console.log(
+      openBrowser
+        ? `  [dry-run] would open http://localhost:${PORT} in Chrome (NOT Cốc Cốc)`
+        : '  [dry-run] --no-open: would NOT auto-open a browser',
+    );
     return;
   }
   console.log('  starting fresh dev server: pnpm --filter @vfos/studio dev');
-  const res = spawnSync('pnpm', ['--filter', '@vfos/studio', 'dev'], {
+  const child = spawn('pnpm', ['--filter', '@vfos/studio', 'dev'], {
     cwd: root,
     stdio: 'inherit',
     shell: true,
   });
-  process.exit(res.status ?? 0);
+  child.on('exit', (code: number | null) => process.exit(code ?? 0));
+
+  // VFOS Studio UI opens in Chrome — Cốc Cốc is reserved for the Shopee CDP
+  // controlled browser. Fire-and-forget: poll the port, then open Chrome.
+  if (openBrowser) {
+    void openStudioInChrome(PORT);
+  }
 }
 
-main();
+main().catch((e) => {
+  console.error(`studio-dev-clean failed: ${(e as Error).message}`);
+  process.exit(1);
+});
