@@ -1709,6 +1709,47 @@ Hãy trả về duy nhất một đối tượng JSON có định dạng chính 
       }
     };
 
+    // --- Retry policy cho OpenAI 429 (đặc biệt token TPM) -------------------
+    // TPM reset theo PHÚT nên backoff 1s/2s cũ không bao giờ qua được cửa sổ.
+    // Ưu tiên header server (Retry-After / x-ratelimit-reset-*); không có thì
+    // backoff dài min-aware (15s→30s→60s…), cap 60s, giới hạn lần rõ ràng.
+    const MAX_RATE_LIMIT_WAITS = 5;
+    const MAX_RATE_LIMIT_BACKOFF_MS = 60_000;
+    // Parse chuỗi duration kiểu OpenAI: "292ms", "1.5s", "1m30s", "6m0s" → ms.
+    const parseResetDuration = (v: string | null): number | null => {
+      if (!v) return null;
+      let ms = 0;
+      let matched = false;
+      const re = /(\d+(?:\.\d+)?)(ms|h|m|s)/g;
+      let m: RegExpExecArray | null = re.exec(v.trim());
+      while (m !== null) {
+        matched = true;
+        const n = Number.parseFloat(m[1]);
+        if (m[2] === 'ms') ms += n;
+        else if (m[2] === 's') ms += n * 1000;
+        else if (m[2] === 'm') ms += n * 60_000;
+        else ms += n * 3_600_000;
+        m = re.exec(v.trim());
+      }
+      return matched ? Math.round(ms) : null;
+    };
+    // Thời gian chờ trước khi thử lại sau 429: header server > backoff min-aware.
+    const rateLimitWaitMs = (headers: Headers, n: number): number => {
+      const retryAfter = headers.get('retry-after');
+      let serverMs: number | null = null;
+      if (retryAfter && Number.isFinite(Number(retryAfter))) {
+        serverMs = Number(retryAfter) * 1000;
+      }
+      if (serverMs === null) {
+        serverMs =
+          parseResetDuration(headers.get('x-ratelimit-reset-tokens')) ??
+          parseResetDuration(headers.get('x-ratelimit-reset-requests'));
+      }
+      // Pad 1s để chắc chắn vượt mốc reset; cap để không treo vô hạn.
+      if (serverMs !== null) return Math.min(serverMs + 1000, MAX_RATE_LIMIT_BACKOFF_MS);
+      return Math.min(15_000 * 2 ** (n - 1), MAX_RATE_LIMIT_BACKOFF_MS);
+    };
+
     let validation: ValidationResult | null = null;
     let aiData: any = null;
     let lastErrorInfo: Record<string, unknown> | null = null;
@@ -1719,7 +1760,7 @@ Hãy trả về duy nhất một đối tượng JSON có định dạng chính 
       try {
         // In-process fetch (same pattern as job:vision) so the exact OpenAI
         // error.message is never lost to a swallowed subprocess stderr.
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+        const openAiRequest = {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1737,7 +1778,20 @@ Hãy trả về duy nhất một đối tượng JSON có định dạng chính 
             ],
             temperature: 0.7,
           }),
-        });
+        };
+        // Rate-limit aware: 429 (đặc biệt token TPM) chờ theo header/min-aware,
+        // KHÔNG phải 1-2s. Vòng chờ có giới hạn rõ (MAX_RATE_LIMIT_WAITS).
+        let response = await fetch('https://api.openai.com/v1/chat/completions', openAiRequest);
+        let rateLimitWaits = 0;
+        while (response.status === 429 && rateLimitWaits < MAX_RATE_LIMIT_WAITS) {
+          rateLimitWaits++;
+          const waitMs = rateLimitWaitMs(response.headers, rateLimitWaits);
+          console.warn(
+            `⚠️  OpenAI 429 rate limit (token TPM) — chờ ${Math.round(waitMs / 1000)}s rồi thử lại (lần ${rateLimitWaits}/${MAX_RATE_LIMIT_WAITS})...`,
+          );
+          await sleep(waitMs);
+          response = await fetch('https://api.openai.com/v1/chat/completions', openAiRequest);
+        }
 
         if (!response.ok) {
           let errBody: any = null;
@@ -1755,10 +1809,18 @@ Hãy trả về duy nhất một đối tượng JSON có định dạng chính 
             openaiErrorCode: errBody?.error?.code ?? null,
             openaiErrorMessage: apiMessage,
             attempt,
+            rateLimitWaits,
             model: 'gpt-4o-mini',
           };
-          // Retry with exponential backoff on rate-limit / transient server errors.
-          if ((response.status === 429 || response.status >= 500) && attempt < maxRetries) {
+          // 429 đã chờ hết MAX_RATE_LIMIT_WAITS ở trên mà rate limit vẫn còn →
+          // fail nhanh, KHÔNG đốt thêm attempt (retry sẽ lại đụng cùng giới hạn).
+          if (response.status === 429) {
+            persistScriptError(lastErrorInfo);
+            console.error(`🛑 OPENAI_API_FAILURE (429 rate limit còn sau ${rateLimitWaits} lần chờ)`);
+            return 6;
+          }
+          // 5xx transient → giữ exponential backoff ngắn theo attempt.
+          if (response.status >= 500 && attempt < maxRetries) {
             const backoffMs = 1000 * 2 ** (attempt - 1);
             console.warn(`⚠️  OpenAI HTTP ${response.status} (${errBody?.error?.code ?? 'transient'}); backoff ${backoffMs}ms then retry...`);
             await sleep(backoffMs);
