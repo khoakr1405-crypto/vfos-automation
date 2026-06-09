@@ -192,6 +192,9 @@ export default function ProductReviewLanePage() {
   const [submittingIntake, setSubmittingIntake] = useState(false);
   const [submittingApprove, setSubmittingApprove] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  // Round D — Operator phê duyệt PREVIEW (Bước 3–7). Lỗi để cạnh nút cho rõ ràng.
+  const [submittingApprovePreview, setSubmittingApprovePreview] = useState(false);
+  const [approvePreviewError, setApprovePreviewError] = useState<string | null>(null);
 
   // Round C3 states (Action 2 — chạy sản xuất video)
   const [showRunConfirm, setShowRunConfirm] = useState(false);
@@ -545,6 +548,33 @@ export default function ProductReviewLanePage() {
     }
   };
 
+  // Round D — Operator phê duyệt PREVIEW (Bước 3–7). Dùng lại route /approve sẵn có:
+  // server tự enforce gate (not fallback + READY_FOR_OPERATOR_REVIEW + QA PASS +
+  // hasPreview). KHÔNG publish, KHÔNG chạy production, KHÔNG auto — chỉ chạy khi
+  // Operator bấm. Thành công → reload để state APPROVED mở khoá Hành động 3.
+  const handleApprovePreview = async (jobId: string) => {
+    setSubmittingApprovePreview(true);
+    setApprovePreviewError(null);
+    try {
+      const res = await fetch(`/api/studio/jobs/${jobId}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        await load();
+      } else {
+        const detail = Array.isArray(data.details) ? ` (${data.details.join(' · ')})` : '';
+        setApprovePreviewError((data.message || 'Phê duyệt preview thất bại.') + detail);
+      }
+    } catch {
+      setApprovePreviewError('Lỗi kết nối đến API server.');
+    } finally {
+      setSubmittingApprovePreview(false);
+    }
+  };
+
   // Round C3 — chạy pipeline sản xuất video (script→voice→BGM→render→caption→QA)
   const handleRunProduction = async (jobId: string, dryRun: boolean) => {
     if (!dryRun && runConfirmInput !== 'RUN PRODUCTION') {
@@ -783,6 +813,17 @@ export default function ProductReviewLanePage() {
         : productionRunning
           ? 'RUNNING'
           : runStage;
+
+  // Gate nút "Duyệt preview video" (Bước 3–7). Mọi điều kiện này CŨNG được route
+  // /approve enforce lại server-side; UI chỉ để không hiện nút khi chưa đủ điều kiện.
+  // Thiếu bất kỳ điều kiện nào → ẩn nút (lý do hiển thị ở GateHint cuối panel).
+  const canApprovePreview =
+    latestJob?.state === 'READY_FOR_OPERATOR_REVIEW' &&
+    latestJob?.qaStatus === 'PASS' &&
+    !!latestJob?.hasPreview &&
+    bindingStatus === 'PASS' &&
+    sourceApproved &&
+    !isFallbackSource;
 
   // Filter registry to verified items & latest 10
   const verifiedRegistryItems = registry.filter((item) => item.ownerVerified).slice(0, 10);
@@ -1982,9 +2023,28 @@ export default function ProductReviewLanePage() {
           )}
 
           <PanelActions>
+            {canApprovePreview && (
+              <Button
+                variant="success"
+                onClick={() => handleApprovePreview(latestJob.id)}
+                disabled={submittingApprovePreview}
+                className="!py-1.5 !px-3 text-[11px] bg-accent-green hover:bg-accent-green/90 text-neutral-900 border-none font-semibold disabled:opacity-50"
+              >
+                {submittingApprovePreview ? 'Đang duyệt…' : '✓ Duyệt preview video'}
+              </Button>
+            )}
             <DebugLink href="/render?lane=product-review">Xem tiến độ render (debug)</DebugLink>
             <DebugLink href="/qa?lane=product-review">Xem QA (debug)</DebugLink>
           </PanelActions>
+          {canApprovePreview && (
+            <p className="text-[10px] text-neutral-400">
+              Sau khi duyệt, hệ thống sẽ mở bước đóng gói / đăng bài (Hành động 3). Bước này KHÔNG
+              tự đăng gì lên Facebook.
+            </p>
+          )}
+          {approvePreviewError && (
+            <p className="text-[10px] text-accent-rose">Lỗi duyệt preview: {approvePreviewError}</p>
+          )}
         </div>
 
         <GateHint
