@@ -21,7 +21,7 @@ import { Button } from '@/components/ui';
 import { buildChineseSearchName } from '@/lib/cn-search-keywords';
 import { ACCENT_BG_SOFT, ACCENT_TEXT, type AccentKey } from '@/lib/nav';
 import type { GateState, OperatorJobDTO } from '@/lib/studio-data/types';
-import { type ReactNode, useCallback, useEffect, useState } from 'react';
+import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 
 // ---- API response shapes (subset we read) ----------------------------------
 interface CardSummary {
@@ -130,6 +130,19 @@ function extractFirstUrl(raw: string): string | null {
   return url.length > 0 ? url : null;
 }
 
+// Auto-refresh production status: poll GET /api/studio/jobs trong lúc pipeline chạy
+// nền. Interval 5s; dừng tại terminal; có max-duration để không poll vô hạn.
+const PRODUCTION_POLL_INTERVAL_MS = 5_000;
+const PRODUCTION_POLL_TIMEOUT_MS = 10 * 60_000; // 10 phút
+const PRODUCTION_RUNNING_STATES = ['READY_TO_RENDER', 'RENDERING'];
+const PRODUCTION_TERMINAL_STATES = [
+  'READY_FOR_OPERATOR_REVIEW',
+  'APPROVED',
+  'PACKAGED',
+  'FAILED',
+  'REJECTED',
+];
+
 // biome-ignore lint/style/noDefaultExport: Next.js page requires default export
 export default function ProductReviewLanePage() {
   const [card, setCard] = useState<CardSummary | null>(null);
@@ -188,6 +201,8 @@ export default function ProductReviewLanePage() {
   const [runStage, setRunStage] = useState<string | null>(null);
   const [runReport, setRunReport] = useState<string | null>(null);
   const [productionLaunched, setProductionLaunched] = useState(false);
+  const [pollTimedOut, setPollTimedOut] = useState(false);
+  const pollStartRef = useRef<number | null>(null);
 
   const latestJob = jobs.find((j) => j.id === selectedJobId) ?? null;
 
@@ -562,7 +577,12 @@ export default function ProductReviewLanePage() {
         setRunStage(data.status ?? null);
         setRunReport(data.reportSummary ?? null);
         setRunNotice(data.message ?? (dryRun ? 'Dry-run thành công.' : 'Đã khởi chạy sản xuất.'));
-        if (!dryRun) setProductionLaunched(true);
+        if (!dryRun) {
+          // Fresh poll window cho lần chạy mới.
+          pollStartRef.current = null;
+          setPollTimedOut(false);
+          setProductionLaunched(true);
+        }
         await load();
       } else {
         setRunStage(data.reasonCode ? `${data.status ?? 'FAILED'} · ${data.reasonCode}` : null);
@@ -576,19 +596,35 @@ export default function ProductReviewLanePage() {
     }
   };
 
-  // Poll job state trong lúc pipeline chạy nền cho tới khi tới trạng thái terminal.
+  // Auto-refresh: poll job state trong lúc pipeline chạy nền. Gate theo STATE THẬT
+  // (không chỉ cờ in-memory) → tự resume sau khi reload trang nếu job còn chạy nền.
+  // Chỉ gọi load() (GET) — KHÔNG run-production/approve/publish. Dừng tại terminal
+  // hoặc khi quá max-duration.
   useEffect(() => {
-    if (!productionLaunched) return;
-    const terminal = ['READY_FOR_OPERATOR_REVIEW', 'APPROVED', 'PACKAGED', 'FAILED', 'REJECTED'];
-    if (latestJob && terminal.includes(latestJob.state)) {
-      setProductionLaunched(false);
+    const state = latestJob?.state;
+    const isRunning =
+      productionLaunched || (!!state && PRODUCTION_RUNNING_STATES.includes(state));
+    if (!isRunning) {
+      pollStartRef.current = null;
+      if (pollTimedOut) setPollTimedOut(false);
       return;
+    }
+    if (state && PRODUCTION_TERMINAL_STATES.includes(state)) {
+      setProductionLaunched(false);
+      pollStartRef.current = null;
+      if (pollTimedOut) setPollTimedOut(false);
+      return;
+    }
+    if (pollStartRef.current === null) pollStartRef.current = Date.now();
+    if (Date.now() - pollStartRef.current > PRODUCTION_POLL_TIMEOUT_MS) {
+      if (!pollTimedOut) setPollTimedOut(true);
+      return; // quá hạn → ngừng auto poll, để Operator bấm "Làm mới trạng thái".
     }
     const timer = setInterval(() => {
       load();
-    }, 6000);
+    }, PRODUCTION_POLL_INTERVAL_MS);
     return () => clearInterval(timer);
-  }, [productionLaunched, latestJob, load]);
+  }, [productionLaunched, latestJob, load, pollTimedOut]);
 
   // ---- Action 1 handlers ---------------------------------------------------
   const handlePromote = async (shortLink: string) => {
@@ -736,6 +772,17 @@ export default function ProductReviewLanePage() {
     latestJob?.state === 'READY_FOR_OPERATOR_REVIEW' ||
     latestJob?.state === 'APPROVED' ||
     latestJob?.state === 'PACKAGED';
+  // Badge header Bước 3–7 derive từ STATE THẬT (không kẹt runStage tĩnh). runStage
+  // chỉ là fallback cho khoảnh khắc vừa launch trước lần poll đầu.
+  const productionHeaderStatus: string | null = productionDone
+    ? 'CHỜ OPERATOR DUYỆT'
+    : latestJob?.state === 'FAILED'
+      ? 'FAILED'
+      : latestJob?.state === 'REJECTED'
+        ? 'REJECTED'
+        : productionRunning
+          ? 'RUNNING'
+          : runStage;
 
   // Filter registry to verified items & latest 10
   const verifiedRegistryItems = registry.filter((item) => item.ownerVerified).slice(0, 10);
@@ -1675,8 +1722,25 @@ export default function ProductReviewLanePage() {
             <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
               Bước 3–7 — Sản xuất video (Script · Voice · BGM · Render · QA)
             </span>
-            {runStage && <span className="font-mono text-[10px] text-neutral-400">{runStage}</span>}
+            {productionHeaderStatus && (
+              <span
+                className={`font-mono text-[10px] ${
+                  productionDone
+                    ? 'text-accent-green'
+                    : latestJob?.state === 'FAILED' || latestJob?.state === 'REJECTED'
+                      ? 'text-accent-rose'
+                      : 'text-neutral-400'
+                }`}
+              >
+                {productionHeaderStatus}
+              </span>
+            )}
           </div>
+          {pollTimedOut && (
+            <NoticeBox accent="amber">
+              Quá thời gian cập nhật tự động. Bấm "Làm mới trạng thái" để kiểm tra tiến trình.
+            </NoticeBox>
+          )}
 
           {/* Binding hiện tại — Operator thấy rõ job nào + sản phẩm nào sẽ được sản xuất */}
           <div className="rounded-lg border border-hairline/60 bg-panel/30 p-3 space-y-2 text-[11px] leading-relaxed">
