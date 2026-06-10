@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from '
 import { basename, dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { loadDotEnv } from '../packages/voice/src/load-env.js';
+import { syncManifestArtifacts } from './job-manifest-helper.js';
 import {
   calculateNormalizedHash,
   detectOpeningRepetition,
@@ -71,6 +72,8 @@ function loadManifest(jobId: string): JobManifest | null {
 }
 
 function saveManifest(manifest: JobManifest): void {
+  syncManifestArtifacts(manifest);
+
   const path = resolve(JOBS_ROOT, manifest.jobId, 'job_manifest.json');
   mkdirSync(dirname(path), { recursive: true });
   manifest.updatedAt = new Date().toISOString();

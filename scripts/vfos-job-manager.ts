@@ -19,7 +19,16 @@
  *   data/temp/vfos_jobs_registry.json
  */
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { spawnSync } from 'node:child_process';
@@ -193,6 +202,8 @@ function loadManifest(jobId: string): JobManifest | null {
 }
 
 function saveManifest(manifest: JobManifest): void {
+  syncManifestArtifacts(manifest);
+
   const path = resolve(JOBS_ROOT, manifest.jobId, 'job_manifest.json');
   mkdirSync(dirname(path), { recursive: true });
   manifest.updatedAt = isoNow();
@@ -249,7 +260,17 @@ function hasVideoStream(filePath: string): boolean {
   if (!existsSync(filePath)) return false;
   const result = spawnSync(
     'ffprobe',
-    ['-v', 'error', '-select_streams', 'v', '-show_entries', 'stream=index', '-of', 'csv=p=0', filePath],
+    [
+      '-v',
+      'error',
+      '-select_streams',
+      'v',
+      '-show_entries',
+      'stream=index',
+      '-of',
+      'csv=p=0',
+      filePath,
+    ],
     { encoding: 'utf8' },
   );
   return result.status === 0 && result.stdout.trim().length > 0;
@@ -258,10 +279,13 @@ function hasVideoStream(filePath: string): boolean {
 function getVideoDuration(filePath: string): number {
   if (!existsSync(filePath)) return 0;
   const args = [
-    '-v', 'error',
-    '-show_entries', 'format=duration',
-    '-of', 'default=noprint_wrappers=1:nokey=1',
-    filePath
+    '-v',
+    'error',
+    '-show_entries',
+    'format=duration',
+    '-of',
+    'default=noprint_wrappers=1:nokey=1',
+    filePath,
   ];
   const result = spawnSync('ffprobe', args, { encoding: 'utf8' });
   if (result.status === 0) {
@@ -279,7 +303,17 @@ function hasAudioStream(filePath: string): boolean {
   if (!existsSync(filePath)) return false;
   const result = spawnSync(
     'ffprobe',
-    ['-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=index', '-of', 'csv=p=0', filePath],
+    [
+      '-v',
+      'error',
+      '-select_streams',
+      'a',
+      '-show_entries',
+      'stream=index',
+      '-of',
+      'csv=p=0',
+      filePath,
+    ],
     { encoding: 'utf8' },
   );
   return result.status === 0 && result.stdout.trim().length > 0;
@@ -333,7 +367,9 @@ function validateScript(args: {
   }
   if (hookOccurrences > 1) {
     duplicateHookDetected = true;
-    errors.push(`Duplicate hook detected: "${args.hook}" appears ${hookOccurrences} times in voiceoverText.`);
+    errors.push(
+      `Duplicate hook detected: "${args.hook}" appears ${hookOccurrences} times in voiceoverText.`,
+    );
   }
 
   // 2. Product name repetition validator:
@@ -348,7 +384,9 @@ function validateScript(args: {
     }
   }
   if (prodOccurrences > 2) {
-    errors.push(`Product name "${args.productName}" appears ${prodOccurrences} times (max allowed: 2). Use a shorter name.`);
+    errors.push(
+      `Product name "${args.productName}" appears ${prodOccurrences} times (max allowed: 2). Use a shorter name.`,
+    );
   } else if (prodOccurrences > 1) {
     warnings.push(`Product name appears ${prodOccurrences} times. Keep it to 1-2 times.`);
   }
@@ -359,7 +397,10 @@ function validateScript(args: {
     if (words.length >= size) {
       const seen = new Set<string>();
       for (let i = 0; i <= words.length - size; i++) {
-        const ngram = words.slice(i, i + size).join(' ').toLowerCase();
+        const ngram = words
+          .slice(i, i + size)
+          .join(' ')
+          .toLowerCase();
         if (seen.has(ngram)) {
           ngramRepetitionDetected = true;
           errors.push(`N-gram repetition detected (${size} words): "${ngram}"`);
@@ -374,7 +415,9 @@ function validateScript(args: {
   // 4. Duration estimate:
   if (args.estimatedSpeechDurationSec > args.targetDurationSec) {
     tooLongForVideo = true;
-    errors.push(`Script is too long for the video: estimated speech duration (${args.estimatedSpeechDurationSec.toFixed(1)}s) exceeds target duration (${args.targetDurationSec.toFixed(1)}s).`);
+    errors.push(
+      `Script is too long for the video: estimated speech duration (${args.estimatedSpeechDurationSec.toFixed(1)}s) exceeds target duration (${args.targetDurationSec.toFixed(1)}s).`,
+    );
   }
 
   // 5. Empty/too short:
@@ -389,14 +432,19 @@ function validateScript(args: {
 
     // 6a. Product visibility low -> Warning only (does not fail)
     if (analysis.mainProductVisible === false || (analysis.productConfidence ?? 1.0) < 0.5) {
-      warnings.push(`LOW_PRODUCT_VISIBILITY: Main product visibility is low or confidence is under 50% (${(analysis.productConfidence ?? 1.0) * 100}%). Review source video.`);
+      warnings.push(
+        `LOW_PRODUCT_VISIBILITY: Main product visibility is low or confidence is under 50% (${(analysis.productConfidence ?? 1.0) * 100}%). Review source video.`,
+      );
     }
 
     // 6b. Mismatch warnings check: if script mentions items in mismatchWarnings, add warning
     const mismatchWarnings = analysis.mismatchWarnings || [];
     const mismatchFound: string[] = [];
     for (const w of mismatchWarnings) {
-      const wWords = w.toLowerCase().split(/\s+/).filter((x: string) => x.length > 2);
+      const wWords = w
+        .toLowerCase()
+        .split(/\s+/)
+        .filter((x: string) => x.length > 2);
       if (wWords.length > 0) {
         const found = wWords.some((wd: string) => textLower.includes(wd));
         if (found) {
@@ -405,7 +453,9 @@ function validateScript(args: {
       }
     }
     if (mismatchFound.length > 0) {
-      warnings.push(`Script mentions features flagged in video mismatch warnings: "${mismatchFound.join(', ')}".`);
+      warnings.push(
+        `Script mentions features flagged in video mismatch warnings: "${mismatchFound.join(', ')}".`,
+      );
     }
 
     // 6c. Demonstrated features check: script should ideally mention at least some keyword from demonstratedFeatures
@@ -421,7 +471,9 @@ function validateScript(args: {
         }
       }
       if (!matchedFeature) {
-        warnings.push(`Script does not mention any demonstrated features from source video analysis: "${demonstratedFeatures.join(', ')}".`);
+        warnings.push(
+          `Script does not mention any demonstrated features from source video analysis: "${demonstratedFeatures.join(', ')}".`,
+        );
       }
     }
   }
@@ -435,8 +487,8 @@ function validateScript(args: {
       repeatedProductNameCount: prodOccurrences,
       tooLongForVideo,
       ngramRepetitionDetected,
-      visionGrounded
-    }
+      visionGrounded,
+    },
   };
 }
 
@@ -665,7 +717,9 @@ function cmdAttachSource(args: string[]): number {
 
   const ext = extname(sourcePath).toLowerCase();
   if (!VALID_VIDEO_EXTS.has(ext)) {
-    console.error(`🛑 UNSUPPORTED_VIDEO_EXT: ${ext} (allowed: ${[...VALID_VIDEO_EXTS].join(', ')})`);
+    console.error(
+      `🛑 UNSUPPORTED_VIDEO_EXT: ${ext} (allowed: ${[...VALID_VIDEO_EXTS].join(', ')})`,
+    );
     return 4;
   }
 
@@ -700,10 +754,9 @@ function cmdAttachSource(args: string[]): number {
   saveManifest(manifest);
 
   const reg = loadRegistry();
-  const productCardRaw = JSON.parse(readFileSync(resolve(manifest.source.productCardPath), 'utf8')) as Record<
-    string,
-    unknown
-  >;
+  const productCardRaw = JSON.parse(
+    readFileSync(resolve(manifest.source.productCardPath), 'utf8'),
+  ) as Record<string, unknown>;
   upsertRegistryEntry(reg, entryFromManifest(manifest, extractProductName(productCardRaw)));
   saveRegistry(reg);
 
@@ -768,7 +821,9 @@ function cmdStatus(args: string[]): number {
     ? resolve(manifest.artifacts.voiceArtifactPath)
     : null;
 
-  const qaReportPath = manifest.artifacts.finalQaReportPath ? resolve(manifest.artifacts.finalQaReportPath) : null;
+  const qaReportPath = manifest.artifacts.finalQaReportPath
+    ? resolve(manifest.artifacts.finalQaReportPath)
+    : null;
 
   console.log('======================================================');
   console.log(`🧾  VFOS Job Status — ${jobId}`);
@@ -783,33 +838,55 @@ function cmdStatus(args: string[]): number {
   console.log(`Review notes:      ${manifest.review.notes ?? '(none)'}`);
   console.log(`Final QA:          ${manifest.qaStatus ?? 'MISSING'}`);
   console.log('------------------------------------------------------');
-  console.log(`Source video:      ${manifest.source.sourceVideoPath ?? '(none)'}  ${srcPath && exists(srcPath) ? '✅' : '❌'}`);
-  console.log(`Voice artifact:    ${manifest.artifacts.voiceArtifactPath ?? '(none)'}  ${voicePath && exists(voicePath) ? '✅' : '❌'}`);
-  console.log(`Preview video:     ${manifest.artifacts.previewVideoPath ?? '(none)'}  ${previewPath && exists(previewPath) ? '✅' : '❌'}`);
-  console.log(`Captioned preview: ${manifest.artifacts.captionedPreviewPath ?? '(none)'}  ${captionedPath && exists(captionedPath) ? '✅' : '❌'}`);
-  console.log(`QA Report:         ${manifest.artifacts.finalQaReportPath ?? '(none)'}  ${qaReportPath && exists(qaReportPath) ? '✅' : '❌'}`);
+  console.log(
+    `Source video:      ${manifest.source.sourceVideoPath ?? '(none)'}  ${srcPath && exists(srcPath) ? '✅' : '❌'}`,
+  );
+  console.log(
+    `Voice artifact:    ${manifest.artifacts.voiceArtifactPath ?? '(none)'}  ${voicePath && exists(voicePath) ? '✅' : '❌'}`,
+  );
+  console.log(
+    `Preview video:     ${manifest.artifacts.previewVideoPath ?? '(none)'}  ${previewPath && exists(previewPath) ? '✅' : '❌'}`,
+  );
+  console.log(
+    `Captioned preview: ${manifest.artifacts.captionedPreviewPath ?? '(none)'}  ${captionedPath && exists(captionedPath) ? '✅' : '❌'}`,
+  );
+  console.log(
+    `QA Report:         ${manifest.artifacts.finalQaReportPath ?? '(none)'}  ${qaReportPath && exists(qaReportPath) ? '✅' : '❌'}`,
+  );
   console.log(`Created at:        ${manifest.createdAt}`);
   console.log(`Updated at:        ${manifest.updatedAt}`);
   if (manifest.safety) {
-    console.log(`Safety Lock:       Uploaded: ${manifest.safety.uploaded ? '✅' : '❌'} | Published: ${manifest.safety.published ? '✅' : '❌'} | API Called: ${manifest.safety.facebookApiCalled ? '✅' : '❌'}`);
+    console.log(
+      `Safety Lock:       Uploaded: ${manifest.safety.uploaded ? '✅' : '❌'} | Published: ${manifest.safety.published ? '✅' : '❌'} | API Called: ${manifest.safety.facebookApiCalled ? '✅' : '❌'}`,
+    );
   }
-  
+
   console.log('------------------------------------------------------');
   console.log('💡  RECOMMENDED NEXT ACTION:');
   if (manifest.state === 'WAITING_FOR_SOURCE_VIDEO') {
     console.log(`  1. Drop a video file into: data/operator/video-downloads/`);
     console.log(`  2. Check the inbox:        pnpm job:source-inbox --job ${jobId}`);
-    console.log(`  3. Run review:             pnpm job:run-review --job ${jobId} --file "<video>.mp4" --confirm-ai`);
+    console.log(
+      `  3. Run review:             pnpm job:run-review --job ${jobId} --file "<video>.mp4" --confirm-ai`,
+    );
   } else if (manifest.state === 'READY_TO_RENDER') {
-    console.log(`  Run review pipeline:       pnpm job:run-review --job ${jobId} --file "${basename(manifest.source.sourceVideoPath || '')}" --confirm-ai`);
+    console.log(
+      `  Run review pipeline:       pnpm job:run-review --job ${jobId} --file "${basename(manifest.source.sourceVideoPath || '')}" --confirm-ai`,
+    );
   } else if (manifest.state === 'READY_FOR_OPERATOR_REVIEW') {
-    console.log(`  1. Open and review:        start "" "data\\temp\\jobs\\${jobId}\\preview_with_captions_v2.mp4"`);
-    console.log(`  2. Approve it:             pnpm job:approve --job ${jobId} --notes "Operator reviewed and approved."`);
+    console.log(
+      `  1. Open and review:        start "" "data\\temp\\jobs\\${jobId}\\preview_with_captions_v2.mp4"`,
+    );
+    console.log(
+      `  2. Approve it:             pnpm job:approve --job ${jobId} --notes "Operator reviewed and approved."`,
+    );
     console.log(`  3. Or reject it:           pnpm job:reject --job ${jobId} --notes "<reason>"`);
   } else if (manifest.state === 'APPROVED') {
     console.log(`  Package the video:         pnpm job:package --job ${jobId}`);
   } else if (manifest.state === 'PACKAGED') {
-    console.log(`  Review publish pack:       production/archive/${jobId}/publish_readiness_report.md`);
+    console.log(
+      `  Review publish pack:       production/archive/${jobId}/publish_readiness_report.md`,
+    );
     console.log(`  Manual operators can now upload and publish.`);
   } else {
     console.log(`  No specific recommendation for state: ${manifest.state}`);
@@ -839,9 +916,7 @@ function cmdList(_args: string[]): number {
     j.productName ? j.productName.slice(0, 40) : '(unknown)',
   ]);
 
-  const widths = header.map((h, i) =>
-    Math.max(h.length, ...rows.map((r) => r[i].length)),
-  );
+  const widths = header.map((h, i) => Math.max(h.length, ...rows.map((r) => r[i].length)));
   const fmt = (cells: string[]) => cells.map((c, i) => c.padEnd(widths[i])).join('  ');
   console.log(fmt(header));
   console.log(widths.map((w) => '-'.repeat(w)).join('  '));
@@ -890,7 +965,9 @@ function cmdApprove(args: string[]): number {
     if (manifest.state === 'APPROVED') {
       console.error('🛑 ALREADY_APPROVED: job is already APPROVED.');
     } else {
-      console.error(`🛑 INVALID_STATE_FOR_APPROVE: expected READY_FOR_OPERATOR_REVIEW, got ${manifest.state}.`);
+      console.error(
+        `🛑 INVALID_STATE_FOR_APPROVE: expected READY_FOR_OPERATOR_REVIEW, got ${manifest.state}.`,
+      );
     }
     return 3;
   }
@@ -1100,7 +1177,9 @@ function cmdPackage(args: string[]): number {
 
   // First-failure gating with explicit error codes (section C).
   if (!stateApproved || !decisionApproved) {
-    console.error('🛑 JOB_NOT_APPROVED: job must be APPROVED with operatorDecision=APPROVED before packaging.');
+    console.error(
+      '🛑 JOB_NOT_APPROVED: job must be APPROVED with operatorDecision=APPROVED before packaging.',
+    );
     return 3;
   }
   if (!captionedPresent) {
@@ -1145,11 +1224,17 @@ function cmdPackage(args: string[]): number {
   // ---- build package (all gates green) ----
   // Read content sources for caption/hashtags/affiliate link.
   const productCard = JSON.parse(readFileSync(productCardAbs, 'utf8')) as Record<string, unknown>;
-  const scriptArtifact = JSON.parse(readFileSync(scriptAbs as string, 'utf8')) as Record<string, unknown>;
+  const scriptArtifact = JSON.parse(readFileSync(scriptAbs as string, 'utf8')) as Record<
+    string,
+    unknown
+  >;
   const productName = extractProductName(productCard);
 
-  const captionText = typeof scriptArtifact.captionDraft === 'string' ? scriptArtifact.captionDraft.trim() : '';
-  const hashtags = Array.isArray(scriptArtifact.hashtags) ? (scriptArtifact.hashtags as unknown[]).filter((h) => typeof h === 'string') : [];
+  const captionText =
+    typeof scriptArtifact.captionDraft === 'string' ? scriptArtifact.captionDraft.trim() : '';
+  const hashtags = Array.isArray(scriptArtifact.hashtags)
+    ? (scriptArtifact.hashtags as unknown[]).filter((h) => typeof h === 'string')
+    : [];
   const affiliateLink =
     (typeof productCard.shortLink === 'string' && productCard.shortLink.trim()) ||
     (typeof productCard.canonicalUrl === 'string' && productCard.canonicalUrl.trim()) ||
@@ -1253,7 +1338,11 @@ Generated at: ${now}
       envIncluded: false,
     },
   };
-  writeFileSync(join(packageDir, 'package_manifest.json'), `${JSON.stringify(packageManifest, null, 2)}\n`, 'utf8');
+  writeFileSync(
+    join(packageDir, 'package_manifest.json'),
+    `${JSON.stringify(packageManifest, null, 2)}\n`,
+    'utf8',
+  );
 
   // Optional zip (best-effort, *.zip is gitignored). Never fatal.
   let zipCreated = false;
@@ -1261,7 +1350,11 @@ Generated at: ${now}
   if (process.platform === 'win32') {
     const z = spawnSync(
       'powershell',
-      ['-NoProfile', '-Command', `Compress-Archive -Path '${packageDir}\\*' -DestinationPath '${zipAbs}' -Force`],
+      [
+        '-NoProfile',
+        '-Command',
+        `Compress-Archive -Path '${packageDir}\\*' -DestinationPath '${zipAbs}' -Force`,
+      ],
       { encoding: 'utf8' },
     );
     zipCreated = z.status === 0 && existsSync(zipAbs);
@@ -1330,11 +1423,15 @@ async function cmdRunReview(args: string[]): Promise<number> {
   const productionAllowed = (manifest.source as any).productionAllowed ?? null;
   if (sourceMode === 'fallback' || productionAllowed === false) {
     console.error('======================================================');
-    console.error('🛑 PIPELINE_GATE_BLOCKED: Source is fallback/demo, not allowed for real production.');
+    console.error(
+      '🛑 PIPELINE_GATE_BLOCKED: Source is fallback/demo, not allowed for real production.',
+    );
     console.error(`Job ID:             ${jobId}`);
     console.error(`sourceMode:         ${sourceMode ?? '(none)'}`);
     console.error(`productionAllowed:  ${productionAllowed === false ? 'false' : '(unset)'}`);
-    console.error('Fallback source is review/dev only. Attach a real approved source before production.');
+    console.error(
+      'Fallback source is review/dev only. Attach a real approved source before production.',
+    );
     console.error('======================================================');
     return 21;
   }
@@ -1343,11 +1440,17 @@ async function cmdRunReview(args: string[]): Promise<number> {
   const cleanlinessStatus = (manifest.source as any).cleanlinessStatus;
   if (cleanlinessStatus !== 'WATERMARK_NOT_DETECTED') {
     console.error('======================================================');
-    console.error('🛑 PIPELINE_GATE_BLOCKED: Source video cleanliness review is pending or failed.');
+    console.error(
+      '🛑 PIPELINE_GATE_BLOCKED: Source video cleanliness review is pending or failed.',
+    );
     console.error(`Job ID:             ${jobId}`);
     console.error(`Cleanliness Status: ${cleanlinessStatus ?? 'UNKNOWN_NEEDS_OPERATOR_REVIEW'}`);
-    console.error('Operator must approve cleanliness using the following command before continuing:');
-    console.error(`  pnpm source:approve-cleanliness --job ${jobId} --status pass --notes "<operator notes>"`);
+    console.error(
+      'Operator must approve cleanliness using the following command before continuing:',
+    );
+    console.error(
+      `  pnpm source:approve-cleanliness --job ${jobId} --status pass --notes "<operator notes>"`,
+    );
     console.error('======================================================');
     return 20;
   }
@@ -1372,7 +1475,9 @@ async function cmdRunReview(args: string[]): Promise<number> {
 
   const ext = extname(sourcePath).toLowerCase();
   if (!VALID_VIDEO_EXTS.has(ext)) {
-    console.error(`🛑 UNSUPPORTED_VIDEO_EXT: ${ext} (allowed: ${[...VALID_VIDEO_EXTS].join(', ')})`);
+    console.error(
+      `🛑 UNSUPPORTED_VIDEO_EXT: ${ext} (allowed: ${[...VALID_VIDEO_EXTS].join(', ')})`,
+    );
     return 4;
   }
 
@@ -1407,10 +1512,9 @@ async function cmdRunReview(args: string[]): Promise<number> {
     saveManifest(manifest);
 
     const reg = loadRegistry();
-    const productCardRaw = JSON.parse(readFileSync(resolve(manifest.source.productCardPath), 'utf8')) as Record<
-      string,
-      unknown
-    >;
+    const productCardRaw = JSON.parse(
+      readFileSync(resolve(manifest.source.productCardPath), 'utf8'),
+    ) as Record<string, unknown>;
     upsertRegistryEntry(reg, entryFromManifest(manifest, extractProductName(productCardRaw)));
     saveRegistry(reg);
     console.log(`✅ Source attached. State → READY_TO_RENDER`);
@@ -1429,10 +1533,14 @@ async function cmdRunReview(args: string[]): Promise<number> {
   if (confirmElevenlabs) reviewArgs.push('--confirm-elevenlabs');
   if (dryRun) reviewArgs.push('--dry-run');
 
-  const reviewRes = spawnSync('npx', ['tsx', 'scripts/review-video-orchestrator.ts', ...reviewArgs], {
-    shell: true,
-    stdio: 'inherit',
-  });
+  const reviewRes = spawnSync(
+    'npx',
+    ['tsx', 'scripts/review-video-orchestrator.ts', ...reviewArgs],
+    {
+      shell: true,
+      stdio: 'inherit',
+    },
+  );
 
   const reviewExit = reviewRes.status ?? 1;
   if (reviewExit !== 0) {
@@ -1487,11 +1595,15 @@ async function cmdScript(args: string[]): Promise<number> {
   const productionAllowed = (manifest.source as any).productionAllowed ?? null;
   if (sourceMode === 'fallback' || productionAllowed === false) {
     console.error('======================================================');
-    console.error('🛑 PIPELINE_GATE_BLOCKED: Source is fallback/demo, not allowed for real production.');
+    console.error(
+      '🛑 PIPELINE_GATE_BLOCKED: Source is fallback/demo, not allowed for real production.',
+    );
     console.error(`Job ID:             ${jobId}`);
     console.error(`sourceMode:         ${sourceMode ?? '(none)'}`);
     console.error(`productionAllowed:  ${productionAllowed === false ? 'false' : '(unset)'}`);
-    console.error('Fallback source is review/dev only. Attach a real approved source before production.');
+    console.error(
+      'Fallback source is review/dev only. Attach a real approved source before production.',
+    );
     console.error('======================================================');
     return 21;
   }
@@ -1500,11 +1612,17 @@ async function cmdScript(args: string[]): Promise<number> {
   const cleanlinessStatus = (manifest.source as any).cleanlinessStatus;
   if (cleanlinessStatus !== 'WATERMARK_NOT_DETECTED') {
     console.error('======================================================');
-    console.error('🛑 PIPELINE_GATE_BLOCKED: Source video cleanliness review is pending or failed.');
+    console.error(
+      '🛑 PIPELINE_GATE_BLOCKED: Source video cleanliness review is pending or failed.',
+    );
     console.error(`Job ID:             ${jobId}`);
     console.error(`Cleanliness Status: ${cleanlinessStatus ?? 'UNKNOWN_NEEDS_OPERATOR_REVIEW'}`);
-    console.error('Operator must approve cleanliness using the following command before continuing:');
-    console.error(`  pnpm source:approve-cleanliness --job ${jobId} --status pass --notes "<operator notes>"`);
+    console.error(
+      'Operator must approve cleanliness using the following command before continuing:',
+    );
+    console.error(
+      `  pnpm source:approve-cleanliness --job ${jobId} --status pass --notes "<operator notes>"`,
+    );
     console.error('======================================================');
     return 20;
   }
@@ -1531,9 +1649,14 @@ async function cmdScript(args: string[]): Promise<number> {
   }
 
   const priceRaw = productCard['price'] ?? productCard['price_min'] ?? productCard['priceMin'];
-  const priceStr = typeof priceRaw === 'number'
-    ? (priceRaw >= 1000 ? `${Math.round(priceRaw / 1000)}K` : `${priceRaw}`)
-    : typeof priceRaw === 'string' ? priceRaw : null;
+  const priceStr =
+    typeof priceRaw === 'number'
+      ? priceRaw >= 1000
+        ? `${Math.round(priceRaw / 1000)}K`
+        : `${priceRaw}`
+      : typeof priceRaw === 'string'
+        ? priceRaw
+        : null;
 
   // Probe source video duration using ffprobe
   const sourceVideoAbs = manifest.source.sourceVideoPath
@@ -1551,7 +1674,9 @@ async function cmdScript(args: string[]): Promise<number> {
   // Under 8s rule
   if (sourceVideoDurationSec < 8) {
     console.error('🛑 SOURCE_VIDEO_TOO_SHORT_FOR_REVIEW');
-    console.error(`  Source video duration (${sourceVideoDurationSec.toFixed(2)}s) is under 8 seconds.`);
+    console.error(
+      `  Source video duration (${sourceVideoDurationSec.toFixed(2)}s) is under 8 seconds.`,
+    );
     return 5;
   }
 
@@ -1703,7 +1828,9 @@ Hãy trả về duy nhất một đối tượng JSON có định dạng chính 
           `${JSON.stringify({ jobId, runId: manifest.runId, generatedAt: isoNow(), ...payload }, null, 2)}\n`,
           'utf8',
         );
-        console.error(`  ↳ Exact error persisted to ${JOBS_ROOT}/${jobId}/script_generation_error.json`);
+        console.error(
+          `  ↳ Exact error persisted to ${JOBS_ROOT}/${jobId}/script_generation_error.json`,
+        );
       } catch (e: any) {
         console.error(`  ↳ Failed to persist script error artifact: ${e.message}`);
       }
@@ -1756,7 +1883,9 @@ Hãy trả về duy nhất một đối tượng JSON có định dạng chính 
     const maxRetries = 3;
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      console.log(`Calling OpenAI API (gpt-4o-mini, in-process) — attempt ${attempt}/${maxRetries}...`);
+      console.log(
+        `Calling OpenAI API (gpt-4o-mini, in-process) — attempt ${attempt}/${maxRetries}...`,
+      );
       try {
         // In-process fetch (same pattern as job:vision) so the exact OpenAI
         // error.message is never lost to a swallowed subprocess stderr.
@@ -1816,13 +1945,17 @@ Hãy trả về duy nhất một đối tượng JSON có định dạng chính 
           // fail nhanh, KHÔNG đốt thêm attempt (retry sẽ lại đụng cùng giới hạn).
           if (response.status === 429) {
             persistScriptError(lastErrorInfo);
-            console.error(`🛑 OPENAI_API_FAILURE (429 rate limit còn sau ${rateLimitWaits} lần chờ)`);
+            console.error(
+              `🛑 OPENAI_API_FAILURE (429 rate limit còn sau ${rateLimitWaits} lần chờ)`,
+            );
             return 6;
           }
           // 5xx transient → giữ exponential backoff ngắn theo attempt.
           if (response.status >= 500 && attempt < maxRetries) {
             const backoffMs = 1000 * 2 ** (attempt - 1);
-            console.warn(`⚠️  OpenAI HTTP ${response.status} (${errBody?.error?.code ?? 'transient'}); backoff ${backoffMs}ms then retry...`);
+            console.warn(
+              `⚠️  OpenAI HTTP ${response.status} (${errBody?.error?.code ?? 'transient'}); backoff ${backoffMs}ms then retry...`,
+            );
             await sleep(backoffMs);
             continue;
           }
@@ -1853,9 +1986,10 @@ Hãy trả về duy nhất một đối tượng JSON có định dạng chính 
         aiData = JSON.parse(contentStr.trim());
         const voiceoverText = aiData.voiceoverText || '';
         const hook = aiData.hook || '';
-        const estimatedSpeechDurationSec = typeof aiData.estimatedSpeechDurationSec === 'number'
-          ? aiData.estimatedSpeechDurationSec
-          : parseFloat(aiData.estimatedSpeechDurationSec || '26.5');
+        const estimatedSpeechDurationSec =
+          typeof aiData.estimatedSpeechDurationSec === 'number'
+            ? aiData.estimatedSpeechDurationSec
+            : parseFloat(aiData.estimatedSpeechDurationSec || '26.5');
 
         // Run validation with Vision analysis (Round 42)
         validation = validateScript({
@@ -1903,7 +2037,9 @@ Hãy trả về duy nhất một đối tượng JSON có định dạng chính 
     }
 
     if (!validation || !validation.passed) {
-      persistScriptError(lastErrorInfo ?? { errorCode: 'SCRIPT_QUALITY_VALIDATION_FAILED', phase: 'validation' });
+      persistScriptError(
+        lastErrorInfo ?? { errorCode: 'SCRIPT_QUALITY_VALIDATION_FAILED', phase: 'validation' },
+      );
       console.error('🛑 SCRIPT_QUALITY_VALIDATION_FAILED');
       console.error('Generated script failed all generation attempts.');
       return 7;
@@ -1937,11 +2073,19 @@ Hãy trả về duy nhất một đối tượng JSON có định dạng chính 
       visualContext: {
         used: Boolean(visionArtifact),
         sourcePath: visionArtifact ? `data/temp/jobs/${jobId}/video_visual_analysis.json` : null,
-        mainProductVisible: visionArtifact ? Boolean(visionArtifact.analysis?.mainProductVisible) : false,
-        demonstratedFeaturesUsed: visionArtifact ? (visionArtifact.analysis?.demonstratedFeatures || []) : [],
-        scriptHintsUsed: visionArtifact ? (visionArtifact.analysis?.scriptHints || []) : [],
-        mismatchWarningsConsidered: visionArtifact ? (visionArtifact.analysis?.mismatchWarnings || []) : [],
-        unsafeOrLowQualitySignals: visionArtifact ? (visionArtifact.analysis?.unsafeOrLowQualitySignals || []) : [],
+        mainProductVisible: visionArtifact
+          ? Boolean(visionArtifact.analysis?.mainProductVisible)
+          : false,
+        demonstratedFeaturesUsed: visionArtifact
+          ? visionArtifact.analysis?.demonstratedFeatures || []
+          : [],
+        scriptHintsUsed: visionArtifact ? visionArtifact.analysis?.scriptHints || [] : [],
+        mismatchWarningsConsidered: visionArtifact
+          ? visionArtifact.analysis?.mismatchWarnings || []
+          : [],
+        unsafeOrLowQualitySignals: visionArtifact
+          ? visionArtifact.analysis?.unsafeOrLowQualitySignals || []
+          : [],
       },
       quality: {
         duplicateHookDetected: validation.metrics.duplicateHookDetected,
@@ -1998,7 +2142,9 @@ Hãy trả về duy nhất một đối tượng JSON có định dạng chính 
       `Thiết kế nhỏ gọn, tiện lợi, dùng được ở mọi nơi.`,
       `Nếu bạn đang tìm một sản phẩm tốt với giá hợp lý thì đây là lựa chọn đỉnh nhất.`,
       `Bấm link bên dưới để mua ngay nha, số lượng có hạn!`,
-    ].filter(Boolean).join(' ');
+    ]
+      .filter(Boolean)
+      .join(' ');
 
     const captionDraft = `${productName} — Review nhanh! ${priceStr ? `Giá ${priceStr}` : ''} #vfos #review #dealhot`;
 
@@ -2132,7 +2278,9 @@ async function cmdIntakeClean(args: string[]): Promise<number> {
   try {
     chromium = (await import('playwright')).chromium;
   } catch (err) {
-    console.error("❌ Playwright is not installed. Run `pnpm add -D playwright` in workspace root.");
+    console.error(
+      '❌ Playwright is not installed. Run `pnpm add -D playwright` in workspace root.',
+    );
     return 12;
   }
 
@@ -2147,20 +2295,31 @@ async function cmdIntakeClean(args: string[]): Promise<number> {
     if (!useZst) {
       console.log('[Browser] Attempting download via https://unduhtiktok.com/vi/douyin/ ...');
       try {
-        await page.goto('https://unduhtiktok.com/vi/douyin/', { waitUntil: 'load', timeout: 20000 });
+        await page.goto('https://unduhtiktok.com/vi/douyin/', {
+          waitUntil: 'load',
+          timeout: 20000,
+        });
         await page.waitForSelector('input#url', { state: 'visible', timeout: 10000 });
         await page.fill('input#url', videoUrl);
         await page.click('button#btnDownload');
-        
+
         // Wait a moment for dynamic responses
         await page.waitForTimeout(3000);
         const bodyText = await page.innerText('body');
-        if (bodyText.includes('Access denied') || bodyText.includes('không tìm thấy dữ liệu') || bodyText.includes('Access Denied')) {
-          console.log('⚠️ [Browser] unduhtiktok.com returned block or error page. Falling back to zsangtao.com...');
+        if (
+          bodyText.includes('Access denied') ||
+          bodyText.includes('không tìm thấy dữ liệu') ||
+          bodyText.includes('Access Denied')
+        ) {
+          console.log(
+            '⚠️ [Browser] unduhtiktok.com returned block or error page. Falling back to zsangtao.com...',
+          );
           useZst = true;
         }
       } catch (e) {
-        console.log('⚠️ [Browser] unduhtiktok.com request timed out or failed. Falling back to zsangtao.com...');
+        console.log(
+          '⚠️ [Browser] unduhtiktok.com request timed out or failed. Falling back to zsangtao.com...',
+        );
         useZst = true;
       }
     }
@@ -2176,16 +2335,23 @@ async function cmdIntakeClean(args: string[]): Promise<number> {
 
     // Wait for either the result button or error/captcha
     console.log('[Browser] Waiting for download results...');
-    
+
     // Safety check for captcha or timeout
     try {
       await page.waitForSelector('button.btn-download-hd', { state: 'visible', timeout: 30000 });
     } catch (e) {
       const bodyText = await page.innerText('body');
-      if (bodyText.includes('không tìm thấy dữ liệu') || bodyText.includes('Sorry! We cannot find data')) {
+      if (
+        bodyText.includes('không tìm thấy dữ liệu') ||
+        bodyText.includes('Sorry! We cannot find data')
+      ) {
         throw new Error('PROVIDER_PAGE_FAILED: Video URL not found or invalid on provider page.');
       }
-      if (bodyText.includes('captcha') || bodyText.includes('Captcha') || bodyText.includes('robot')) {
+      if (
+        bodyText.includes('captcha') ||
+        bodyText.includes('Captcha') ||
+        bodyText.includes('robot')
+      ) {
         throw new Error('PROVIDER_CAPTCHA_OR_POPUP: Captcha block or verification required.');
       }
       throw new Error('PROVIDER_RESULT_TIMEOUT: Timeout waiting for download link.');
@@ -2201,7 +2367,7 @@ async function cmdIntakeClean(args: string[]): Promise<number> {
     const tempDownloadPath = join(downloadsDir, originalDownloadedFilename);
     console.log(`[Browser] Saving downloaded file to temporary path: ${tempDownloadPath}`);
     await download.saveAs(tempDownloadPath);
-    
+
     if (existsSync(tempDownloadPath)) {
       copyFileSync(tempDownloadPath, finalVideoPath);
       rmSync(tempDownloadPath);
@@ -2214,7 +2380,9 @@ async function cmdIntakeClean(args: string[]): Promise<number> {
     const msg = err.message || '';
     const fallbackPath = resolve('runs/job_20260602_003/source/clean_source_video.mp4');
     if (existsSync(fallbackPath)) {
-      console.log(`⚠️ [Intake Fallback] Downloader failed (${msg}). Falling back to workspace template: ${fallbackPath}`);
+      console.log(
+        `⚠️ [Intake Fallback] Downloader failed (${msg}). Falling back to workspace template: ${fallbackPath}`,
+      );
       copyFileSync(fallbackPath, finalVideoPath);
       downloadSuccess = true;
       isFallback = true;
@@ -2261,7 +2429,7 @@ async function cmdIntakeClean(args: string[]): Promise<number> {
         hasAudio,
         duration,
         durationMs,
-        validatedAt: isoNow()
+        validatedAt: isoNow(),
       };
       writeFileSync(ffprobePath, JSON.stringify(ffprobeResult, null, 2), 'utf8');
 
@@ -2273,7 +2441,9 @@ async function cmdIntakeClean(args: string[]): Promise<number> {
         errorMessage = 'Invalid video duration probed.';
       } else {
         ffprobePassed = true;
-        console.log(`[FFprobe] download + ffprobe pass (logo cleanliness pending QA). Duration: ${duration.toFixed(2)}s | Audio: ${hasAudio ? 'YES' : 'NO'}`);
+        console.log(
+          `[FFprobe] download + ffprobe pass (logo cleanliness pending QA). Duration: ${duration.toFixed(2)}s | Audio: ${hasAudio ? 'YES' : 'NO'}`,
+        );
       }
     } catch (e: any) {
       errorCode = 'FFMPEG_FFPROBE_FAILED';
@@ -2304,19 +2474,21 @@ async function cmdIntakeClean(args: string[]): Promise<number> {
 
     const duration = getVideoDuration(finalVideoPath);
     const timestamps = [
-      1.0,                                                             // 1. Frame đầu sau 1 giây
-      Math.round(duration * 0.25 * 100) / 100,                        // 2. Frame 25%
-      Math.round(duration * 0.5 * 100) / 100,                         // 3. Frame giữa
-      Math.round(duration * 0.75 * 100) / 100,                        // 4. Frame 75%
-      Math.round(Math.max(duration - 1.0, 0.9 * duration) * 100) / 100 // 5. Frame gần cuối
+      1.0, // 1. Frame đầu sau 1 giây
+      Math.round(duration * 0.25 * 100) / 100, // 2. Frame 25%
+      Math.round(duration * 0.5 * 100) / 100, // 3. Frame giữa
+      Math.round(duration * 0.75 * 100) / 100, // 4. Frame 75%
+      Math.round(Math.max(duration - 1.0, 0.9 * duration) * 100) / 100, // 5. Frame gần cuối
     ];
 
     // Deduplicate and filter valid timestamps
     const uniqueTimestamps = Array.from(new Set(timestamps))
-      .filter(t => t >= 0 && t <= duration)
+      .filter((t) => t >= 0 && t <= duration)
       .sort((a, b) => a - b);
 
-    console.log(`[Cleanliness QA] Dynamic timestamps selected: ${uniqueTimestamps.map(t => `${t}s`).join(', ')}`);
+    console.log(
+      `[Cleanliness QA] Dynamic timestamps selected: ${uniqueTimestamps.map((t) => `${t}s`).join(', ')}`,
+    );
 
     let extractionSuccess = true;
     for (let i = 0; i < uniqueTimestamps.length; i++) {
@@ -2326,15 +2498,25 @@ async function cmdIntakeClean(args: string[]): Promise<number> {
       const framePath = join(framesDir, frameFilename);
       const relativeFramePath = `runs/${jobId}/source/frames/${frameFilename}`;
 
-      console.log(`  [Frame ${frameIndex}/${uniqueTimestamps.length}] Extracting at ${timestamp}s...`);
-      const ffmpegResult = spawnSync('ffmpeg', [
-        '-y',
-        '-ss', String(timestamp),
-        '-i', finalVideoPath,
-        '-frames:v', '1',
-        '-q:v', '2',
-        framePath
-      ], { encoding: 'utf8' });
+      console.log(
+        `  [Frame ${frameIndex}/${uniqueTimestamps.length}] Extracting at ${timestamp}s...`,
+      );
+      const ffmpegResult = spawnSync(
+        'ffmpeg',
+        [
+          '-y',
+          '-ss',
+          String(timestamp),
+          '-i',
+          finalVideoPath,
+          '-frames:v',
+          '1',
+          '-q:v',
+          '2',
+          framePath,
+        ],
+        { encoding: 'utf8' },
+      );
 
       if (ffmpegResult.status !== 0 || !existsSync(framePath)) {
         console.error(`⚠️ [Cleanliness QA] Failed to extract frame at ${timestamp}s.`);
@@ -2359,14 +2541,16 @@ async function cmdIntakeClean(args: string[]): Promise<number> {
       framePaths,
       status: 'UNKNOWN_NEEDS_OPERATOR_REVIEW',
       checkedAreas: ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'center'],
-      notes: 'No automated Vision AI active for logo cleanliness. Fallback to manual Operator review of extracted frames.'
+      notes:
+        'No automated Vision AI active for logo cleanliness. Fallback to manual Operator review of extracted frames.',
     };
     writeFileSync(cleanlinessReportPath, JSON.stringify(cleanlinessReport, null, 2), 'utf8');
     console.log(`[Cleanliness QA] Saved cleanliness report to: ${cleanlinessReportPath}`);
   }
 
   // 4. Write Download Report
-  const finalStatus = (downloadSuccess && ffprobePassed && cleanlinessPassed) ? 'SOURCE_READY' : 'SOURCE_FAILED';
+  const finalStatus =
+    downloadSuccess && ffprobePassed && cleanlinessPassed ? 'SOURCE_READY' : 'SOURCE_FAILED';
   const report = {
     jobId,
     requestedProvider: provider,
@@ -2381,7 +2565,7 @@ async function cmdIntakeClean(args: string[]): Promise<number> {
     originalDownloadedFilename,
     downloadedAt,
     durationMs,
-    notes: 'No external leaks or secrets logged.'
+    notes: 'No external leaks or secrets logged.',
   };
   writeFileSync(reportPath, JSON.stringify(report, null, 2), 'utf8');
   console.log(`[Report] Saved source download report to: ${reportPath}`);
@@ -2393,13 +2577,15 @@ async function cmdIntakeClean(args: string[]): Promise<number> {
     (manifest.source as any).provider = provider;
     (manifest.source as any).localPath = `runs/${jobId}/source/clean_source_video.mp4`;
     (manifest.source as any).cleanlinessStatus = 'NEEDS_REVIEW';
-    (manifest.source as any).cleanlinessReportPath = `runs/${jobId}/source/source_cleanliness_report.json`;
+    (manifest.source as any).cleanlinessReportPath =
+      `runs/${jobId}/source/source_cleanliness_report.json`;
     (manifest.source as any).framePaths = framePaths;
     (manifest.source as any).sourceMode = isFallback ? 'fallback' : 'direct';
     if (isFallback) {
       (manifest.source as any).sourceJobId = 'job_20260602_003';
       (manifest.source as any).productionAllowed = false;
-      (manifest.source as any).warning = 'Source intake failed; using sample fallback for review only';
+      (manifest.source as any).warning =
+        'Source intake failed; using sample fallback for review only';
     } else {
       (manifest.source as any).productionAllowed = true;
     }
@@ -2408,14 +2594,15 @@ async function cmdIntakeClean(args: string[]): Promise<number> {
     saveManifest(manifest);
 
     const reg = loadRegistry();
-    const productCardRaw = JSON.parse(readFileSync(resolve(manifest.source.productCardPath), 'utf8')) as Record<
-      string,
-      unknown
-    >;
+    const productCardRaw = JSON.parse(
+      readFileSync(resolve(manifest.source.productCardPath), 'utf8'),
+    ) as Record<string, unknown>;
     upsertRegistryEntry(reg, entryFromManifest(manifest, extractProductName(productCardRaw)));
     saveRegistry(reg);
 
-    console.log(`\n✅ Clean Source Intake SUCCESS! State → SOURCE_READY (download + ffprobe pass, logo cleanliness pending QA)`);
+    console.log(
+      `\n✅ Clean Source Intake SUCCESS! State → SOURCE_READY (download + ffprobe pass, logo cleanliness pending QA)`,
+    );
     return 0;
   } else {
     manifest.state = 'FAILED';
@@ -2423,10 +2610,9 @@ async function cmdIntakeClean(args: string[]): Promise<number> {
     saveManifest(manifest);
 
     const reg = loadRegistry();
-    const productCardRaw = JSON.parse(readFileSync(resolve(manifest.source.productCardPath), 'utf8')) as Record<
-      string,
-      unknown
-    >;
+    const productCardRaw = JSON.parse(
+      readFileSync(resolve(manifest.source.productCardPath), 'utf8'),
+    ) as Record<string, unknown>;
     upsertRegistryEntry(reg, entryFromManifest(manifest, extractProductName(productCardRaw)));
     saveRegistry(reg);
 
@@ -2477,13 +2663,17 @@ async function cmdApproveCleanliness(args: string[]): Promise<number> {
 
   // 1. Verify existence of clean_source_video.mp4
   if (!existsSync(finalVideoPath)) {
-    console.error(`🛑 CLEAN_SOURCE_VIDEO_NOT_FOUND: runs/${jobId}/source/clean_source_video.mp4 does not exist.`);
+    console.error(
+      `🛑 CLEAN_SOURCE_VIDEO_NOT_FOUND: runs/${jobId}/source/clean_source_video.mp4 does not exist.`,
+    );
     return 10;
   }
 
   // 2. Verify existence of source_cleanliness_report.json
   if (!existsSync(cleanlinessReportPath)) {
-    console.error(`🛑 CLEANLINESS_REPORT_NOT_FOUND: runs/${jobId}/source/source_cleanliness_report.json does not exist.`);
+    console.error(
+      `🛑 CLEANLINESS_REPORT_NOT_FOUND: runs/${jobId}/source/source_cleanliness_report.json does not exist.`,
+    );
     return 11;
   }
 
@@ -2519,7 +2709,7 @@ async function cmdApproveCleanliness(args: string[]): Promise<number> {
     action: status === 'pass' ? 'OPERATOR_APPROVE_CLEANLINESS' : 'OPERATOR_REJECT_CLEANLINESS',
     fromStatus: previousStatus,
     toStatus: toStatus,
-    notes: notes.trim()
+    notes: notes.trim(),
   });
 
   cleanlinessReport.status = toStatus;
@@ -2527,16 +2717,16 @@ async function cmdApproveCleanliness(args: string[]): Promise<number> {
     status: status === 'pass' ? 'PASS' : 'FAIL',
     reviewedBy: 'operator',
     reviewedAt: isoNow(),
-    notes: notes.trim()
+    notes: notes.trim(),
   };
 
   cleanlinessReport.agentFrameExtraction = {
     status: 'PASS',
-    frameCount: framePaths.length
+    frameCount: framePaths.length,
   };
 
   cleanlinessReport.agentAutomatedVision = {
-    status: 'NOT_IMPLEMENTED'
+    status: 'NOT_IMPLEMENTED',
   };
 
   cleanlinessReport.detectedWatermarks = [];
@@ -2548,13 +2738,13 @@ async function cmdApproveCleanliness(args: string[]): Promise<number> {
   (manifest.source as any).cleanlinessStatus = toStatus;
   if (status === 'pass') {
     // Only restore/heal FAILED state to SOURCE_READY if the failure was cleanliness-related
-    const hasCleanlinessFailure = manifest.lastError && (
-      manifest.lastError.includes('WATERMARK_DETECTED') ||
-      manifest.lastError.includes('CLEANLINESS_NOT_APPROVED') ||
-      manifest.lastError.includes('SOURCE_NOT_READY') ||
-      manifest.lastError.includes('cleanliness') ||
-      manifest.lastError.includes('watermark')
-    );
+    const hasCleanlinessFailure =
+      manifest.lastError &&
+      (manifest.lastError.includes('WATERMARK_DETECTED') ||
+        manifest.lastError.includes('CLEANLINESS_NOT_APPROVED') ||
+        manifest.lastError.includes('SOURCE_NOT_READY') ||
+        manifest.lastError.includes('cleanliness') ||
+        manifest.lastError.includes('watermark'));
     if (manifest.state === 'FAILED' && hasCleanlinessFailure) {
       manifest.state = 'SOURCE_READY';
       manifest.lastError = null;
@@ -2566,10 +2756,9 @@ async function cmdApproveCleanliness(args: string[]): Promise<number> {
   saveManifest(manifest);
 
   const reg = loadRegistry();
-  const productCardRaw = JSON.parse(readFileSync(resolve(manifest.source.productCardPath), 'utf8')) as Record<
-    string,
-    unknown
-  >;
+  const productCardRaw = JSON.parse(
+    readFileSync(resolve(manifest.source.productCardPath), 'utf8'),
+  ) as Record<string, unknown>;
   upsertRegistryEntry(reg, entryFromManifest(manifest, extractProductName(productCardRaw)));
   saveRegistry(reg);
 
@@ -2630,11 +2819,19 @@ async function main(): Promise<number> {
     default:
       console.error('Usage:');
       console.error('  pnpm job:create        --from-product <path> [--dry-run]');
-      console.error('  pnpm job:attach-source --job <jobId> [--file <path|inbox-filename>] [--dry-run]');
+      console.error(
+        '  pnpm job:attach-source --job <jobId> [--file <path|inbox-filename>] [--dry-run]',
+      );
       console.error('  pnpm job:source-inbox  [--job <jobId>]');
-      console.error('  pnpm source:intake-clean --job <jobId> --video-url "<url>" [--provider unduhtiktok] [--dry-run]');
-      console.error('  pnpm source:approve-cleanliness --job <jobId> --status pass|fail --notes "<notes>"');
-      console.error('  pnpm job:run-review    --job <jobId> --file <path|inbox-filename> [--confirm-ai]');
+      console.error(
+        '  pnpm source:intake-clean --job <jobId> --video-url "<url>" [--provider unduhtiktok] [--dry-run]',
+      );
+      console.error(
+        '  pnpm source:approve-cleanliness --job <jobId> --status pass|fail --notes "<notes>"',
+      );
+      console.error(
+        '  pnpm job:run-review    --job <jobId> --file <path|inbox-filename> [--confirm-ai]',
+      );
       console.error('  pnpm job:script        --job <jobId> [--dry-run]');
       console.error('  pnpm job:approve       --job <jobId> [--notes "..."] [--dry-run]');
       console.error('  pnpm job:reject        --job <jobId> --notes "..." [--dry-run]');

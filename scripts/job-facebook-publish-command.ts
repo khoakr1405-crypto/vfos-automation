@@ -14,6 +14,7 @@ import { spawnSync, execSync } from 'node:child_process';
 import { loadDotEnv } from '../packages/voice/src/load-env.js';
 import { createMetaClient, maskToken } from '../packages/facebook/src/meta-client.js';
 import { testPageConnection } from '../packages/facebook/src/test-page.js';
+import { syncManifestArtifacts } from './job-manifest-helper.js';
 
 // Configuration
 const JOBS_ROOT = 'data/temp/jobs';
@@ -141,6 +142,8 @@ function loadManifest(jobId: string): JobManifest | null {
 }
 
 function saveManifest(manifest: JobManifest): void {
+  syncManifestArtifacts(manifest);
+
   const path = resolve(JOBS_ROOT, manifest.jobId, 'job_manifest.json');
   mkdirSync(dirname(path), { recursive: true });
   manifest.updatedAt = isoNow();
@@ -150,7 +153,7 @@ function saveManifest(manifest: JobManifest): void {
 function updateRegistryFromManifest(manifest: JobManifest): void {
   const reg = loadRegistry();
   const entryIdx = reg.jobs.findIndex((j) => j.jobId === manifest.jobId);
-  
+
   let productName: string | null = null;
   const cardPath = resolve(manifest.source.productCardPath);
   if (existsSync(cardPath)) {
@@ -198,7 +201,17 @@ function hasAudioStream(filePath: string): boolean {
   if (!existsSync(filePath)) return false;
   const result = spawnSync(
     'ffprobe',
-    ['-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=index', '-of', 'csv=p=0', filePath],
+    [
+      '-v',
+      'error',
+      '-select_streams',
+      'a',
+      '-show_entries',
+      'stream=index',
+      '-of',
+      'csv=p=0',
+      filePath,
+    ],
     { encoding: 'utf8' },
   );
   return result.status === 0 && result.stdout.trim().length > 0;
@@ -225,8 +238,16 @@ function classifyPath(rawPath: string): PathKind {
   if (lower.startsWith('.secrets/') || lower.includes('/.secrets/')) return 'secret';
   if (lower.endsWith('.har')) return 'secret';
   if (lower.includes('storage_state') || lower.includes('.storage_state.')) return 'secret';
-  if (basename.endsWith('.json') && /(?:^|[._-])(?:cookies?|session|tokens?|credentials?)(?:[._-]|\.json$)/.test(basename)) return 'secret';
-  if (basename.endsWith('.txt') && /(?:^|[._-])(?:cookies?|tokens?|credentials?)(?:[._-]|\.txt$)/.test(basename)) return 'secret';
+  if (
+    basename.endsWith('.json') &&
+    /(?:^|[._-])(?:cookies?|session|tokens?|credentials?)(?:[._-]|\.json$)/.test(basename)
+  )
+    return 'secret';
+  if (
+    basename.endsWith('.txt') &&
+    /(?:^|[._-])(?:cookies?|tokens?|credentials?)(?:[._-]|\.txt$)/.test(basename)
+  )
+    return 'secret';
 
   if (MEDIA_EXTS.some((e) => lower.endsWith(e))) return 'media';
 
@@ -234,7 +255,14 @@ function classifyPath(rawPath: string): PathKind {
   if (lower.startsWith('production/archive/')) return 'runtime';
   if (RUNTIME_BASE_PREFIXES.some((p) => basename.startsWith(p))) return 'runtime';
 
-  if (lower.startsWith('packages/') || lower.startsWith('scripts/') || lower.startsWith('apps/') || lower.startsWith('plugins/') || lower.startsWith('docs/')) return 'source';
+  if (
+    lower.startsWith('packages/') ||
+    lower.startsWith('scripts/') ||
+    lower.startsWith('apps/') ||
+    lower.startsWith('plugins/') ||
+    lower.startsWith('docs/')
+  )
+    return 'source';
   if (!lower.includes('/')) return 'source';
 
   return 'other';
@@ -244,7 +272,10 @@ function checkGitStagedRisks(): { stagedSensitive: boolean; stagedRuntime: boole
   let stagedSensitive = false;
   let stagedRuntime = false;
   try {
-    const statusOutput = execSync('git status --porcelain', { stdio: 'pipe', encoding: 'utf8' }).trim();
+    const statusOutput = execSync('git status --porcelain', {
+      stdio: 'pipe',
+      encoding: 'utf8',
+    }).trim();
     if (statusOutput) {
       const lines = statusOutput.split('\n').filter((l) => l.length >= 3);
       for (const line of lines) {
@@ -325,7 +356,9 @@ async function main() {
 
   // 3. Review decision APPROVED check
   if (manifest.review?.operatorDecision !== 'APPROVED') {
-    console.error(`🛑 JOB_NOT_APPROVED: Operator decision is not APPROVED (current: ${manifest.review?.operatorDecision || 'none'})`);
+    console.error(
+      `🛑 JOB_NOT_APPROVED: Operator decision is not APPROVED (current: ${manifest.review?.operatorDecision || 'none'})`,
+    );
     process.exit(4);
     return;
   }
@@ -343,7 +376,9 @@ async function main() {
   // 5. Final QA status PASS check
   const qaStatus = readFinalQaStatus(manifest);
   if (qaStatus !== 'PASS') {
-    console.error(`🛑 FINAL_QA_NOT_PASSING: final QA report status is not PASS (status: ${qaStatus})`);
+    console.error(
+      `🛑 FINAL_QA_NOT_PASSING: final QA report status is not PASS (status: ${qaStatus})`,
+    );
     process.exit(6);
     return;
   }
@@ -386,7 +421,9 @@ async function main() {
     } catch {}
   }
   if (!affiliateLink) {
-    console.error('🛑 AFFILIATE_LINK_MISSING: Short link / affiliate link is missing in product card.');
+    console.error(
+      '🛑 AFFILIATE_LINK_MISSING: Short link / affiliate link is missing in product card.',
+    );
     process.exit(10);
     return;
   }
@@ -403,7 +440,9 @@ async function main() {
 
   // 11. Safety lock check
   if (manifest.safety?.uploaded === true || manifest.safety?.published === true) {
-    console.error('🛑 JOB_ALREADY_UPLOADED_OR_PUBLISHED: Safety lock blocks publish. Job already posted.');
+    console.error(
+      '🛑 JOB_ALREADY_UPLOADED_OR_PUBLISHED: Safety lock blocks publish. Job already posted.',
+    );
     process.exit(12);
     return;
   }
@@ -416,7 +455,9 @@ async function main() {
 
   // 12. Facebook credentials check (live mode only)
   if (confirmLivePublish && (!pageId || !pageAccessToken)) {
-    console.error('🛑 MISSING_FACEBOOK_CREDENTIALS: FACEBOOK_PAGE_ID or FACEBOOK_PAGE_ACCESS_TOKEN is missing in env.');
+    console.error(
+      '🛑 MISSING_FACEBOOK_CREDENTIALS: FACEBOOK_PAGE_ID or FACEBOOK_PAGE_ACCESS_TOKEN is missing in env.',
+    );
     process.exit(13);
     return;
   }
@@ -424,9 +465,13 @@ async function main() {
   // 13. Staged git risks check (live mode only)
   const stagedRisks = checkGitStagedRisks();
   if (confirmLivePublish && (stagedRisks.stagedSensitive || stagedRisks.stagedRuntime)) {
-    console.error('🛑 STAGED_RISKS_DETECTED: Staged sensitive/runtime files are present. Push blocked.');
-    if (stagedRisks.stagedSensitive) console.error('  -> Secret files/configurations are currently staged.');
-    if (stagedRisks.stagedRuntime) console.error('  -> Staged runtime reports or media artifacts found.');
+    console.error(
+      '🛑 STAGED_RISKS_DETECTED: Staged sensitive/runtime files are present. Push blocked.',
+    );
+    if (stagedRisks.stagedSensitive)
+      console.error('  -> Secret files/configurations are currently staged.');
+    if (stagedRisks.stagedRuntime)
+      console.error('  -> Staged runtime reports or media artifacts found.');
     process.exit(14);
     return;
   }
@@ -442,7 +487,8 @@ async function main() {
     const captionFile = join(packageDir, 'caption.txt');
     const hashtagsFile = join(packageDir, 'hashtags.txt');
     if (existsSync(captionFile)) captionText = readFileSync(captionFile, 'utf8').trim();
-    if (existsSync(hashtagsFile)) hashtags = readFileSync(hashtagsFile, 'utf8').trim().split(/\s+/).filter(Boolean);
+    if (existsSync(hashtagsFile))
+      hashtags = readFileSync(hashtagsFile, 'utf8').trim().split(/\s+/).filter(Boolean);
   } catch {}
 
   // Mode Selection

@@ -239,6 +239,8 @@ function loadJobManifest(jobId: string): JobManifest | null {
 }
 
 function saveJobManifest(manifest: JobManifest): void {
+  syncManifestArtifacts(manifest);
+
   const path = jobManifestPath(manifest.jobId);
   mkdirSync(dirname(path), { recursive: true });
   manifest.updatedAt = new Date().toISOString();
@@ -257,12 +259,18 @@ function resolveApprovedCleanSource(jobId: string): string {
   const cleanlinessReportPath = join(jobSourceDir, 'source_cleanliness_report.json');
 
   if (!existsSync(finalVideoPath)) {
-    throw { code: 'CLEAN_SOURCE_VIDEO_NOT_FOUND', message: `runs/${jobId}/source/clean_source_video.mp4 does not exist.` };
+    throw {
+      code: 'CLEAN_SOURCE_VIDEO_NOT_FOUND',
+      message: `runs/${jobId}/source/clean_source_video.mp4 does not exist.`,
+    };
   }
 
   // 2. Verify existence of source_cleanliness_report.json
   if (!existsSync(cleanlinessReportPath)) {
-    throw { code: 'CLEANLINESS_REPORT_NOT_FOUND', message: `runs/${jobId}/source/source_cleanliness_report.json does not exist.` };
+    throw {
+      code: 'CLEANLINESS_REPORT_NOT_FOUND',
+      message: `runs/${jobId}/source/source_cleanliness_report.json does not exist.`,
+    };
   }
 
   // 3. Read existing report and check status
@@ -277,23 +285,23 @@ function resolveApprovedCleanSource(jobId: string): string {
   const manifestStatus = (manifest.source as any).cleanlinessStatus || 'NEEDS_REVIEW';
 
   if (reportStatus === 'UNKNOWN_NEEDS_OPERATOR_REVIEW' || manifestStatus === 'NEEDS_REVIEW') {
-    throw { 
-      code: 'CLEANLINESS_NOT_APPROVED', 
-      message: `Cleanliness check is pending Operator approval. Please run:\n  pnpm source:approve-cleanliness --job ${jobId} --status pass --notes "<operator notes>"` 
+    throw {
+      code: 'CLEANLINESS_NOT_APPROVED',
+      message: `Cleanliness check is pending Operator approval. Please run:\n  pnpm source:approve-cleanliness --job ${jobId} --status pass --notes "<operator notes>"`,
     };
   }
 
   if (reportStatus === 'WATERMARK_DETECTED' || manifestStatus === 'WATERMARK_DETECTED') {
-    throw { 
-      code: 'WATERMARK_DETECTED', 
-      message: `Cleanliness check failed! Watermark/logo detected. Please replace the source video or re-evaluate.` 
+    throw {
+      code: 'WATERMARK_DETECTED',
+      message: `Cleanliness check failed! Watermark/logo detected. Please replace the source video or re-evaluate.`,
     };
   }
 
   if (reportStatus !== 'WATERMARK_NOT_DETECTED' || manifestStatus !== 'WATERMARK_NOT_DETECTED') {
-    throw { 
-      code: 'SOURCE_NOT_READY', 
-      message: `Cleanliness is not approved (status: ${reportStatus ?? 'UNKNOWN'}).` 
+    throw {
+      code: 'SOURCE_NOT_READY',
+      message: `Cleanliness is not approved (status: ${reportStatus ?? 'UNKNOWN'}).`,
     };
   }
 
@@ -309,7 +317,10 @@ function resolveApprovedCleanSource(jobId: string): string {
   // 5. ffprobe verification
   const duration = getVideoDuration(finalVideoPath);
   if (duration <= 0) {
-    throw { code: 'FFPROBE_FAILED', message: `ffprobe failed to read duration for clean source video.` };
+    throw {
+      code: 'FFPROBE_FAILED',
+      message: `ffprobe failed to read duration for clean source video.`,
+    };
   }
 
   return finalVideoPath;
@@ -689,7 +700,7 @@ async function main(): Promise<void> {
       try {
         const cleanSourcePath = resolveApprovedCleanSource(jobId);
         console.log(`✅ Approved clean source video verified: ${cleanSourcePath}`);
-        
+
         // Update manifest fields to point to this clean source video
         const relativeSourcePath = `runs/${jobId}/source/clean_source_video.mp4`;
         jobManifest.source.sourceVideoPath = relativeSourcePath;
@@ -720,26 +731,26 @@ async function main(): Promise<void> {
         (jobManifest.source as any).requestedProvider = requestedProvider;
         (jobManifest.source as any).actualProvider = actualProvider;
         (jobManifest.source as any).sourceVideoProvider = actualProvider;
-        (jobManifest.source as any).cleanlinessReportPath = `runs/${jobId}/source/source_cleanliness_report.json`;
+        (jobManifest.source as any).cleanlinessReportPath =
+          `runs/${jobId}/source/source_cleanliness_report.json`;
         (jobManifest.source as any).sourceResolvedAt = new Date().toISOString();
         saveJobManifest(jobManifest);
-        
+
         // Re-read to ensure consistency
         const rel = jobManifest.source.sourceVideoPath;
         jobSourceVideoAbs = rel ? resolve(rel) : null;
         jobSourceVideoPresent = Boolean(jobSourceVideoAbs && existsSync(jobSourceVideoAbs));
-
       } catch (err: any) {
         console.error('======================================================');
         console.error(`🛑 PIPELINE_GATE_BLOCKED: ${err.code ?? 'SOURCE_NOT_READY'}`);
         console.error(err.message);
         console.error('======================================================');
-        
+
         jobManifest.state = 'FAILED';
         jobManifest.lastError = `${err.code}: ${err.message}`;
         saveJobManifest(jobManifest);
         updateRegistryFromManifest(jobManifest);
-        
+
         // Write status report
         const baseArtifact: StatusArtifact = {
           statusVersion: 'v1',
@@ -1013,6 +1024,14 @@ async function main(): Promise<void> {
         });
         process.exit(8);
       }
+    }
+
+    // Đồng bộ scriptArtifactPath vào manifest IN-MEMORY: subprocess `job:script` đã ghi
+    // path vào FILE, nhưng bản in-memory ở orchestrator (load 1 lần lúc đầu) vẫn null →
+    // các saveJobManifest sau (voice/bgm/render…) sẽ ghi đè về null. Set lại theo file
+    // thật để package đọc đúng (đây là ROOT CAUSE của SCRIPT_ARTIFACT_MISSING giả).
+    if (jobManifest && existsSync(join(jobOutputDir!, 'script_artifact.json'))) {
+      jobManifest.artifacts.scriptArtifactPath = `${JOBS_ROOT}/${jobId}/script_artifact.json`;
     }
 
     // --- SCRIPT QUALITY GATE ---

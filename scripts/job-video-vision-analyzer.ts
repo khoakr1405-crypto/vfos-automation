@@ -14,10 +14,18 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, unlinkSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  writeFileSync,
+  readdirSync,
+  unlinkSync,
+} from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { loadDotEnv } from '../packages/voice/src/load-env.js';
+import { syncManifestArtifacts } from './job-manifest-helper.js';
 
 interface JobManifest {
   jobVersion: 'v1';
@@ -116,6 +124,8 @@ function loadJobManifest(jobId: string): JobManifest | null {
 }
 
 function saveJobManifest(manifest: JobManifest): void {
+  syncManifestArtifacts(manifest);
+
   const path = resolve(JOBS_ROOT, manifest.jobId, 'job_manifest.json');
   mkdirSync(dirname(path), { recursive: true });
   manifest.updatedAt = isoNow();
@@ -140,10 +150,13 @@ function updateRegistryFromManifest(manifest: JobManifest): void {
 function getVideoDuration(filePath: string): number {
   if (!existsSync(filePath)) return 0;
   const args = [
-    '-v', 'error',
-    '-show_entries', 'format=duration',
-    '-of', 'default=noprint_wrappers=1:nokey=1',
-    filePath
+    '-v',
+    'error',
+    '-show_entries',
+    'format=duration',
+    '-of',
+    'default=noprint_wrappers=1:nokey=1',
+    filePath,
   ];
   const result = spawnSync('ffprobe', args, { encoding: 'utf8' });
   if (result.status === 0) {
@@ -227,7 +240,7 @@ async function main(): Promise<void> {
   }
 
   console.log(`Spatially spacing ${timestamps.length} frame extraction timestamps:`);
-  console.log(`  Timestamps: ${timestamps.map(t => `${t}s`).join(', ')}`);
+  console.log(`  Timestamps: ${timestamps.map((t) => `${t}s`).join(', ')}`);
 
   // 5. Extract JPEG frames using FFmpeg
   const jobOutputDir = resolve(JOBS_ROOT, jobId);
@@ -253,25 +266,35 @@ async function main(): Promise<void> {
     const framePath = join(visionFramesDir, filename);
 
     console.log(`  [Frame ${frameIndex}/${timestamps.length}] Extracting at ${timestamp}s...`);
-    const ffmpegResult = spawnSync('ffmpeg', [
-      '-y',
-      '-ss', String(timestamp),
-      '-i', sourceVideoPath,
-      '-frames:v', '1',
-      '-q:v', '2',
-      framePath
-    ], { encoding: 'utf8' });
+    const ffmpegResult = spawnSync(
+      'ffmpeg',
+      [
+        '-y',
+        '-ss',
+        String(timestamp),
+        '-i',
+        sourceVideoPath,
+        '-frames:v',
+        '1',
+        '-q:v',
+        '2',
+        framePath,
+      ],
+      { encoding: 'utf8' },
+    );
 
     if (ffmpegResult.status !== 0 || !existsSync(framePath)) {
       console.error(`🛑 FRAME_EXTRACTION_FAILED`);
-      console.error(`FFmpeg failed to extract frame at ${timestamp}s. Status: ${ffmpegResult.status}`);
+      console.error(
+        `FFmpeg failed to extract frame at ${timestamp}s. Status: ${ffmpegResult.status}`,
+      );
       process.exit(8);
     }
 
     extractedFrames.push({
       index: frameIndex,
       timestampSec: timestamp,
-      path: framePath
+      path: framePath,
     });
   }
   console.log(`🟢 Successfully extracted ${extractedFrames.length} JPEGs.`);
@@ -288,35 +311,35 @@ async function main(): Promise<void> {
       visualAnalysisVersion: 'v1',
       jobId,
       sourceVideoPath: relVideoPath,
-      frames: extractedFrames.map(f => ({
+      frames: extractedFrames.map((f) => ({
         index: f.index,
         timestampSec: f.timestampSec,
-        path: `data/temp/jobs/${jobId}/vision_frames/${basename(f.path)}`
+        path: `data/temp/jobs/${jobId}/vision_frames/${basename(f.path)}`,
       })),
       analysis: {
         mainProductVisible: true,
         productConfidence: 0.9,
-        visibleScenes: ["Dry-run: Frame analysis placeholder"],
-        keyVisualFeatures: ["Placeholder feature"],
-        demonstratedFeatures: ["Placeholder features"],
+        visibleScenes: ['Dry-run: Frame analysis placeholder'],
+        keyVisualFeatures: ['Placeholder feature'],
+        demonstratedFeatures: ['Placeholder features'],
         unsafeOrLowQualitySignals: [],
         captionSafeZones: {
-          preferredTextRegion: "lower_third",
-          avoidRegions: []
+          preferredTextRegion: 'lower_third',
+          avoidRegions: [],
         },
         bestHookFrames: [1],
-        scriptHints: ["Highlights features in dry run mode"],
-        mismatchWarnings: []
+        scriptHints: ['Highlights features in dry run mode'],
+        mismatchWarnings: [],
       },
       quality: {
         sourceVideoUsable: true,
         needsOperatorReview: true,
         blockingIssues: [],
-        warnings: ["Visual analysis written in dry-run/safe mode."]
+        warnings: ['Visual analysis written in dry-run/safe mode.'],
       },
       apiCalled: false,
       model: 'dry-run-placeholder',
-      generatedAt: isoNow()
+      generatedAt: isoNow(),
     };
 
     writeFileSync(analysisPath, `${JSON.stringify(dryRunArtifact, null, 2)}\n`, 'utf8');
@@ -358,8 +381,8 @@ async function main(): Promise<void> {
       return {
         type: 'image_url',
         image_url: {
-          url: `data:image/jpeg;base64,${base64Str}`
-        }
+          url: `data:image/jpeg;base64,${base64Str}`,
+        },
       };
     });
 
@@ -367,7 +390,7 @@ async function main(): Promise<void> {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
+        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         model: 'gpt-4o-mini',
@@ -375,7 +398,8 @@ async function main(): Promise<void> {
         messages: [
           {
             role: 'system',
-            content: 'You are a professional video analyzer AI. You must analyze the provided frames from a product source video and return a JSON object with visual metadata and quality checks.'
+            content:
+              'You are a professional video analyzer AI. You must analyze the provided frames from a product source video and return a JSON object with visual metadata and quality checks.',
           },
           {
             role: 'user',
@@ -398,14 +422,14 @@ Format the response strictly as a JSON object with the following fields:
   "bestHookFrames": [integer] (1-indexed frame indexes that are most visually striking for hook scene),
   "scriptHints": [string] (ideas that the script generator should highlight based on actual video content),
   "mismatchWarnings": [string] (warnings if the product shown does not match the product name or card)
-}`
+}`,
               },
-              ...imagesPayload
-            ]
-          }
+              ...imagesPayload,
+            ],
+          },
         ],
-        temperature: 0.2
-      })
+        temperature: 0.2,
+      }),
     });
 
     if (!response.ok) {
@@ -427,21 +451,27 @@ Format the response strictly as a JSON object with the following fields:
       visualAnalysisVersion: 'v1',
       jobId,
       sourceVideoPath: relVideoPath,
-      frames: extractedFrames.map(f => ({
+      frames: extractedFrames.map((f) => ({
         index: f.index,
         timestampSec: f.timestampSec,
-        path: `data/temp/jobs/${jobId}/vision_frames/${basename(f.path)}`
+        path: `data/temp/jobs/${jobId}/vision_frames/${basename(f.path)}`,
       })),
       analysis: aiAnalysis,
       quality: {
-        sourceVideoUsable: (aiAnalysis.productConfidence || 0) > 0.5 && (aiAnalysis.unsafeOrLowQualitySignals || []).length < 3,
-        needsOperatorReview: (aiAnalysis.unsafeOrLowQualitySignals || []).length > 0 || (aiAnalysis.mismatchWarnings || []).length > 0,
+        sourceVideoUsable:
+          (aiAnalysis.productConfidence || 0) > 0.5 &&
+          (aiAnalysis.unsafeOrLowQualitySignals || []).length < 3,
+        needsOperatorReview:
+          (aiAnalysis.unsafeOrLowQualitySignals || []).length > 0 ||
+          (aiAnalysis.mismatchWarnings || []).length > 0,
         blockingIssues: (aiAnalysis.productConfidence || 0) < 0.3 ? ['PRODUCT_NOT_VISIBLE'] : [],
-        warnings: (aiAnalysis.unsafeOrLowQualitySignals || []).concat(aiAnalysis.mismatchWarnings || [])
+        warnings: (aiAnalysis.unsafeOrLowQualitySignals || []).concat(
+          aiAnalysis.mismatchWarnings || [],
+        ),
       },
       apiCalled: true,
       model: 'gpt-4o-mini',
-      generatedAt: isoNow()
+      generatedAt: isoNow(),
     };
 
     writeFileSync(analysisPath, `${JSON.stringify(finalArtifact, null, 2)}\n`, 'utf8');
@@ -453,7 +483,6 @@ Format the response strictly as a JSON object with the following fields:
 
     console.log(`✅ Visual analysis artifact written to: ${analysisPath}`);
     console.log('======================================================');
-
   } catch (err: any) {
     console.error('🛑 OPENAI_API_FAILURE');
     console.error(`Failed to analyze via OpenAI Vision: ${err.message}`);
@@ -461,7 +490,7 @@ Format the response strictly as a JSON object with the following fields:
   }
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error(`Unhandled error: ${err.message}`);
   process.exit(100);
 });
