@@ -79,7 +79,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ jobId: string 
   // 1. Validate jobId (anti path-traversal / command-injection)
   if (!JOB_ID_RE.test(jobId)) {
     return Response.json(
-      { ok: false, action: 'package', jobId, code: 'BAD_JOB_ID', message: 'Mã Job ID không hợp lệ.' },
+      {
+        ok: false,
+        action: 'package',
+        jobId,
+        code: 'BAD_JOB_ID',
+        message: 'Mã Job ID không hợp lệ.',
+      },
       { status: 400 },
     );
   }
