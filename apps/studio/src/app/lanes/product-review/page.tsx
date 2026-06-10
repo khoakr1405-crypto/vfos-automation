@@ -99,7 +99,12 @@ function bindingMatchesCard(
   card: CardIdentity | null | undefined,
 ): boolean {
   if (!binding || !card) return false;
-  if (card.shopId && card.itemId && binding.shopId === card.shopId && binding.itemId === card.itemId) {
+  if (
+    card.shopId &&
+    card.itemId &&
+    binding.shopId === card.shopId &&
+    binding.itemId === card.itemId
+  ) {
     return true;
   }
   return !!card.shortLink && binding.shortLink === card.shortLink;
@@ -128,6 +133,14 @@ function extractFirstUrl(raw: string): string | null {
   if (!m) return null;
   const url = m[0].replace(/[.,;:!?)\]}>'"]+$/u, '');
   return url.length > 0 ? url : null;
+}
+
+// Chống lặp hashtag: kiểm tra xem toàn bộ các hashtag trong chuỗi hashtags đã có trong caption chưa
+function captionContainsHashtags(caption: string | null, hashtags: string | null): boolean {
+  if (!caption || !hashtags) return false;
+  const cleaned = hashtags.split(/\s+/).filter(Boolean);
+  if (cleaned.length === 0) return false;
+  return cleaned.every((h) => caption.includes(h));
 }
 
 // Auto-refresh production status: poll GET /api/studio/jobs trong lúc pipeline chạy
@@ -286,6 +299,18 @@ export default function ProductReviewLanePage() {
   // Phase B — nhớ jobId đã AUTO-RESUME preparePost trong PHIÊN hiện tại (chống loop).
   const autoResumedRef = useRef<Set<string>>(new Set());
 
+  // Package preview states
+  const [packagePreview, setPackagePreview] = useState<{
+    caption: string | null;
+    hashtags: string | null;
+    affiliateLink: string | null;
+    productName: string | null;
+    pageName: string | null;
+    packageManifest: Record<string, unknown> | null;
+  } | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [copiedCaption, setCopiedCaption] = useState(false);
+
   const latestJob = jobs.find((j) => j.id === selectedJobId) ?? null;
 
   const load = useCallback(async () => {
@@ -349,6 +374,37 @@ export default function ProductReviewLanePage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  // Fetch package preview when state is PACKAGED
+  useEffect(() => {
+    if (selectedJobId && latestJob?.state === 'PACKAGED') {
+      setLoadingPreview(true);
+      fetch(`/api/studio/jobs/${selectedJobId}/package-preview`)
+        .then((r) => r.json())
+        .then((data) => {
+          if (data.ok) {
+            setPackagePreview({
+              caption: data.caption,
+              hashtags: data.hashtags,
+              affiliateLink: data.affiliateLink,
+              productName: data.productName,
+              pageName: data.pageName,
+              packageManifest: data.packageManifest,
+            });
+          } else {
+            setPackagePreview(null);
+          }
+        })
+        .catch(() => {
+          setPackagePreview(null);
+        })
+        .finally(() => {
+          setLoadingPreview(false);
+        });
+    } else {
+      setPackagePreview(null);
+    }
+  }, [selectedJobId, latestJob?.state]);
 
   // Chọn job + giữ URL ?jobId đồng bộ. URL rỗng khi clear để load() sau không tái
   // chọn job cũ đã lệch sản phẩm.
@@ -795,8 +851,7 @@ export default function ProductReviewLanePage() {
   // hoặc khi quá max-duration.
   useEffect(() => {
     const state = latestJob?.state;
-    const isRunning =
-      productionLaunched || (!!state && PRODUCTION_RUNNING_STATES.includes(state));
+    const isRunning = productionLaunched || (!!state && PRODUCTION_RUNNING_STATES.includes(state));
     if (!isRunning) {
       pollStartRef.current = null;
       if (pollTimedOut) setPollTimedOut(false);
@@ -942,9 +997,11 @@ export default function ProductReviewLanePage() {
   })();
 
   const getAction2LockReason = () => {
-    if (!cardReady) return "Hoàn tất Hành động 1 (Product Card hợp lệ) để mở bước sản xuất.";
-    if (bindingStatus === 'MISSING') return "Thiếu thông tin liên kết sản phẩm (productBinding) hoặc chưa chọn Job.";
-    if (bindingStatus === 'MISMATCH') return "Product Card đang chọn lệch với sản phẩm được bind trong Job hiện tại.";
+    if (!cardReady) return 'Hoàn tất Hành động 1 (Product Card hợp lệ) để mở bước sản xuất.';
+    if (bindingStatus === 'MISSING')
+      return 'Thiếu thông tin liên kết sản phẩm (productBinding) hoặc chưa chọn Job.';
+    if (bindingStatus === 'MISMATCH')
+      return 'Product Card đang chọn lệch với sản phẩm được bind trong Job hiện tại.';
     return undefined;
   };
 
@@ -1078,7 +1135,9 @@ export default function ProductReviewLanePage() {
                   ) : (
                     <div className="flex flex-col items-center gap-1 text-neutral-500">
                       <Icon name="rawvisual" width={24} height={24} />
-                      <span className="text-[9px] font-semibold text-accent-amber">ảnh chưa có</span>
+                      <span className="text-[9px] font-semibold text-accent-amber">
+                        ảnh chưa có
+                      </span>
                     </div>
                   )}
                 </div>
@@ -1443,9 +1502,10 @@ export default function ProductReviewLanePage() {
             hiện tại → job mới tự khớp binding (PASS) → mở bước sản xuất. */}
         {cardReady && !latestJob && (
           <NoticeBox accent="amber">
-            Product Card <strong>{card?.name}</strong> đã hợp lệ nhưng chưa có job sản xuất khớp. Dán
-            URL video nguồn bên dưới rồi bấm <strong>"Tải & clean nguồn"</strong> — hệ thống tự tạo
-            job đúng sản phẩm, tải & clean nguồn, rồi dừng ở cổng <strong>Duyệt nguồn sạch</strong>.
+            Product Card <strong>{card?.name}</strong> đã hợp lệ nhưng chưa có job sản xuất khớp.
+            Dán URL video nguồn bên dưới rồi bấm <strong>"Tải & clean nguồn"</strong> — hệ thống tự
+            tạo job đúng sản phẩm, tải & clean nguồn, rồi dừng ở cổng{' '}
+            <strong>Duyệt nguồn sạch</strong>.
           </NoticeBox>
         )}
 
@@ -1667,7 +1727,10 @@ export default function ProductReviewLanePage() {
         {/* Chọn Job vận hành */}
         <div className="rounded-lg border border-hairline bg-raised/30 p-3 space-y-2.5">
           <div className="flex items-center justify-between">
-            <label htmlFor="jobSelect" className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+            <label
+              htmlFor="jobSelect"
+              className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500"
+            >
               Chọn Job vận hành
             </label>
             {latestJob && (
@@ -1691,27 +1754,28 @@ export default function ProductReviewLanePage() {
             </select>
 
             {latestJob ? (
-            <div className="space-y-2">
-              <div className="flex flex-wrap items-center gap-1.5">
-                <StatusChip accent={latestJob.statusAccent}>{latestJob.statusLabel}</StatusChip>
-                {isFallbackSource && (
-                  <StatusChip accent="rose">Demo / Fallback Source</StatusChip>
-                )}
-                {latestJob.duration !== '—' && (
-                  <StatusChip accent="blue">{latestJob.duration}</StatusChip>
-                )}
-                {latestJob.hasPreview && <StatusChip accent="green">có preview</StatusChip>}
-              </div>
+              <div className="space-y-2">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <StatusChip accent={latestJob.statusAccent}>{latestJob.statusLabel}</StatusChip>
+                  {isFallbackSource && (
+                    <StatusChip accent="rose">Demo / Fallback Source</StatusChip>
+                  )}
+                  {latestJob.duration !== '—' && (
+                    <StatusChip accent="blue">{latestJob.duration}</StatusChip>
+                  )}
+                  {latestJob.hasPreview && <StatusChip accent="green">có preview</StatusChip>}
+                </div>
 
-              {latestJob.errorLog && (
-                <NoticeBox accent="rose">Lỗi: {latestJob.errorLog.error}</NoticeBox>
-              )}
-            </div>
-          ) : (
-            <p className="text-[11px] text-neutral-500">
-              Chưa chọn job. Hãy chọn một job từ danh sách trên hoặc tiến hành dán nguồn và tạo job mới.
-            </p>
-          )}
+                {latestJob.errorLog && (
+                  <NoticeBox accent="rose">Lỗi: {latestJob.errorLog.error}</NoticeBox>
+                )}
+              </div>
+            ) : (
+              <p className="text-[11px] text-neutral-500">
+                Chưa chọn job. Hãy chọn một job từ danh sách trên hoặc tiến hành dán nguồn và tạo
+                job mới.
+              </p>
+            )}
           </div>
         </div>
 
@@ -1899,7 +1963,8 @@ export default function ProductReviewLanePage() {
                 </p>
                 {isFallbackSource && (
                   <NoticeBox accent="rose">
-                    Nguồn hiện tại là fallback mẫu, không được dùng để sản xuất video thật cho sản phẩm này.
+                    Nguồn hiện tại là fallback mẫu, không được dùng để sản xuất video thật cho sản
+                    phẩm này.
                   </NoticeBox>
                 )}
                 {latestJob.notes && (
@@ -2007,10 +2072,14 @@ export default function ProductReviewLanePage() {
             </div>
             <div className="grid grid-cols-[110px_1fr] gap-x-2 gap-y-1">
               <span className="text-neutral-500">Mã Job hiện tại:</span>
-              <span className="font-mono text-neutral-300 font-semibold">{latestJob ? latestJob.id : <em className="text-neutral-600">Chưa chọn</em>}</span>
+              <span className="font-mono text-neutral-300 font-semibold">
+                {latestJob ? latestJob.id : <em className="text-neutral-600">Chưa chọn</em>}
+              </span>
 
               <span className="text-neutral-500">Sản phẩm của Job:</span>
-              <span className="text-neutral-200 font-medium">{latestJob ? latestJob.product : <em className="text-neutral-600">Chưa chọn</em>}</span>
+              <span className="text-neutral-200 font-medium">
+                {latestJob ? latestJob.product : <em className="text-neutral-600">Chưa chọn</em>}
+              </span>
 
               <span className="text-neutral-500 font-medium">Sản phẩm đang chọn:</span>
               <span className="text-neutral-300">
@@ -2029,8 +2098,16 @@ export default function ProductReviewLanePage() {
               </span>
 
               <span className="text-neutral-500">Trạng thái Action 2:</span>
-              <span className={bindingStatus === 'PASS' ? 'text-accent-green font-medium' : 'text-accent-rose font-medium'}>
-                {bindingStatus === 'PASS' ? 'Mở khóa (Sẵn sàng chạy sản xuất)' : `Khóa (${getAction2LockReason()})`}
+              <span
+                className={
+                  bindingStatus === 'PASS'
+                    ? 'text-accent-green font-medium'
+                    : 'text-accent-rose font-medium'
+                }
+              >
+                {bindingStatus === 'PASS'
+                  ? 'Mở khóa (Sẵn sàng chạy sản xuất)'
+                  : `Khóa (${getAction2LockReason()})`}
               </span>
             </div>
           </div>
@@ -2135,7 +2212,8 @@ export default function ProductReviewLanePage() {
               </p>
               {isFallbackSource ? (
                 <NoticeBox accent="rose">
-                  Nguồn hiện tại là fallback mẫu, không được dùng để sản xuất video thật cho sản phẩm này.
+                  Nguồn hiện tại là fallback mẫu, không được dùng để sản xuất video thật cho sản
+                  phẩm này.
                 </NoticeBox>
               ) : !showRunConfirm ? (
                 <div className="flex flex-wrap items-center gap-2">
@@ -2262,8 +2340,10 @@ export default function ProductReviewLanePage() {
           // "Sẵn sàng đóng gói" khi checklist còn dở) → tránh mâu thuẫn header vs nội dung.
           if (loading) return { label: 'Đang tải…', accent: 'blue' };
           if (!jobApproved) {
-            if (bindingStatus === 'MISMATCH') return { label: 'Khoá — lệch sản phẩm', accent: 'rose' };
-            if (bindingStatus === 'MISSING') return { label: 'Khoá — thiếu binding', accent: 'amber' };
+            if (bindingStatus === 'MISMATCH')
+              return { label: 'Khoá — lệch sản phẩm', accent: 'rose' };
+            if (bindingStatus === 'MISSING')
+              return { label: 'Khoá — thiếu binding', accent: 'amber' };
             return { label: 'Khoá — chờ duyệt', accent: 'amber' };
           }
           if (publishPreflight?.alreadyPublished) return { label: 'Đã đăng', accent: 'green' };
@@ -2279,12 +2359,12 @@ export default function ProductReviewLanePage() {
         locked={!jobApproved}
         lockReason={
           isFallbackSource
-            ? "Nguồn hiện tại là fallback mẫu, không được dùng để sản xuất video thật cho sản phẩm này."
+            ? 'Nguồn hiện tại là fallback mẫu, không được dùng để sản xuất video thật cho sản phẩm này.'
             : bindingStatus === 'MISSING'
-              ? "Thiếu thông tin liên kết sản phẩm (productBinding) hoặc chưa chọn Job."
+              ? 'Thiếu thông tin liên kết sản phẩm (productBinding) hoặc chưa chọn Job.'
               : bindingStatus === 'MISMATCH'
-                ? "Product Card đang chọn ở Hành động 1 không khớp với sản phẩm đã bind vào job hiện tại."
-                : "Cần job đã APPROVED (QA PASS + Operator duyệt preview) để mở bước đóng gói."
+                ? 'Product Card đang chọn ở Hành động 1 không khớp với sản phẩm đã bind vào job hiện tại.'
+                : 'Cần job đã APPROVED (QA PASS + Operator duyệt preview) để mở bước đóng gói.'
         }
       >
         {/* Tiến trình VFOS tự chuẩn bị bài đăng (sau khi Operator duyệt video). */}
@@ -2393,6 +2473,105 @@ export default function ProductReviewLanePage() {
             đăng thật. Bản nháp bài đăng vẫn được chuẩn bị; bước đăng thật (live publish) làm ở
             Phase C với gate cứng.
           </p>
+        )}
+
+        {latestJob?.state === 'PACKAGED' && (
+          <div className="rounded-lg border border-hairline bg-panel/60 p-4 space-y-3.5">
+            <div className="text-[10px] uppercase tracking-wider text-neutral-500 font-bold border-b border-hairline pb-1.5">
+              Xem trước bài đăng Facebook
+            </div>
+
+            {/* Header */}
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-neutral-700 text-xs font-semibold text-neutral-300">
+                FB
+              </div>
+              <div>
+                <div className="text-xs font-bold text-neutral-100">
+                  {packagePreview?.pageName || 'Review Nhà bạn'}
+                </div>
+                <div className="text-[10px] text-neutral-500 font-medium flex items-center gap-1">
+                  <span>🌐</span>
+                  <span>Bản nháp · Chưa đăng</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Content Text */}
+            <div className="text-xs text-neutral-200 leading-relaxed space-y-2 whitespace-pre-wrap">
+              {packagePreview ? (
+                <>
+                  <p>{packagePreview.caption}</p>
+                  {packagePreview.hashtags &&
+                    !captionContainsHashtags(packagePreview.caption, packagePreview.hashtags) && (
+                      <p className="text-accent-blue font-medium">{packagePreview.hashtags}</p>
+                    )}
+                  {packagePreview.affiliateLink && (
+                    <p className="text-accent-cyan break-all underline">
+                      {packagePreview.affiliateLink}
+                    </p>
+                  )}
+                </>
+              ) : loadingPreview ? (
+                <p className="text-neutral-500 italic">Đang tải bản xem trước...</p>
+              ) : (
+                <p className="text-neutral-500 italic">Không thể tải nội dung bản nháp bài đăng.</p>
+              )}
+            </div>
+
+            {/* Media (Video) */}
+            <div className="space-y-1">
+              <div className="text-[10px] text-neutral-500 font-semibold">
+                Preview video đã đóng gói
+              </div>
+              {latestJob?.previewUrl ? (
+                <div className="relative aspect-video overflow-hidden rounded border border-hairline bg-black">
+                  {/* biome-ignore lint/a11y/useMediaCaption: video is a local preview with only ambient audio or baked-in captions */}
+                  <video
+                    src={latestJob.previewUrl}
+                    controls
+                    className="h-full w-full object-contain"
+                  />
+                </div>
+              ) : (
+                <div className="flex items-center justify-center p-8 bg-neutral-900 border border-hairline rounded text-neutral-500 text-xs">
+                  🎥 Video đã đóng gói
+                </div>
+              )}
+            </div>
+
+            {/* Copy Button */}
+            {packagePreview && (
+              <div className="flex justify-end pt-1">
+                <Button
+                  variant="outline"
+                  className="!py-1 !px-2.5 text-[10px] font-semibold"
+                  onClick={async () => {
+                    const hasDupHashtags = captionContainsHashtags(
+                      packagePreview.caption,
+                      packagePreview.hashtags,
+                    );
+                    const fullText = [
+                      packagePreview.caption,
+                      hasDupHashtags ? null : packagePreview.hashtags,
+                      packagePreview.affiliateLink,
+                    ]
+                      .filter(Boolean)
+                      .join('\n\n');
+                    try {
+                      await navigator.clipboard.writeText(fullText);
+                      setCopiedCaption(true);
+                      setTimeout(() => setCopiedCaption(false), 2000);
+                    } catch {
+                      // Clipboard fail
+                    }
+                  }}
+                >
+                  {copiedCaption ? '✓ Đã copy bài viết' : 'Copy bài viết'}
+                </Button>
+              </div>
+            )}
+          </div>
         )}
 
         {/* Flow chính Action 3 chỉ có 1 CTA cuối: "Đăng bài" (Phase C, gate cứng — disabled).
