@@ -284,7 +284,19 @@ export default function ProductReviewLanePage() {
     canLivePublish: boolean;
     alreadyPublished: boolean;
     blockedReasons: string[];
+    confirmPhrase?: string;
+    targetChannel?: string | null;
+    livePublishEnabledReason?: string;
+    pageName?: string | null;
   } | null>(null);
+
+  // Phase C — Live publish states
+  const [showPublishModal, setShowPublishModal] = useState(false);
+  const [publishConfirmInput, setPublishConfirmInput] = useState('');
+  const [submittingPublish, setSubmittingPublish] = useState(false);
+  const [publishResult, setPublishResult] = useState<any | null>(null);
+  const [publishError, setPublishError] = useState<string | null>(null);
+  const [publishStderr, setPublishStderr] = useState<string | null>(null);
 
   // Round C3 states (Action 2 — chạy sản xuất video)
   const [showRunConfirm, setShowRunConfirm] = useState(false);
@@ -312,6 +324,12 @@ export default function ProductReviewLanePage() {
   const [copiedCaption, setCopiedCaption] = useState(false);
 
   const latestJob = jobs.find((j) => j.id === selectedJobId) ?? null;
+
+  const canPublish =
+    latestJob?.state === 'PACKAGED' &&
+    publishPreflight?.canLivePublish === true &&
+    !publishPreflight?.alreadyPublished &&
+    packagePreview !== null;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -405,6 +423,40 @@ export default function ProductReviewLanePage() {
       setPackagePreview(null);
     }
   }, [selectedJobId, latestJob?.state]);
+
+  // Fetch publish preflight when state is PACKAGED
+  useEffect(() => {
+    if (selectedJobId && latestJob?.state === 'PACKAGED') {
+      const params = new URLSearchParams();
+      if (card?.shopId) params.append('shopId', card.shopId);
+      if (card?.itemId) params.append('itemId', card.itemId);
+      if (card?.shortLink) params.append('shortLink', card.shortLink);
+
+      fetch(`/api/studio/jobs/${selectedJobId}/publish-facebook?${params.toString()}`)
+        .then((r) => r.json())
+        .then((pf) => {
+          if (pf.ok) {
+            setPublishPreflight({
+              facebookCredentialsConfigured: !!pf.facebookCredentialsConfigured,
+              livePublishEnabled: !!pf.livePublishEnabled,
+              canLivePublish: !!pf.canLivePublish,
+              alreadyPublished: !!pf.alreadyPublished,
+              blockedReasons: Array.isArray(pf.blockedReasons) ? pf.blockedReasons : [],
+              confirmPhrase: pf.confirmPhrase,
+              targetChannel: pf.targetChannel,
+              livePublishEnabledReason: pf.livePublishEnabledReason,
+            });
+          } else {
+            setPublishPreflight(null);
+          }
+        })
+        .catch(() => {
+          setPublishPreflight(null);
+        });
+    } else {
+      setPublishPreflight(null);
+    }
+  }, [selectedJobId, latestJob?.state, card?.shopId, card?.itemId, card?.shortLink]);
 
   // Chọn job + giữ URL ?jobId đồng bộ. URL rỗng khi clear để load() sau không tái
   // chọn job cũ đã lệch sản phẩm.
@@ -791,6 +843,96 @@ export default function ProductReviewLanePage() {
     // trạng thái approve để nút không kẹt "Đang duyệt…" trong lúc đóng gói/preflight.
     if (approved) {
       await preparePost(jobId);
+    }
+  };
+
+  const getPublishDisabledReason = () => {
+    if (latestJob?.state !== 'PACKAGED') {
+      return 'Chờ job hoàn thành đóng gói bài đăng (PACKAGED).';
+    }
+    if (publishPreflight?.alreadyPublished) {
+      return 'Bài đăng đã được xuất bản trước đó.';
+    }
+    if (publishPreflight && !publishPreflight.livePublishEnabled) {
+      return (
+        publishPreflight.livePublishEnabledReason ||
+        'Bị khóa: Chưa bật VFOS_STUDIO_ALLOW_LIVE_PUBLISH trong môi trường.'
+      );
+    }
+    if (publishPreflight && !publishPreflight.facebookCredentialsConfigured) {
+      return 'Bị khóa: Chưa cấu hình Page ID hoặc Access Token trên máy chủ.';
+    }
+    if (publishPreflight && publishPreflight.blockedReasons.length > 0) {
+      return `Bị khóa: ${publishPreflight.blockedReasons[0]}`;
+    }
+    if (!packagePreview) {
+      return 'Đang tải bản xem trước bài viết...';
+    }
+    return 'Chờ sẵn sàng đăng.';
+  };
+
+  const handleLivePublish = async (jobId: string) => {
+    const expectedPhrase = publishPreflight?.confirmPhrase || `PUBLISH ${jobId}`;
+    if (publishConfirmInput.trim() !== expectedPhrase || submittingPublish) {
+      setPublishError('Cụm từ xác nhận không khớp.');
+      return;
+    }
+    setSubmittingPublish(true);
+    setPublishError(null);
+    setPublishStderr(null);
+    try {
+      const expectedProduct = card
+        ? { shortLink: card.shortLink, shopId: card.shopId, itemId: card.itemId }
+        : undefined;
+      const res = await fetch(`/api/studio/jobs/${jobId}/publish-facebook`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          confirmPhrase: publishConfirmInput.trim(),
+          expectedProduct,
+        }),
+      });
+      const data = await res.json();
+      if (res.ok && data.ok) {
+        setPublishResult(data);
+        setPublishConfirmInput('');
+        setShowPublishModal(false);
+        await load();
+        // Fetch new preflight to sync alreadyPublished status
+        const params = new URLSearchParams();
+        if (card?.shopId) params.append('shopId', card.shopId);
+        if (card?.itemId) params.append('itemId', card.itemId);
+        if (card?.shortLink) params.append('shortLink', card.shortLink);
+
+        const pfRes = await fetch(`/api/studio/jobs/${jobId}/publish-facebook?${params.toString()}`);
+        const pf = await pfRes.json();
+        if (pfRes.ok && pf.ok) {
+          setPublishPreflight({
+            facebookCredentialsConfigured: !!pf.facebookCredentialsConfigured,
+            livePublishEnabled: !!pf.livePublishEnabled,
+            canLivePublish: !!pf.canLivePublish,
+            alreadyPublished: !!pf.alreadyPublished,
+            blockedReasons: Array.isArray(pf.blockedReasons) ? pf.blockedReasons : [],
+            confirmPhrase: pf.confirmPhrase,
+            targetChannel: pf.targetChannel,
+            livePublishEnabledReason: pf.livePublishEnabledReason,
+          });
+        }
+      } else {
+        setPublishError(data.message || 'Yêu cầu đăng bài thất bại.');
+        if (data.details && data.details.length > 0) {
+          setPublishError(
+            (data.message || 'Yêu cầu đăng bài thất bại.') + ` (${data.details.join(' · ')})`,
+          );
+        }
+        if (data.stderr) {
+          setPublishStderr(data.stderr);
+        }
+      }
+    } catch {
+      setPublishError('Lỗi kết nối đến API server.');
+    } finally {
+      setSubmittingPublish(false);
     }
   };
 
@@ -2574,12 +2716,36 @@ export default function ProductReviewLanePage() {
           </div>
         )}
 
-        {/* Flow chính Action 3 chỉ có 1 CTA cuối: "Đăng bài" (Phase C, gate cứng — disabled).
+        {/* Flow chính Action 3 chỉ có 1 CTA cuối: "Đăng bài" (Phase C, gate cứng).
             KHÔNG có nút "Chuẩn bị/Thử lại" làm CTA chính; retry kín đáo ở "Chi tiết kỹ thuật". */}
         <PanelActions>
-          <ComingNext round="C" warn>
-            Đăng bài (Facebook · gate cứng)
-          </ComingNext>
+          {publishPreflight?.alreadyPublished ? (
+            <Button variant="success" disabled className="!py-1.5 !px-3 text-xs font-semibold">
+              ✓ Đã đăng thành công
+            </Button>
+          ) : (
+            <div className="flex flex-wrap items-center gap-3">
+              <Button
+                variant={canPublish ? 'danger' : 'outline'}
+                disabled={!canPublish}
+                onClick={() => {
+                  setPublishConfirmInput('');
+                  setPublishError(null);
+                  setPublishStderr(null);
+                  setPublishResult(null);
+                  setShowPublishModal(true);
+                }}
+                className="!py-1.5 !px-3 text-xs font-semibold"
+              >
+                Đăng bài Facebook
+              </Button>
+              {!canPublish && (
+                <span className="text-[10px] text-neutral-500 font-medium">
+                  {getPublishDisabledReason()}
+                </span>
+              )}
+            </div>
+          )}
         </PanelActions>
 
         {/* Chi tiết kỹ thuật — KHÔNG phải flow chính của Operator (debug/detail). */}
@@ -2622,6 +2788,124 @@ export default function ProductReviewLanePage() {
           waitText="VFOS sẽ tự đóng gói sau khi Operator duyệt video; hoàn tất khi job đạt PACKAGED"
         />
       </ActionPanel>
+
+      {showPublishModal && selectedJobId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-2xl border border-accent-rose/30 bg-neutral-900 p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-2.5 border-b border-hairline pb-3">
+              <span className="text-accent-rose">
+                <UtilIcon name="bell" width={20} height={20} />
+              </span>
+              <h4 className="text-sm font-semibold text-neutral-100">
+                Xác nhận đăng thật lên Facebook
+              </h4>
+            </div>
+
+            <div className="space-y-2 text-[12px] text-neutral-300">
+              <div className="flex gap-2">
+                <span className="w-24 shrink-0 text-neutral-500 font-medium">Job ID:</span>
+                <span className="font-mono text-neutral-200">{selectedJobId}</span>
+              </div>
+              <div className="flex gap-2">
+                <span className="w-24 shrink-0 text-neutral-500 font-medium">Trang/Kênh:</span>
+                <span className="text-neutral-200">
+                  {publishPreflight?.targetChannel || packagePreview?.pageName || 'Review Nhà bạn'}
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <span className="w-24 shrink-0 text-neutral-500 font-medium">Sản phẩm:</span>
+                <span className="text-neutral-200 line-clamp-1">
+                  {latestJob?.product || packagePreview?.productName || '—'}
+                </span>
+              </div>
+              {packagePreview && (
+                <div className="flex gap-2">
+                  <span className="w-24 shrink-0 text-neutral-500 font-medium">Caption:</span>
+                  <span className="text-neutral-300 line-clamp-2 italic">
+                    "{packagePreview.caption}"
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <p className="text-[11px] text-accent-amber leading-relaxed">
+              ⚠️ Hành động này sẽ gọi API Facebook Reels thật. Video có thể xuất hiện công khai trên
+              kênh đã chọn. Không thể hoàn tác từ giao diện này.
+            </p>
+
+            <div className="space-y-2">
+              <span className="block text-[11px] text-neutral-400">
+                Để xác nhận, nhập chính xác:{' '}
+                <span className="font-mono text-neutral-100 font-bold select-all">
+                  {publishPreflight?.confirmPhrase || `PUBLISH ${selectedJobId}`}
+                </span>
+              </span>
+              <input
+                type="text"
+                value={publishConfirmInput}
+                onChange={(e) => setPublishConfirmInput(e.target.value)}
+                placeholder={publishPreflight?.confirmPhrase || `PUBLISH ${selectedJobId}`}
+                spellCheck={false}
+                autoComplete="off"
+                className="w-full rounded-lg border border-hairline bg-neutral-950/80 px-3 py-2 font-mono text-sm text-neutral-100 outline-none focus:border-accent-rose/50"
+              />
+            </div>
+
+            {publishError && (
+              <div className="rounded-xl border border-accent-rose/30 bg-accent-rose/5 px-4 py-3 space-y-1 text-[11px]">
+                <div className="flex items-center gap-2 font-semibold text-accent-rose">
+                  <UtilIcon name="x" width={14} height={14} />
+                  <span>YÊU CẦU THẤT BẠI</span>
+                </div>
+                <p className="text-neutral-300">{publishError}</p>
+                {publishStderr && (
+                  <pre className="mt-1.5 max-h-32 overflow-auto rounded bg-neutral-950/80 p-2 text-[10px] text-neutral-500 font-mono whitespace-pre-wrap">
+                    {publishStderr}
+                  </pre>
+                )}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-3 pt-1 border-t border-hairline/30">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowPublishModal(false);
+                  setPublishError(null);
+                  setPublishStderr(null);
+                }}
+                disabled={submittingPublish}
+                className="rounded-lg px-4 py-2 text-sm text-neutral-400 hover:text-neutral-200 disabled:opacity-50"
+              >
+                Huỷ
+              </button>
+              <button
+                type="button"
+                onClick={() => handleLivePublish(selectedJobId)}
+                disabled={
+                  publishConfirmInput.trim() !==
+                    (publishPreflight?.confirmPhrase || `PUBLISH ${selectedJobId}`) ||
+                  submittingPublish
+                }
+                className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
+                  publishConfirmInput.trim() ===
+                    (publishPreflight?.confirmPhrase || `PUBLISH ${selectedJobId}`) &&
+                  !submittingPublish
+                    ? 'bg-accent-rose text-white hover:bg-accent-rose/90'
+                    : 'cursor-not-allowed bg-neutral-800 text-neutral-500'
+                }`}
+              >
+                {submittingPublish && (
+                  <span className="animate-spin mr-1">
+                    <UtilIcon name="clock" width={14} height={14} />
+                  </span>
+                )}
+                Xác nhận đăng thật
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -97,7 +97,7 @@ function readSanitizedPublishStatus(jobId: string): Record<string, unknown> | nu
 }
 
 // ── GET — preflight (READ-ONLY, không side effect, không gọi command) ─────────
-export async function GET(_req: Request, ctx: { params: Promise<{ jobId: string }> }) {
+export async function GET(req: Request, ctx: { params: Promise<{ jobId: string }> }) {
   const { jobId } = await ctx.params;
   if (!JOB_ID_RE.test(jobId)) {
     return Response.json(
@@ -106,8 +106,14 @@ export async function GET(_req: Request, ctx: { params: Promise<{ jobId: string 
     );
   }
 
+  const { searchParams } = new URL(req.url);
+  const shopId = searchParams.get('shopId') || undefined;
+  const itemId = searchParams.get('itemId') || undefined;
+  const shortLink = searchParams.get('shortLink') || undefined;
+  const expectedProduct = (shopId || itemId || shortLink) ? { shopId, itemId, shortLink } : undefined;
+
   const envEnabled = isLivePublishEnvEnabled();
-  const gate = evaluateLivePublishGates(jobId);
+  const gate = evaluateLivePublishGates(jobId, expectedProduct);
   if (!gate.jobExists) {
     return Response.json(
       { ok: false, code: 'JOB_NOT_FOUND', message: `Không tìm thấy Job: ${jobId}` },
