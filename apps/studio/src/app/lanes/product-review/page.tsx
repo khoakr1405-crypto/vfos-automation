@@ -143,6 +143,68 @@ const PRODUCTION_TERMINAL_STATES = [
   'REJECTED',
 ];
 
+// Map mã lỗi kỹ thuật của route /package → thông điệp Operator dễ hiểu (KHÔNG raw log,
+// KHÔNG exit code). Phân biệt rõ "thiếu dữ liệu nền từ Action 2" với lỗi đăng Facebook.
+// Raw chi tiết để riêng trong "Chi tiết kỹ thuật".
+type PrepareError = { title: string; hint: string; kind: 'missing_data' | 'needs_action' };
+
+function friendlyPrepareError(code: string | undefined): PrepareError {
+  switch (code) {
+    case 'SCRIPT_ARTIFACT_MISSING':
+    case 'VOICE_ARTIFACT_MISSING':
+      return {
+        title: 'Không thể chuẩn bị bài đăng vì thiếu dữ liệu script/voice từ Action 2.',
+        hint: 'Vui lòng chạy lại sản xuất video ở Action 2 rồi phê duyệt lại.',
+        kind: 'missing_data',
+      };
+    case 'CAPTIONED_PREVIEW_MISSING':
+    case 'FINAL_VIDEO_AUDIO_MISSING':
+      return {
+        title: 'Không thể chuẩn bị bài đăng vì thiếu video bản cuối.',
+        hint: 'Vui lòng chạy lại render/caption ở Action 2.',
+        kind: 'missing_data',
+      };
+    case 'FINAL_QA_MISSING':
+    case 'FINAL_QA_NOT_PASSING':
+    case 'QA_NOT_PASS':
+      return {
+        title: 'Không thể chuẩn bị bài đăng vì video chưa đạt kiểm định chất lượng.',
+        hint: 'Vui lòng kiểm tra lại QA ở Action 2.',
+        kind: 'needs_action',
+      };
+    case 'PRODUCT_BINDING_MISMATCH':
+      return {
+        title: 'Sản phẩm đang chọn lệch với sản phẩm của video này.',
+        hint: 'Chọn lại đúng sản phẩm ở Action 1 rồi thử lại.',
+        kind: 'needs_action',
+      };
+    case 'FALLBACK_SOURCE_BLOCKED':
+      return {
+        title: 'Nguồn video hiện là bản mẫu, không dùng để đăng thật.',
+        hint: 'Dùng nguồn video thật đã duyệt sạch ở Action 2.',
+        kind: 'needs_action',
+      };
+    case 'NOT_APPROVED':
+      return {
+        title: 'Video chưa được duyệt nên chưa thể chuẩn bị bài đăng.',
+        hint: 'Bấm "Duyệt preview video" ở Action 2 trước.',
+        kind: 'needs_action',
+      };
+    case 'JOB_ALREADY_PUBLISHED':
+      return {
+        title: 'Bài đăng của video này đã được xử lý trước đó.',
+        hint: '',
+        kind: 'needs_action',
+      };
+    default:
+      return {
+        title: 'Chưa thể chuẩn bị bài đăng cho video này.',
+        hint: 'Vui lòng kiểm tra lại Action 2, hoặc xem "Chi tiết kỹ thuật".',
+        kind: 'needs_action',
+      };
+  }
+}
+
 // biome-ignore lint/style/noDefaultExport: Next.js page requires default export
 export default function ProductReviewLanePage() {
   const [card, setCard] = useState<CardSummary | null>(null);
@@ -196,6 +258,21 @@ export default function ProductReviewLanePage() {
   const [submittingApprovePreview, setSubmittingApprovePreview] = useState(false);
   const [approvePreviewError, setApprovePreviewError] = useState<string | null>(null);
 
+  // Phase B — sau khi Operator DUYỆT preview, VFOS tự chuẩn bị bài đăng (package
+  // ngầm + Facebook preflight READ-ONLY). KHÔNG publish, KHÔNG gọi Facebook live API.
+  const [preparingPost, setPreparingPost] = useState(false);
+  const [preparePostStage, setPreparePostStage] = useState<string | null>(null);
+  const [preparePostError, setPreparePostError] = useState<PrepareError | null>(null);
+  // Raw kỹ thuật (mã lỗi/log) — CHỈ hiển thị trong "Chi tiết kỹ thuật", không ở UI chính.
+  const [preparePostDetails, setPreparePostDetails] = useState<string | null>(null);
+  const [publishPreflight, setPublishPreflight] = useState<{
+    facebookCredentialsConfigured: boolean;
+    livePublishEnabled: boolean;
+    canLivePublish: boolean;
+    alreadyPublished: boolean;
+    blockedReasons: string[];
+  } | null>(null);
+
   // Round C3 states (Action 2 — chạy sản xuất video)
   const [showRunConfirm, setShowRunConfirm] = useState(false);
   const [runConfirmInput, setRunConfirmInput] = useState('');
@@ -206,6 +283,8 @@ export default function ProductReviewLanePage() {
   const [productionLaunched, setProductionLaunched] = useState(false);
   const [pollTimedOut, setPollTimedOut] = useState(false);
   const pollStartRef = useRef<number | null>(null);
+  // Phase B — nhớ jobId đã AUTO-RESUME preparePost trong PHIÊN hiện tại (chống loop).
+  const autoResumedRef = useRef<Set<string>>(new Set());
 
   const latestJob = jobs.find((j) => j.id === selectedJobId) ?? null;
 
@@ -548,13 +627,91 @@ export default function ProductReviewLanePage() {
     }
   };
 
+  // Phase B — VFOS tự chuẩn bị bài đăng SAU KHI Operator đã duyệt preview. Chuỗi:
+  //   1) POST /package   → đóng gói ngầm (synchronous; KHÔNG Facebook/OpenAI/publish)
+  //   2) GET  /publish-facebook → preflight READ-ONLY (đọc readiness/gate, KHÔNG publish)
+  //   3) load() → refresh state thật (APPROVED → PACKAGED)
+  // KHÔNG bao giờ POST /publish-facebook, KHÔNG gọi Facebook live API. Package gửi kèm
+  // expectedProduct (Product Card đang chọn) để route đối chiếu Product Binding. Bất kỳ
+  // bước nào fail → ghi đúng bước lỗi; checklist Action 3 derive từ STATE THẬT nên
+  // KHÔNG hiện "Sẵn sàng đăng" giả khi package chưa thành công.
+  const preparePost = async (jobId: string) => {
+    setPreparingPost(true);
+    setPreparePostError(null);
+    setPreparePostDetails(null);
+    setPublishPreflight(null);
+    try {
+      // Bước 1 — tạo gói bài đăng (ngầm).
+      setPreparePostStage('Đang tạo gói bài đăng…');
+      const expectedProduct = card
+        ? { shortLink: card.shortLink, shopId: card.shopId, itemId: card.itemId }
+        : undefined;
+      const pkgRes = await fetch(`/api/studio/jobs/${jobId}/package`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(expectedProduct ? { expectedProduct } : {}),
+      });
+      const pkg = await pkgRes.json();
+      if (!pkgRes.ok || !pkg.ok) {
+        // UI chính: thông điệp dễ hiểu. Raw (mã/log) → preparePostDetails cho "Chi tiết kỹ thuật".
+        setPreparePostError(friendlyPrepareError(pkg.code));
+        setPreparePostDetails(
+          [
+            pkg.code ? `Mã: ${pkg.code}` : null,
+            typeof pkg.message === 'string' ? pkg.message : null,
+            ...(Array.isArray(pkg.details) ? pkg.details.map(String) : []),
+          ]
+            .filter(Boolean)
+            .join('\n') || null,
+        );
+        await load();
+        return;
+      }
+
+      // Bước 2 — kiểm tra Facebook readiness (preflight, READ-ONLY, KHÔNG publish).
+      setPreparePostStage('Đang kiểm tra Facebook readiness…');
+      try {
+        const pfRes = await fetch(`/api/studio/jobs/${jobId}/publish-facebook`);
+        const pf = await pfRes.json();
+        if (pfRes.ok && pf.ok) {
+          setPublishPreflight({
+            facebookCredentialsConfigured: !!pf.facebookCredentialsConfigured,
+            livePublishEnabled: !!pf.livePublishEnabled,
+            canLivePublish: !!pf.canLivePublish,
+            alreadyPublished: !!pf.alreadyPublished,
+            blockedReasons: Array.isArray(pf.blockedReasons) ? pf.blockedReasons : [],
+          });
+        }
+        // Preflight fail KHÔNG chặn việc chuẩn bị bài đăng — chỉ là thiếu Facebook readiness.
+      } catch {
+        /* preflight là tuỳ chọn — không chặn flow chuẩn bị */
+      }
+
+      setPreparePostStage('Đã chuẩn bị xong bản nháp bài đăng.');
+      await load();
+    } catch {
+      setPreparePostError({
+        title: 'Lỗi kết nối khi chuẩn bị bài đăng.',
+        hint: 'Kiểm tra kết nối tới máy chủ rồi thử lại.',
+        kind: 'needs_action',
+      });
+    } finally {
+      setPreparingPost(false);
+    }
+  };
+  // Ref luôn trỏ preparePost mới nhất → auto-resume effect gọi qua ref, KHÔNG cần đưa
+  // preparePost vào deps (tránh re-run mỗi render; vẫn dùng closure card/load mới nhất).
+  const preparePostRef = useRef(preparePost);
+  preparePostRef.current = preparePost;
+
   // Round D — Operator phê duyệt PREVIEW (Bước 3–7). Dùng lại route /approve sẵn có:
   // server tự enforce gate (not fallback + READY_FOR_OPERATOR_REVIEW + QA PASS +
   // hasPreview). KHÔNG publish, KHÔNG chạy production, KHÔNG auto — chỉ chạy khi
-  // Operator bấm. Thành công → reload để state APPROVED mở khoá Hành động 3.
+  // Operator bấm. Thành công → reload (state APPROVED) RỒI tự chuẩn bị bài đăng.
   const handleApprovePreview = async (jobId: string) => {
     setSubmittingApprovePreview(true);
     setApprovePreviewError(null);
+    let approved = false;
     try {
       const res = await fetch(`/api/studio/jobs/${jobId}/approve`, {
         method: 'POST',
@@ -563,6 +720,7 @@ export default function ProductReviewLanePage() {
       });
       const data = await res.json();
       if (res.ok && data.ok) {
+        approved = true;
         await load();
       } else {
         const detail = Array.isArray(data.details) ? ` (${data.details.join(' · ')})` : '';
@@ -572,6 +730,11 @@ export default function ProductReviewLanePage() {
       setApprovePreviewError('Lỗi kết nối đến API server.');
     } finally {
       setSubmittingApprovePreview(false);
+    }
+    // Sau khi "Đang duyệt" kết thúc, VFOS tự chuẩn bị bài đăng (Action 3). Tách khỏi
+    // trạng thái approve để nút không kẹt "Đang duyệt…" trong lúc đóng gói/preflight.
+    if (approved) {
+      await preparePost(jobId);
     }
   };
 
@@ -824,6 +987,39 @@ export default function ProductReviewLanePage() {
     bindingStatus === 'PASS' &&
     sourceApproved &&
     !isFallbackSource;
+
+  // Phase B — AUTO-RESUME: job đã APPROVED nhưng CHƯA PACKAGED + đủ guard → tự chạy
+  // preparePost MỘT LẦN/phiên khi Operator mở/F5 trang (không kẹt "Chờ đóng gói" mà
+  // không có hành động). Chống loop: ref Set nhớ jobId đã auto-resume; nếu có lỗi thì
+  // KHÔNG tự gọi lại (retry tay nằm trong "Chi tiết kỹ thuật"). KHÔNG auto khi
+  // fallback/demo, binding lệch, source chưa sạch, đang chạy, đã đóng gói, đã đăng.
+  // KHÔNG gọi /approve, KHÔNG POST publish-facebook, KHÔNG publish/production.
+  useEffect(() => {
+    const jobId = latestJob?.id;
+    if (!jobId) return;
+    const eligible =
+      jobApproved &&
+      latestJob?.state !== 'PACKAGED' &&
+      !isFallbackSource &&
+      bindingStatus === 'PASS' &&
+      sourceApproved &&
+      !publishPreflight?.alreadyPublished &&
+      !preparingPost &&
+      !preparePostError &&
+      !autoResumedRef.current.has(jobId);
+    if (!eligible) return;
+    autoResumedRef.current.add(jobId); // đánh dấu TRƯỚC khi gọi → chống loop/StrictMode
+    void preparePostRef.current(jobId);
+  }, [
+    latestJob,
+    jobApproved,
+    isFallbackSource,
+    bindingStatus,
+    sourceApproved,
+    publishPreflight,
+    preparingPost,
+    preparePostError,
+  ]);
 
   // Filter registry to verified items & latest 10
   const verifiedRegistryItems = registry.filter((item) => item.ownerVerified).slice(0, 10);
@@ -2038,8 +2234,8 @@ export default function ProductReviewLanePage() {
           </PanelActions>
           {canApprovePreview && (
             <p className="text-[10px] text-neutral-400">
-              Sau khi duyệt, hệ thống sẽ mở bước đóng gói / đăng bài (Hành động 3). Bước này KHÔNG
-              tự đăng gì lên Facebook.
+              Sau khi duyệt, VFOS tự chuẩn bị bài đăng ở Hành động 3 (đóng gói + kiểm tra
+              readiness). KHÔNG tự đăng gì lên Facebook.
             </p>
           )}
           {approvePreviewError && (
@@ -2060,18 +2256,26 @@ export default function ProductReviewLanePage() {
         icon="publish"
         accent="blue"
         title="Đăng bài / Đóng gói"
-        desc="Đóng gói video duyệt + caption + affiliate link + CTA, kèm hướng dẫn tự đăng. Live publish Facebook có gate cứng."
-        status={
-          loading
-            ? { label: 'Đang tải…', accent: 'blue' }
-            : jobApproved
-              ? { label: 'Sẵn sàng đóng gói', accent: 'green' }
-              : bindingStatus === 'MISMATCH'
-                ? { label: 'Khoá — lệch sản phẩm', accent: 'rose' }
-                : bindingStatus === 'MISSING'
-                  ? { label: 'Khoá — thiếu binding', accent: 'amber' }
-                  : { label: 'Khoá — chờ duyệt', accent: 'amber' }
-        }
+        desc="Sau khi Operator duyệt video, VFOS tự đóng gói bài đăng + kiểm tra readiness. Đăng thật lên Facebook có gate cứng (làm ở Phase C)."
+        status={((): { label: string; accent: AccentKey } => {
+          // Header derive từ trạng thái THẬT của việc chuẩn bị bài đăng (không kẹt ở
+          // "Sẵn sàng đóng gói" khi checklist còn dở) → tránh mâu thuẫn header vs nội dung.
+          if (loading) return { label: 'Đang tải…', accent: 'blue' };
+          if (!jobApproved) {
+            if (bindingStatus === 'MISMATCH') return { label: 'Khoá — lệch sản phẩm', accent: 'rose' };
+            if (bindingStatus === 'MISSING') return { label: 'Khoá — thiếu binding', accent: 'amber' };
+            return { label: 'Khoá — chờ duyệt', accent: 'amber' };
+          }
+          if (publishPreflight?.alreadyPublished) return { label: 'Đã đăng', accent: 'green' };
+          if (latestJob?.state === 'PACKAGED') return { label: 'Sẵn sàng đăng', accent: 'green' };
+          if (preparingPost) return { label: 'Đang chuẩn bị bài đăng', accent: 'blue' };
+          if (preparePostError) {
+            return preparePostError.kind === 'missing_data'
+              ? { label: 'Thiếu dữ liệu', accent: 'amber' }
+              : { label: 'Cần xử lý', accent: 'rose' };
+          }
+          return { label: 'Chờ đóng gói', accent: 'amber' };
+        })()}
         locked={!jobApproved}
         lockReason={
           isFallbackSource
@@ -2083,35 +2287,160 @@ export default function ProductReviewLanePage() {
                 : "Cần job đã APPROVED (QA PASS + Operator duyệt preview) để mở bước đóng gói."
         }
       >
-        <div className="grid gap-2 sm:grid-cols-2">
-          <PackItem
-            label="Video đã duyệt"
-            ok={!!latestJob?.hasPreview && !!jobApproved}
-            mutedText="chờ preview duyệt"
-          />
-          <PackItem label="Caption / hashtags" ok={false} mutedText="đóng gói ở Round E" />
-          <PackItem
-            label="Affiliate link hợp lệ"
-            ok={latestJob?.pipeline.affiliateLink === 'pass'}
-            mutedText="kiểm owner khi đóng gói"
-          />
-          <PackItem label="CTA multi-touch" ok={false} mutedText="mock — nối sau" />
-        </div>
+        {/* Tiến trình VFOS tự chuẩn bị bài đăng (sau khi Operator duyệt video). */}
+        {preparingPost && (
+          <div className="flex items-center gap-2 rounded-lg border border-accent-blue/30 bg-accent-blue/10 px-3 py-2 text-[11px] text-accent-blue">
+            <UtilIcon name="clock" width={13} height={13} />
+            <span>
+              VFOS đang chuẩn bị bài đăng…{preparePostStage ? ` ${preparePostStage}` : ''}
+            </span>
+          </div>
+        )}
+        {!preparingPost && preparePostStage && !preparePostError && (
+          <div className="flex items-center gap-2 rounded-lg border border-accent-green/30 bg-accent-green/10 px-3 py-2 text-[11px] text-accent-green">
+            <UtilIcon name="check" width={13} height={13} />
+            <span>{preparePostStage}</span>
+          </div>
+        )}
+        {preparePostError && (
+          <NoticeBox accent="amber">
+            <strong>{preparePostError.title}</strong>
+            {preparePostError.hint && (
+              <span className="mt-0.5 block text-[10px] opacity-90">{preparePostError.hint}</span>
+            )}
+          </NoticeBox>
+        )}
 
+        {/* Checklist chuẩn bị bài đăng — derive từ STATE THẬT + Facebook preflight.
+            KHÔNG hiện "Sẵn sàng đăng" giả: chỉ ok khi job thật đã PACKAGED. */}
+        {(() => {
+          const st = latestJob?.state;
+          // DTO state đỉnh là PACKAGED; "đã đăng" lấy từ preflight (đọc facebook_publish_status).
+          const packaged = st === 'PACKAGED';
+          const published = !!publishPreflight?.alreadyPublished;
+          const videoApproved = !!jobApproved && !!latestJob?.hasPreview;
+          const productOk = bindingStatus === 'PASS';
+          const affiliateOk = latestJob?.pipeline.affiliateLink === 'pass';
+          const preparing = preparingPost;
+          const errored = !!preparePostError;
+          // Trạng thái chung cho các bước phụ thuộc đóng gói: idle → "chưa sẵn sàng",
+          // lỗi → "lỗi", đang chạy → "đang làm" (KHÔNG treo "đang chuẩn bị" vô nghĩa).
+          const pkgState: PrepState = packaged
+            ? 'ok'
+            : errored
+              ? 'fail'
+              : preparing
+                ? 'doing'
+                : 'wait';
+          const pkgNote = packaged
+            ? undefined
+            : errored
+              ? 'lỗi'
+              : preparing
+                ? 'đang làm'
+                : 'chưa sẵn sàng';
+          const pf = publishPreflight;
+          let fbState: PrepState = preparing ? 'doing' : 'wait';
+          let fbNote = preparing ? 'đang kiểm tra' : 'chưa kiểm tra';
+          if (pf) {
+            if (!pf.facebookCredentialsConfigured) {
+              fbState = 'fail';
+              fbNote = 'chưa cấu hình';
+            } else if (!pf.livePublishEnabled) {
+              fbState = 'warn';
+              fbNote = 'chế độ nháp / chưa bật đăng thật';
+            } else if (pf.canLivePublish) {
+              fbState = 'ok';
+              fbNote = 'sẵn sàng';
+            } else {
+              fbState = 'warn';
+              fbNote = 'cần kiểm tra gate';
+            }
+          }
+          return (
+            <div className="grid gap-2 sm:grid-cols-2">
+              <PrepRow
+                label="Video đã duyệt"
+                state={videoApproved ? 'ok' : 'wait'}
+                note={videoApproved ? undefined : 'chờ duyệt'}
+              />
+              <PrepRow
+                label="Đúng sản phẩm"
+                state={productOk ? 'ok' : 'fail'}
+                note={productOk ? undefined : 'lệch sản phẩm'}
+              />
+              <PrepRow
+                label="Link affiliate của anh"
+                state={affiliateOk ? 'ok' : 'wait'}
+                note={affiliateOk ? undefined : 'kiểm owner'}
+              />
+              <PrepRow label="Đủ nội dung bài đăng" state={pkgState} note={pkgNote} />
+              <PrepRow label="Đã tạo gói bài đăng" state={pkgState} note={pkgNote} />
+              <PrepRow label="Facebook" state={fbState} note={fbNote} />
+              <PrepRow label="Bản nháp đăng bài đã sẵn sàng" state={pkgState} note={pkgNote} />
+              <PrepRow
+                label="Sẵn sàng đăng"
+                state={pkgState}
+                note={packaged ? (published ? 'đã đăng' : 'đăng thủ công (Phase C)') : pkgNote}
+              />
+            </div>
+          );
+        })()}
+
+        {publishPreflight && !publishPreflight.livePublishEnabled && (
+          <p className="text-[10px] leading-relaxed text-neutral-500">
+            Facebook đang ở <strong className="text-accent-amber">chế độ nháp</strong> — chưa bật
+            đăng thật. Bản nháp bài đăng vẫn được chuẩn bị; bước đăng thật (live publish) làm ở
+            Phase C với gate cứng.
+          </p>
+        )}
+
+        {/* Flow chính Action 3 chỉ có 1 CTA cuối: "Đăng bài" (Phase C, gate cứng — disabled).
+            KHÔNG có nút "Chuẩn bị/Thử lại" làm CTA chính; retry kín đáo ở "Chi tiết kỹ thuật". */}
         <PanelActions>
-          <ComingNext round="E" primary>
-            Đóng gói package
+          <ComingNext round="C" warn>
+            Đăng bài (Facebook · gate cứng)
           </ComingNext>
-          <ComingNext round="E" warn>
-            Live Publish Facebook (gate cứng)
-          </ComingNext>
-          <DebugLink href="/publish?lane=product-review">Mở publish (debug)</DebugLink>
         </PanelActions>
 
+        {/* Chi tiết kỹ thuật — KHÔNG phải flow chính của Operator (debug/detail). */}
+        <details className="border-t border-hairline/50 pt-2">
+          <summary className="cursor-pointer text-[10px] text-neutral-500 hover:text-neutral-300">
+            Chi tiết kỹ thuật
+          </summary>
+          <div className="space-y-2 pt-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <DebugLink href="/publish?lane=product-review">Mở publish (debug)</DebugLink>
+              {latestJob && (
+                <span className="font-mono text-[10px] text-neutral-600">
+                  state: {latestJob.state}
+                </span>
+              )}
+              {jobApproved &&
+                latestJob &&
+                !preparingPost &&
+                !publishPreflight?.alreadyPublished && (
+                  <button
+                    type="button"
+                    onClick={() => preparePost(latestJob.id)}
+                    className="rounded border border-hairline/60 px-2 py-1 text-[10px] text-neutral-400 transition hover:text-neutral-200"
+                  >
+                    Thử chuẩn bị lại
+                  </button>
+                )}
+            </div>
+            {preparePostDetails && (
+              <pre className="max-h-32 overflow-auto whitespace-pre-wrap rounded border border-hairline/60 bg-panel/40 p-2 text-[9px] leading-relaxed text-neutral-500">
+                {preparePostDetails}
+              </pre>
+            )}
+          </div>
+        </details>
+
         <GateHint
-          ok={latestJob?.state === 'PACKAGED'}
-          okText="Đã đóng gói (PACKAGED) — sẵn sàng đăng thủ công"
-          waitText="Hoàn tất khi PACKAGED (thủ công) hoặc PUBLISHED (nếu Operator chủ động live)"
+          ok={latestJob?.state === 'PACKAGED' || !!publishPreflight?.alreadyPublished}
+          okText="Bản nháp bài đăng đã sẵn sàng (PACKAGED) — đăng thủ công ở Phase C"
+          waitText="VFOS sẽ tự đóng gói sau khi Operator duyệt video; hoàn tất khi job đạt PACKAGED"
         />
       </ActionPanel>
     </div>
@@ -2211,17 +2540,46 @@ function StepRow({ label, state }: { label: string; state: GateState }) {
   );
 }
 
-function PackItem({ label, ok, mutedText }: { label: string; ok: boolean; mutedText: string }) {
+// ok = xong | doing = đang làm | wait = chưa sẵn sàng | warn = cảnh báo | fail = lỗi
+type PrepState = 'ok' | 'doing' | 'wait' | 'warn' | 'fail';
+
+const PREP_DOT: Record<PrepState, string> = {
+  ok: 'bg-accent-green',
+  doing: 'bg-accent-blue',
+  wait: 'bg-neutral-600',
+  warn: 'bg-accent-amber',
+  fail: 'bg-accent-rose',
+};
+const PREP_LABEL_CLS: Record<PrepState, string> = {
+  ok: 'text-neutral-200',
+  doing: 'text-accent-blue',
+  wait: 'text-neutral-500',
+  warn: 'text-accent-amber',
+  fail: 'text-accent-rose',
+};
+const PREP_NOTE_CLS: Record<PrepState, string> = {
+  ok: 'text-neutral-600',
+  doing: 'text-accent-blue',
+  wait: 'text-neutral-600',
+  warn: 'text-accent-amber',
+  fail: 'text-accent-rose',
+};
+
+/** Một dòng checklist chuẩn bị bài đăng (Action 3): ok/doing/wait/warn/fail + ghi chú. */
+function PrepRow({ label, state, note }: { label: string; state: PrepState; note?: string }) {
   return (
-    <div className="flex items-center justify-between rounded-md border border-hairline/60 bg-panel/40 px-2.5 py-1.5 text-[11px]">
-      <span className={ok ? 'text-neutral-200' : 'text-neutral-500'}>{label}</span>
-      {ok ? (
-        <span className="flex items-center gap-1 text-accent-green">
+    <div className="flex items-center justify-between gap-2 rounded-md border border-hairline/60 bg-panel/40 px-2.5 py-1.5 text-[11px]">
+      <span className="flex min-w-0 items-center gap-2">
+        <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${PREP_DOT[state]}`} />
+        <span className={`truncate ${PREP_LABEL_CLS[state]}`}>{label}</span>
+      </span>
+      {state === 'ok' ? (
+        <span className="flex shrink-0 items-center gap-1 text-accent-green">
           <UtilIcon name="check" width={11} height={11} /> OK
         </span>
-      ) : (
-        <span className="text-neutral-600">{mutedText}</span>
-      )}
+      ) : note ? (
+        <span className={`shrink-0 text-right text-[10px] ${PREP_NOTE_CLS[state]}`}>{note}</span>
+      ) : null}
     </div>
   );
 }
