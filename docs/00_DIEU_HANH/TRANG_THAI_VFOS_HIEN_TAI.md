@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-06-11 (North Star v2 outcome-based đã chốt — xem `docs/VFOS_NORTH_STAR.md`. Trước đó: 2026-06-05 Product Image 04B — capture product image through product card flow, DONE + PUSHED `963bc2a`.)
-> **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `963bc2a` (remote HEAD — `feat(shopee): capture product image through product card flow`)
+> **Cập nhật lần cuối**: 2026-06-11 (**🏆 MILESTONE M1 ĐÃ ĐẠT** — reel thật đăng lên Page "Review Nhà bạn", postId `1028983246151885`, Graph readback verify PASS. Xem Phần 26. Trước đó cùng ngày: North Star v2 outcome-based đã chốt — xem `docs/VFOS_NORTH_STAR.md`.)
+> **Branch**: `fix/shopee-modal-read` | **Commit mốc tại thời điểm cập nhật trạng thái**: `6548b4a` (`feat(facebook): add real Reels uploader with Graph readback verify`)
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task → luôn chạy `pnpm vfos:daily` để có chỉ dẫn trạng thái mới nhất
 
 > ⚠️ **ĐƯỜNG VẬN HÀNH CHÍNH THỨC**: dùng `docs/00_DIEU_HANH/HUONG_DAN_VAN_HANH_CHINH_THUC_VFOS.md` (operator guide chuẩn, flow A-Z `commerce:intake` → `job:run-review` → `job:publish-facebook`).
@@ -2060,6 +2060,42 @@ DOM card img
 - KHÔNG chạy lại spike 04B-1 (đã biết kết quả FAIL).
 - KHÔNG dùng CDP re-attach chỉ để backfill ảnh BABYJOY.
 - Proof ảnh thật để dành lần Operator chạy Shopee extraction cho sản phẩm mới.
+
+---
+
+### 🏆 Phần 26 — MILESTONE M1: Reels publish THẬT `job_20260609_001` lên Page "Review Nhà bạn": ĐÃ ĐẠT (2026-06-11)
+
+**Đây là lần đầu tiên VFOS đăng video THẬT lên Facebook với bằng chứng Graph readback — Milestone M1 của North Star v2.**
+
+**Bằng chứng thật (không fake, không mock)**:
+
+| Hạng mục | Giá trị |
+|---|---|
+| Job | `job_20260609_001` (địu EMOON, productId `53954087529`) |
+| Page | "Review Nhà bạn" (xác thực qua Graph precheck read-only) |
+| postId/videoId | `1028983246151885` |
+| Permalink | `https://www.facebook.com/reel/1028983246151885/` |
+| Verify | Graph readback `GET /{video_id}?fields=id,permalink_url` → id + permalink thật, `verifiedByGraphReadback: true` |
+| Affiliate link trong description | `https://s.shopee.vn/LkjNhcNaD` (owner `an_17376660568`) |
+| Video | `preview_with_captions_v2.mp4` (28.08s, 9:16, QA PASS, có audio) |
+| Publish lúc | 2026-06-11T07:24:36Z |
+
+**Đường đi của vòng này**:
+1. Uploader Reels thật `packages/facebook/src/publish-reels.ts` (commit `6548b4a`): 3-phase start → rupload binary → finish, poll processing, **readback verify bắt buộc** trước khi claim success. KHÔNG mock-success, KHÔNG random ID (hậu quả sự cố fake publish 2026-06-11 sáng — file fake đã cách ly `.bak`).
+2. Dry-run 14/14 preflight gates PASS (PACKAGED + APPROVED + QA PASS + package manifest + captioned preview + audio + affiliate link + readiness + safety locks false + credentials + staged-risk clean).
+3. Lần LIVE đầu fail an toàn ở precheck: token hết hạn (OAuthException 190) — đúng thiết kế, 0 byte upload, manifest giữ nguyên. Operator refresh token (monitor hash `.env` tự phát hiện, không đọc/log token).
+4. Lần LIVE thứ hai: upload + processing + readback verify thành công → manifest `PUBLISHED`, safety locks `facebookApiCalled/uploaded/published = true` (chặn double-publish).
+
+**Artifacts runtime (gitignored, không commit)**:
+- `data/temp/jobs/job_20260609_001/facebook_publish_status.json` — postId + permalink + verifiedByGraphReadback.
+- `production/archive/job_20260609_001/facebook_publish_result.json` — caption, hashtags, affiliate link, verification.
+- `data/temp/jobs/job_20260609_001/job_manifest.json` — state PUBLISHED.
+
+**Lưu ý vận hành cho lần sau**:
+- `FACEBOOK_PAGE_ACCESS_TOKEN` là token ngắn hạn theo session (hết hạn ~1-2h) → cân nhắc long-lived token (~60 ngày) trước đợt publish kế.
+- Mọi publish kế tiếp vẫn đi qua đủ cổng: PACKAGED + APPROVED + QA PASS + `--confirm-live-publish` + `META_MODE=live`. Safety lock per-job chặn đăng lại.
+
+**Bước tiếp theo (theo North Star v2)**: đo view/click trên reel `1028983246151885` → M3 (click affiliate đầu tiên qua `https://s.shopee.vn/LkjNhcNaD`).
 
 ---
 

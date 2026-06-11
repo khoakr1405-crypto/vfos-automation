@@ -78,13 +78,21 @@ Cấu trúc quản lý bắt buộc: **Niche → Channel → Video Job → Affil
 
 ## 5. Giai đoạn hiện tại (cập nhật 2026-06-11)
 
-Focus duy nhất: hoàn thiện **vòng khép kín đầu tiên** trên kênh "Review Nhà bạn" (= Milestone M1, tiến tới M3–M5):
+> **✅ MILESTONE M1 ĐÃ ĐẠT (2026-06-11 07:24 UTC)** — bằng chứng thật, không fake:
+>
+> - Job: `job_20260609_001` (địu EMOON) → state `PUBLISHED`.
+> - Page: "Review Nhà bạn" — postId/videoId thật: `1028983246151885`.
+> - Permalink thật: `https://www.facebook.com/reel/1028983246151885/`.
+> - Verify: Graph API readback `GET /{video_id}?fields=id,permalink_url` trả id + permalink (`verifiedByGraphReadback: true` trong `facebook_publish_status.json`).
+> - Uploader: `packages/facebook/src/publish-reels.ts` (3-phase + readback bắt buộc, không mock-success).
 
-> Shopee Product Card (owner `an_17376660568`) → source video sạch → production pipeline → Operator duyệt preview → PACKAGED → đăng video THẬT lên Page với postId/permalink readback verify → đo view/click.
+Focus tiếp theo: từ M1 tiến tới **M3–M5** trên kênh "Review Nhà bạn":
 
-- Job đang vận hành: `job_20260609_001` (state PACKAGED, gates xanh).
-- Blocker kỹ thuật duy nhất: chưa có Reels/video uploader thật (TRUTH GUARD `REELS_UPLOAD_NOT_IMPLEMENTED` đang chặn fake success) → xây ở round riêng.
-- TikTok publish: roadmap chính, chưa làm (repo hiện chỉ có TikTok read-only connector).
+> đo view/click trên reel đã đăng → click affiliate đầu tiên (M3) → đơn hàng đầu tiên (M4) → hoa hồng đầu tiên (M5).
+
+- Job `job_20260609_001`: PUBLISHED, safety locks `uploaded/published=true` (chặn double-publish).
+- Lưu ý vận hành: `FACEBOOK_PAGE_ACCESS_TOKEN` hiện là token ngắn hạn theo session — cân nhắc đổi sang long-lived token (~60 ngày) cho các lần publish sau.
+- TikTok publish (M2): roadmap chính, chưa làm (repo hiện chỉ có TikTok read-only connector).
 
 ## 6. Decision filter
 
