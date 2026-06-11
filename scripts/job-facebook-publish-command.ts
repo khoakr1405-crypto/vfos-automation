@@ -566,113 +566,23 @@ async function main() {
 
   // ---- LIVE MODE ----
   if (effectiveMode === 'LIVE') {
-    console.warn('🚨 WARNING: Commencing LIVE Facebook Reels Publishing submission!');
-    console.log('------------------------------------------------------');
-
-    const metaMode = (process.env.META_MODE || '').trim().toLowerCase();
-    let apiSuccess = false;
-    let pageName = 'Review Nhà bạn';
-
-    // Verify Meta API connectivity in live mode
-    if (metaMode === 'live') {
-      console.log('🔗 Establishing secure connection with Meta Graph API...');
-      const client = createMetaClient({ pageId, pageAccessToken });
-      const connResult = await testPageConnection(client);
-      if (connResult.success && connResult.page) {
-        apiSuccess = true;
-        pageName = connResult.page.name;
-        console.log(`  * Connected to Page:  ${pageName}`);
-      } else {
-        console.error(`🛑 Meta API preflight authentication failed: ${connResult.error}`);
-        if (connResult.diagnosis) console.error(`💡 Diagnosis:\n${connResult.diagnosis}`);
-        process.exit(1);
-        return;
-      }
-    } else {
-      apiSuccess = true;
-      console.log('ℹ️ META_MODE !== live (Simulating successful Graph API upload session).');
-    }
-
-    if (apiSuccess) {
-      const generatedPostId = `${pageId || '1169992221'}_${Math.floor(1000000000 + Math.random() * 9000000000)}`;
-      const generatedVideoId = `vid_${Math.floor(1000000000 + Math.random() * 9000000000)}`;
-
-      // 1. Update job manifest safety parameters
-      manifest.safety = {
-        facebookApiCalled: true,
-        uploaded: true,
-        published: true,
-      };
-      manifest.state = 'PUBLISHED';
-      saveManifest(manifest);
-
-      // 2. Update Registry state
-      updateRegistryFromManifest(manifest);
-
-      // 3. Write facebook_publish_status.json
-      const publishStatus = {
-        publishStatusVersion: 'v1',
-        jobId,
-        mode: 'LIVE',
-        state: 'PUBLISHED',
-        gates: {
-          jobPackaged: true,
-          operatorApproved: true,
-          finalQaPassed: true,
-          captionedPreviewPresent: true,
-          audioPresent: true,
-          affiliateLinkPresent: true,
-          credentialsPresent: true,
-        },
-        facebook: {
-          pageIdMasked: maskedPageId,
-          pageName,
-          apiCalled: true,
-          uploaded: true,
-          published: true,
-          postId: generatedPostId,
-          videoId: generatedVideoId,
-        },
-        safety: {
-          manualConfirmRequired: true,
-          confirmLivePublishProvided: true,
-          tokensMasked: true,
-          envLogged: false,
-        },
-        generatedAt: isoNow(),
-      };
-
-      const statusPath = join(JOBS_ROOT, jobId, 'facebook_publish_status.json');
-      writeFileSync(statusPath, JSON.stringify(publishStatus, null, 2) + '\n', 'utf8');
-
-      // 4. Write facebook_publish_result.json
-      const publishResult = {
-        publishResultVersion: 'v1',
-        jobId,
-        postId: generatedPostId,
-        videoId: generatedVideoId,
-        published: true,
-        uploaded: true,
-        apiCalled: metaMode === 'live',
-        generatedAt: isoNow(),
-      };
-
-      const resultPath = join(JOBS_ROOT, jobId, 'facebook_publish_result.json');
-      writeFileSync(resultPath, JSON.stringify(publishResult, null, 2) + '\n', 'utf8');
-
-      console.log('🟢 STATUS: LIVE PUBLISH SUCCESSFUL');
-      console.log(`  * Post ID:            ${generatedPostId}`);
-      console.log(`  * Video ID:           ${generatedVideoId}`);
-      console.log(`  * State Transferred:  PUBLISHED 🟢`);
-      console.log(`[FacebookPublishCommand] Diagnostics saved successfully to: ${statusPath}`);
-      console.log('======================================================\n');
-      process.exit(0);
-      return;
-    } else {
-      console.error('🛑 Live upload authentication check failed.');
-      process.exit(1);
-      return;
-    }
+    // TRUTH GUARD (hotfix sau sự cố publish giả 2026-06-11): repo CHƯA có uploader
+    // video/Reels thật (packages/facebook chỉ có publishTextPost /feed). Nhánh này
+    // trước đây bịa postId/videoId bằng Math.random() rồi ghi state=PUBLISHED +
+    // safety.published=true dù KHÔNG upload gì → UI báo "Đã đăng" trong khi Page
+    // không có video. Chừng nào uploader thật chưa được implement, LIVE mode PHẢI
+    // fail rõ ràng và TUYỆT ĐỐI không ghi manifest/registry/status/result.
+    console.error(
+      '🛑 REELS_UPLOAD_NOT_IMPLEMENTED (FACEBOOK_VIDEO_UPLOAD_NOT_IMPLEMENTED):',
+    );
+    console.error('  -> Live video upload CHƯA được implement trong repo này.');
+    console.error('  -> KHÔNG có video nào được đăng lên Facebook.');
+    console.error('  -> Manifest/registry/status GIỮ NGUYÊN — không có gì bị ghi.');
+    console.error(
+      '  -> Cần xây uploader thật ở round riêng: POST /{page_id}/video_reels (3-phase) hoặc POST /{page_id}/videos, kèm readback verify postId/permalink.',
+    );
+    process.exit(20);
+    return;
   }
 }
 

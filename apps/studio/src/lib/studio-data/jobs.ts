@@ -173,6 +173,7 @@ const STATE_META: Record<VfosJobState, { label: string; accent: StatusAccent }> 
   APPROVED: { label: 'Đã duyệt → Publish Queue', accent: 'green' },
   REJECTED: { label: 'Đã từ chối', accent: 'rose' },
   PACKAGED: { label: 'Đã đóng gói', accent: 'green' },
+  PUBLISHED: { label: 'Đã đăng', accent: 'green' },
   FAILED: { label: 'Lỗi kỹ thuật', accent: 'rose' },
 };
 
@@ -359,6 +360,7 @@ const PRODUCT_STATE_MAP: Record<VfosJobState, ProductRowDTO['jobStatus']> = {
   APPROVED: 'DONE',
   REJECTED: 'FAILED',
   PACKAGED: 'DONE',
+  PUBLISHED: 'DONE',
   FAILED: 'FAILED',
 };
 

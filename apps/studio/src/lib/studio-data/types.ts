@@ -21,6 +21,7 @@ export type VfosJobState =
   | 'APPROVED'
   | 'REJECTED'
   | 'PACKAGED'
+  | 'PUBLISHED'
   | 'FAILED';
 
 export type StatusAccent = 'blue' | 'violet' | 'green' | 'amber' | 'cyan' | 'rose';

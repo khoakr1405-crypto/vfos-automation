@@ -2494,7 +2494,8 @@ export default function ProductReviewLanePage() {
               return { label: 'Khoá — thiếu binding', accent: 'amber' };
             return { label: 'Khoá — chờ duyệt', accent: 'amber' };
           }
-          if (publishPreflight?.alreadyPublished) return { label: 'Đã đăng', accent: 'green' };
+          if (latestJob?.state === 'PUBLISHED' || publishPreflight?.alreadyPublished)
+            return { label: 'Đã đăng', accent: 'green' };
           if (latestJob?.state === 'PACKAGED') return { label: 'Sẵn sàng đăng', accent: 'green' };
           if (preparingPost) return { label: 'Đang chuẩn bị bài đăng', accent: 'blue' };
           if (preparePostError) {
@@ -2726,7 +2727,9 @@ export default function ProductReviewLanePage() {
             Phase C UX: bấm nút khi gate xanh → đăng luôn, KHÔNG modal confirm phrase.
             Server vẫn evaluateLivePublishGates trước khi đăng. Retry kín đáo ở "Chi tiết kỹ thuật". */}
         <PanelActions>
-          {publishPreflight?.alreadyPublished || publishResult?.ok ? (
+          {latestJob?.state === 'PUBLISHED' ||
+          publishPreflight?.alreadyPublished ||
+          publishResult?.ok ? (
             <Button variant="success" disabled className="!py-1.5 !px-3 text-xs font-semibold">
               ✓ Đã đăng thành công
             </Button>
