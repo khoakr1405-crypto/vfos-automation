@@ -22,7 +22,7 @@ Các mốc trung gian theo **kết quả kinh doanh thật** (chỉ tick khi có
 
 | Mốc | Kết quả cần đạt | Bằng chứng yêu cầu |
 |---|---|---|
-| M1 | Video đầu tiên được tạo/biến đổi và đăng thật lên Facebook Page | postId/permalink thật, readback verify từ Graph API |
+| M1 | Video đầu tiên được tạo/biến đổi và đăng thật lên Facebook Page | postId/permalink thật, readback verify từ Graph API, **nick ngoài xác nhận xem được công khai** |
 | M2 | Video đầu tiên đăng thật lên TikTok (khi TikTok publish được xây) | post/video id thật trên TikTok |
 | M3 | Click affiliate đầu tiên | số liệu click trên Shopee affiliate dashboard |
 | M4 | Đơn hàng affiliate đầu tiên | đơn ghi nhận thật trên dashboard |
@@ -78,19 +78,27 @@ Cấu trúc quản lý bắt buộc: **Niche → Channel → Video Job → Affil
 
 ## 5. Giai đoạn hiện tại (cập nhật 2026-06-11)
 
-> **✅ MILESTONE M1 ĐÃ ĐẠT (2026-06-11 07:24 UTC)** — bằng chứng thật, không fake:
+> **⚠️ MILESTONE M1 = VISIBILITY_UNCONFIRMED (đính chính 2026-06-11)**
 >
-> - Job: `job_20260609_001` (địu EMOON) → state `PUBLISHED`.
-> - Page: "Review Nhà bạn" — postId/videoId thật: `1028983246151885`.
-> - Permalink thật: `https://www.facebook.com/reel/1028983246151885/`.
-> - Verify: Graph API readback `GET /{video_id}?fields=id,permalink_url` trả id + permalink (`verifiedByGraphReadback: true` trong `facebook_publish_status.json`).
-> - Uploader: `packages/facebook/src/publish-reels.ts` (3-phase + readback bắt buộc, không mock-success).
+> API publish cho `job_20260609_001` (địu EMOON) xác nhận thành công qua Graph readback:
+> - postId/videoId thật: `1028983246151885`, permalink thật, `verifiedByGraphReadback: true`.
+> - status ready, published=true, privacy EVERYONE, nằm trong /video_reels /videos /published_posts /feed.
+>
+> **Tuy nhiên**: Operator dùng nick ngoài mở permalink trực tiếp **không thấy** Reel.
+> Graph readback xanh ≠ public visibility — Facebook có thể hold distribution mà
+> không expose qua API. Do đó M1 chưa PASS.
+>
+> **Đính chính commit `4ddb643` (trước đó ghi M1 ĐÃ ĐẠT)**: premature — chỉ dựa
+> Graph readback mà chưa xác nhận bằng nick ngoài/incognito. Bằng chứng Graph
+> readback vẫn hợp lệ, nhưng KHÔNG đủ để tick M1.
+>
+> **M1 PASS khi**: Graph object tồn tại + permalink có thật + nick ngoài/Operator
+> xác nhận xem được công khai. Khi đó nâng `publishVisibility` lên `PUBLIC_CONFIRMED`.
 
-Focus tiếp theo: từ M1 tiến tới **M3–M5** trên kênh "Review Nhà bạn":
+Focus tiếp theo: xác nhận public visibility cho reel `1028983246151885` trước khi
+tiến tới M3–M5.
 
-> đo view/click trên reel đã đăng → click affiliate đầu tiên (M3) → đơn hàng đầu tiên (M4) → hoa hồng đầu tiên (M5).
-
-- Job `job_20260609_001`: PUBLISHED, safety locks `uploaded/published=true` (chặn double-publish).
+- Job `job_20260609_001`: state PUBLISHED (API publish confirmed), `publishVisibility=UNCONFIRMED`, safety locks `uploaded/published=true` (chặn double-publish). **Không publish lại.**
 - Lưu ý vận hành: `FACEBOOK_PAGE_ACCESS_TOKEN` hiện là token ngắn hạn theo session — cân nhắc đổi sang long-lived token (~60 ngày) cho các lần publish sau.
 - TikTok publish (M2): roadmap chính, chưa làm (repo hiện chỉ có TikTok read-only connector).
 

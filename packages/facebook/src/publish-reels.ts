@@ -14,6 +14,13 @@
  * - `uploadAccepted: true` từ thời điểm finish phase được Facebook chấp nhận —
  *   caller dùng cờ này để khóa double-publish khi verify fail/timeout.
  * - Token chỉ đi qua Authorization header / form body. KHÔNG bao giờ log.
+ *
+ * Truth rule bổ sung (sự cố visibility 2026-06-11, reel 1028983246151885):
+ * - Graph readback xanh (published=true, privacy=EVERYONE, publish_status=published)
+ *   KHÔNG chứng minh nick ngoài xem được — distribution hold phía Facebook không
+ *   expose qua API. Vì vậy `success`/`verified` CHỈ có nghĩa API publish confirmed;
+ *   `publicVisibilityConfirmed` luôn `false` ở layer này — chỉ Operator xác nhận
+ *   bằng tài khoản ngoài mới được nâng lên PUBLIC_CONFIRMED ở layer workflow.
  */
 
 import { readFileSync, statSync } from 'node:fs';
@@ -43,8 +50,14 @@ export interface ReelPublishOptions {
   maxPollMs?: number;
 }
 
+/** Trạng thái hiển thị công khai — chỉ Operator/nick ngoài mới confirm được. */
+export type PublishVisibility = 'UNCONFIRMED' | 'PUBLIC_CONFIRMED' | 'NOT_PUBLIC';
+
 export interface ReelPublishResult {
-  /** True ONLY when the reel is published AND verified via Graph readback. */
+  /**
+   * True ONLY when the reel is published AND verified via Graph readback.
+   * Semantic = API publish confirmed. KHÔNG bao hàm public visibility.
+   */
   success: boolean;
   /** Phase reached (on success: "done") or phase that failed. */
   phase: ReelPublishPhase;
@@ -52,8 +65,18 @@ export interface ReelPublishResult {
   uploadAccepted: boolean;
   /** True only when readback verify returned real id + permalink. */
   verified: boolean;
+  /** Alias semantic rõ của `verified`: Graph xác nhận object đã publish ở mức API. */
+  apiPublishConfirmed: boolean;
+  /** LUÔN false ở layer uploader — API không chứng minh được nick ngoài xem được. */
+  publicVisibilityConfirmed: boolean;
+  /** UNCONFIRMED khi publish API xong; nâng cấp PUBLIC_CONFIRMED là việc của Operator. */
+  publishVisibility?: PublishVisibility;
   videoId?: string;
   permalinkUrl?: string;
+  /** Evidence readback mở rộng (optional — thiếu không làm fail verify). */
+  readbackPublished?: boolean;
+  readbackPrivacy?: string;
+  readbackPublishStatus?: string;
   error?: string;
   diagnosis?: string;
 }
@@ -83,6 +106,8 @@ function fail(
     phase,
     uploadAccepted: false,
     verified: false,
+    apiPublishConfirmed: false,
+    publicVisibilityConfirmed: false,
     error,
     ...extra,
   };
@@ -280,9 +305,14 @@ export async function publishReelToPage(
       } as ReelPublishResult;
     }
 
-    // Phase 5 — readback verify (BẮT BUỘC trước khi claim success)
+    // Phase 5 — readback verify (BẮT BUỘC trước khi claim API publish).
+    // Field mở rộng (published/privacy/publishing_phase) là EVIDENCE — vẫn chỉ
+    // chứng minh mức API, KHÔNG chứng minh public visibility.
     currentPhase = 'verify';
-    const verify = await getGraph(`/${videoId}?fields=id,permalink_url`, pageAccessToken, 30_000);
+    const verifyFields = encodeURIComponent(
+      'id,permalink_url,published,privacy{value},status{publishing_phase}',
+    );
+    const verify = await getGraph(`/${videoId}?fields=${verifyFields}`, pageAccessToken, 30_000);
     if (!verify.ok) {
       return {
         ...fail(
@@ -306,13 +336,30 @@ export async function publishReelToPage(
       } as ReelPublishResult;
     }
 
+    // Evidence mở rộng — optional, thiếu field không làm fail verify.
+    const readbackPrivacy = (verify.body.privacy ?? {}) as Record<string, unknown>;
+    const readbackStatus = (verify.body.status ?? {}) as Record<string, unknown>;
+    const readbackPublishing = (readbackStatus.publishing_phase ?? {}) as Record<string, unknown>;
+
     return {
       success: true,
       phase: 'done',
       uploadAccepted: true,
       verified: true,
+      apiPublishConfirmed: true,
+      // API readback KHÔNG chứng minh nick ngoài xem được (case 1028983246151885:
+      // mọi field xanh nhưng public không thấy). Operator confirm mới nâng cấp.
+      publicVisibilityConfirmed: false,
+      publishVisibility: 'UNCONFIRMED',
       videoId: verifiedId,
       permalinkUrl: normalizePermalink(permalinkRaw),
+      ...(typeof verify.body.published === 'boolean'
+        ? { readbackPublished: verify.body.published }
+        : {}),
+      ...(readbackPrivacy.value ? { readbackPrivacy: String(readbackPrivacy.value) } : {}),
+      ...(readbackPublishing.publish_status
+        ? { readbackPublishStatus: String(readbackPublishing.publish_status) }
+        : {}),
     };
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : String(err);

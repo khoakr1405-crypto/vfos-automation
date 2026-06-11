@@ -288,6 +288,12 @@ export default function ProductReviewLanePage() {
     targetChannel?: string | null;
     livePublishEnabledReason?: string;
     pageName?: string | null;
+    // Sanitized publish status từ GET preflight — nguồn publishVisibility khi reload.
+    publishStatus?: {
+      publishVisibility?: string | null;
+      permalinkUrl?: string | null;
+      postId?: string | null;
+    } | null;
   } | null>(null);
 
   // Phase C — Live publish states (đăng trực tiếp, không modal confirm phrase)
@@ -2494,8 +2500,13 @@ export default function ProductReviewLanePage() {
               return { label: 'Khoá — thiếu binding', accent: 'amber' };
             return { label: 'Khoá — chờ duyệt', accent: 'amber' };
           }
-          if (latestJob?.state === 'PUBLISHED' || publishPreflight?.alreadyPublished)
-            return { label: 'Đã đăng', accent: 'green' };
+          if (latestJob?.state === 'PUBLISHED' || publishPreflight?.alreadyPublished) {
+            // "Đã đăng" (green) CHỈ khi public visibility đã được Operator xác nhận.
+            // API publish xanh ≠ nick ngoài xem được (sự cố 1028983246151885).
+            return publishPreflight?.publishStatus?.publishVisibility === 'PUBLIC_CONFIRMED'
+              ? { label: 'Đã đăng', accent: 'green' }
+              : { label: 'Đã đăng (API) — chờ public', accent: 'amber' };
+          }
           if (latestJob?.state === 'PACKAGED') return { label: 'Sẵn sàng đăng', accent: 'green' };
           if (preparingPost) return { label: 'Đang chuẩn bị bài đăng', accent: 'blue' };
           if (preparePostError) {
@@ -2610,7 +2621,15 @@ export default function ProductReviewLanePage() {
               <PrepRow
                 label="Sẵn sàng đăng"
                 state={pkgState}
-                note={packaged ? (published ? 'đã đăng' : 'đăng thủ công (Phase C)') : pkgNote}
+                note={
+                  packaged
+                    ? published
+                      ? publishPreflight?.publishStatus?.publishVisibility === 'PUBLIC_CONFIRMED'
+                        ? 'đã đăng'
+                        : 'đã đăng qua API — chờ xác nhận public'
+                      : 'đăng thủ công (Phase C)'
+                    : pkgNote
+                }
               />
             </div>
           );
@@ -2730,21 +2749,51 @@ export default function ProductReviewLanePage() {
           {latestJob?.state === 'PUBLISHED' ||
           publishPreflight?.alreadyPublished ||
           publishResult?.ok ? (
-            <div className="flex w-full flex-col gap-1.5">
-              <Button variant="success" disabled className="!py-1.5 !px-3 text-xs font-semibold">
-                ✓ Đã đăng thành công
-              </Button>
-              {publishResult?.result?.permalinkUrl && (
-                <a
-                  href={publishResult.result.permalinkUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[11px] text-accent-green underline hover:text-accent-green/80"
-                >
-                  Xem bài đăng trên Facebook (đã verify qua Graph readback) ↗
-                </a>
-              )}
-            </div>
+            (() => {
+              // publishVisibility: ưu tiên kết quả POST mới nhất, fallback preflight (reload).
+              const pubStatus = publishResult?.result ?? publishPreflight?.publishStatus ?? null;
+              const publicConfirmed = pubStatus?.publishVisibility === 'PUBLIC_CONFIRMED';
+              const permalink = pubStatus?.permalinkUrl ?? null;
+              return (
+                <div className="flex w-full flex-col gap-1.5">
+                  {publicConfirmed ? (
+                    <Button
+                      variant="success"
+                      disabled
+                      className="!py-1.5 !px-3 text-xs font-semibold"
+                    >
+                      ✓ Đã đăng thành công
+                    </Button>
+                  ) : (
+                    <>
+                      <Button
+                        variant="outline"
+                        disabled
+                        className="!py-1.5 !px-3 text-xs font-semibold !text-accent-amber !border-accent-amber/40"
+                      >
+                        Đã đăng qua API — chờ xác nhận hiển thị công khai
+                      </Button>
+                      <p className="text-[10px] leading-relaxed text-neutral-500">
+                        Graph readback đã xác nhận publish ở mức API, nhưng điều đó{' '}
+                        <strong className="text-accent-amber">chưa chứng minh</strong> người ngoài
+                        xem được. Mở permalink bằng tài khoản KHÔNG phải admin để xác nhận — chưa
+                        xác nhận thì chưa coi là đăng thành công.
+                      </p>
+                    </>
+                  )}
+                  {permalink && (
+                    <a
+                      href={permalink}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[11px] text-accent-green underline hover:text-accent-green/80"
+                    >
+                      Xem bài đăng trên Facebook (đã verify qua Graph readback) ↗
+                    </a>
+                  )}
+                </div>
+              );
+            })()
           ) : (
             <div className="flex w-full flex-col gap-2">
               <div className="flex flex-wrap items-center gap-3">

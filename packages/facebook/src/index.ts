@@ -30,4 +30,5 @@ export {
   type ReelPublishOptions,
   type ReelPublishResult,
   type ReelPublishPhase,
+  type PublishVisibility,
 } from "./publish-reels.js";

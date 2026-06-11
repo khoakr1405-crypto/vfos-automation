@@ -82,6 +82,7 @@ function readSanitizedPublishStatus(jobId: string): Record<string, unknown> | nu
   try {
     const s = JSON.parse(readFileSync(abs, 'utf-8')) as {
       state?: string;
+      publishVisibility?: string;
       facebook?: {
         pageName?: string;
         postId?: string;
@@ -89,16 +90,23 @@ function readSanitizedPublishStatus(jobId: string): Record<string, unknown> | nu
         published?: boolean;
         permalinkUrl?: string;
         verifiedByGraphReadback?: boolean;
+        apiPublishConfirmed?: boolean;
+        publicVisibilityConfirmed?: boolean;
       };
     };
     return {
       state: s.state ?? null,
+      // Status cũ (trước round visibility) không có field này → mặc định UNCONFIRMED:
+      // API publish từng xanh không bao giờ tự chứng minh public visibility.
+      publishVisibility: s.publishVisibility ?? 'UNCONFIRMED',
       published: s.facebook?.published ?? null,
       postId: s.facebook?.postId ?? null,
       videoId: s.facebook?.videoId ?? null,
       pageName: s.facebook?.pageName ?? null,
       permalinkUrl: s.facebook?.permalinkUrl ?? null,
       verifiedByGraphReadback: s.facebook?.verifiedByGraphReadback ?? null,
+      apiPublishConfirmed: s.facebook?.apiPublishConfirmed ?? s.facebook?.verifiedByGraphReadback ?? null,
+      publicVisibilityConfirmed: s.facebook?.publicVisibilityConfirmed ?? false,
     };
   } catch {
     return null;
@@ -151,6 +159,9 @@ export async function GET(req: Request, ctx: { params: Promise<{ jobId: string }
     blockedReasons: gate.blockedReasons,
     gatesPassed: gate.gatesPassed,
     canLivePublish,
+    // Sanitized publish status (nếu đã publish) — UI cần publishVisibility để
+    // KHÔNG hiển thị "Đã đăng thành công" khi public visibility chưa xác nhận.
+    publishStatus: readSanitizedPublishStatus(jobId),
   });
 }
 

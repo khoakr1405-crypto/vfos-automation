@@ -79,6 +79,12 @@ interface JobManifest {
     published: boolean;
     requiresOperatorReview?: boolean;
   };
+  /**
+   * Phân biệt API publish với public visibility (sự cố 1028983246151885):
+   * Graph readback xanh ≠ nick ngoài xem được. UNCONFIRMED cho tới khi Operator
+   * xác nhận bằng tài khoản ngoài → PUBLIC_CONFIRMED (hoặc NOT_PUBLIC nếu bị hold).
+   */
+  publishVisibility?: 'UNCONFIRMED' | 'PUBLIC_CONFIRMED' | 'NOT_PUBLIC';
   createdAt: string;
   updatedAt: string;
   lastError?: string | null;
@@ -638,15 +644,19 @@ async function main() {
     }
 
     // success=true ⇒ verified=true theo contract publishReelToPage (Graph readback thật).
-    console.log('✅ REELS PUBLISHED & VERIFIED (Graph readback):');
+    // NHƯNG: readback chỉ chứng minh API publish — KHÔNG chứng minh nick ngoài xem được.
+    console.log('✅ Đã đăng qua API (Graph readback) — chờ xác nhận hiển thị công khai:');
     console.log(`  * Video ID:  ${reelResult.videoId}`);
     console.log(`  * Permalink: ${reelResult.permalinkUrl}`);
+    console.log('  ⚠️ publishVisibility = UNCONFIRMED — KHÔNG coi là "đăng thành công" cho tới');
+    console.log('     khi Operator mở permalink bằng tài khoản KHÔNG phải admin và xác nhận.');
 
     const publishedAt = isoNow();
     manifest.state = 'PUBLISHED';
     manifest.safety.facebookApiCalled = true;
     manifest.safety.uploaded = true;
     manifest.safety.published = true;
+    manifest.publishVisibility = 'UNCONFIRMED';
     manifest.lastError = null;
     saveManifest(manifest);
     updateRegistryFromManifest(manifest);
@@ -654,6 +664,7 @@ async function main() {
     const statusPayload = {
       state: 'PUBLISHED',
       generatedAt: publishedAt,
+      publishVisibility: 'UNCONFIRMED',
       facebook: {
         pageId: maskedPageId,
         pageName,
@@ -662,6 +673,8 @@ async function main() {
         permalinkUrl: reelResult.permalinkUrl,
         published: true,
         verifiedByGraphReadback: true,
+        apiPublishConfirmed: true,
+        publicVisibilityConfirmed: false,
       },
     };
     const statusPath = join(JOBS_ROOT, jobId, 'facebook_publish_status.json');
@@ -682,6 +695,10 @@ async function main() {
       verification: {
         graphReadback: true,
         verifiedAt: publishedAt,
+        apiPublishConfirmed: true,
+        publicVisibilityConfirmed: false,
+        publishVisibility: 'UNCONFIRMED',
+        note: 'Graph readback chỉ chứng minh API publish. Public visibility cần Operator xác nhận bằng tài khoản ngoài.',
       },
     };
     const resultPath = join(PACKAGE_ROOT, jobId, 'facebook_publish_result.json');
