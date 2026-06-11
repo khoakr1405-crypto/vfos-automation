@@ -1,7 +1,7 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-06-05 (Product Image 04B — capture product image through product card flow, DONE + PUSHED `963bc2a`. Trước đó: Real API 05C TikTok Display Connector + Studio UI wiring `/products` → `/create`.)
+> **Cập nhật lần cuối**: 2026-06-11 (North Star v2 outcome-based đã chốt — xem `docs/VFOS_NORTH_STAR.md`. Trước đó: 2026-06-05 Product Image 04B — capture product image through product card flow, DONE + PUSHED `963bc2a`.)
 > **Branch**: `master` | **Commit mốc tại thời điểm cập nhật trạng thái**: `963bc2a` (remote HEAD — `feat(shopee): capture product image through product card flow`)
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task → luôn chạy `pnpm vfos:daily` để có chỉ dẫn trạng thái mới nhất
 
@@ -11,6 +11,12 @@
 ---
 
 ## 1. Mục tiêu lớn của VFOS
+
+> **🆕 2026-06-11 — North Star v2 (outcome-based) đã chốt**: nguồn sự thật là `docs/VFOS_NORTH_STAR.md`.
+> Kết quả cuối: video nguồn → video tiếng Việt đã biên tập/biến đổi → đăng thật Facebook/TikTok → có người xem → có click affiliate → có đơn hàng/doanh thu thật.
+> Quản lý theo cấu trúc **Niche → Channel → Video Job → Affiliate Link → Publish Result**, nhiều ngách/nhiều kênh qua Command Center.
+> Page "Review Nhà bạn" là kênh thử nghiệm product review đầu tiên, không phải giới hạn cuối. TikTok publish + các ngách Vlog Câu cá/Vlog xe = roadmap dài hạn.
+> Milestone ladder M1–M6 (postId thật → TikTok thật → click → đơn → doanh thu → 10tr/50tr/100–200tr/tháng) — chỉ tick khi có bằng chứng thật.
 
 VFOS là hệ thống hỗ trợ chiến lược **content-led affiliate**:
 

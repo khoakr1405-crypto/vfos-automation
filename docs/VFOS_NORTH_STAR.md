@@ -1,30 +1,133 @@
-# VFOS North Star
+# VFOS North Star (v2 — outcome-based)
 
-## 1. Core mission
-VFOS được xây thành một hệ thống giúp tạo video và reup video Trung Quốc/nước ngoài, sau đó edit/biến đổi video và bản địa hóa để đăng tại Việt Nam trên **Facebook và TikTok** phục vụ affiliate. 
-**Chiến lược mặc định (Default Strategy)**: Content-led affiliate. Nội dung kéo view trước, sau đó ghép sản phẩm affiliate liên quan hợp lý đến nội dung, bối cảnh và tệp người xem. KHÔNG mặc định chạy theo product-first affiliate.
+> **Phiên bản**: v2 — Operator chốt 2026-06-11, thay bản v1 (content-led affiliate thuần mô tả).
+> Đây là nguồn sự thật cho mọi quyết định ưu tiên, mọi đề xuất kiến trúc và mọi lệnh `/goal` của task lớn.
+> North Star ghi theo **KẾT QUẢ CUỐI CÙNG Operator mong muốn**, không chỉ scope kỹ thuật hiện tại.
 
-## 2. Business ambition
-Đây là mục tiêu kinh doanh trực tiếp của người xây dự án. VFOS được định hướng để tiến tới khả năng hỗ trợ đạt mức 100–200 triệu VNĐ/tháng từ affiliate video Facebook/TikTok tại Việt Nam.
-Đây là mục tiêu đích mang tính tham vọng, phải được kiểm chứng bằng thử nghiệm thật, dữ liệu thật và tối ưu liên tục; không được xem là kết quả mặc định đảm bảo.
+## 1. Core mission — kết quả cuối cùng
 
-## 3. What success looks like
-Hệ thống giúp:
-* Tìm/đánh giá nguồn video Trung Quốc và nước ngoài có khả năng kéo view cực mạnh, sau đó tìm sản phẩm/ngách affiliate liên quan để ghép vào (match).
-* Chọn video đáng reup.
-* Đề xuất hoặc tự tạo phương án edit/biến đổi/bản địa hóa video.
-* Tối ưu caption, hook, voice/text overlay, CTA, affiliate angle cho thị trường Việt Nam.
-* Tối ưu đầu ra phù hợp với định dạng **Facebook Reels/video** và **TikTok video**.
-* Hỗ trợ học từ kết quả view/click/chuyển đổi để cải thiện batch video sau.
-* Cuối cùng tăng xác suất tạo video affiliate vừa có view vừa có khả năng chuyển đổi cao.
+VFOS là hệ thống giúp Operator xây và vận hành **nhiều kênh nội dung affiliate trên Facebook/TikTok, theo nhiều ngách khác nhau**, được quản lý rõ ràng, không bị rối.
 
-## 4. Decision filter
+Mục tiêu cuối của VFOS **không phải** là "render video", "edit video" hay "đăng bài". Mục tiêu cuối là một pipeline có **bằng chứng thật**:
+
+> video nguồn → video tiếng Việt đã biên tập/biến đổi → đăng thật lên Facebook/TikTok → có người xem → có click affiliate → có đơn hàng/doanh thu thật.
+
+**Chiến lược mặc định**: Content-led affiliate — nội dung kéo view trước, sau đó ghép sản phẩm affiliate liên quan hợp lý đến nội dung, bối cảnh và tệp người xem. KHÔNG mặc định chạy theo product-first affiliate.
+
+## 2. Business ambition & milestone ladder
+
+Đích dài hạn: **100–200 triệu VNĐ/tháng** từ affiliate video Facebook/TikTok tại Việt Nam. Đây là mục tiêu tham vọng, phải được kiểm chứng bằng thử nghiệm thật, dữ liệu thật và tối ưu liên tục — không được xem là kết quả mặc định đảm bảo.
+
+Các mốc trung gian theo **kết quả kinh doanh thật** (chỉ tick khi có bằng chứng thật):
+
+| Mốc | Kết quả cần đạt | Bằng chứng yêu cầu |
+|---|---|---|
+| M1 | Video đầu tiên được tạo/biến đổi và đăng thật lên Facebook Page | postId/permalink thật, readback verify từ Graph API |
+| M2 | Video đầu tiên đăng thật lên TikTok (khi TikTok publish được xây) | post/video id thật trên TikTok |
+| M3 | Click affiliate đầu tiên | số liệu click trên Shopee affiliate dashboard |
+| M4 | Đơn hàng affiliate đầu tiên | đơn ghi nhận thật trên dashboard |
+| M5 | Doanh thu affiliate đầu tiên | hoa hồng ghi nhận thật |
+| M6 | Mốc doanh thu lớn dần: 10tr → 50tr → 100–200tr VNĐ/tháng | dữ liệu doanh thu thật theo tháng |
+
+## 3. Hai luồng nội dung chính
+
+### Luồng 1 — Ngách review sản phẩm
+
+- Operator tự tìm hoặc add video nguồn phù hợp để VFOS edit/biến đổi thành video review tiếng Việt.
+- VFOS tự động tìm/chọn/gắn link Shopee affiliate đúng sản phẩm hoặc đúng ngữ cảnh.
+- Mục tiêu: video review có nhiều phương án caption, hook, voice, nhạc, QA đầy đủ và link affiliate phù hợp để kéo view, click và đơn hàng.
+
+### Luồng 2 — Ngách nội dung/giải trí
+
+- Operator add video nguồn nước ngoài hoặc Trung Quốc trước; VFOS phân tích nội dung gốc, nhận diện ngữ cảnh/câu chuyện/ý chính, dịch và chuyển ngữ sang tiếng Việt tự nhiên, sau đó edit/biến đổi thành nội dung phù hợp thị trường Việt Nam mà **không bị nền tảng nhận diện là kênh reup đơn thuần**.
+
+### Chuẩn localization (áp dụng cả 2 luồng)
+
+VFOS không chỉ dịch từng chữ, mà phải:
+
+- hiểu nội dung gốc;
+- dịch/chuyển ngữ sang tiếng Việt dễ hiểu;
+- Việt hóa caption/subtitle/voice/hook;
+- chỉnh lại câu chữ cho hợp người xem Việt Nam;
+- giữ đúng ý chính nhưng không sao chép máy móc;
+- tạo nhiều phiên bản caption, hook, voice, nhạc, Việt sub và QA.
+
+### Chuẩn gắn affiliate theo ngữ cảnh
+
+Sau khi nội dung đã rõ ngữ cảnh, VFOS tự động tìm sản phẩm/link affiliate liên quan để gắn vào. Mỗi nội dung có thể có:
+
+- 1 link chủ đạo;
+- 2 link phụ gợi ý dưới comment.
+
+Mục tiêu: nội dung tự nhiên, dễ xem, không bán hàng quá lộ, nhưng vẫn gắn link affiliate đúng ngữ cảnh để kéo view, click và đơn hàng.
+
+## 4. Mô hình quản lý hệ thống
+
+Cấu trúc quản lý bắt buộc: **Niche → Channel → Video Job → Affiliate Link → Publish Result**.
+
+- Một ngách có thể có nhiều kênh Facebook/TikTok khác nhau.
+- Mỗi kênh/ngách phải có cấu hình riêng: nền tảng, page/account, phong cách nội dung, loại sản phẩm, quy tắc gắn link, lịch đăng, lịch sử video, trạng thái publish, dữ liệu hiệu quả.
+- Phải có Command Center/dashboard để Operator quản lý nhiều ngách/nhiều kênh/nhiều workflow rõ ràng.
+- KHÔNG gom tất cả chức năng vào một màn hình gây rối.
+
+**Vị trí các kênh hiện tại trong North Star**:
+
+- Facebook Page **"Review Nhà bạn"** (`1169116176282221`) là kênh thử nghiệm product review **đầu tiên/hiện tại**, không phải kênh duy nhất mãi mãi, không phải giới hạn cuối cùng của VFOS.
+- **TikTok publish** không nằm ngoài mục tiêu cuối — là mục tiêu chính trong roadmap; giai đoạn kỹ thuật hiện tại ưu tiên Facebook Page trước.
+- Nhiều page, nhiều ngách (ví dụ: Vlog Câu cá, Vlog Về xe) và nhiều kênh là mục tiêu dài hạn trong North Star, chưa thuộc scope kỹ thuật ngắn hạn.
+
+## 5. Giai đoạn hiện tại (cập nhật 2026-06-11)
+
+Focus duy nhất: hoàn thiện **vòng khép kín đầu tiên** trên kênh "Review Nhà bạn" (= Milestone M1, tiến tới M3–M5):
+
+> Shopee Product Card (owner `an_17376660568`) → source video sạch → production pipeline → Operator duyệt preview → PACKAGED → đăng video THẬT lên Page với postId/permalink readback verify → đo view/click.
+
+- Job đang vận hành: `job_20260609_001` (state PACKAGED, gates xanh).
+- Blocker kỹ thuật duy nhất: chưa có Reels/video uploader thật (TRUTH GUARD `REELS_UPLOAD_NOT_IMPLEMENTED` đang chặn fake success) → xây ở round riêng.
+- TikTok publish: roadmap chính, chưa làm (repo hiện chỉ có TikTok read-only connector).
+
+## 6. Decision filter
+
 Mọi đề xuất tính năng, kiến trúc và ưu tiên triển khai phải trả lời được:
-“Việc này có giúp VFOS tạo nội dung kéo view mạnh và ghép nối affiliate phù hợp tại Việt Nam trên Facebook và TikTok không?”
-**Cảnh báo "Product-First Tunnel Vision"**: Chặn mọi luồng tư duy chỉ chăm chăm tìm video có sản phẩm để bán mà bỏ qua tiềm năng traffic của video. Nếu không tạo ra view, không ưu tiên.
 
-## 5. Anti-goals
-* Không biến VFOS thành nền tảng AI automation chung chung, lệch khỏi bài toán video affiliate kiếm tiền.
-* Không chỉ xây công cụ viết nội dung rời rạc mà bỏ quên pipeline cốt lõi: tìm video → reup/edit → đăng Facebook/TikTok affiliate → đo hiệu quả.
-* Không ưu tiên hạ tầng, dashboard hoặc plugin chỉ vì kỹ thuật thú vị nếu chưa phục vụ trực tiếp mục tiêu video affiliate reup/biến đổi.
-* Không đánh đồng “hệ thống kỹ thuật lớn” với “công cụ tạo ra kết quả kinh doanh”.
+> "Việc này có đưa VFOS tiến gần hơn tới kết quả cuối — video Việt hóa đăng thật → view → click → đơn/doanh thu thật trên Facebook/TikTok — không?"
+
+**Cảnh báo "Product-First Tunnel Vision"**: chặn mọi luồng tư duy chỉ chăm chăm tìm video có sản phẩm để bán mà bỏ qua tiềm năng traffic của video. Nếu không tạo ra view, không ưu tiên.
+
+**Cảnh báo "Plumbing Success"**: không báo thành công chỉ vì xong plumbing/code/build pass. PASS chỉ khi đạt kết quả cuối có bằng chứng thật.
+
+## 7. Nguyên tắc bắt buộc
+
+- PASS chỉ khi đạt kết quả cuối có bằng chứng thật.
+- Không fake success — lỗi phải fail rõ ràng, không bịa kết quả.
+- Không báo thành công chỉ vì xong plumbing/code.
+- Không publish/API thật nếu chưa có lệnh rõ từ Operator; publish luôn là cổng duyệt thủ công riêng.
+- Không sửa ngoài scope.
+- Mọi task lớn sau này dùng `/goal` theo **kết quả cuối cùng cần đạt**, không chỉ theo từng phần nhỏ.
+- Chi tiết luật cấm nền: xem "VFOS Global No-Go Rules" trong `CLAUDE.md`.
+
+## 8. Anti-goals
+
+- Không biến VFOS thành nền tảng AI automation chung chung, lệch khỏi bài toán video affiliate kiếm tiền.
+- Không chỉ xây công cụ nội dung rời rạc mà bỏ quên pipeline cốt lõi: tìm video → reup/edit/localize → đăng Facebook/TikTok affiliate → đo hiệu quả.
+- Không ưu tiên hạ tầng, dashboard hoặc plugin chỉ vì kỹ thuật thú vị nếu chưa phục vụ trực tiếp mục tiêu video affiliate.
+- Không đánh đồng "hệ thống kỹ thuật lớn" với "công cụ tạo ra kết quả kinh doanh".
+- Không đánh đồng "code chạy được / build pass" với "kết quả cuối đã đạt".
+
+## 9. /goal template chuẩn cho task lớn
+
+```text
+/goal VFOS: [KẾT QUẢ CUỐI CÙNG cần đạt — bám pipeline: video nguồn → video Việt đã biến đổi → đăng thật → view → click → đơn/doanh thu thật].
+
+Áp dụng Sidebar-Based Guardian Workflows.
+Module: [module sidebar liên quan].
+Guardian: [guardian tương ứng module].
+
+Tự kiểm repo/state trước, tự lập plan, làm từng bước nhỏ nhưng đánh giá kết quả theo goal cuối.
+Không fake success. Không sửa ngoài scope. Không publish/API thật nếu chưa có lệnh rõ.
+Không động .env/token/secret/runtime/media/log nếu task không yêu cầu.
+PASS chỉ khi có bằng chứng thật.
+Báo cáo Guardian / State / Actions / Evidence / Result / Git Status.
+
+SELF-REVIEW BẮT BUỘC TRƯỚC KHI BÁO CÁO CUỐI.
+```
