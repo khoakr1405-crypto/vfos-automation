@@ -21,15 +21,22 @@ const TSX_CLI_REL = 'node_modules/tsx/dist/cli.mjs';
  * Chạy một script TS trong repo qua tsx, an toàn cross-platform.
  * @param scriptRelPath đường dẫn script tương đối repo root (vd scripts/vfos-job-manager.ts)
  * @param args argv truyền cho script (đã validate ở route; KHÔNG qua shell)
+ * @param timeoutMs timeout cho spawnSync; default 120s. Command upload media thật
+ *   (vd live Facebook Reels publish: upload + processing poll + readback verify)
+ *   cần budget dài hơn — caller truyền tường minh.
  */
-export function runRepoScript(scriptRelPath: string, args: string[]): SpawnSyncReturns<string> {
+export function runRepoScript(
+  scriptRelPath: string,
+  args: string[],
+  timeoutMs = 120_000,
+): SpawnSyncReturns<string> {
   const tsxCli = resolveInsideRepo(TSX_CLI_REL) ?? TSX_CLI_REL;
   return spawnSync(process.execPath, [tsxCli, scriptRelPath, ...args], {
     cwd: repoRoot(),
     encoding: 'utf8',
     env: { ...process.env },
     shell: false,
-    timeout: 120_000,
+    timeout: timeoutMs,
     maxBuffer: 1024 * 1024,
   });
 }

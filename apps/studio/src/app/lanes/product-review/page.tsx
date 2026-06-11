@@ -2730,9 +2730,21 @@ export default function ProductReviewLanePage() {
           {latestJob?.state === 'PUBLISHED' ||
           publishPreflight?.alreadyPublished ||
           publishResult?.ok ? (
-            <Button variant="success" disabled className="!py-1.5 !px-3 text-xs font-semibold">
-              ✓ Đã đăng thành công
-            </Button>
+            <div className="flex w-full flex-col gap-1.5">
+              <Button variant="success" disabled className="!py-1.5 !px-3 text-xs font-semibold">
+                ✓ Đã đăng thành công
+              </Button>
+              {publishResult?.result?.permalinkUrl && (
+                <a
+                  href={publishResult.result.permalinkUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[11px] text-accent-green underline hover:text-accent-green/80"
+                >
+                  Xem bài đăng trên Facebook (đã verify qua Graph readback) ↗
+                </a>
+              )}
+            </div>
           ) : (
             <div className="flex w-full flex-col gap-2">
               <div className="flex flex-wrap items-center gap-3">

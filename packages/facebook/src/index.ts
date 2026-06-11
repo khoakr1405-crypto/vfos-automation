@@ -4,10 +4,10 @@
  * This module provides a lightweight client for interacting with
  * the Meta Graph API. Currently supports:
  * - Page connection test (read page id + name)
+ * - Text post publish (POST /{page_id}/feed)
+ * - Reels publish (3-phase upload + mandatory Graph readback verify)
  *
  * Future (NOT implemented yet):
- * - Publishing Reels
- * - Uploading videos
  * - Reading insights
  *
  * Security rules:
@@ -25,3 +25,9 @@ export {
   type TextPostResult,
   type PublishMode,
 } from "./post-page.js";
+export {
+  publishReelToPage,
+  type ReelPublishOptions,
+  type ReelPublishResult,
+  type ReelPublishPhase,
+} from "./publish-reels.js";

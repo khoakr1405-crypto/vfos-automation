@@ -82,7 +82,14 @@ function readSanitizedPublishStatus(jobId: string): Record<string, unknown> | nu
   try {
     const s = JSON.parse(readFileSync(abs, 'utf-8')) as {
       state?: string;
-      facebook?: { pageName?: string; postId?: string; videoId?: string; published?: boolean };
+      facebook?: {
+        pageName?: string;
+        postId?: string;
+        videoId?: string;
+        published?: boolean;
+        permalinkUrl?: string;
+        verifiedByGraphReadback?: boolean;
+      };
     };
     return {
       state: s.state ?? null,
@@ -90,6 +97,8 @@ function readSanitizedPublishStatus(jobId: string): Record<string, unknown> | nu
       postId: s.facebook?.postId ?? null,
       videoId: s.facebook?.videoId ?? null,
       pageName: s.facebook?.pageName ?? null,
+      permalinkUrl: s.facebook?.permalinkUrl ?? null,
+      verifiedByGraphReadback: s.facebook?.verifiedByGraphReadback ?? null,
     };
   } catch {
     return null;
@@ -239,12 +248,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ jobId: string 
 
   // 6. Tất cả guard pass → ghi audit (attempt) rồi gọi command thật.
   const requestedAt = new Date().toISOString();
-  // Gọi command thật qua tsx (an toàn EINVAL + injection — xem run-command.ts)
-  const run = runRepoScript('scripts/job-facebook-publish-command.ts', [
-    '--job',
-    jobId,
-    '--confirm-live-publish',
-  ]);
+  // Gọi command thật qua tsx (an toàn EINVAL + injection — xem run-command.ts).
+  // Timeout 600s: live Reels upload thật = binary upload + Facebook processing poll
+  // (tối đa ~240s) + Graph readback verify — vượt default 120s.
+  const run = runRepoScript(
+    'scripts/job-facebook-publish-command.ts',
+    ['--job', jobId, '--confirm-live-publish'],
+    600_000,
+  );
 
   const exitCode = typeof run.status === 'number' ? run.status : null;
   const succeeded = !run.error && exitCode === 0;

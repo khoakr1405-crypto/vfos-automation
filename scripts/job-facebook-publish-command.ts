@@ -14,6 +14,7 @@ import { spawnSync, execSync } from 'node:child_process';
 import { loadDotEnv } from '../packages/voice/src/load-env.js';
 import { createMetaClient, maskToken } from '../packages/facebook/src/meta-client.js';
 import { testPageConnection } from '../packages/facebook/src/test-page.js';
+import { publishReelToPage } from '../packages/facebook/src/publish-reels.js';
 import { syncManifestArtifacts } from './job-manifest-helper.js';
 
 // Configuration
@@ -565,23 +566,131 @@ async function main() {
   }
 
   // ---- LIVE MODE ----
+  // Uploader Reels THẬT (Milestone M1 — thay TRUTH GUARD hotfix 2026-06-11).
+  // Truth rules: KHÔNG Math.random ID, KHÔNG ghi PUBLISHED khi Graph readback chưa
+  // verify id + permalink thật. Fail SAU finish-phase → ghi uploaded=true (khóa
+  // double-publish) nhưng published vẫn false.
   if (effectiveMode === 'LIVE') {
-    // TRUTH GUARD (hotfix sau sự cố publish giả 2026-06-11): repo CHƯA có uploader
-    // video/Reels thật (packages/facebook chỉ có publishTextPost /feed). Nhánh này
-    // trước đây bịa postId/videoId bằng Math.random() rồi ghi state=PUBLISHED +
-    // safety.published=true dù KHÔNG upload gì → UI báo "Đã đăng" trong khi Page
-    // không có video. Chừng nào uploader thật chưa được implement, LIVE mode PHẢI
-    // fail rõ ràng và TUYỆT ĐỐI không ghi manifest/registry/status/result.
-    console.error(
-      '🛑 REELS_UPLOAD_NOT_IMPLEMENTED (FACEBOOK_VIDEO_UPLOAD_NOT_IMPLEMENTED):',
-    );
-    console.error('  -> Live video upload CHƯA được implement trong repo này.');
-    console.error('  -> KHÔNG có video nào được đăng lên Facebook.');
-    console.error('  -> Manifest/registry/status GIỮ NGUYÊN — không có gì bị ghi.');
-    console.error(
-      '  -> Cần xây uploader thật ở round riêng: POST /{page_id}/video_reels (3-phase) hoặc POST /{page_id}/videos, kèm readback verify postId/permalink.',
-    );
-    process.exit(20);
+    // Defense-in-depth: LIVE chỉ chạy khi META_MODE=live (cùng chuẩn publishTextPost).
+    const metaMode = (process.env.META_MODE || '').trim().toLowerCase();
+    if (metaMode !== 'live') {
+      console.error(
+        `🛑 META_MODE_NOT_LIVE: META_MODE='${metaMode || 'unset'}' — live publish bị chặn.`,
+      );
+      console.error('  -> KHÔNG có API call nào được thực hiện. Manifest/registry GIỮ NGUYÊN.');
+      process.exit(15);
+      return;
+    }
+
+    // Precheck kết nối Page (GET read-only) — validate token + lấy pageName thật
+    // TRƯỚC khi đụng upload. Token lỗi thì fail ở đây, không upload dở dang.
+    console.log('🔗 Precheck: xác thực token & Page qua Graph API (read-only)...');
+    const client = createMetaClient({ pageId, pageAccessToken });
+    const connResult = await testPageConnection(client);
+    if (!connResult.success || !connResult.page) {
+      console.error(`🛑 PAGE_CONNECTION_FAILED: ${connResult.error}`);
+      if (connResult.diagnosis) console.error(`💡 Diagnosis:\n${connResult.diagnosis}`);
+      console.error('  -> KHÔNG có video nào được upload. Manifest/registry GIỮ NGUYÊN.');
+      process.exit(16);
+      return;
+    }
+    const pageName = connResult.page.name;
+    console.log(`  * Page Name: ${pageName}`);
+
+    // Description: caption + affiliate link + hashtags chưa nằm sẵn trong caption.
+    const extraTags = hashtags.filter((tag) => !captionText.includes(tag));
+    const description = [captionText, `🛒 ${affiliateLink}`, extraTags.join(' ')]
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0)
+      .join('\n\n');
+
+    console.log('🚀 LIVE REELS UPLOAD — 3-phase upload thật bắt đầu.');
+    console.log(`  * Video: ${captionedRel}`);
+    const reelResult = await publishReelToPage(pageId, pageAccessToken, {
+      videoFilePath: captionedAbs as string,
+      description,
+    });
+
+    if (!reelResult.success) {
+      console.error(`🛑 LIVE_PUBLISH_FAILED (phase: ${reelResult.phase}): ${reelResult.error}`);
+      if (reelResult.diagnosis) console.error(`💡 ${reelResult.diagnosis}`);
+
+      if (reelResult.uploadAccepted) {
+        // Facebook ĐÃ nhận video (finish OK) nhưng verify fail/timeout —
+        // ghi sự thật một phần: uploaded=true (safety lock chặn double-publish),
+        // published vẫn FALSE, state GIỮ PACKAGED.
+        manifest.safety.facebookApiCalled = true;
+        manifest.safety.uploaded = true;
+        manifest.safety.published = false;
+        manifest.lastError = `PUBLISH_VERIFY_FAILED:${reelResult.phase}`;
+        saveManifest(manifest);
+        updateRegistryFromManifest(manifest);
+        console.error('  -> Upload ĐÃ được Facebook chấp nhận nhưng CHƯA verify được permalink.');
+        console.error('  -> KHÔNG ghi PUBLISHED. Safety lock uploaded=true đã bật để chặn đăng lại.');
+        console.error('  -> Operator kiểm tra Page thủ công trước khi quyết định bước tiếp.');
+        process.exit(22);
+        return;
+      }
+
+      console.error('  -> KHÔNG có video nào được đăng. Manifest/registry GIỮ NGUYÊN.');
+      process.exit(21);
+      return;
+    }
+
+    // success=true ⇒ verified=true theo contract publishReelToPage (Graph readback thật).
+    console.log('✅ REELS PUBLISHED & VERIFIED (Graph readback):');
+    console.log(`  * Video ID:  ${reelResult.videoId}`);
+    console.log(`  * Permalink: ${reelResult.permalinkUrl}`);
+
+    const publishedAt = isoNow();
+    manifest.state = 'PUBLISHED';
+    manifest.safety.facebookApiCalled = true;
+    manifest.safety.uploaded = true;
+    manifest.safety.published = true;
+    manifest.lastError = null;
+    saveManifest(manifest);
+    updateRegistryFromManifest(manifest);
+
+    const statusPayload = {
+      state: 'PUBLISHED',
+      generatedAt: publishedAt,
+      facebook: {
+        pageId: maskedPageId,
+        pageName,
+        postId: reelResult.videoId,
+        videoId: reelResult.videoId,
+        permalinkUrl: reelResult.permalinkUrl,
+        published: true,
+        verifiedByGraphReadback: true,
+      },
+    };
+    const statusPath = join(JOBS_ROOT, jobId, 'facebook_publish_status.json');
+    writeFileSync(statusPath, `${JSON.stringify(statusPayload, null, 2)}\n`, 'utf8');
+
+    const resultPayload = {
+      jobId,
+      mode: 'LIVE',
+      publishedAt,
+      pageId: maskedPageId,
+      pageName,
+      videoId: reelResult.videoId,
+      permalinkUrl: reelResult.permalinkUrl,
+      videoFile: captionedRel,
+      caption: captionText,
+      affiliateLink,
+      hashtags,
+      verification: {
+        graphReadback: true,
+        verifiedAt: publishedAt,
+      },
+    };
+    const resultPath = join(PACKAGE_ROOT, jobId, 'facebook_publish_result.json');
+    writeFileSync(resultPath, `${JSON.stringify(resultPayload, null, 2)}\n`, 'utf8');
+
+    console.log(`Status artifact:  ${statusPath}`);
+    console.log(`Result artifact:  ${resultPath}`);
+    console.log('======================================================');
+    process.exit(0);
     return;
   }
 }
