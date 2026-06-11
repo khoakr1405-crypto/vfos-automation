@@ -170,15 +170,14 @@ export async function POST(req: Request, ctx: { params: Promise<{ jobId: string 
     );
   }
 
-  // Parse options from request body
-  let confirmPhrase = '';
+  // Parse options from request body — Phase C UX: KHÔNG còn confirm phrase.
+  // expectedProduct (Product Card hiện tại) vẫn được gửi để server đối chiếu
+  // Product Binding (Product Review Guardian). Default-deny nếu thiếu/ sai.
   let expectedProduct: { shortLink?: string; shopId?: string; itemId?: string } | undefined;
   try {
     const body = (await req.json()) as {
-      confirmPhrase?: unknown;
       expectedProduct?: { shortLink?: string; shopId?: string; itemId?: string };
     };
-    if (body && typeof body.confirmPhrase === 'string') confirmPhrase = body.confirmPhrase.trim();
     if (body && body.expectedProduct) expectedProduct = body.expectedProduct;
   } catch {
     /* body có thể rỗng */
@@ -207,12 +206,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ jobId: string 
     );
   }
 
-  // 5. Confirm phrase + gate server-side (không tin client) — gộp mọi lý do chặn
-  const expectedPhrase = livePublishConfirmPhrase(jobId);
-  const confirmMatched = confirmPhrase === expectedPhrase;
-
+  // 5. Gate server-side (KHÔNG tin client). Phase C UX bỏ confirm phrase: cú click
+  // nút "Đăng bài Facebook" của Operator chính là xác nhận. Mọi gate Publish Safety /
+  // Product Binding / owner / env / fallback / alreadyPublished vẫn enforce nguyên vẹn
+  // qua evaluateLivePublishGates — gate, không phải UI, mới quyết định publish.
   const details = [...gate.blockedReasons];
-  if (!confirmMatched) details.push('Confirm phrase mismatch');
 
   if (details.length > 0) {
     appendPublishAuditLog(jobId, {
@@ -221,7 +219,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ jobId: string 
       requestedAt: new Date().toISOString(),
       localOnly,
       envLivePublishEnabled: envEnabled,
-      confirmPhraseMatched: confirmMatched,
+      confirmMode: 'one_click',
+      operatorIntent: 'one_click_publish',
       gateStatus: 'BLOCKED',
       result: 'BLOCKED',
       exitCode: null,
@@ -256,7 +255,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ jobId: string 
     requestedAt,
     localOnly,
     envLivePublishEnabled: envEnabled,
-    confirmPhraseMatched: true,
+    confirmMode: 'one_click',
+    operatorIntent: 'one_click_publish',
     gateStatus: 'PASS',
     result: succeeded ? 'SUCCESS' : 'FAIL',
     exitCode,

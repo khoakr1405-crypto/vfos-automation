@@ -197,7 +197,15 @@ export interface LivePublishAuditRecord {
   requestedAt: string;
   localOnly: boolean;
   envLivePublishEnabled: boolean;
-  confirmPhraseMatched: boolean;
+  /**
+   * @deprecated Phase C bỏ confirm-phrase (one-click publish). Không còn được ghi;
+   * giữ optional để log lịch sử cũ vẫn parse. Dùng `confirmMode` thay thế.
+   */
+  confirmPhraseMatched?: boolean;
+  /** Cơ chế xác nhận của Operator. One-click: bấm thẳng nút, không confirm phrase. */
+  confirmMode: 'one_click';
+  /** Chủ đích thao tác — để audit rõ ngữ nghĩa về sau. */
+  operatorIntent: 'one_click_publish';
   gateStatus: 'PASS' | 'BLOCKED';
   result: 'SUCCESS' | 'FAIL' | 'BLOCKED';
   exitCode: number | null;

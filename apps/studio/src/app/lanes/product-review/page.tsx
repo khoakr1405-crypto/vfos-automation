@@ -290,9 +290,7 @@ export default function ProductReviewLanePage() {
     pageName?: string | null;
   } | null>(null);
 
-  // Phase C — Live publish states
-  const [showPublishModal, setShowPublishModal] = useState(false);
-  const [publishConfirmInput, setPublishConfirmInput] = useState('');
+  // Phase C — Live publish states (đăng trực tiếp, không modal confirm phrase)
   const [submittingPublish, setSubmittingPublish] = useState(false);
   const [publishResult, setPublishResult] = useState<any | null>(null);
   const [publishError, setPublishError] = useState<string | null>(null);
@@ -310,6 +308,9 @@ export default function ProductReviewLanePage() {
   const pollStartRef = useRef<number | null>(null);
   // Phase B — nhớ jobId đã AUTO-RESUME preparePost trong PHIÊN hiện tại (chống loop).
   const autoResumedRef = useRef<Set<string>>(new Set());
+  // Phase C — guard đồng bộ chống double-click publish: ref cập nhật tức thì (state
+  // React async nên không đủ tin để chặn 2 POST khi Operator bấm nhanh 2 lần).
+  const publishInFlightRef = useRef<boolean>(false);
 
   // Package preview states
   const [packagePreview, setPackagePreview] = useState<{
@@ -871,12 +872,21 @@ export default function ProductReviewLanePage() {
     return 'Chờ sẵn sàng đăng.';
   };
 
+  // Phase C — Đăng bài Facebook TRỰC TIẾP khi Operator bấm nút (đã bỏ modal confirm
+  // phrase). Không auto: chỉ chạy khi đến từ onClick. Server (POST publish-facebook)
+  // vẫn evaluateLivePublishGates(jobId, expectedProduct) trước khi đăng — UI chỉ là
+  // lớp tiện lợi, không phải nguồn quyết định. Chống double-click bằng ref đồng bộ.
   const handleLivePublish = async (jobId: string) => {
-    const expectedPhrase = publishPreflight?.confirmPhrase || `PUBLISH ${jobId}`;
-    if (publishConfirmInput.trim() !== expectedPhrase || submittingPublish) {
-      setPublishError('Cụm từ xác nhận không khớp.');
+    // Guard: đang đăng (ref đồng bộ), gate chưa mở, hoặc đã đăng → không POST.
+    if (
+      publishInFlightRef.current ||
+      submittingPublish ||
+      !canPublish ||
+      publishPreflight?.alreadyPublished
+    ) {
       return;
     }
+    publishInFlightRef.current = true;
     setSubmittingPublish(true);
     setPublishError(null);
     setPublishStderr(null);
@@ -887,16 +897,11 @@ export default function ProductReviewLanePage() {
       const res = await fetch(`/api/studio/jobs/${jobId}/publish-facebook`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          confirmPhrase: publishConfirmInput.trim(),
-          expectedProduct,
-        }),
+        body: JSON.stringify({ expectedProduct }),
       });
       const data = await res.json();
       if (res.ok && data.ok) {
         setPublishResult(data);
-        setPublishConfirmInput('');
-        setShowPublishModal(false);
         await load();
         // Fetch new preflight to sync alreadyPublished status
         const params = new URLSearchParams();
@@ -933,6 +938,7 @@ export default function ProductReviewLanePage() {
       setPublishError('Lỗi kết nối đến API server.');
     } finally {
       setSubmittingPublish(false);
+      publishInFlightRef.current = false;
     }
   };
 
@@ -2716,33 +2722,56 @@ export default function ProductReviewLanePage() {
           </div>
         )}
 
-        {/* Flow chính Action 3 chỉ có 1 CTA cuối: "Đăng bài" (Phase C, gate cứng).
-            KHÔNG có nút "Chuẩn bị/Thử lại" làm CTA chính; retry kín đáo ở "Chi tiết kỹ thuật". */}
+        {/* Flow chính Action 3 chỉ có 1 CTA cuối: "Đăng bài Facebook" (Phase C, gate cứng).
+            Phase C UX: bấm nút khi gate xanh → đăng luôn, KHÔNG modal confirm phrase.
+            Server vẫn evaluateLivePublishGates trước khi đăng. Retry kín đáo ở "Chi tiết kỹ thuật". */}
         <PanelActions>
-          {publishPreflight?.alreadyPublished ? (
+          {publishPreflight?.alreadyPublished || publishResult?.ok ? (
             <Button variant="success" disabled className="!py-1.5 !px-3 text-xs font-semibold">
               ✓ Đã đăng thành công
             </Button>
           ) : (
-            <div className="flex flex-wrap items-center gap-3">
-              <Button
-                variant={canPublish ? 'danger' : 'outline'}
-                disabled={!canPublish}
-                onClick={() => {
-                  setPublishConfirmInput('');
-                  setPublishError(null);
-                  setPublishStderr(null);
-                  setPublishResult(null);
-                  setShowPublishModal(true);
-                }}
-                className="!py-1.5 !px-3 text-xs font-semibold"
-              >
-                Đăng bài Facebook
-              </Button>
-              {!canPublish && (
-                <span className="text-[10px] text-neutral-500 font-medium">
-                  {getPublishDisabledReason()}
-                </span>
+            <div className="flex w-full flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-3">
+                <Button
+                  variant={canPublish ? 'danger' : 'outline'}
+                  disabled={!canPublish || submittingPublish}
+                  onClick={() => handleLivePublish(selectedJobId)}
+                  className="!py-1.5 !px-3 text-xs font-semibold"
+                >
+                  {submittingPublish ? (
+                    <span className="flex items-center gap-1.5">
+                      <span className="animate-spin">
+                        <UtilIcon name="clock" width={13} height={13} />
+                      </span>
+                      Đang đăng...
+                    </span>
+                  ) : (
+                    'Đăng bài Facebook'
+                  )}
+                </Button>
+                {!canPublish && !submittingPublish && (
+                  <span className="text-[10px] text-neutral-500 font-medium">
+                    {getPublishDisabledReason()}
+                  </span>
+                )}
+              </div>
+              {publishError && (
+                <div className="rounded-lg border border-accent-rose/30 bg-accent-rose/5 px-3 py-2 space-y-1 text-[11px]">
+                  <div className="flex items-center gap-2 font-semibold text-accent-rose">
+                    <UtilIcon name="x" width={13} height={13} />
+                    <span>Đăng bài thất bại</span>
+                  </div>
+                  <p className="text-neutral-300">{publishError}</p>
+                  {publishStderr && (
+                    <pre className="mt-1 max-h-32 overflow-auto rounded bg-neutral-950/80 p-2 text-[10px] text-neutral-500 font-mono whitespace-pre-wrap">
+                      {publishStderr}
+                    </pre>
+                  )}
+                  <p className="text-[10px] text-neutral-500">
+                    Bấm lại nút để thử đăng lại nếu gate vẫn xanh — VFOS không tự động đăng lại.
+                  </p>
+                </div>
               )}
             </div>
           )}
@@ -2789,123 +2818,6 @@ export default function ProductReviewLanePage() {
         />
       </ActionPanel>
 
-      {showPublishModal && selectedJobId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg rounded-2xl border border-accent-rose/30 bg-neutral-900 p-6 shadow-2xl space-y-4">
-            <div className="flex items-center gap-2.5 border-b border-hairline pb-3">
-              <span className="text-accent-rose">
-                <UtilIcon name="bell" width={20} height={20} />
-              </span>
-              <h4 className="text-sm font-semibold text-neutral-100">
-                Xác nhận đăng thật lên Facebook
-              </h4>
-            </div>
-
-            <div className="space-y-2 text-[12px] text-neutral-300">
-              <div className="flex gap-2">
-                <span className="w-24 shrink-0 text-neutral-500 font-medium">Job ID:</span>
-                <span className="font-mono text-neutral-200">{selectedJobId}</span>
-              </div>
-              <div className="flex gap-2">
-                <span className="w-24 shrink-0 text-neutral-500 font-medium">Trang/Kênh:</span>
-                <span className="text-neutral-200">
-                  {publishPreflight?.targetChannel || packagePreview?.pageName || 'Review Nhà bạn'}
-                </span>
-              </div>
-              <div className="flex gap-2">
-                <span className="w-24 shrink-0 text-neutral-500 font-medium">Sản phẩm:</span>
-                <span className="text-neutral-200 line-clamp-1">
-                  {latestJob?.product || packagePreview?.productName || '—'}
-                </span>
-              </div>
-              {packagePreview && (
-                <div className="flex gap-2">
-                  <span className="w-24 shrink-0 text-neutral-500 font-medium">Caption:</span>
-                  <span className="text-neutral-300 line-clamp-2 italic">
-                    "{packagePreview.caption}"
-                  </span>
-                </div>
-              )}
-            </div>
-
-            <p className="text-[11px] text-accent-amber leading-relaxed">
-              ⚠️ Hành động này sẽ gọi API Facebook Reels thật. Video có thể xuất hiện công khai trên
-              kênh đã chọn. Không thể hoàn tác từ giao diện này.
-            </p>
-
-            <div className="space-y-2">
-              <span className="block text-[11px] text-neutral-400">
-                Để xác nhận, nhập chính xác:{' '}
-                <span className="font-mono text-neutral-100 font-bold select-all">
-                  {publishPreflight?.confirmPhrase || `PUBLISH ${selectedJobId}`}
-                </span>
-              </span>
-              <input
-                type="text"
-                value={publishConfirmInput}
-                onChange={(e) => setPublishConfirmInput(e.target.value)}
-                placeholder={publishPreflight?.confirmPhrase || `PUBLISH ${selectedJobId}`}
-                spellCheck={false}
-                autoComplete="off"
-                className="w-full rounded-lg border border-hairline bg-neutral-950/80 px-3 py-2 font-mono text-sm text-neutral-100 outline-none focus:border-accent-rose/50"
-              />
-            </div>
-
-            {publishError && (
-              <div className="rounded-xl border border-accent-rose/30 bg-accent-rose/5 px-4 py-3 space-y-1 text-[11px]">
-                <div className="flex items-center gap-2 font-semibold text-accent-rose">
-                  <UtilIcon name="x" width={14} height={14} />
-                  <span>YÊU CẦU THẤT BẠI</span>
-                </div>
-                <p className="text-neutral-300">{publishError}</p>
-                {publishStderr && (
-                  <pre className="mt-1.5 max-h-32 overflow-auto rounded bg-neutral-950/80 p-2 text-[10px] text-neutral-500 font-mono whitespace-pre-wrap">
-                    {publishStderr}
-                  </pre>
-                )}
-              </div>
-            )}
-
-            <div className="flex items-center justify-end gap-3 pt-1 border-t border-hairline/30">
-              <button
-                type="button"
-                onClick={() => {
-                  setShowPublishModal(false);
-                  setPublishError(null);
-                  setPublishStderr(null);
-                }}
-                disabled={submittingPublish}
-                className="rounded-lg px-4 py-2 text-sm text-neutral-400 hover:text-neutral-200 disabled:opacity-50"
-              >
-                Huỷ
-              </button>
-              <button
-                type="button"
-                onClick={() => handleLivePublish(selectedJobId)}
-                disabled={
-                  publishConfirmInput.trim() !==
-                    (publishPreflight?.confirmPhrase || `PUBLISH ${selectedJobId}`) ||
-                  submittingPublish
-                }
-                className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${
-                  publishConfirmInput.trim() ===
-                    (publishPreflight?.confirmPhrase || `PUBLISH ${selectedJobId}`) &&
-                  !submittingPublish
-                    ? 'bg-accent-rose text-white hover:bg-accent-rose/90'
-                    : 'cursor-not-allowed bg-neutral-800 text-neutral-500'
-                }`}
-              >
-                {submittingPublish && (
-                  <span className="animate-spin mr-1">
-                    <UtilIcon name="clock" width={14} height={14} />
-                  </span>
-                )}
-                Xác nhận đăng thật
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
