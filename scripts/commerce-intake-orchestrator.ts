@@ -22,6 +22,73 @@ import { sanitizeShopeeCanonicalUrl } from '../packages/shopee/src/url-sanitize.
 
 const AFFILIATE_OWNER_ID = 'an_17376660568';
 const LINK_REGISTRY_PATH = 'production/_commerce/shopee_link_registry.json';
+const PREFLIGHT_STATUS_PATH = 'data/temp/shopee_cdp_preflight_status.json';
+
+// WAITING_FOR_OPERATOR — pattern human-assist Round 27B nâng lên tầng coordinator:
+// gặp login/CAPTCHA thì KHÔNG fail cứng mà poll preflight read-only chờ Operator
+// xử lý trong Cốc Cốc rồi tự resume. Không bypass, không click, không retry dồn dập.
+const OPERATOR_WAIT_POLL_MS = 8_000;
+const OPERATOR_WAIT_BUDGET_MS = 10 * 60_000;
+
+/** Artifact JSON do scripts/shopee-cdp-preflight-demo.ts ghi ra (read-only probe). */
+interface PreflightArtifact {
+  preflightPassed?: boolean;
+  cdpConnected?: boolean;
+  shopeeTabFound?: boolean;
+  authenticatedCatalog?: boolean;
+  obstaclesDetected?: { captcha?: boolean; loginRequired?: boolean };
+  generatedAt?: string;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((res) => setTimeout(res, ms));
+}
+
+/**
+ * Chạy preflight read-only 1 lần và CHỈ tin artifact tươi (generatedAt sau thời
+ * điểm spawn). Lần chạy FATAL transient (vd trang đang navigate giữa chừng) exit
+ * mà KHÔNG ghi file — không được đọc nhầm kết quả của lần chạy trước.
+ */
+function runPreflightProbe(silent: boolean): PreflightArtifact | null {
+  const startedAtMs = Date.now() - 2_000; // dung sai ghi file/làm tròn timestamp
+  spawnSync('npx', ['tsx', 'scripts/shopee-cdp-preflight-demo.ts'], {
+    shell: true,
+    stdio: silent ? 'ignore' : 'inherit',
+  });
+  if (!existsSync(PREFLIGHT_STATUS_PATH)) return null;
+  try {
+    const artifact = JSON.parse(readFileSync(PREFLIGHT_STATUS_PATH, 'utf8')) as PreflightArtifact;
+    const generatedMs = Date.parse(artifact.generatedAt ?? '');
+    if (!Number.isFinite(generatedMs) || generatedMs < startedAtMs) return null;
+    return artifact;
+  } catch {
+    return null;
+  }
+}
+
+/** CDP đứt hẳn = lỗi môi trường (cửa sổ đóng/port mất) — không phải việc giải trên trang Shopee. */
+function isCdpDown(artifact: PreflightArtifact | null): boolean {
+  return artifact !== null && artifact.cdpConnected === false;
+}
+
+function describeWaitReason(artifact: PreflightArtifact | null): string {
+  if (artifact === null) {
+    return 'trang Shopee đang chuyển hướng/đang tải (transient) — chờ trang ổn định';
+  }
+  if (artifact.cdpConnected === false) {
+    return 'mất kết nối CDP — cửa sổ Cốc Cốc có thể đã bị đóng';
+  }
+  if (artifact.obstaclesDetected?.captcha) {
+    return 'Shopee yêu cầu CAPTCHA/xác minh bảo mật';
+  }
+  if (artifact.obstaclesDetected?.loginRequired) {
+    return 'Shopee yêu cầu đăng nhập';
+  }
+  if (artifact.shopeeTabFound === false) {
+    return 'không thấy tab Shopee Affiliate — mở lại affiliate.shopee.vn/offer/product_offer';
+  }
+  return 'catalog Shopee Affiliate chưa sẵn sàng (đang hydrate hoặc chưa đăng nhập xong)';
+}
 
 const options = {
   'dry-run': { type: 'boolean' as const, default: false },
@@ -62,7 +129,11 @@ async function main() {
   const confirmTargetedClick = !!values['confirm-targeted-click'];
   const isDryRun = !!values['dry-run'] || !confirmTargetedClick;
   const runReview = !!values['run-review'];
-  const statusOutputPath = values.output || 'data/temp/commerce_intake_status.json';
+  // parseArgs strict:false → values.output có thể là boolean true (--output không giá trị).
+  const statusOutputPath =
+    typeof values.output === 'string' && values.output
+      ? values.output
+      : 'data/temp/commerce_intake_status.json';
 
   console.log('======================================================');
   console.log('📦   VFOS Commerce Product Intake Orchestrator');
@@ -104,7 +175,7 @@ async function main() {
     generatedAt: new Date().toISOString(),
   };
 
-  const preflightStatusPath = 'data/temp/shopee_cdp_preflight_status.json';
+  const preflightStatusPath = PREFLIGHT_STATUS_PATH;
   const extractorStatusPath = 'data/temp/shopee_affiliate_link_artifact.json';
   const cardPath = 'data/temp/selected_product_card.json';
   const auditStatusPath = 'data/temp/shopee_link_audit_status.json';
@@ -165,36 +236,89 @@ async function main() {
   // STEP 1: Shopee CDP Browser Preflight Diagnostics
   // ======================================================
   console.log('\n[Intake] Step 1: Initiating Shopee CDP browser preflight check...');
-  const preflightRes = spawnSync('npx', ['tsx', 'scripts/shopee-cdp-preflight-demo.ts'], {
-    shell: true,
-    stdio: 'inherit',
-  });
+  let preflightArtifact = runPreflightProbe(false);
+  let preflightPassed = !!preflightArtifact?.preflightPassed;
 
-  let preflightPassed = false;
-  if (existsSync(preflightStatusPath)) {
-    try {
-      const preflightContent = JSON.parse(readFileSync(preflightStatusPath, 'utf8'));
-      preflightPassed = !!preflightContent.preflightPassed;
-      intakeStatus.steps.preflight.status = preflightPassed ? 'PASS' : 'FAIL';
-    } catch (err: any) {
-      console.error(`[Intake] Error reading preflight status artifact: ${err.message}`);
+  // ── WAITING_FOR_OPERATOR: login/CAPTCHA là việc Operator giải trong Cốc Cốc ──
+  // Không kết thúc flow. Poll preflight read-only theo interval an toàn cho tới
+  // khi Operator xử lý xong rồi TỰ resume — không bắt Operator chạy lại lệnh.
+  if (!preflightPassed && !isCdpDown(preflightArtifact)) {
+    const waitingSince = new Date().toISOString();
+    const deadline = Date.now() + OPERATOR_WAIT_BUDGET_MS;
+    let pollCount = 0;
+    console.warn('\n⏳ [Intake] WAITING_FOR_OPERATOR — Đang chờ anh xử lý trong Cốc Cốc.');
+    console.warn(`   Lý do: ${describeWaitReason(preflightArtifact)}`);
+    console.warn(
+      `   Tự kiểm tra lại mỗi ${OPERATOR_WAIT_POLL_MS / 1000}s (tối đa ${OPERATOR_WAIT_BUDGET_MS / 60_000} phút) — xử lý xong là flow tự chạy tiếp.`,
+    );
+    while (!preflightPassed && Date.now() < deadline) {
+      await sleep(OPERATOR_WAIT_POLL_MS);
+      pollCount++;
+      preflightArtifact = runPreflightProbe(true);
+      preflightPassed = !!preflightArtifact?.preflightPassed;
+      if (preflightPassed) break;
+      const reason = describeWaitReason(preflightArtifact);
+      console.warn(`   ⏳ poll ${pollCount}: ${reason} — vẫn chờ…`);
+      intakeStatus.status = 'WAITING_FOR_OPERATOR';
+      intakeStatus.steps.preflight.status = 'WAITING_FOR_OPERATOR';
+      intakeStatus.waitingReason = reason;
+      intakeStatus.waitingSince = waitingSince;
+      intakeStatus.lastPollAt = new Date().toISOString();
+      intakeStatus.pollCount = pollCount;
+      intakeStatus.recommendedNextAction =
+        'Đang chờ Operator xử lý login/CAPTCHA trong cửa sổ Cốc Cốc đang mở. Hệ thống tự kiểm tra lại — không cần chạy lại lệnh.';
+      writeFileSync(statusOutputPath, JSON.stringify(intakeStatus, null, 2), 'utf8');
+      if (isCdpDown(preflightArtifact)) break; // môi trường đứt — không poll vô ích
+    }
+    if (preflightPassed) {
+      console.log(
+        `\n[Intake] ✅ Operator đã xử lý xong (sau ${pollCount} lần kiểm tra) — tự resume flow cũ.`,
+      );
+      // Dọn field chờ để artifact các bước sau (READY/SUCCESS) không mang trạng thái cũ.
+      // Gán undefined (không dùng delete — biome noDelete); JSON.stringify tự bỏ key.
+      intakeStatus.waitingReason = undefined;
+      intakeStatus.waitingSince = undefined;
+      intakeStatus.lastPollAt = undefined;
+      intakeStatus.pollCount = undefined;
     }
   }
 
-  if (!preflightPassed) {
-    console.warn('\n⚠️  [Intake] Preflight diagnostic check FAILED.');
-    console.warn('- Cốc Cốc was auto-opened on debug port 9222 (no manual launch needed).');
-    console.warn('- This usually means a one-time human step is pending IN THE OPEN WINDOW:');
-    console.warn('    • Sign in to Shopee Affiliate (first run in the VFOS profile), or');
-    console.warn('    • Clear a CAPTCHA / security verification overlay.');
-    console.warn('- Complete it in the already-open Cốc Cốc window, then simply re-run:');
-    console.warn('    pnpm commerce:intake');
-    console.warn('- Target page (the bootstrap opens it for you):');
-    console.warn('    https://affiliate.shopee.vn/offer/product_offer');
+  if (preflightPassed) {
+    intakeStatus.steps.preflight.status = 'PASS';
+  } else if (!isCdpDown(preflightArtifact)) {
+    intakeStatus.steps.preflight.status = 'WAITING_FOR_OPERATOR';
+  } else {
+    intakeStatus.steps.preflight.status = 'FAIL';
+  }
 
-    intakeStatus.status = 'SUSPENDED';
-    intakeStatus.recommendedNextAction =
-      'Cốc Cốc is already open on port 9222. Complete the one-time Shopee login / CAPTCHA in that window, then re-run pnpm commerce:intake.';
+  if (!preflightPassed) {
+    if (isCdpDown(preflightArtifact)) {
+      // Lỗi môi trường thật (browser đóng/port mất) — giữ hành vi dừng + hướng dẫn cũ.
+      console.warn('\n⚠️  [Intake] Preflight diagnostic check FAILED.');
+      console.warn('- Cốc Cốc was auto-opened on debug port 9222 (no manual launch needed).');
+      console.warn('- CDP connection is down — the Cốc Cốc window may have been closed.');
+      console.warn('- Re-run to bootstrap the browser again:');
+      console.warn('    pnpm commerce:intake');
+      console.warn('- Target page (the bootstrap opens it for you):');
+      console.warn('    https://affiliate.shopee.vn/offer/product_offer');
+
+      intakeStatus.status = 'SUSPENDED';
+      intakeStatus.recommendedNextAction =
+        'CDP connection lost — the Cốc Cốc window may have been closed. Re-run pnpm commerce:intake to bootstrap it again.';
+    } else {
+      // Hết budget chờ tự động — VẪN là việc của Operator, giữ WAITING_FOR_OPERATOR,
+      // không hạ xuống FAIL. Chạy lại lệnh (hoặc "Kiểm tra lại" trên UI) để chờ tiếp.
+      console.warn(
+        `\n⏳ [Intake] Hết thời gian chờ tự động (${OPERATOR_WAIT_BUDGET_MS / 60_000} phút) — vẫn WAITING_FOR_OPERATOR.`,
+      );
+      console.warn('- Hoàn tất login/CAPTCHA trong cửa sổ Cốc Cốc đang mở, rồi chạy lại:');
+      console.warn('    pnpm commerce:intake');
+      console.warn('  (flow sẽ tự nhận trạng thái sẵn sàng và resume.)');
+
+      intakeStatus.status = 'WAITING_FOR_OPERATOR';
+      intakeStatus.recommendedNextAction =
+        'Hết budget chờ tự động. Hoàn tất login/CAPTCHA trong Cốc Cốc rồi chạy lại pnpm commerce:intake — flow tự resume.';
+    }
     writeFileSync(statusOutputPath, JSON.stringify(intakeStatus, null, 2), 'utf8');
     process.exit(0);
   }
