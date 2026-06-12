@@ -19,6 +19,7 @@
  *   data/temp/vfos_jobs_registry.json
  */
 
+import { spawnSync } from 'node:child_process';
 import {
   copyFileSync,
   existsSync,
@@ -31,7 +32,6 @@ import {
 } from 'node:fs';
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { spawnSync } from 'node:child_process';
 import { loadDotEnv } from '../packages/voice/src/load-env.js';
 
 const JOBS_ROOT = 'data/temp/jobs';
@@ -224,14 +224,14 @@ function nextJobId(reg: Registry): string {
   for (const j of reg.jobs) {
     if (j.jobId.startsWith(prefix)) {
       const suffix = j.jobId.slice(prefix.length);
-      const n = parseInt(suffix, 10);
+      const n = Number.parseInt(suffix, 10);
       if (Number.isFinite(n) && n > maxN) maxN = n;
     }
   }
   if (existsSync(resolve(JOBS_ROOT))) {
     for (const entry of readdirSync(resolve(JOBS_ROOT))) {
       if (entry.startsWith(prefix)) {
-        const n = parseInt(entry.slice(prefix.length), 10);
+        const n = Number.parseInt(entry.slice(prefix.length), 10);
         if (Number.isFinite(n) && n > maxN) maxN = n;
       }
     }
@@ -289,7 +289,7 @@ function getVideoDuration(filePath: string): number {
   ];
   const result = spawnSync('ffprobe', args, { encoding: 'utf8' });
   if (result.status === 0) {
-    const val = parseFloat(result.stdout.trim());
+    const val = Number.parseFloat(result.stdout.trim());
     if (!isNaN(val)) return val;
   }
   return 0;
@@ -1989,7 +1989,7 @@ Hãy trả về duy nhất một đối tượng JSON có định dạng chính 
         const estimatedSpeechDurationSec =
           typeof aiData.estimatedSpeechDurationSec === 'number'
             ? aiData.estimatedSpeechDurationSec
-            : parseFloat(aiData.estimatedSpeechDurationSec || '26.5');
+            : Number.parseFloat(aiData.estimatedSpeechDurationSec || '26.5');
 
         // Run validation with Vision analysis (Round 42)
         validation = validateScript({
@@ -2211,6 +2211,7 @@ async function cmdIntakeClean(args: string[]): Promise<number> {
     options: {
       job: { type: 'string' },
       'video-url': { type: 'string' },
+      file: { type: 'string' },
       provider: { type: 'string' },
       'dry-run': { type: 'boolean', default: false },
     },
@@ -2220,15 +2221,22 @@ async function cmdIntakeClean(args: string[]): Promise<number> {
 
   const jobId = parsed.values.job as string | undefined;
   const videoUrl = parsed.values['video-url'] as string | undefined;
-  const provider = (parsed.values.provider as string | undefined) ?? 'unduhtiktok';
+  const fileArg = parsed.values.file as string | undefined;
+  const provider = fileArg
+    ? 'operator-inbox'
+    : ((parsed.values.provider as string | undefined) ?? 'unduhtiktok');
   const dryRun = Boolean(parsed.values['dry-run']);
 
   if (!jobId) {
     console.error('Error: --job <jobId> is required');
     return 1;
   }
-  if (!videoUrl) {
-    console.error('Error: --video-url <url> is required');
+  if (!videoUrl && !fileArg) {
+    console.error('Error: either --video-url <url> or --file <path|inbox-filename> is required');
+    return 1;
+  }
+  if (videoUrl && fileArg) {
+    console.error('Error: use only ONE of --video-url or --file, not both');
     return 1;
   }
 
@@ -2243,7 +2251,11 @@ async function cmdIntakeClean(args: string[]): Promise<number> {
   console.log('======================================================');
   console.log(`Job ID:            ${jobId}`);
   console.log(`Provider:          ${provider}`);
-  console.log(`Video URL:         ${videoUrl}`);
+  if (fileArg) {
+    console.log(`Source file:       ${fileArg}`);
+  } else {
+    console.log(`Video URL:         ${videoUrl}`);
+  }
   console.log('------------------------------------------------------');
 
   if (dryRun) {
@@ -2258,8 +2270,6 @@ async function cmdIntakeClean(args: string[]): Promise<number> {
   const reportPath = join(jobSourceDir, 'source_download_report.json');
   const ffprobePath = join(jobSourceDir, 'ffprobe.json');
 
-  mkdirSync(downloadsDir, { recursive: true });
-
   let originalDownloadedFilename = '';
   let downloadSuccess = false;
   let isFallback = false;
@@ -2267,150 +2277,193 @@ async function cmdIntakeClean(args: string[]): Promise<number> {
   let durationMs = 0;
   let errorCode: string | null = null;
   let errorMessage: string | null = null;
+  // Nhãn nguồn ghi vào report/manifest: URL thật (URL mode) hoặc marker file inbox.
+  let sourceRef = videoUrl ?? '';
+  let attemptUrl: string | null = null;
+  let useZst = provider === 'zsangtao';
 
-  if (provider !== 'unduhtiktok' && provider !== 'zsangtao') {
+  if (!fileArg && provider !== 'unduhtiktok' && provider !== 'zsangtao') {
     console.error(`🛑 UNSUPPORTED_PROVIDER: ${provider}. Supported: unduhtiktok, zsangtao`);
     return 1;
   }
 
-  console.log('[Browser] Launching browser automation...');
-  let chromium: typeof import('playwright').chromium;
-  try {
-    chromium = (await import('playwright')).chromium;
-  } catch (err) {
-    console.error(
-      '❌ Playwright is not installed. Run `pnpm add -D playwright` in workspace root.',
-    );
-    return 12;
-  }
+  if (fileArg) {
+    // ---- Local intake từ operator inbox — không browser, không network ----
+    // Cùng chuỗi evidence với URL mode: copy vào runs/<jobId>/source/clean_source_video.mp4
+    // rồi đi tiếp ffprobe + frame extraction + cleanliness report (NEEDS_REVIEW).
+    // KHÔNG có sample fallback ở mode này: copy fail là fail.
+    mkdirSync(jobSourceDir, { recursive: true });
+    let sourcePath = resolve(fileArg);
+    if (!existsSync(sourcePath)) {
+      const inboxCandidate = resolve(OPERATOR_VIDEO_INBOX, fileArg);
+      if (existsSync(inboxCandidate)) {
+        sourcePath = inboxCandidate;
+      } else {
+        console.error(`🛑 MISSING_SOURCE_VIDEO: ${fileArg}`);
+        console.error(`  Not found as a path, nor in ${OPERATOR_VIDEO_INBOX}/`);
+        return 3;
+      }
+    }
+    const ext = extname(sourcePath).toLowerCase();
+    if (!VALID_VIDEO_EXTS.has(ext)) {
+      console.error(
+        `🛑 UNSUPPORTED_VIDEO_EXT: ${ext} (allowed: ${[...VALID_VIDEO_EXTS].join(', ')})`,
+      );
+      return 4;
+    }
+    try {
+      copyFileSync(sourcePath, finalVideoPath);
+      originalDownloadedFilename = basename(sourcePath);
+      sourceRef = `local-inbox:${originalDownloadedFilename}`;
+      downloadedAt = isoNow();
+      downloadSuccess = true;
+      console.log(`[Local Intake] Source copied to: ${finalVideoPath}`);
+    } catch (e: any) {
+      errorCode = 'LOCAL_SOURCE_COPY_FAILED';
+      errorMessage = e?.message ?? 'Failed to copy local source video.';
+      console.error(`🛑 Local intake failed: ${errorCode} - ${errorMessage}`);
+    }
+  } else {
+    mkdirSync(downloadsDir, { recursive: true });
 
-  const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({ acceptDownloads: true });
-  const page = await context.newPage();
+    console.log('[Browser] Launching browser automation...');
+    let chromium: typeof import('playwright').chromium;
+    try {
+      chromium = (await import('playwright')).chromium;
+    } catch (err) {
+      console.error(
+        '❌ Playwright is not installed. Run `pnpm add -D playwright` in workspace root.',
+      );
+      return 12;
+    }
 
-  let attemptUrl = 'https://unduhtiktok.com/vi/douyin/';
-  let useZst = provider === 'zsangtao';
+    const browser = await chromium.launch({ headless: true });
+    const context = await browser.newContext({ acceptDownloads: true });
+    const page = await context.newPage();
 
-  try {
-    if (!useZst) {
-      console.log('[Browser] Attempting download via https://unduhtiktok.com/vi/douyin/ ...');
-      try {
-        await page.goto('https://unduhtiktok.com/vi/douyin/', {
-          waitUntil: 'load',
-          timeout: 20000,
-        });
-        await page.waitForSelector('input#url', { state: 'visible', timeout: 10000 });
-        await page.fill('input#url', videoUrl);
-        await page.click('button#btnDownload');
+    attemptUrl = 'https://unduhtiktok.com/vi/douyin/';
 
-        // Wait a moment for dynamic responses
-        await page.waitForTimeout(3000);
-        const bodyText = await page.innerText('body');
-        if (
-          bodyText.includes('Access denied') ||
-          bodyText.includes('không tìm thấy dữ liệu') ||
-          bodyText.includes('Access Denied')
-        ) {
+    try {
+      if (!useZst) {
+        console.log('[Browser] Attempting download via https://unduhtiktok.com/vi/douyin/ ...');
+        try {
+          await page.goto('https://unduhtiktok.com/vi/douyin/', {
+            waitUntil: 'load',
+            timeout: 20000,
+          });
+          await page.waitForSelector('input#url', { state: 'visible', timeout: 10000 });
+          await page.fill('input#url', videoUrl);
+          await page.click('button#btnDownload');
+
+          // Wait a moment for dynamic responses
+          await page.waitForTimeout(3000);
+          const bodyText = await page.innerText('body');
+          if (
+            bodyText.includes('Access denied') ||
+            bodyText.includes('không tìm thấy dữ liệu') ||
+            bodyText.includes('Access Denied')
+          ) {
+            console.log(
+              '⚠️ [Browser] unduhtiktok.com returned block or error page. Falling back to zsangtao.com...',
+            );
+            useZst = true;
+          }
+        } catch (e) {
           console.log(
-            '⚠️ [Browser] unduhtiktok.com returned block or error page. Falling back to zsangtao.com...',
+            '⚠️ [Browser] unduhtiktok.com request timed out or failed. Falling back to zsangtao.com...',
           );
           useZst = true;
         }
+      }
+
+      if (useZst) {
+        attemptUrl = 'https://zsangtao.com/douyin/';
+        console.log('[Browser] Navigating to https://zsangtao.com/douyin/ ...');
+        await page.goto('https://zsangtao.com/douyin/', { waitUntil: 'load', timeout: 30000 });
+        await page.waitForSelector('input#url', { state: 'visible', timeout: 15000 });
+        await page.fill('input#url', videoUrl);
+        await page.click('button#btnDownload');
+      }
+
+      // Wait for either the result button or error/captcha
+      console.log('[Browser] Waiting for download results...');
+
+      // Safety check for captcha or timeout
+      try {
+        await page.waitForSelector('button.btn-download-hd', { state: 'visible', timeout: 30000 });
       } catch (e) {
-        console.log(
-          '⚠️ [Browser] unduhtiktok.com request timed out or failed. Falling back to zsangtao.com...',
-        );
-        useZst = true;
+        const bodyText = await page.innerText('body');
+        if (
+          bodyText.includes('không tìm thấy dữ liệu') ||
+          bodyText.includes('Sorry! We cannot find data')
+        ) {
+          throw new Error('PROVIDER_PAGE_FAILED: Video URL not found or invalid on provider page.');
+        }
+        if (
+          bodyText.includes('captcha') ||
+          bodyText.includes('Captcha') ||
+          bodyText.includes('robot')
+        ) {
+          throw new Error('PROVIDER_CAPTCHA_OR_POPUP: Captcha block or verification required.');
+        }
+        throw new Error('PROVIDER_RESULT_TIMEOUT: Timeout waiting for download link.');
       }
-    }
 
-    if (useZst) {
-      attemptUrl = 'https://zsangtao.com/douyin/';
-      console.log('[Browser] Navigating to https://zsangtao.com/douyin/ ...');
-      await page.goto('https://zsangtao.com/douyin/', { waitUntil: 'load', timeout: 30000 });
-      await page.waitForSelector('input#url', { state: 'visible', timeout: 15000 });
-      await page.fill('input#url', videoUrl);
-      await page.click('button#btnDownload');
-    }
+      console.log('[Browser] Triggering video download...');
+      const [download] = await Promise.all([
+        page.waitForEvent('download', { timeout: 30000 }),
+        page.click('button.btn-download-hd'),
+      ]);
 
-    // Wait for either the result button or error/captcha
-    console.log('[Browser] Waiting for download results...');
+      originalDownloadedFilename = download.suggestedFilename();
+      const tempDownloadPath = join(downloadsDir, originalDownloadedFilename);
+      console.log(`[Browser] Saving downloaded file to temporary path: ${tempDownloadPath}`);
+      await download.saveAs(tempDownloadPath);
 
-    // Safety check for captcha or timeout
-    try {
-      await page.waitForSelector('button.btn-download-hd', { state: 'visible', timeout: 30000 });
-    } catch (e) {
-      const bodyText = await page.innerText('body');
-      if (
-        bodyText.includes('không tìm thấy dữ liệu') ||
-        bodyText.includes('Sorry! We cannot find data')
-      ) {
-        throw new Error('PROVIDER_PAGE_FAILED: Video URL not found or invalid on provider page.');
-      }
-      if (
-        bodyText.includes('captcha') ||
-        bodyText.includes('Captcha') ||
-        bodyText.includes('robot')
-      ) {
-        throw new Error('PROVIDER_CAPTCHA_OR_POPUP: Captcha block or verification required.');
-      }
-      throw new Error('PROVIDER_RESULT_TIMEOUT: Timeout waiting for download link.');
-    }
-
-    console.log('[Browser] Triggering video download...');
-    const [download] = await Promise.all([
-      page.waitForEvent('download', { timeout: 30000 }),
-      page.click('button.btn-download-hd'),
-    ]);
-
-    originalDownloadedFilename = download.suggestedFilename();
-    const tempDownloadPath = join(downloadsDir, originalDownloadedFilename);
-    console.log(`[Browser] Saving downloaded file to temporary path: ${tempDownloadPath}`);
-    await download.saveAs(tempDownloadPath);
-
-    if (existsSync(tempDownloadPath)) {
-      copyFileSync(tempDownloadPath, finalVideoPath);
-      rmSync(tempDownloadPath);
-      downloadSuccess = true;
-      console.log(`[Browser] Success! Source video saved to: ${finalVideoPath}`);
-    } else {
-      throw new Error('DOWNLOAD_NOT_FOUND: Download completed but file was not found.');
-    }
-  } catch (err: any) {
-    const msg = err.message || '';
-    const fallbackPath = resolve('runs/job_20260602_003/source/clean_source_video.mp4');
-    if (existsSync(fallbackPath)) {
-      console.log(
-        `⚠️ [Intake Fallback] Downloader failed (${msg}). Falling back to workspace template: ${fallbackPath}`,
-      );
-      copyFileSync(fallbackPath, finalVideoPath);
-      downloadSuccess = true;
-      isFallback = true;
-    } else {
-      if (msg.includes('PROVIDER_CAPTCHA_OR_POPUP')) {
-        errorCode = 'PROVIDER_CAPTCHA_OR_POPUP';
-      } else if (msg.includes('PROVIDER_PAGE_FAILED')) {
-        errorCode = 'PROVIDER_PAGE_FAILED';
-      } else if (msg.includes('PROVIDER_RESULT_TIMEOUT')) {
-        errorCode = 'PROVIDER_RESULT_TIMEOUT';
-      } else if (msg.includes('DOWNLOAD_NOT_FOUND')) {
-        errorCode = 'DOWNLOAD_NOT_FOUND';
+      if (existsSync(tempDownloadPath)) {
+        copyFileSync(tempDownloadPath, finalVideoPath);
+        rmSync(tempDownloadPath);
+        downloadSuccess = true;
+        console.log(`[Browser] Success! Source video saved to: ${finalVideoPath}`);
       } else {
-        errorCode = 'SOURCE_INTAKE_FAILED';
+        throw new Error('DOWNLOAD_NOT_FOUND: Download completed but file was not found.');
       }
-      errorMessage = msg;
-      console.error(`🛑 Download failed: ${errorCode} - ${errorMessage}`);
-    }
-  } finally {
-    try {
-      await browser.close();
-    } catch {
-      /* ignore */
-    }
-    try {
-      rmSync(downloadsDir, { recursive: true, force: true });
-    } catch {
-      /* ignore */
+    } catch (err: any) {
+      const msg = err.message || '';
+      const fallbackPath = resolve('runs/job_20260602_003/source/clean_source_video.mp4');
+      if (existsSync(fallbackPath)) {
+        console.log(
+          `⚠️ [Intake Fallback] Downloader failed (${msg}). Falling back to workspace template: ${fallbackPath}`,
+        );
+        copyFileSync(fallbackPath, finalVideoPath);
+        downloadSuccess = true;
+        isFallback = true;
+      } else {
+        if (msg.includes('PROVIDER_CAPTCHA_OR_POPUP')) {
+          errorCode = 'PROVIDER_CAPTCHA_OR_POPUP';
+        } else if (msg.includes('PROVIDER_PAGE_FAILED')) {
+          errorCode = 'PROVIDER_PAGE_FAILED';
+        } else if (msg.includes('PROVIDER_RESULT_TIMEOUT')) {
+          errorCode = 'PROVIDER_RESULT_TIMEOUT';
+        } else if (msg.includes('DOWNLOAD_NOT_FOUND')) {
+          errorCode = 'DOWNLOAD_NOT_FOUND';
+        } else {
+          errorCode = 'SOURCE_INTAKE_FAILED';
+        }
+        errorMessage = msg;
+        console.error(`🛑 Download failed: ${errorCode} - ${errorMessage}`);
+      }
+    } finally {
+      try {
+        await browser.close();
+      } catch {
+        /* ignore */
+      }
+      try {
+        rmSync(downloadsDir, { recursive: true, force: true });
+      } catch {
+        /* ignore */
+      }
     }
   }
 
@@ -2536,7 +2589,7 @@ async function cmdIntakeClean(args: string[]): Promise<number> {
     // Generate source_cleanliness_report.json
     const cleanlinessReport = {
       jobId,
-      sourceVideoUrl: videoUrl,
+      sourceVideoUrl: sourceRef,
       videoPath: `runs/${jobId}/source/clean_source_video.mp4`,
       framePaths,
       status: 'UNKNOWN_NEEDS_OPERATOR_REVIEW',
@@ -2557,7 +2610,7 @@ async function cmdIntakeClean(args: string[]): Promise<number> {
     actualProvider: useZst ? 'zsangtao' : provider,
     fallbackReason: useZst ? 'unduhtiktok.com returned block or error page' : null,
     providerUrl: attemptUrl,
-    sourceVideoUrl: videoUrl,
+    sourceVideoUrl: sourceRef,
     finalPath: `runs/${jobId}/source/clean_source_video.mp4`,
     status: finalStatus,
     errorCode,
@@ -2573,7 +2626,7 @@ async function cmdIntakeClean(args: string[]): Promise<number> {
   // 5. Update Job Manifest and Registry
   if (finalStatus === 'SOURCE_READY') {
     manifest.source.sourceVideoPath = `runs/${jobId}/source/clean_source_video.mp4`;
-    (manifest.source as any).sourceVideoUrl = videoUrl;
+    (manifest.source as any).sourceVideoUrl = sourceRef;
     (manifest.source as any).provider = provider;
     (manifest.source as any).localPath = `runs/${jobId}/source/clean_source_video.mp4`;
     (manifest.source as any).cleanlinessStatus = 'NEEDS_REVIEW';
@@ -2824,7 +2877,7 @@ async function main(): Promise<number> {
       );
       console.error('  pnpm job:source-inbox  [--job <jobId>]');
       console.error(
-        '  pnpm source:intake-clean --job <jobId> --video-url "<url>" [--provider unduhtiktok] [--dry-run]',
+        '  pnpm source:intake-clean --job <jobId> (--video-url "<url>" | --file "<path|inbox-filename>") [--provider unduhtiktok] [--dry-run]',
       );
       console.error(
         '  pnpm source:approve-cleanliness --job <jobId> --status pass|fail --notes "<notes>"',
