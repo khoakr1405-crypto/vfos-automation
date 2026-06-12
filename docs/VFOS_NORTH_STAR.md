@@ -22,7 +22,7 @@ Các mốc trung gian theo **kết quả kinh doanh thật** (chỉ tick khi có
 
 | Mốc | Kết quả cần đạt | Bằng chứng yêu cầu |
 |---|---|---|
-| M1 | Video đầu tiên được tạo/biến đổi và đăng thật lên Facebook Page | postId/permalink thật, readback verify từ Graph API, **nick ngoài xác nhận xem được công khai** |
+| M1 | Video đầu tiên được tạo/biến đổi và đăng thật lên Facebook Page | **PASS kỹ thuật (VFOS/Claude)**: postId/permalink thật + readback verify từ Graph API. **Kiểm tra bổ sung (Operator/nền tảng)**: nick ngoài xác nhận xem được công khai — Operator tick M1 khi xác nhận xong |
 | M2 | Video đầu tiên đăng thật lên TikTok (khi TikTok publish được xây) | post/video id thật trên TikTok |
 | M3 | Click affiliate đầu tiên | số liệu click trên Shopee affiliate dashboard |
 | M4 | Đơn hàng affiliate đầu tiên | đơn ghi nhận thật trên dashboard |
@@ -78,25 +78,27 @@ Cấu trúc quản lý bắt buộc: **Niche → Channel → Video Job → Affil
 
 ## 5. Giai đoạn hiện tại (cập nhật 2026-06-11)
 
-> **⚠️ MILESTONE M1 = VISIBILITY_UNCONFIRMED (đính chính 2026-06-11)**
+> **MILESTONE M1 — PASS kỹ thuật ĐÃ ĐẠT; public visibility = kiểm tra bổ sung của Operator (chuẩn cập nhật 2026-06-12)**
 >
-> API publish cho `job_20260609_001` (địu EMOON) xác nhận thành công qua Graph readback:
-> - postId/videoId thật: `1028983246151885`, permalink thật, `verifiedByGraphReadback: true`.
-> - status ready, published=true, privacy EVERYONE, nằm trong /video_reels /videos /published_posts /feed.
+> Chuẩn trách nhiệm publish Facebook — **"Graph xanh = API publish"**:
+> - **PASS kỹ thuật (VFOS/Claude chịu trách nhiệm)**: API publish có bằng chứng thật —
+>   videoId/postId + permalink + Graph readback verify. Không fake success.
+> - **Kiểm tra bổ sung (Operator/nền tảng)**: nick ngoài xem được công khai → nâng
+>   `publishVisibility` lên `PUBLIC_CONFIRMED`. Đây KHÔNG phải điều kiện PASS mà Claude
+>   tự chịu trách nhiệm — Facebook có thể hold distribution mà không expose qua API.
 >
-> **Tuy nhiên**: Operator dùng nick ngoài mở permalink trực tiếp **không thấy** Reel.
-> Graph readback xanh ≠ public visibility — Facebook có thể hold distribution mà
-> không expose qua API. Do đó M1 chưa PASS.
->
-> **Đính chính commit `4ddb643` (trước đó ghi M1 ĐÃ ĐẠT)**: premature — chỉ dựa
-> Graph readback mà chưa xác nhận bằng nick ngoài/incognito. Bằng chứng Graph
-> readback vẫn hợp lệ, nhưng KHÔNG đủ để tick M1.
->
-> **M1 PASS khi**: Graph object tồn tại + permalink có thật + nick ngoài/Operator
-> xác nhận xem được công khai. Khi đó nâng `publishVisibility` lên `PUBLIC_CONFIRMED`.
+> Trạng thái `job_20260609_001` (địu EMOON):
+> - **PASS kỹ thuật ĐÃ ĐẠT**: postId/videoId thật `1028983246151885`, permalink thật,
+>   `verifiedByGraphReadback: true`, status ready, published=true, privacy EVERYONE,
+>   nằm trong /video_reels /videos /published_posts /feed.
+> - **Kiểm tra bổ sung**: `publishVisibility = UNCONFIRMED` — Operator dùng nick ngoài
+>   mở permalink chưa thấy Reel (ghi nhận 2026-06-11). Operator theo dõi tiếp; việc này
+>   không chặn các vòng kỹ thuật kế tiếp.
+> - **Tick M1 (mốc kinh doanh)**: do Operator quyết khi xác nhận xem được công khai.
+>   Bằng chứng Graph readback ở commit `4ddb643` vẫn hợp lệ làm bằng chứng PASS kỹ thuật.
 
-Focus tiếp theo: xác nhận public visibility cho reel `1028983246151885` trước khi
-tiến tới M3–M5.
+Focus tiếp theo: Operator theo dõi public visibility reel `1028983246151885` (kiểm tra
+bổ sung); pipeline kỹ thuật tiến tới M3–M5 theo lệnh Operator.
 
 - Job `job_20260609_001`: state PUBLISHED (API publish confirmed), `publishVisibility=UNCONFIRMED`, safety locks `uploaded/published=true` (chặn double-publish). **Không publish lại.**
 - Lưu ý vận hành: `FACEBOOK_PAGE_ACCESS_TOKEN` hiện là token ngắn hạn theo session — cân nhắc đổi sang long-lived token (~60 ngày) cho các lần publish sau.

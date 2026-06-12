@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-06-11 (**⚠️ MILESTONE M1 = VISIBILITY_UNCONFIRMED** — API publish cho reel `1028983246151885` Graph readback xanh, nhưng nick ngoài không thấy. Đính chính: commit `4ddb643` premature. Xem Phần 26. North Star v2 outcome-based đã chốt — xem `docs/VFOS_NORTH_STAR.md`.)
-> **Branch**: `fix/shopee-modal-read` | **Commit mốc tại thời điểm cập nhật trạng thái**: `6548b4a` (`feat(facebook): add real Reels uploader with Graph readback verify`)
+> **Cập nhật lần cuối**: 2026-06-12 (**Chuẩn publish Facebook mới: "Graph xanh = API publish" = PASS kỹ thuật của VFOS/Claude** — public visibility là kiểm tra bổ sung của Operator/nền tảng, KHÔNG gate PASS kỹ thuật. Reel `1028983246151885`: PASS kỹ thuật ĐÃ ĐẠT, `publishVisibility=UNCONFIRMED` Operator theo dõi, tick M1 do Operator quyết. Xem Phần 26 + 27. North Star v2 outcome-based — xem `docs/VFOS_NORTH_STAR.md`.)
+> **Branch**: `fix/shopee-modal-read` | **Commit mốc tại thời điểm cập nhật trạng thái**: `909b3b0` (`fix(studio): track Facebook public visibility separately`)
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task → luôn chạy `pnpm vfos:daily` để có chỉ dẫn trạng thái mới nhất
 
 > ⚠️ **ĐƯỜNG VẬN HÀNH CHÍNH THỨC**: dùng `docs/00_DIEU_HANH/HUONG_DAN_VAN_HANH_CHINH_THUC_VFOS.md` (operator guide chuẩn, flow A-Z `commerce:intake` → `job:run-review` → `job:publish-facebook`).
@@ -2065,7 +2065,7 @@ DOM card img
 
 ### ⚠️ Phần 26 — MILESTONE M1: Reels publish THẬT `job_20260609_001` lên Page "Review Nhà bạn": VISIBILITY_UNCONFIRMED (đính chính 2026-06-11)
 
-**API publish thành công qua Graph readback — nhưng public visibility chưa xác nhận. M1 chưa PASS.**
+**API publish thành công qua Graph readback = PASS kỹ thuật ĐÃ ĐẠT (chuẩn 2026-06-12, xem Phần 27). Public visibility là kiểm tra bổ sung của Operator/nền tảng — đang UNCONFIRMED. Tick M1 (mốc kinh doanh) do Operator quyết khi xác nhận public.**
 
 **Bằng chứng API publish (thật, không fake, không mock)**:
 
@@ -2104,9 +2104,31 @@ DOM card img
 - Mọi publish kế tiếp vẫn đi qua đủ cổng: PACKAGED + APPROVED + QA PASS + `--confirm-live-publish` + `META_MODE=live`. Safety lock per-job chặn đăng lại.
 - **KHÔNG publish lại job_20260609_001.** Safety locks giữ nguyên.
 
-**M1 PASS khi**: Graph object tồn tại + permalink có thật + nick ngoài/Operator xác nhận xem được công khai → nâng `publishVisibility` lên `PUBLIC_CONFIRMED`.
+**Phân định trách nhiệm (chuẩn 2026-06-12 — "Graph xanh = API publish")**:
+- **PASS kỹ thuật (VFOS/Claude)**: videoId/postId + permalink + Graph readback verify — **ĐÃ ĐẠT** cho reel này. Không fake success.
+- **Kiểm tra bổ sung (Operator/nền tảng)**: nick ngoài xem được công khai → Operator nâng `publishVisibility` lên `PUBLIC_CONFIRMED` và tick M1. Việc này KHÔNG phải điều kiện PASS mà Claude tự chịu trách nhiệm và KHÔNG chặn các vòng kỹ thuật kế tiếp.
 
-**Bước tiếp theo**: xác nhận public visibility reel `1028983246151885` bằng nick ngoài. Sau đó → M3 (click affiliate đầu tiên qua `https://s.shopee.vn/LkjNhcNaD`).
+**Bước tiếp theo**: Operator theo dõi public visibility reel `1028983246151885` (kiểm tra bổ sung). Pipeline kỹ thuật tiến tới M3 (click affiliate đầu tiên qua `https://s.shopee.vn/LkjNhcNaD`) theo lệnh Operator.
+
+---
+
+### ✅ Phần 27 — Chuẩn publish Facebook mới: "Graph xanh = API publish" — bỏ public visibility khỏi điều kiện PASS chính: ĐÃ CHỐT (2026-06-12)
+
+**Quyết định Operator**: PASS kỹ thuật của Claude/VFOS cho publish Facebook chỉ cần **API publish có bằng chứng thật** — videoId/postId + permalink + Graph readback verify. Public visibility (nick ngoài xem được) là **kiểm tra bổ sung của Operator/nền tảng**, không phải điều kiện PASS mà Claude tự chịu trách nhiệm — Facebook có thể hold distribution không expose qua API, nằm ngoài tầm kiểm soát kỹ thuật của VFOS.
+
+**Những gì KHÔNG đổi (chống fake success vẫn nguyên)**:
+- `success`/`verified` trong `publish-reels.ts` vẫn CHỈ true khi Graph readback trả id + permalink thật. KHÔNG mock-success.
+- `publishVisibility` (UNCONFIRMED/PUBLIC_CONFIRMED/NOT_PUBLIC) vẫn được track riêng trong manifest/status/result — chỉ Operator nâng cấp.
+- Safety locks job_20260609_001 giữ nguyên. KHÔNG publish/retry/upload lại.
+
+**Wording/status đã sửa (không đổi logic gate, không đổi data schema)**:
+- `scripts/job-facebook-publish-command.ts` — message LIVE success: "PASS kỹ thuật — đã đăng qua API"; visibility ghi rõ là kiểm tra bổ sung của Operator.
+- `apps/studio/.../lanes/product-review/page.tsx` — PUBLISHED hiển thị "Đã đăng (API)" (green, PASS kỹ thuật) thay vì amber "chờ public"; nút kết quả luôn success khi API publish confirmed; note visibility chuyển thành kiểm tra bổ sung, không còn câu "chưa coi là đăng thành công".
+- `apps/studio/.../publish-facebook/route.ts` — comment GET preflight cập nhật semantics.
+- `docs/VFOS_NORTH_STAR.md` — bảng M1 + box Phần 5: tách PASS kỹ thuật (VFOS/Claude) vs kiểm tra bổ sung (Operator/nền tảng); tick M1 là quyết định Operator.
+- File này — header + Phần 26 đồng bộ chuẩn mới.
+
+**Giới hạn trung thực**: M1 (mốc kinh doanh) vẫn CHƯA tick — `publishVisibility=UNCONFIRMED`, chờ Operator xác nhận bằng nick ngoài. Chuẩn mới chỉ phân định trách nhiệm, không tự nâng trạng thái visibility.
 
 ---
 

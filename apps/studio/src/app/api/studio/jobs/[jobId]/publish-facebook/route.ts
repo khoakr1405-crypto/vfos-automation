@@ -159,8 +159,9 @@ export async function GET(req: Request, ctx: { params: Promise<{ jobId: string }
     blockedReasons: gate.blockedReasons,
     gatesPassed: gate.gatesPassed,
     canLivePublish,
-    // Sanitized publish status (nếu đã publish) — UI cần publishVisibility để
-    // KHÔNG hiển thị "Đã đăng thành công" khi public visibility chưa xác nhận.
+    // Sanitized publish status (nếu đã publish). PASS kỹ thuật = API publish
+    // (Graph readback); publishVisibility là tracking bổ sung cho Operator,
+    // không gate trạng thái PASS trên UI.
     publishStatus: readSanitizedPublishStatus(jobId),
   });
 }

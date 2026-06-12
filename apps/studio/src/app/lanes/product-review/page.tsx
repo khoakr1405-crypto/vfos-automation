@@ -2501,11 +2501,12 @@ export default function ProductReviewLanePage() {
             return { label: 'Khoá — chờ duyệt', accent: 'amber' };
           }
           if (latestJob?.state === 'PUBLISHED' || publishPreflight?.alreadyPublished) {
-            // "Đã đăng" (green) CHỈ khi public visibility đã được Operator xác nhận.
-            // API publish xanh ≠ nick ngoài xem được (sự cố 1028983246151885).
+            // Chuẩn PASS kỹ thuật: Graph xanh = API publish → "Đã đăng" (green).
+            // Public visibility là kiểm tra bổ sung của Operator/nền tảng, không gate
+            // trạng thái PASS này (sự cố 1028983246151885 vẫn track riêng để theo dõi).
             return publishPreflight?.publishStatus?.publishVisibility === 'PUBLIC_CONFIRMED'
-              ? { label: 'Đã đăng', accent: 'green' }
-              : { label: 'Đã đăng (API) — chờ public', accent: 'amber' };
+              ? { label: 'Đã đăng — public ✓', accent: 'green' }
+              : { label: 'Đã đăng (API)', accent: 'green' };
           }
           if (latestJob?.state === 'PACKAGED') return { label: 'Sẵn sàng đăng', accent: 'green' };
           if (preparingPost) return { label: 'Đang chuẩn bị bài đăng', accent: 'blue' };
@@ -2625,8 +2626,8 @@ export default function ProductReviewLanePage() {
                   packaged
                     ? published
                       ? publishPreflight?.publishStatus?.publishVisibility === 'PUBLIC_CONFIRMED'
-                        ? 'đã đăng'
-                        : 'đã đăng qua API — chờ xác nhận public'
+                        ? 'đã đăng — public ✓'
+                        : 'đã đăng qua API — Operator kiểm tra public (bổ sung)'
                       : 'đăng thủ công (Phase C)'
                     : pkgNote
                 }
@@ -2762,22 +2763,22 @@ export default function ProductReviewLanePage() {
                       disabled
                       className="!py-1.5 !px-3 text-xs font-semibold"
                     >
-                      ✓ Đã đăng thành công
+                      ✓ Đã đăng thành công — public đã xác nhận
                     </Button>
                   ) : (
                     <>
                       <Button
-                        variant="outline"
+                        variant="success"
                         disabled
-                        className="!py-1.5 !px-3 text-xs font-semibold !text-accent-amber !border-accent-amber/40"
+                        className="!py-1.5 !px-3 text-xs font-semibold"
                       >
-                        Đã đăng qua API — chờ xác nhận hiển thị công khai
+                        ✓ Đã đăng thành công (API — Graph readback)
                       </Button>
                       <p className="text-[10px] leading-relaxed text-neutral-500">
-                        Graph readback đã xác nhận publish ở mức API, nhưng điều đó{' '}
-                        <strong className="text-accent-amber">chưa chứng minh</strong> người ngoài
-                        xem được. Mở permalink bằng tài khoản KHÔNG phải admin để xác nhận — chưa
-                        xác nhận thì chưa coi là đăng thành công.
+                        Graph readback đã xác nhận publish ở mức API — đây là điều kiện PASS kỹ
+                        thuật của VFOS. <strong>Kiểm tra bổ sung</strong> (Operator/nền tảng): mở
+                        permalink bằng tài khoản KHÔNG phải admin để xác nhận hiển thị công khai —
+                        việc này không gate trạng thái PASS, dùng để theo dõi distribution.
                       </p>
                     </>
                   )}
