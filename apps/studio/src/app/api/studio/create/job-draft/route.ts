@@ -9,6 +9,7 @@
 
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { loadChannelsWithSource } from '@/lib/growth-data/load';
 import { findSensitiveTerms } from '@/lib/growth-data/manual-input';
 import { resolveInsideRepo } from '@/lib/studio-data/paths';
 import { runRepoScript } from '@/lib/studio-data/run-command';
@@ -147,7 +148,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const o = (body ?? {}) as { confirmPhrase?: unknown };
+  const o = (body ?? {}) as { confirmPhrase?: unknown; channelId?: unknown };
   if (o.confirmPhrase !== 'CREATE JOB') {
     return Response.json(
       {
@@ -157,6 +158,39 @@ export async function POST(req: Request) {
       },
       { status: 400 },
     );
+  }
+
+  // Channel binding (Phase 1) — validate server-side, không tin client.
+  // channelId optional: thiếu thì script tự bind kênh active duy nhất của lane (default
+  // tường minh từ config); có thì phải khớp kênh THẬT (source=real) đang active của lane.
+  let channelId: string | null = null;
+  if (o.channelId != null && o.channelId !== '') {
+    if (typeof o.channelId !== 'string' || !/^[A-Za-z0-9_-]+$/.test(o.channelId)) {
+      return Response.json(
+        { ok: false, code: 'INVALID_CHANNEL', message: 'channelId không hợp lệ.' },
+        { status: 400 },
+      );
+    }
+    const { channels, source } = loadChannelsWithSource();
+    const found =
+      source === 'real'
+        ? channels.find(
+            (c) =>
+              c.channelId === o.channelId && c.status === 'active' && c.lane === 'product-review',
+          )
+        : undefined;
+    if (!found) {
+      return Response.json(
+        {
+          ok: false,
+          code: 'INVALID_CHANNEL',
+          message:
+            'channelId không khớp kênh active nào của lane Review Sản phẩm trong config/channels.json (không nhận kênh fixture).',
+        },
+        { status: 400 },
+      );
+    }
+    channelId = found.channelId;
   }
 
   // 1. Verify Product Card exists
@@ -219,11 +253,9 @@ export async function POST(req: Request) {
   }
 
   console.log('[API] Running pnpm job:create via runRepoScript...');
-  const spawnRes = runRepoScript('scripts/vfos-job-manager.ts', [
-    'create',
-    '--from-product',
-    CARD_REL,
-  ]);
+  const createArgs = ['create', '--from-product', CARD_REL];
+  if (channelId) createArgs.push('--channel', channelId);
+  const spawnRes = runRepoScript('scripts/vfos-job-manager.ts', createArgs);
 
   if (spawnRes.status !== 0) {
     console.error('[API] job:create script execution failed:', spawnRes.stderr);
@@ -323,10 +355,21 @@ export async function POST(req: Request) {
     console.warn('[API] Warning: failed to delete source draft file:', err);
   }
 
+  // channelId thật đã ghi vào manifest bởi job:create (kể cả khi auto-bind kênh
+  // mặc định của lane) — đọc lại từ manifest làm nguồn sự thật cho response.
+  let boundChannelId: string | null = null;
+  try {
+    const m = JSON.parse(readFileSync(manifestAbs, 'utf8')) as { channelId?: string | null };
+    boundChannelId = m.channelId ?? null;
+  } catch {
+    boundChannelId = null;
+  }
+
   return Response.json({
     ok: true,
     jobId,
     status: 'WAITING_FOR_SOURCE_VIDEO',
+    channelId: boundChannelId,
     product: {
       name: currentProduct.productName,
       shortLink: currentProduct.shortLink,

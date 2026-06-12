@@ -33,6 +33,9 @@ export interface OperatorJobDTO {
   product: string;
   price: string;
   duration: string;
+  /** Niche → Channel → Job (Phase 1): channelId bind trong manifest. null = job legacy chưa gán kênh. */
+  channelId: string | null;
+  /** Tên kênh thật từ config/channels.json nếu bind; '(chưa gán kênh)' cho job legacy. */
   suggestedChannel: string;
   platform: 'tiktok' | 'facebook' | 'youtube';
   reason: string;

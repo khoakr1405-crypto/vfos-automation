@@ -258,6 +258,7 @@ export default function ProductReviewLanePage() {
     status: string;
     productName?: string;
     sourceUrl?: string;
+    channelId?: string | null;
   } | null>(null);
   const [jobError, setJobError] = useState<string | null>(null);
   const [showConfirmJob, setShowConfirmJob] = useState(false);
@@ -333,7 +334,9 @@ export default function ProductReviewLanePage() {
   const [copiedCaption, setCopiedCaption] = useState(false);
 
   // Phase D — channel context của lane (read-only, từ config/channels.json qua API).
+  // Phase 1 (Channel→Job): channelId của kênh này được gửi kèm khi tạo job để bind.
   const [laneChannel, setLaneChannel] = useState<{
+    channelId: string;
     displayName: string;
     platform: string;
     status: string;
@@ -398,18 +401,20 @@ export default function ProductReviewLanePage() {
         setRegistry((registryRes.value as unknown as { items?: RegistryItem[] }).items ?? []);
       }
       if (channelsRes.status === 'fulfilled') {
-        const chans =
-          (
-            channelsRes.value as {
-              channels?: Array<{
-                lane: string;
-                displayName: string;
-                platform: string;
-                status: string;
-                pageAccessConfigured: boolean;
-              }>;
-            }
-          ).channels ?? [];
+        const chanBody = channelsRes.value as {
+          source?: 'real' | 'fixture';
+          channels?: Array<{
+            channelId: string;
+            lane: string;
+            displayName: string;
+            platform: string;
+            status: string;
+            pageAccessConfigured: boolean;
+          }>;
+        };
+        // Chỉ nhận kênh THẬT (config/channels.json). Fixture không được dùng cho
+        // workflow thật → coi như chưa có kênh, job tạo sẽ không bind.
+        const chans = chanBody.source === 'real' ? (chanBody.channels ?? []) : [];
         setLaneChannel(
           chans.find((c) => c.lane === 'product-review' && c.status === 'active') ?? null,
         );
@@ -654,7 +659,11 @@ export default function ProductReviewLanePage() {
         const jobRes = await fetch('/api/studio/create/job-draft', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ confirmPhrase: 'CREATE JOB' }),
+          // Phase 1: bind job vào kênh active của lane (server validate lại).
+          body: JSON.stringify({
+            confirmPhrase: 'CREATE JOB',
+            ...(laneChannel ? { channelId: laneChannel.channelId } : {}),
+          }),
         });
         const jobBody = await jobRes.json();
         if (!jobRes.ok || !jobBody.ok) {
@@ -709,7 +718,11 @@ export default function ProductReviewLanePage() {
       const res = await fetch('/api/studio/create/job-draft', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirmPhrase: confirmJobPhrase }),
+        // Phase 1: bind job vào kênh active của lane (server validate lại).
+        body: JSON.stringify({
+          confirmPhrase: confirmJobPhrase,
+          ...(laneChannel ? { channelId: laneChannel.channelId } : {}),
+        }),
       });
       const body = await res.json();
       if (res.ok && body.ok) {
@@ -718,6 +731,7 @@ export default function ProductReviewLanePage() {
           status: body.status,
           productName: body.product?.name,
           sourceUrl: body.source?.url,
+          channelId: body.channelId ?? null,
         });
         setConfirmJobPhrase('');
         setShowConfirmJob(false);
@@ -1337,7 +1351,9 @@ export default function ProductReviewLanePage() {
           >
             {laneChannel.pageAccessConfigured ? 'credential ✓' : 'credential chưa cấu hình'}
           </span>
-          <span className="text-neutral-600">· cấu hình ở mục "Ngách & Kênh"</span>
+          <span className="text-neutral-600">
+            · job mới sẽ bind vào kênh này · cấu hình ở mục "Ngách & Kênh"
+          </span>
         </div>
       )}
 
@@ -2012,6 +2028,16 @@ export default function ProductReviewLanePage() {
                   <span className="text-neutral-200">{jobCreatedSuccess.productName}</span>
                 </div>
               )}
+              <div>
+                channel:{' '}
+                {jobCreatedSuccess.channelId ? (
+                  <span className="text-accent-blue font-semibold">
+                    {jobCreatedSuccess.channelId}
+                  </span>
+                ) : (
+                  <span className="text-accent-amber">(chưa gán kênh)</span>
+                )}
+              </div>
             </div>
             <Button
               onClick={() => setJobCreatedSuccess(null)}
@@ -2056,6 +2082,12 @@ export default function ProductReviewLanePage() {
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center gap-1.5">
                   <StatusChip accent={latestJob.statusAccent}>{latestJob.statusLabel}</StatusChip>
+                  {/* Phase 1 — kênh bind của job (từ manifest, không floating state) */}
+                  <StatusChip accent={latestJob.channelId ? 'blue' : 'amber'}>
+                    {latestJob.channelId
+                      ? `kênh: ${latestJob.suggestedChannel}`
+                      : 'chưa gán kênh'}
+                  </StatusChip>
                   {isFallbackSource && (
                     <StatusChip accent="rose">Demo / Fallback Source</StatusChip>
                   )}

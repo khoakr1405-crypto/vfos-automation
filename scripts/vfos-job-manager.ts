@@ -37,6 +37,8 @@ import { syncManifestArtifacts } from './job-manifest-helper.js';
 
 const JOBS_ROOT = 'data/temp/jobs';
 const REGISTRY_PATH = 'data/temp/vfos_jobs_registry.json';
+const CHANNELS_CONFIG_PATH = 'config/channels.json';
+const JOB_LANE = 'product-review';
 
 // Default local-only inbox where the Operator drops downloaded/selected source
 // videos. The whole `data/` tree is gitignored, so videos here never commit.
@@ -110,6 +112,8 @@ interface JobManifest {
   jobId: string;
   runId: string;
   productId: string | null;
+  // Niche → Channel → Job binding (Phase 1). null = job legacy tạo trước khi có binding.
+  channelId?: string | null;
   source: {
     productCardPath: string;
     sourceVideoPath: string | null;
@@ -547,18 +551,102 @@ function readFinalQaStatus(manifest: JobManifest): 'PASS' | 'FAIL' | 'MISSING' {
   }
 }
 
+// ---------- channel binding (Niche → Channel → Job, Phase 1) ----------
+interface ChannelConfigEntry {
+  channelId?: string;
+  platform?: string;
+  displayName?: string;
+  lane?: string;
+  status?: string;
+}
+
+/** Đọc config/channels.json (nguồn thật, commit được). Never-throw → []. */
+function loadChannelsConfig(): ChannelConfigEntry[] {
+  const abs = resolve(CHANNELS_CONFIG_PATH);
+  if (!existsSync(abs)) return [];
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(abs, 'utf8'));
+    return Array.isArray(parsed) ? (parsed as ChannelConfigEntry[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function activeChannelsForLane(lane: string): ChannelConfigEntry[] {
+  return loadChannelsConfig().filter(
+    (c) => c.status === 'active' && c.lane === lane && typeof c.channelId === 'string',
+  );
+}
+
+/**
+ * Resolve channelId cho job mới:
+ * - --channel tường minh → phải tồn tại + active đúng lane, sai thì FAIL rõ (không fallback ngầm).
+ * - Không truyền → đúng 1 kênh active của lane thì bind kênh đó (default tường minh từ config,
+ *   không phải floating state); 0 hoặc nhiều kênh → null + cảnh báo yêu cầu --channel.
+ */
+function resolveChannelForCreate(explicitChannelId: string | undefined): {
+  ok: boolean;
+  channelId: string | null;
+  channelName: string | null;
+  warning: string | null;
+  error: string | null;
+} {
+  const laneChannels = activeChannelsForLane(JOB_LANE);
+  if (explicitChannelId) {
+    const found = laneChannels.find((c) => c.channelId === explicitChannelId);
+    if (!found) {
+      return {
+        ok: false,
+        channelId: null,
+        channelName: null,
+        warning: null,
+        error: `INVALID_CHANNEL: "${explicitChannelId}" không phải kênh active của lane ${JOB_LANE} trong ${CHANNELS_CONFIG_PATH}.`,
+      };
+    }
+    return {
+      ok: true,
+      channelId: found.channelId ?? null,
+      channelName: found.displayName ?? null,
+      warning: null,
+      error: null,
+    };
+  }
+  if (laneChannels.length === 1) {
+    const only = laneChannels[0];
+    return {
+      ok: true,
+      channelId: only?.channelId ?? null,
+      channelName: only?.displayName ?? null,
+      warning: null,
+      error: null,
+    };
+  }
+  return {
+    ok: true,
+    channelId: null,
+    channelName: null,
+    warning:
+      laneChannels.length === 0
+        ? `Không có kênh active cho lane ${JOB_LANE} trong ${CHANNELS_CONFIG_PATH} — job tạo KHÔNG gán kênh.`
+        : `Lane ${JOB_LANE} có ${laneChannels.length} kênh active — cần --channel <channelId> tường minh; job tạo KHÔNG gán kênh.`,
+    error: null,
+  };
+}
+
 // ---------- create ----------
 function cmdCreate(args: string[]): number {
   const parsed = parseArgs({
     args,
     options: {
       'from-product': { type: 'string' },
+      channel: { type: 'string' },
       'dry-run': { type: 'boolean', default: false },
     },
     allowPositionals: false,
     strict: true,
   });
   const fromProduct = parsed.values['from-product'] as string | undefined;
+  const explicitChannel = parsed.values.channel as string | undefined;
   const dryRun = Boolean(parsed.values['dry-run']);
 
   if (!fromProduct) {
@@ -580,6 +668,12 @@ function cmdCreate(args: string[]): number {
     return 2;
   }
 
+  const channelRes = resolveChannelForCreate(explicitChannel);
+  if (!channelRes.ok) {
+    console.error(`🛑 ${channelRes.error}`);
+    return 2;
+  }
+
   const reg = loadRegistry();
   const jobId = nextJobId(reg);
   const runId = `run_${jobId}`;
@@ -597,6 +691,14 @@ function cmdCreate(args: string[]): number {
   console.log(`Run ID:            ${runId}`);
   console.log(`Product name:      ${productName ?? '(unknown)'}`);
   console.log(`Product ID:        ${productId ?? '(unknown)'}`);
+  console.log(
+    `Channel:           ${
+      channelRes.channelId
+        ? `${channelRes.channelId} (${channelRes.channelName ?? 'không rõ tên'})`
+        : '(chưa gán kênh)'
+    }`,
+  );
+  if (channelRes.warning) console.log(`⚠️  ${channelRes.warning}`);
   console.log(`Job dir:           ${JOBS_ROOT}/${jobId}/`);
   console.log(`Initial state:     WAITING_FOR_SOURCE_VIDEO`);
   console.log('------------------------------------------------------');
@@ -614,6 +716,7 @@ function cmdCreate(args: string[]): number {
     jobId,
     runId,
     productId,
+    channelId: channelRes.channelId,
     source: {
       productCardPath: `${JOBS_ROOT}/${jobId}/product_card.json`,
       sourceVideoPath: null,

@@ -52,7 +52,7 @@ function mapDtoToPublishContent(dto: PublishQueueItemDTO): PublishContent {
 
     platforms[p] = {
       status,
-      channel: dto.suggestedChannel || 'Kênh Review Sản Phẩm #1',
+      channel: dto.suggestedChannel || '(chưa gán kênh)',
       packageFile: isPackaged ? `${dto.jobId}_production_package.zip` : null,
       packageSize: isPackaged ? '3.49 MB' : null,
       captionReady: hasPreview,

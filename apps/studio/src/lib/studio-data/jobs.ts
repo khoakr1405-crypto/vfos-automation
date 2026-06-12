@@ -13,6 +13,8 @@
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { loadChannelsWithSource } from '@/lib/growth-data/load';
+import type { Channel as GrowthChannel } from '@/lib/growth-data/types';
 import { repoRoot, resolveInsideRepo } from './paths';
 import {
   compareProductBinding,
@@ -107,6 +109,7 @@ interface ManifestArtifacts {
 interface Manifest {
   jobId: string;
   productId?: string | null;
+  channelId?: string | null;
   source?: {
     productCardPath?: string | null;
     sourceVideoPath?: string | null;
@@ -135,6 +138,53 @@ interface ProductCard {
   shopId?: string | null;
   itemId?: string | null;
   name?: string | null;
+}
+
+/* ---- channel binding (Niche → Channel → Job, Phase 1) ----------------------
+ * Kênh THẬT từ config/channels.json qua loader real-first. KHÔNG dùng fixture
+ * cho workflow thật: source !== 'real' → coi như chưa có kênh cấu hình. */
+interface BoundChannel {
+  channelId: string;
+  displayName: string;
+  platform: OperatorJobDTO['platform'];
+  active: boolean;
+}
+
+function narrowPlatform(p: string | null | undefined): OperatorJobDTO['platform'] {
+  return p === 'tiktok' || p === 'youtube' || p === 'facebook' ? p : 'facebook';
+}
+
+function realLaneChannels(): GrowthChannel[] {
+  const { channels, source } = loadChannelsWithSource();
+  return source === 'real' ? channels.filter((c) => c.lane === 'product-review') : [];
+}
+
+/** Kênh bind của job từ manifest.channelId. null nếu chưa gán hoặc kênh không
+ * còn trong config (caller hiển thị trung thực, không đoán). */
+function resolveBoundChannel(channelId: string | null | undefined): BoundChannel | null {
+  if (!channelId) return null;
+  const found = realLaneChannels().find((c) => c.channelId === channelId);
+  if (!found) return null;
+  return {
+    channelId: found.channelId,
+    displayName: found.displayName,
+    platform: narrowPlatform(found.platform),
+    active: found.status === 'active',
+  };
+}
+
+/** Kênh mặc định của lane: đúng 1 kênh active trong config thật → kênh đó.
+ * Dùng cho job legacy chưa gán kênh — default tường minh từ config, không floating. */
+function laneDefaultChannel(): BoundChannel | null {
+  const actives = realLaneChannels().filter((c) => c.status === 'active');
+  const only = actives.length === 1 ? actives[0] : undefined;
+  if (!only) return null;
+  return {
+    channelId: only.channelId,
+    displayName: only.displayName,
+    platform: narrowPlatform(only.platform),
+    active: true,
+  };
 }
 
 // ---- safe JSON read (never throws) -----------------------------------------
@@ -283,6 +333,10 @@ function buildJobDTO(entry: RegistryEntry): OperatorJobDTO {
 
   const canReview = state === 'READY_FOR_OPERATOR_REVIEW' && qaStatus === 'PASS' && hasPreview;
 
+  // Niche → Channel → Job (Phase 1): channelId bind trong manifest là nguồn sự thật.
+  const channelId = manifest?.channelId ?? null;
+  const boundChannel = resolveBoundChannel(channelId);
+
   return {
     id,
     title,
@@ -290,9 +344,16 @@ function buildJobDTO(entry: RegistryEntry): OperatorJobDTO {
     product,
     price: '—',
     duration: fmtDuration(durationSec),
-    suggestedChannel: '(chưa nối — analytics mock)',
-    platform: 'facebook',
-    reason: 'Một video → một nền tảng chính. Gợi ý kênh sẽ nối ở phase analytics (hiện mock).',
+    channelId,
+    suggestedChannel: boundChannel
+      ? boundChannel.displayName
+      : channelId
+        ? `(kênh ${channelId} không có trong config)`
+        : '(chưa gán kênh)',
+    platform: boundChannel?.platform ?? 'facebook',
+    reason: boundChannel
+      ? `Kênh bind khi tạo job (config/channels.json): ${boundChannel.channelId}.`
+      : 'Job chưa gán kênh — job mới sẽ tự bind kênh active của lane khi tạo.',
     state,
     statusLabel,
     statusAccent,
@@ -450,8 +511,6 @@ export function readJobTextFile(jobId: string, filename: string): string | null 
  * mới được spawn command thật sau khi toàn bộ guard pass.
  * ========================================================================== */
 
-const FALLBACK_CHANNEL = 'Kênh Review Sản Phẩm #1';
-
 /** env flag, mặc định false. Không bao giờ trả raw value ra ngoài — chỉ boolean. */
 export function isLivePublishEnvEnabled(): boolean {
   return process.env.VFOS_STUDIO_ALLOW_LIVE_PUBLISH === 'true';
@@ -539,6 +598,11 @@ export function evaluateLivePublishGates(
   const cardMatchesSelected = compareProductBinding(jobBinding, expectedProduct);
   const sourceIsFallback = isFallbackSource(manifest.source);
 
+  // Kênh đích (Phase 1): ưu tiên kênh bind theo job; job legacy chưa gán kênh →
+  // kênh mặc định của lane (default tường minh từ config, có ghi chú rõ).
+  const boundChannel = resolveBoundChannel(manifest.channelId);
+  const targetChannelInfo = boundChannel ?? laneDefaultChannel();
+
   const gates: LivePublishGate[] = [
     {
       key: 'job_exists',
@@ -611,8 +675,12 @@ export function evaluateLivePublishGates(
     {
       key: 'target_channel',
       label: 'Đã chọn kênh đích',
-      passed: true,
-      detail: `Kênh đích: ${FALLBACK_CHANNEL}.`,
+      passed: Boolean(targetChannelInfo?.active),
+      detail: boundChannel
+        ? `Kênh đích (bind theo job): ${boundChannel.displayName}.`
+        : targetChannelInfo
+          ? `Kênh đích: ${targetChannelInfo.displayName} (kênh mặc định của lane — job chưa gán kênh).`
+          : 'Không xác định được kênh đích: job chưa gán kênh và lane không có đúng 1 kênh active trong config/channels.json.',
     },
     {
       key: 'facebook_credentials',
@@ -659,7 +727,7 @@ export function evaluateLivePublishGates(
     jobExists: true,
     rawState,
     productName,
-    targetChannel: FALLBACK_CHANNEL,
+    targetChannel: targetChannelInfo?.displayName ?? null,
     facebookCredentialsConfigured: fbCreds,
     alreadyPublished,
     gates,
@@ -728,12 +796,8 @@ export function loadPublishQueueItems(): PublishQueueItemDTO[] {
       publishReadiness = 'ready';
     }
 
-    // Determine target channel (clean fallback)
-    const suggestedChannel =
-      (job.suggestedChannel || '').includes('mock') ||
-      (job.suggestedChannel || '').includes('chưa nối')
-        ? 'Kênh Review Sản Phẩm #1'
-        : job.suggestedChannel;
+    // Kênh đích từ live gate (bind theo job, fallback kênh mặc định của lane) — không mock.
+    const suggestedChannel = liveGate.targetChannel;
 
     // Deep gate checks
     const gateChecks: PublishQueueItemDTO['gateChecks'] = [
