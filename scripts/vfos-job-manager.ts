@@ -33,6 +33,7 @@ import {
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { loadDotEnv } from '../packages/voice/src/load-env.js';
+import { syncManifestArtifacts } from './job-manifest-helper.js';
 
 const JOBS_ROOT = 'data/temp/jobs';
 const REGISTRY_PATH = 'data/temp/vfos_jobs_registry.json';
@@ -2324,6 +2325,11 @@ async function cmdIntakeClean(args: string[]): Promise<number> {
       console.error(`🛑 Local intake failed: ${errorCode} - ${errorMessage}`);
     }
   } else {
+    // Guard trên đã đảm bảo có videoUrl khi không có fileArg; check lại để narrow type.
+    if (!videoUrl) {
+      console.error('Error: --video-url <url> is required');
+      return 1;
+    }
     mkdirSync(downloadsDir, { recursive: true });
 
     console.log('[Browser] Launching browser automation...');
