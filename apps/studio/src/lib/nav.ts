@@ -69,13 +69,20 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         no: 5,
+        href: '/history',
+        label: 'Lịch sử & Evidence',
+        icon: 'schedule',
+        accent: 'cyan',
+      },
+      {
+        no: 6,
         href: '/analytics',
         label: 'Hiệu suất / Analytics',
         icon: 'analytics',
         accent: 'green',
       },
       {
-        no: 6,
+        no: 7,
         href: '/comments',
         label: 'Bình luận & Mắt thần',
         icon: 'comments',
