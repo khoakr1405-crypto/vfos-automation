@@ -332,6 +332,14 @@ export default function ProductReviewLanePage() {
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [copiedCaption, setCopiedCaption] = useState(false);
 
+  // Phase D — channel context của lane (read-only, từ config/channels.json qua API).
+  const [laneChannel, setLaneChannel] = useState<{
+    displayName: string;
+    platform: string;
+    status: string;
+    pageAccessConfigured: boolean;
+  } | null>(null);
+
   const latestJob = jobs.find((j) => j.id === selectedJobId) ?? null;
 
   // "Đã đăng" derive từ STATE đồng bộ của DTO trước (PUBLISHED); preflight async chỉ
@@ -350,11 +358,12 @@ export default function ProductReviewLanePage() {
       // Timeout 15s/request — route treo không được phép kẹt badge "Đang tải…" vô hạn;
       // allSettled nuốt reject từng request, panel còn lại vẫn render dữ liệu thật.
       const timeoutOpts = { signal: AbortSignal.timeout(15_000) };
-      const [cardRes, draftRes, jobsRes, registryRes] = await Promise.allSettled([
+      const [cardRes, draftRes, jobsRes, registryRes, channelsRes] = await Promise.allSettled([
         fetch('/api/studio/commerce/current-product-card', timeoutOpts).then((r) => r.json()),
         fetch('/api/studio/create/source-draft', timeoutOpts).then((r) => r.json()),
         fetch('/api/studio/jobs', timeoutOpts).then((r) => r.json()),
         fetch('/api/studio/commerce/shopee-registry', timeoutOpts).then((r) => r.json()),
+        fetch('/api/studio/channels', timeoutOpts).then((r) => r.json()),
       ]);
       let currentCard: CardSummary | null = null;
       if (cardRes.status === 'fulfilled') {
@@ -387,6 +396,23 @@ export default function ProductReviewLanePage() {
       }
       if (registryRes.status === 'fulfilled') {
         setRegistry((registryRes.value as unknown as { items?: RegistryItem[] }).items ?? []);
+      }
+      if (channelsRes.status === 'fulfilled') {
+        const chans =
+          (
+            channelsRes.value as {
+              channels?: Array<{
+                lane: string;
+                displayName: string;
+                platform: string;
+                status: string;
+                pageAccessConfigured: boolean;
+              }>;
+            }
+          ).channels ?? [];
+        setLaneChannel(
+          chans.find((c) => c.lane === 'product-review' && c.status === 'active') ?? null,
+        );
       }
 
       // Auto-populate source input if draft matches card
@@ -464,10 +490,7 @@ export default function ProductReviewLanePage() {
   // preflight (GET read-only) để khôi phục permalink + publishVisibility sau khi
   // Operator reload trang — không dựa vào publishResult chỉ sống trong phiên.
   useEffect(() => {
-    if (
-      selectedJobId &&
-      (latestJob?.state === 'PACKAGED' || latestJob?.state === 'PUBLISHED')
-    ) {
+    if (selectedJobId && (latestJob?.state === 'PACKAGED' || latestJob?.state === 'PUBLISHED')) {
       const params = new URLSearchParams();
       if (card?.shopId) params.append('shopId', card.shopId);
       if (card?.itemId) params.append('itemId', card.itemId);
@@ -951,7 +974,9 @@ export default function ProductReviewLanePage() {
         if (card?.itemId) params.append('itemId', card.itemId);
         if (card?.shortLink) params.append('shortLink', card.shortLink);
 
-        const pfRes = await fetch(`/api/studio/jobs/${jobId}/publish-facebook?${params.toString()}`);
+        const pfRes = await fetch(
+          `/api/studio/jobs/${jobId}/publish-facebook?${params.toString()}`,
+        );
         const pf = await pfRes.json();
         if (pfRes.ok && pf.ok) {
           setPublishPreflight({
@@ -1290,11 +1315,31 @@ export default function ProductReviewLanePage() {
         <UtilIcon name="clock" width={13} height={13} className="text-neutral-500" />
         <span>
           <strong className="text-neutral-300">Action 1–2–3 đã wire thật.</strong> Action 1: kho
-          link Shopee + trích xuất CDP. Action 2: nguồn → clean source → duyệt sạch → chạy sản
-          xuất video (script→voice→BGM→render→caption→QA). Action 3: đóng gói → kiểm tra
-          readiness → đăng Facebook qua gate cứng — live publish chỉ chạy khi Operator bấm.
+          link Shopee + trích xuất CDP. Action 2: nguồn → clean source → duyệt sạch → chạy sản xuất
+          video (script→voice→BGM→render→caption→QA). Action 3: đóng gói → kiểm tra readiness → đăng
+          Facebook qua gate cứng — live publish chỉ chạy khi Operator bấm.
         </span>
       </div>
+
+      {/* Phase D — kênh đăng của lane (Niche → Channel, đọc từ config/channels.json) */}
+      {laneChannel && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-hairline bg-raised/30 px-3.5 py-2 text-[11px]">
+          <span className="text-neutral-500">Kênh đăng của lane:</span>
+          <span className="font-semibold text-neutral-200">{laneChannel.displayName}</span>
+          <span className="rounded bg-accent-blue/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent-blue">
+            {laneChannel.platform}
+          </span>
+          <span className="rounded bg-accent-green/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent-green">
+            {laneChannel.status}
+          </span>
+          <span
+            className={laneChannel.pageAccessConfigured ? 'text-accent-green' : 'text-accent-amber'}
+          >
+            {laneChannel.pageAccessConfigured ? 'credential ✓' : 'credential chưa cấu hình'}
+          </span>
+          <span className="text-neutral-600">· cấu hình ở mục "Ngách & Kênh"</span>
+        </div>
+      )}
 
       {/* Stepper vòng lặp — derive từ STATE THẬT, cho Operator biết đang ở bước nào
           và bước tiếp theo (UI Architecture V1 Phase B). */}
@@ -2751,8 +2796,8 @@ export default function ProductReviewLanePage() {
         {!jobPublished && publishPreflight && !publishPreflight.livePublishEnabled && (
           <p className="text-[10px] leading-relaxed text-neutral-500">
             Facebook đang ở <strong className="text-accent-amber">chế độ nháp</strong> — chưa bật
-            đăng thật. Bản nháp bài đăng vẫn được chuẩn bị; bước đăng thật (live publish) chạy
-            qua gate cứng khi Operator bấm.
+            đăng thật. Bản nháp bài đăng vẫn được chuẩn bị; bước đăng thật (live publish) chạy qua
+            gate cứng khi Operator bấm.
           </p>
         )}
 
@@ -3021,8 +3066,8 @@ export default function ProductReviewLanePage() {
                       Job hoàn tất — sẵn sàng video tiếp theo
                     </p>
                     <p className="text-[11px] text-neutral-500">
-                      Evidence đã lưu trong manifest/registry — job này không bị xóa, xem lại bất
-                      kỳ lúc nào qua "Chọn job vận hành".
+                      Evidence đã lưu trong manifest/registry — job này không bị xóa, xem lại bất kỳ
+                      lúc nào qua "Chọn job vận hành".
                     </p>
                   </div>
                 </div>
@@ -3036,9 +3081,7 @@ export default function ProductReviewLanePage() {
                   <p className="text-neutral-400">
                     Hiển thị công khai:{' '}
                     <span className={publicConfirmed ? 'text-accent-green' : 'text-accent-amber'}>
-                      {publicConfirmed
-                        ? 'public ✓'
-                        : 'UNCONFIRMED — Operator kiểm tra bổ sung'}
+                      {publicConfirmed ? 'public ✓' : 'UNCONFIRMED — Operator kiểm tra bổ sung'}
                     </span>
                   </p>
                   <p className="text-neutral-400">
@@ -3069,15 +3112,14 @@ export default function ProductReviewLanePage() {
                     ▶ Bắt đầu video mới
                   </Button>
                   <span className="text-[10px] text-neutral-500">
-                    Lên Hành động 1 → chọn/lấy sản phẩm MỚI — job mới tự tạo theo sản phẩm đó,
-                    màn hình tự sạch state của job cũ.
+                    Lên Hành động 1 → chọn/lấy sản phẩm MỚI — job mới tự tạo theo sản phẩm đó, màn
+                    hình tự sạch state của job cũ.
                   </span>
                 </div>
               </div>
             </Card>
           );
         })()}
-
     </div>
   );
 }

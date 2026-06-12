@@ -1,0 +1,12 @@
+[
+  {
+    "channelId": "ch_fb_review_nha_ban",
+    "platform": "facebook",
+    "pageId": "1169116176282221",
+    "displayName": "Review Nhà bạn",
+    "lane": "product-review",
+    "status": "active",
+    "postingRule": "Publish theo duyệt Operator — chưa cố định khung giờ",
+    "pageAccessConfigured": false
+  }
+]

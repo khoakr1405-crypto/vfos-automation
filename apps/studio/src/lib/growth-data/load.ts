@@ -1,17 +1,23 @@
 /* =============================================================================
- * VFOS Studio — Growth OS mock data adapter (Round Growth 02, READ-ONLY)
+ * VFOS Studio — Growth OS data adapter (READ-ONLY)
  * -----------------------------------------------------------------------------
- * SERVER ONLY. Đọc mock fixtures (JSON) từ cây source. KHÔNG import vào client.
+ * SERVER ONLY. KHÔNG import vào client.
  * Nguyên tắc (mirror studio-data/jobs.ts):
  *   - Mỗi loader never-throw: lỗi/thiếu file → trả [] (không crash).
- *   - KHÔNG side effect: không ghi file, không gọi command, không gọi API.
- *   - KHÔNG đọc job thật / data/temp — Growth 02 chỉ đọc fixtures.
- *   - KHÔNG đọc .env / token.
- * Round sau (Growth 03+) sẽ thêm nguồn vận hành thật data/growth/ với cùng interface.
+ *   - KHÔNG side effect: không ghi file, không gọi command, không gọi API ngoài.
+ *   - KHÔNG bao giờ đọc/lộ GIÁ TRỊ token — channel thật chỉ derive boolean
+ *     HIỆN DIỆN của env (pageAccessConfigured).
+ *
+ * Nguồn dữ liệu (UI Architecture V1 Phase D):
+ *   - Channels: config/channels.json (NGUỒN THẬT, commit được, không secret) —
+ *     ưu tiên tuyệt đối khi có; fixture chỉ là fallback demo khi config trống.
+ *     KHÔNG trộn hai nguồn.
+ *   - Các loader khác: vẫn fixtures (sẽ nâng dần theo phase).
  * ========================================================================== */
 
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { resolveInsideRepo } from '@/lib/studio-data/paths';
 import { growthFixturesDir } from './paths';
 import type {
   AffiliateCtaPlan,
@@ -44,8 +50,69 @@ function loadArray<T>(file: string): T[] {
   }
 }
 
+/** Nạp .env root vào process.env (fill-missing-only) — cùng pattern loadStudioEnv
+ * của studio-data/jobs.ts. Cần vì Next dev có thể chạy route ở worker chưa từng
+ * import jobs.ts → process.env thiếu FACEBOOK_*. Server-only, không lộ giá trị. */
+let rootEnvLoaded = false;
+function ensureRootEnvLoaded(): void {
+  if (rootEnvLoaded) return;
+  rootEnvLoaded = true;
+  try {
+    const envPath = resolveInsideRepo('.env');
+    if (!envPath || !existsSync(envPath)) return;
+    const content = readFileSync(envPath, 'utf8');
+    for (const line of content.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const index = trimmed.indexOf('=');
+      if (index === -1) continue;
+      const key = trimmed.substring(0, index).trim();
+      let val = trimmed.substring(index + 1).trim();
+      if (
+        (val.startsWith('"') && val.endsWith('"')) ||
+        (val.startsWith("'") && val.endsWith("'"))
+      ) {
+        val = val.substring(1, val.length - 1);
+      }
+      if (!process.env[key]) {
+        process.env[key] = val;
+      }
+    }
+  } catch {
+    /* never-throw */
+  }
+}
+
+/** Kênh THẬT từ config/channels.json. pageAccessConfigured cho facebook derive
+ * từ SỰ HIỆN DIỆN env FACEBOOK_PAGE_ID/FACEBOOK_PAGE_ACCESS_TOKEN khớp pageId —
+ * boolean only, không bao giờ đọc giá trị token vào output. */
+function loadRealChannels(): Channel[] {
+  try {
+    const abs = resolveInsideRepo('config/channels.json');
+    if (!abs || !existsSync(abs)) return [];
+    const parsed: unknown = JSON.parse(readFileSync(abs, 'utf8'));
+    if (!Array.isArray(parsed)) return [];
+    ensureRootEnvLoaded();
+    const envPageId = (process.env.FACEBOOK_PAGE_ID ?? '').trim();
+    const tokenPresent = (process.env.FACEBOOK_PAGE_ACCESS_TOKEN ?? '').trim().length > 0;
+    return (parsed as Channel[]).map((ch) =>
+      ch.platform === 'facebook'
+        ? { ...ch, pageAccessConfigured: tokenPresent && envPageId === ch.pageId }
+        : ch,
+    );
+  } catch {
+    return [];
+  }
+}
+
+export function loadChannelsWithSource(): { channels: Channel[]; source: 'real' | 'fixture' } {
+  const real = loadRealChannels();
+  if (real.length > 0) return { channels: real, source: 'real' };
+  return { channels: loadArray<Channel>('channels.json'), source: 'fixture' };
+}
+
 export function loadChannels(): Channel[] {
-  return loadArray<Channel>('channels.json');
+  return loadChannelsWithSource().channels;
 }
 
 export function loadContentAngles(): ContentAngle[] {

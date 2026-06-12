@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-06-12 (**Chuẩn publish Facebook mới: "Graph xanh = API publish" = PASS kỹ thuật của VFOS/Claude** — public visibility là kiểm tra bổ sung của Operator/nền tảng, KHÔNG gate PASS kỹ thuật. Reel `1028983246151885`: PASS kỹ thuật ĐÃ ĐẠT, `publishVisibility=UNCONFIRMED` Operator theo dõi, tick M1 do Operator quyết. Xem Phần 26 + 27. North Star v2 outcome-based — xem `docs/VFOS_NORTH_STAR.md`.)
-> **Branch**: `fix/shopee-modal-read` | **Commit mốc tại thời điểm cập nhật trạng thái**: `909b3b0` (`fix(studio): track Facebook public visibility separately`)
+> **Cập nhật lần cuối**: 2026-06-12 chiều (**Token Facebook DÀI HẠN ~59 ngày đã chốt** + **UI Architecture V1 Phase A–D** — xem Phần 27 + 28. Chuẩn publish "Graph xanh = API publish" đã chốt ở Phần 27; runtime reel `1028983246151885` đã ghi `publishVisibility=PUBLIC_CONFIRMED` — tick M1 chính thức chờ Operator xác nhận. North Star v2 — xem `docs/VFOS_NORTH_STAR.md`; UI spec — xem `docs/00_DIEU_HANH/VFOS_UI_ARCHITECTURE_V1.md`.)
+> **Branch**: `fix/shopee-modal-read` | **Commit mốc tại thời điểm cập nhật trạng thái**: `dccdcbb` (`feat(studio): job history and evidence screen (phase C)`)
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task → luôn chạy `pnpm vfos:daily` để có chỉ dẫn trạng thái mới nhất
 
 > ⚠️ **ĐƯỜNG VẬN HÀNH CHÍNH THỨC**: dùng `docs/00_DIEU_HANH/HUONG_DAN_VAN_HANH_CHINH_THUC_VFOS.md` (operator guide chuẩn, flow A-Z `commerce:intake` → `job:run-review` → `job:publish-facebook`).
@@ -2129,6 +2129,27 @@ DOM card img
 - File này — header + Phần 26 đồng bộ chuẩn mới.
 
 **Giới hạn trung thực**: M1 (mốc kinh doanh) vẫn CHƯA tick — `publishVisibility=UNCONFIRMED`, chờ Operator xác nhận bằng nick ngoài. Chuẩn mới chỉ phân định trách nhiệm, không tự nâng trạng thái visibility.
+
+> **Cập nhật 2026-06-12 chiều**: runtime `facebook_publish_status.json` của job_20260609_001 đã ghi `publishVisibility=PUBLIC_CONFIRMED` (phát hiện qua preflight GET). Tick M1 chính thức trong North Star chờ Operator xác nhận nguồn gốc nâng cấp này.
+
+---
+
+### ✅ Phần 28 — Token Facebook dài hạn + Command Center loop fixes + UI Architecture V1 Phase A–D: ĐÃ CHỐT (2026-06-12)
+
+**1. Token Facebook DÀI HẠN (~59 ngày) — ĐÃ CHẠY THẬT**:
+- `pnpm facebook:get-page-token` (commit `781cc42`) nâng cấp: debug_token → `fb_exchange_token` dài hạn → verify type/Page ID/hạn TRƯỚC khi tự ghi `.env`. Guard chặn ghi nếu token vẫn ngắn hạn (<7 ngày) hoặc sai Page.
+- Kết quả thật: Page token "Review Nhà bạn" hạn **2026-08-10 (~59 ngày)**, verify `pnpm facebook:test` PASS. `.env` cần `META_APP_ID`/`META_APP_SECRET` (đã có hướng dẫn trong `.env.example` + operator guide mục 10).
+- Sự cố trong vòng: Operator dán nhầm token/App ID vào `.env.example` (file commit được) — **đã gỡ sạch bằng git restore TRƯỚC khi có commit nào**, không lộ gì lên remote. Bài học: secrets CHỈ dán vào `.env`.
+
+**2. Command Center loop fixes (commit `691146a`)**: per-job state reset khi đổi job (chống fake success video #2), preflight cho job PUBLISHED + map publishStatus (khôi phục permalink/visibility sau reload), timeout 15s cho load(), auto-resume preparePost chỉ chạy đúng state APPROVED (hết race), Action 3 nhất quán cho job đã đăng, banner/wording stale sửa hết. Dev server crash worker (mọi route `[jobId]` 500) xử lý bằng `pnpm studio:dev:clean`.
+
+**3. UI Architecture V1 (spec: `docs/00_DIEU_HANH/VFOS_UI_ARCHITECTURE_V1.md`, Operator duyệt)**:
+- **Phase A+B (commit `ca7ee16`)**: Tổng quan chỉ data thật (gỡ 7 panel mock), wording content-led, CTA về lane; sidebar 9→6+1 mục (gộp 2 stub vlog thành lane "Nội dung / Giải trí" roadmap, gỡ /publish + /schedule mock khỏi nav); stepper vòng lặp 9 bước + Completion panel "Bắt đầu video mới" trong lane.
+- **Phase C (commit `dccdcbb`)**: màn `/history` "Lịch sử & Evidence" — read-only, đọc job thật + publish evidence sanitized (postId/permalink/visibility), filter theo vòng đời, deep-link về lane. 0 POST.
+- **Phase D (đang chờ Operator duyệt UI + commit)**: `config/channels.json` (Niche → Channel THẬT đầu tiên: Review Nhà bạn, không secret) + loader real-first (fixture chỉ khi config trống, không trộn) + API GET `/api/studio/channels` + trang "Ngách & Kênh" banner nguồn thật/bỏ nút giả + channel context chip trong lane.
+- Còn lại: **Phase E** (Hiệu suất M3–M6 manual import) → **Phase F** (lane 2 thật).
+
+**Bước tiếp theo duy nhất**: Operator duyệt UI Phase D → commit/push → chọn: (a) Phase E Hiệu suất, hoặc (b) **video #2 end-to-end** qua flow chính thức (ưu tiên theo North Star — token dài hạn + Command Center đã sẵn sàng cho vòng lặp).
 
 ---
 

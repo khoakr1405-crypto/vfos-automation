@@ -1,55 +1,53 @@
-import { LanePill } from '@/components/badge';
 import { ChannelsSection } from '@/components/channels/channels-section';
 import { ContentAnglesSection } from '@/components/channels/content-angles-section';
-import { UtilIcon } from '@/components/icons';
 import { PageHeader } from '@/components/page-header';
-import { Button } from '@/components/ui';
-import { loadChannels, loadContentAngles } from '@/lib/growth-data/load';
-import { LANES } from '@/lib/mock-data';
+import { loadChannelsWithSource, loadContentAngles } from '@/lib/growth-data/load';
 
-// Đọc Growth data thật (filesystem fixtures) ở mỗi request — không prerender tĩnh.
+// Đọc channel config thật ở mỗi request — không prerender tĩnh.
 export const dynamic = 'force-dynamic';
 
+// biome-ignore lint/style/noDefaultExport: Next.js page requires default export
 export default async function ChannelsPage() {
-  const channels = loadChannels();
+  const { channels, source } = loadChannelsWithSource();
   const angles = loadContentAngles();
+  const realSource = source === 'real';
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-2 rounded-xl border border-accent-blue/30 bg-accent-blue/10 px-3.5 py-2 text-[11px] text-accent-blue">
-        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent-blue" />
+      <div
+        className={`flex items-center gap-2 rounded-xl border px-3.5 py-2 text-[11px] ${
+          realSource
+            ? 'border-accent-green/30 bg-accent-green/10 text-accent-green'
+            : 'border-accent-amber/30 bg-accent-amber/10 text-accent-amber'
+        }`}
+      >
+        <span
+          className={`h-1.5 w-1.5 shrink-0 rounded-full ${realSource ? 'bg-accent-green' : 'bg-accent-amber'}`}
+        />
         <span>
-          <strong>Growth 03 · READ-ONLY.</strong> Kênh & Content Angle đọc <strong>thật</strong> qua
-          growth-data adapter (Growth fixtures seed). Chưa gọi Meta API, chưa publish; quyền page
-          chỉ hiển thị trạng thái boolean, không lộ giá trị xác thực.
+          {realSource ? (
+            <>
+              <strong>NGUỒN THẬT · READ-ONLY.</strong> Kênh đọc từ{' '}
+              <strong>config/channels.json</strong> (UI Architecture V1 Phase D). Quyền page chỉ là
+              boolean hiện diện env — không lộ giá trị token. Chưa gọi Meta API, chưa publish từ màn
+              này.
+            </>
+          ) : (
+            <>
+              <strong>FIXTURE DEMO · READ-ONLY.</strong> config/channels.json trống — đang hiển thị
+              fixture demo. Thêm kênh thật vào config/channels.json để chuyển sang nguồn thật.
+            </>
+          )}
         </span>
       </div>
 
       <PageHeader
-        no={2}
+        no={4}
         icon="channels"
         accent="blue"
-        title="Cụm kênh & Kênh"
-        description="Quản lý kênh/page theo ngách + content angle. Nguồn: Growth data adapter (read-only)."
-        actions={
-          <Button variant="primary">
-            <UtilIcon name="plus" /> Thêm kênh
-          </Button>
-        }
+        title="Ngách & Kênh"
+        description="Cấu trúc Niche → Channel theo North Star. Thêm/sửa kênh = Operator sửa config/channels.json (không có nút ghi từ UI — màn này read-only)."
       />
-
-      {/* Lane filter chips (presentational) */}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[11px] text-neutral-500">Ngách:</span>
-        <Button variant="outline" className="!py-1">
-          Tất cả
-        </Button>
-        {LANES.map((lane) => (
-          <span key={lane.id} className="cursor-default">
-            <LanePill laneId={lane.id} />
-          </span>
-        ))}
-      </div>
 
       <ChannelsSection channels={channels} />
       <ContentAnglesSection angles={angles} />
