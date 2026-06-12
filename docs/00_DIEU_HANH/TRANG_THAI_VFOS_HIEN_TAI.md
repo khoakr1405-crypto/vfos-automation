@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-06-12 chiều (**Token Facebook DÀI HẠN ~59 ngày đã chốt** + **UI Architecture V1 Phase A–D** — xem Phần 27 + 28. Chuẩn publish "Graph xanh = API publish" đã chốt ở Phần 27; runtime reel `1028983246151885` đã ghi `publishVisibility=PUBLIC_CONFIRMED` — tick M1 chính thức chờ Operator xác nhận. North Star v2 — xem `docs/VFOS_NORTH_STAR.md`; UI spec — xem `docs/00_DIEU_HANH/VFOS_UI_ARCHITECTURE_V1.md`.)
-> **Branch**: `fix/shopee-modal-read` | **Commit mốc tại thời điểm cập nhật trạng thái**: `dccdcbb` (`feat(studio): job history and evidence screen (phase C)`)
+> **Cập nhật lần cuối**: 2026-06-12 tối (**WAITING_FOR_OPERATOR auto-resume cho commerce:intake** + **Video #2 intake THẬT: job_20260612_001** — xem Phần 29. Token Facebook dài hạn + UI Phase A–D — xem Phần 27 + 28. North Star v2 — xem `docs/VFOS_NORTH_STAR.md`.)
+> **Branch**: `fix/shopee-modal-read` | **Commit mốc tại thời điểm cập nhật trạng thái**: `13f7a13` (`feat(commerce): wait-for-operator auto-resume in intake preflight`)
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task → luôn chạy `pnpm vfos:daily` để có chỉ dẫn trạng thái mới nhất
 
 > ⚠️ **ĐƯỜNG VẬN HÀNH CHÍNH THỨC**: dùng `docs/00_DIEU_HANH/HUONG_DAN_VAN_HANH_CHINH_THUC_VFOS.md` (operator guide chuẩn, flow A-Z `commerce:intake` → `job:run-review` → `job:publish-facebook`).
@@ -2149,7 +2149,31 @@ DOM card img
 - **Phase D (đang chờ Operator duyệt UI + commit)**: `config/channels.json` (Niche → Channel THẬT đầu tiên: Review Nhà bạn, không secret) + loader real-first (fixture chỉ khi config trống, không trộn) + API GET `/api/studio/channels` + trang "Ngách & Kênh" banner nguồn thật/bỏ nút giả + channel context chip trong lane.
 - Còn lại: **Phase E** (Hiệu suất M3–M6 manual import) → **Phase F** (lane 2 thật).
 
-**Bước tiếp theo duy nhất**: Operator duyệt UI Phase D → commit/push → chọn: (a) Phase E Hiệu suất, hoặc (b) **video #2 end-to-end** qua flow chính thức (ưu tiên theo North Star — token dài hạn + Command Center đã sẵn sàng cho vòng lặp).
+**Bước tiếp theo duy nhất**: ~~Operator duyệt UI Phase D → chọn (a) Phase E, hoặc (b) video #2 end-to-end~~ Operator đã chọn (b) — xem Phần 29.
+
+---
+
+### ✅ Phần 29 — WAITING_FOR_OPERATOR auto-resume cho commerce:intake + Video #2 intake THẬT (job_20260612_001): ĐÃ CHỐT (2026-06-12 tối)
+
+**1. Điều tra "regression" cơ chế chờ CAPTCHA (kết luận: không phải regression)**:
+- Cơ chế "chờ Operator giải CAPTCHA rồi tự tiếp tục" (Round 27B human-assist, `waitForCaptchaResolution` + `detectCaptchaGuard` trong `packages/shopee/src/cdp-bootstrap.ts`, budget clamp 10–60s) nằm **bên trong extractor** (`extract-links-cdp.ts` guard trước extraction + guard sau click) — còn nguyên vẹn, không commit nào gỡ.
+- `commerce:intake` orchestrator (sinh sau, Round P39) đặt **preflight gate không-có-wait** chắn TRƯỚC extractor: gặp login/captcha là exit SUSPENDED ngay → extractor (nơi có wait) không được chạy. Gap đường chạy, không phải mất code.
+
+**2. Fix đã chốt (commit `13f7a13`, 1 file `scripts/commerce-intake-orchestrator.ts`)**:
+- Preflight BLOCKED vì login/captcha → `WAITING_FOR_OPERATOR`: poll preflight read-only 8s/lần, budget 10 phút, chỉ tin artifact tươi (`generatedAt` check chống FATAL transient), tự resume flow cũ khi Operator xử lý xong. CDP đứt hẳn vẫn SUSPENDED env-fault như cũ; hết budget GIỮ WAITING_FOR_OPERATOR (không hạ FAIL). Status JSON ghi `waitingReason/waitingSince/lastPollAt/pollCount` (UI đọc được).
+- Core extractor / preflight script / UI route **không đổi**. Typecheck file: 8 lỗi baseline → 1; biome 8 → 7 (0 vi phạm mới).
+
+**3. Vá kèm (commit `ed7dfe3`, 1 file `scripts/vfos-job-manager.ts`)**:
+- `saveManifest()` gọi `syncManifestArtifacts()` từ commit `f467f44` nhưng **thiếu import** → mọi lần save manifest qua CLI sẽ crash ReferenceError. Đã thêm import + narrow `videoUrl` (2 lỗi type mới từ `66b8920`). Được kiểm chứng bằng job creation thật ngay trong vòng này.
+
+**4. Video #2 intake THẬT — chạy end-to-end với cơ chế chờ mới (bằng chứng thật)**:
+- Flow: login wall → Operator đăng nhập → captcha `shopee.vn/verify/captcha` → Operator giải → tab về catalog (lúc đầu kẹt ở `/dashboard`, 0 card; Operator đưa về Product Offer, 20 cards) → **poll 9 tự resume, không chạy lại lệnh**.
+- Extraction: 1 click/5 → short link `https://s.shopee.vn/8fPwCYXwlg` — "Ghế hơi tập ngồi cao cấp phong cách Hàn Quốc (bé 4 tháng+)", shopid `1604253006` / itemid `27143940355`, owner `an_17376660568` ✅ verified, registry inserted (không duplicate), ảnh sản phẩm CHƯA capture (DOM không cho URL sạch — fallback đúng thiết kế).
+- Card builder PASS → Audit PASS (0 mismatch, 0 duplicate) → **Job `job_20260612_001`** (run `run_job_20260612_001`), state `WAITING_FOR_SOURCE_VIDEO`.
+
+**Giới hạn trung thực**: phần UI Command Center cho trạng thái chờ ("Đang chờ anh xử lý trong Cốc Cốc" + auto re-check + nút "Kiểm tra lại") CHƯA làm — là round riêng sau khi Operator duyệt. Ảnh sản phẩm job này chưa có.
+
+**Bước tiếp theo duy nhất**: Operator tìm/tải source video phù hợp sản phẩm ghế hơi tập ngồi → thả vào `data/operator/video-downloads/` → `pnpm job:run-review --job job_20260612_001 --file "<video>.mp4" --confirm-ai` → xem preview → approve → package → dry-run (live publish là cổng duyệt riêng).
 
 ---
 
