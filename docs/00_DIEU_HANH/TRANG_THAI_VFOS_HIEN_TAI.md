@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-06-12 tối (**WAITING_FOR_OPERATOR auto-resume cho commerce:intake** + **Video #2 intake THẬT: job_20260612_001** — xem Phần 29. Token Facebook dài hạn + UI Phase A–D — xem Phần 27 + 28. North Star v2 — xem `docs/VFOS_NORTH_STAR.md`.)
-> **Branch**: `fix/shopee-modal-read` | **Commit mốc tại thời điểm cập nhật trạng thái**: `13f7a13` (`feat(commerce): wait-for-operator auto-resume in intake preflight`)
+> **Cập nhật lần cuối**: 2026-06-13 (**Phase 1 — Channel→Job binding: channelId vào job manifest + UI/API/gate kênh thật, gỡ mock channel** — xem Phần 30. 12-Outcome Audit + Phase Roadmap cùng ngày — kết quả trong session log. Video #2 intake job_20260612_001 — xem Phần 29.)
+> **Branch**: `fix/shopee-modal-read` | **Commit mốc tại thời điểm cập nhật trạng thái**: `f6569fd` (`feat(studio): bind channel to job`)
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task → luôn chạy `pnpm vfos:daily` để có chỉ dẫn trạng thái mới nhất
 
 > ⚠️ **ĐƯỜNG VẬN HÀNH CHÍNH THỨC**: dùng `docs/00_DIEU_HANH/HUONG_DAN_VAN_HANH_CHINH_THUC_VFOS.md` (operator guide chuẩn, flow A-Z `commerce:intake` → `job:run-review` → `job:publish-facebook`).
@@ -2174,6 +2174,35 @@ DOM card img
 **Giới hạn trung thực**: phần UI Command Center cho trạng thái chờ ("Đang chờ anh xử lý trong Cốc Cốc" + auto re-check + nút "Kiểm tra lại") CHƯA làm — là round riêng sau khi Operator duyệt. Ảnh sản phẩm job này chưa có.
 
 **Bước tiếp theo duy nhất**: Operator tìm/tải source video phù hợp sản phẩm ghế hơi tập ngồi → thả vào `data/operator/video-downloads/` → `pnpm job:run-review --job job_20260612_001 --file "<video>.mp4" --confirm-ai` → xem preview → approve → package → dry-run (live publish là cổng duyệt riêng).
+
+---
+
+### ✅ Phần 30 — Phase 1: Channel→Job binding (Niche → Channel → Job hoàn chỉnh mắt xích Job): ĐÃ CHỐT (2026-06-13)
+
+**Bối cảnh**: Vòng 12-Outcome Audit (cùng ngày, 5 sub-agent song song + orchestrator) xác định gap nhỏ-leverage lớn nhất: job manifest không có `channelId` → chuỗi Niche→Channel→Job đứt ở mắt xích Job, `suggestedChannel` trên DTO là mock string, gate `target_channel` pass vô điều kiện với tên kênh bịa "Kênh Review Sản Phẩm #1". Operator duyệt Phase 1 làm trước (giá trị cao nhất/rủi ro thấp nhất trong roadmap 8 phase).
+
+**Commit**: `f6569fd` `feat(studio): bind channel to job` (6 file, +281/−36).
+
+**Thiết kế đã chốt**:
+- `scripts/vfos-job-manager.ts` — manifest thêm `channelId` (optional, null = job legacy); `job:create --channel <id>` validate kênh active lane product-review trong `config/channels.json`, sai → exit 2 `INVALID_CHANNEL`; không truyền → auto-bind khi lane có ĐÚNG 1 kênh active (default tường minh từ config, không floating), 0/≥2 kênh → null + warning yêu cầu `--channel`.
+- `job-draft/route.ts` — nhận `channelId` optional, validate server-side CHỈ nhận kênh thật (`loadChannelsWithSource().source === 'real'`, không nhận fixture) → 400 `INVALID_CHANNEL`; response trả `channelId` đọc lại từ manifest.
+- `jobs.ts` + `types.ts` — DTO thêm `channelId`; `suggestedChannel` = tên kênh thật từ manifest+config, job legacy = `(chưa gán kênh)` (gỡ mock string); gate `target_channel` check thật: kênh bind theo job → pass, legacy → kênh mặc định lane có ghi chú, không kênh → fail; gỡ hằng `FALLBACK_CHANNEL` bịa.
+- Lane UI `page.tsx` — gửi `channelId` khi tạo job (cả 2 đường prep + CREATE JOB), chỉ nhận channel `source === 'real'`; chip "kênh: Review Nhà bạn" (blue) / "chưa gán kênh" (amber) ở khu chọn Job; success box hiện channel; banner kênh lane ghi "job mới sẽ bind vào kênh này".
+- `publish-command-center.tsx` — fallback tên kênh bịa → `(chưa gán kênh)`.
+
+**Evidence thật (không suy đoán)**:
+- typecheck PASS · build PASS · biome 5 file studio: baseline HEAD 10 lỗi → 9 lỗi (0 vi phạm mới, giảm 1 nhờ gỡ mock hack; lỗi còn lại = CRLF/lint baseline repo-wide).
+- CLI dry-run 3 case: auto-bind `ch_fb_review_nha_ban (Review Nhà bạn)` exit 0 ✓; `--channel` explicit exit 0 ✓; kênh giả exit 2 `INVALID_CHANNEL` ✓.
+- API bad path: POST channelId giả → HTTP 400 `INVALID_CHANNEL`, không tạo job ✓.
+- **UI proof end-to-end (Playwright drive UI thật, Operator yêu cầu trước commit)**: tạo job qua lane UI → `job_20260612_002` manifest có `"channelId": "ch_fb_review_nha_ban"` ✓; chip "kênh: Review Nhà bạn" hiển thị cho job mới ✓; console 0 error, 0 page error ✓. Screenshot: `data/temp/debug/phase1_proof_*.png` (runtime, không commit).
+- Publish queue legacy jobs: gate "Target Channel Selected" pass với tên kênh THẬT "Review Nhà bạn" (kênh mặc định lane, có ghi chú job chưa gán kênh).
+
+**Ghi chú vận hành**:
+- `job_20260612_002` là **proof job** (sourceVideoUrl = `https://example.com/vfos-phase1-ui-proof`, state WAITING_FOR_SOURCE_VIDEO) — KHÔNG chạy production trên job này; source gate chặn sẵn. Operator có thể giữ làm evidence hoặc bỏ qua.
+- Job legacy (kể cả video #2 `job_20260612_001`) KHÔNG backfill channelId — hiển thị trung thực "(chưa gán kênh)"; backfill là quyết định Operator round sau nếu cần.
+- Selector nhiều kênh chưa làm (lane mới 1 kênh active — tránh YAGNI, ra đời cùng kênh thứ 2).
+
+**Bước tiếp theo**: (a) Operator tiếp tục video #2 end-to-end (`job_20260612_001`, xem Phần 29), hoặc (b) chọn phase kế từ roadmap: P2 Batch queue v0 / P3 Tracking M3–M6 manual import thật. Operator quyết.
 
 ---
 
