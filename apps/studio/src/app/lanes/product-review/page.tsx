@@ -1,16 +1,18 @@
 'use client';
 
 /* =============================================================================
- * VFOS Studio — Product Review Command Center (Round A — skeleton, READ-ONLY)
+ * VFOS Studio — Product Review Command Center
  * -----------------------------------------------------------------------------
  * KHÔNG còn là navigation shell. Đây là Command Center với 3 workflow action
- * panel. Round A chỉ ĐỌC state thật (GET) và hiển thị; mọi nút chạy tác vụ thật
- * đều disabled ("sắp wire ở round sau"). KHÔNG POST, KHÔNG tạo job, KHÔNG render,
- * KHÔNG publish, KHÔNG Shopee extraction, KHÔNG gọi API ngoài.
+ * panel đã wire THẬT: Action 1 (Product Card + kho link Shopee + trích xuất CDP),
+ * Action 2 (nguồn → clean → duyệt sạch → production → QA → duyệt preview),
+ * Action 3 (đóng gói → preflight readiness → publish Facebook qua gate cứng
+ * server-side; live publish CHỈ chạy khi Operator bấm, không auto).
  *
  * Gate-driven UX: Hành động 2 mở khi có Product Card hợp lệ; Hành động 3 mở khi
- * job mới nhất đã APPROVED. QA là bước con BÊN TRONG Hành động 2 (không tách
- * thành action lớn riêng).
+ * job đã APPROVED. QA là bước con BÊN TRONG Hành động 2 (không tách thành action
+ * lớn riêng). Mọi state kết quả (publish/run/prepare) là PER-JOB: đổi job vận
+ * hành phải reset — không floating state giữa các video liên tiếp.
  * ========================================================================== */
 
 import { Card } from '@/components/card';
@@ -332,6 +334,10 @@ export default function ProductReviewLanePage() {
 
   const latestJob = jobs.find((j) => j.id === selectedJobId) ?? null;
 
+  // "Đã đăng" derive từ STATE đồng bộ của DTO trước (PUBLISHED); preflight async chỉ
+  // bổ sung (alreadyPublished) — không được là nguồn duy nhất vì race lúc mount.
+  const jobPublished = latestJob?.state === 'PUBLISHED' || !!publishPreflight?.alreadyPublished;
+
   const canPublish =
     latestJob?.state === 'PACKAGED' &&
     publishPreflight?.canLivePublish === true &&
@@ -341,11 +347,14 @@ export default function ProductReviewLanePage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
+      // Timeout 15s/request — route treo không được phép kẹt badge "Đang tải…" vô hạn;
+      // allSettled nuốt reject từng request, panel còn lại vẫn render dữ liệu thật.
+      const timeoutOpts = { signal: AbortSignal.timeout(15_000) };
       const [cardRes, draftRes, jobsRes, registryRes] = await Promise.allSettled([
-        fetch('/api/studio/commerce/current-product-card').then((r) => r.json()),
-        fetch('/api/studio/create/source-draft').then((r) => r.json()),
-        fetch('/api/studio/jobs').then((r) => r.json()),
-        fetch('/api/studio/commerce/shopee-registry').then((r) => r.json()),
+        fetch('/api/studio/commerce/current-product-card', timeoutOpts).then((r) => r.json()),
+        fetch('/api/studio/create/source-draft', timeoutOpts).then((r) => r.json()),
+        fetch('/api/studio/jobs', timeoutOpts).then((r) => r.json()),
+        fetch('/api/studio/commerce/shopee-registry', timeoutOpts).then((r) => r.json()),
       ]);
       let currentCard: CardSummary | null = null;
       if (cardRes.status === 'fulfilled') {
@@ -400,6 +409,26 @@ export default function ProductReviewLanePage() {
     load();
   }, [load]);
 
+  // Workflow Integrity — kết quả/lỗi publish/run/prepare là PER-JOB. Đổi job vận
+  // hành (video #2, #3…) phải xoá sạch kết quả của job trước: không được để
+  // "Đã đăng thành công" / report / lỗi của job cũ hiển thị cho job mới.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: selectedJobId là trigger có chủ đích — reset state per-job mỗi khi đổi job vận hành
+  useEffect(() => {
+    setPublishResult(null);
+    setPublishError(null);
+    setPublishStderr(null);
+    setRunNotice(null);
+    setRunStage(null);
+    setRunReport(null);
+    setProductionLaunched(false);
+    setPollTimedOut(false);
+    setPreparePostStage(null);
+    setPreparePostError(null);
+    setPreparePostDetails(null);
+    setApprovePreviewError(null);
+    setActionError(null);
+  }, [selectedJobId]);
+
   // Fetch package preview when state is PACKAGED
   useEffect(() => {
     if (selectedJobId && latestJob?.state === 'PACKAGED') {
@@ -431,9 +460,14 @@ export default function ProductReviewLanePage() {
     }
   }, [selectedJobId, latestJob?.state]);
 
-  // Fetch publish preflight when state is PACKAGED
+  // Fetch publish preflight when state is PACKAGED/PUBLISHED. PUBLISHED vẫn cần
+  // preflight (GET read-only) để khôi phục permalink + publishVisibility sau khi
+  // Operator reload trang — không dựa vào publishResult chỉ sống trong phiên.
   useEffect(() => {
-    if (selectedJobId && latestJob?.state === 'PACKAGED') {
+    if (
+      selectedJobId &&
+      (latestJob?.state === 'PACKAGED' || latestJob?.state === 'PUBLISHED')
+    ) {
       const params = new URLSearchParams();
       if (card?.shopId) params.append('shopId', card.shopId);
       if (card?.itemId) params.append('itemId', card.itemId);
@@ -452,6 +486,7 @@ export default function ProductReviewLanePage() {
               confirmPhrase: pf.confirmPhrase,
               targetChannel: pf.targetChannel,
               livePublishEnabledReason: pf.livePublishEnabledReason,
+              publishStatus: pf.publishStatus ?? null,
             });
           } else {
             setPublishPreflight(null);
@@ -795,6 +830,7 @@ export default function ProductReviewLanePage() {
             canLivePublish: !!pf.canLivePublish,
             alreadyPublished: !!pf.alreadyPublished,
             blockedReasons: Array.isArray(pf.blockedReasons) ? pf.blockedReasons : [],
+            publishStatus: pf.publishStatus ?? null,
           });
         }
         // Preflight fail KHÔNG chặn việc chuẩn bị bài đăng — chỉ là thiếu Facebook readiness.
@@ -927,6 +963,7 @@ export default function ProductReviewLanePage() {
             confirmPhrase: pf.confirmPhrase,
             targetChannel: pf.targetChannel,
             livePublishEnabledReason: pf.livePublishEnabledReason,
+            publishStatus: pf.publishStatus ?? null,
           });
         }
       } else {
@@ -1210,7 +1247,10 @@ export default function ProductReviewLanePage() {
     if (!jobId) return;
     const eligible =
       jobApproved &&
-      latestJob?.state !== 'PACKAGED' &&
+      // CHỈ auto-resume đúng trạng thái APPROVED (đã duyệt, CHƯA đóng gói). So sánh
+      // bằng state đồng bộ từ DTO — không dựa preflight async: race lúc mount từng
+      // làm preparePost chạy nhầm cho job PUBLISHED → box lỗi package giả.
+      latestJob?.state === 'APPROVED' &&
       !isFallbackSource &&
       bindingStatus === 'PASS' &&
       sourceApproved &&
@@ -1249,10 +1289,10 @@ export default function ProductReviewLanePage() {
       <div className="flex items-center gap-2 rounded-xl border border-hairline bg-raised/30 px-3.5 py-2 text-[11px] text-neutral-400">
         <UtilIcon name="clock" width={13} height={13} className="text-neutral-500" />
         <span>
-          <strong className="text-neutral-300">Action 1 & 2 đã wire.</strong> Action 1: kho link
-          Shopee + trích xuất CDP. Action 2: nguồn → clean source → duyệt sạch → chạy sản xuất video
-          (script→voice→BGM→render→caption→QA) ngay trong Command Center. Action 3 (đóng gói/đăng
-          bài) tiếp tục wire ở round sau.
+          <strong className="text-neutral-300">Action 1–2–3 đã wire thật.</strong> Action 1: kho
+          link Shopee + trích xuất CDP. Action 2: nguồn → clean source → duyệt sạch → chạy sản
+          xuất video (script→voice→BGM→render→caption→QA). Action 3: đóng gói → kiểm tra
+          readiness → đăng Facebook qua gate cứng — live publish chỉ chạy khi Operator bấm.
         </span>
       </div>
 
@@ -2488,7 +2528,7 @@ export default function ProductReviewLanePage() {
         icon="publish"
         accent="blue"
         title="Đăng bài / Đóng gói"
-        desc="Sau khi Operator duyệt video, VFOS tự đóng gói bài đăng + kiểm tra readiness. Đăng thật lên Facebook có gate cứng (làm ở Phase C)."
+        desc="Sau khi Operator duyệt video, VFOS tự đóng gói bài đăng + kiểm tra readiness. Đăng thật lên Facebook qua gate cứng — chỉ chạy khi Operator bấm."
         status={((): { label: string; accent: AccentKey } => {
           // Header derive từ trạng thái THẬT của việc chuẩn bị bài đăng (không kẹt ở
           // "Sẵn sàng đóng gói" khi checklist còn dở) → tránh mâu thuẫn header vs nội dung.
@@ -2528,8 +2568,10 @@ export default function ProductReviewLanePage() {
                 : 'Cần job đã APPROVED (QA PASS + Operator duyệt preview) để mở bước đóng gói.'
         }
       >
-        {/* Tiến trình VFOS tự chuẩn bị bài đăng (sau khi Operator duyệt video). */}
-        {preparingPost && (
+        {/* Tiến trình VFOS tự chuẩn bị bài đăng (sau khi Operator duyệt video).
+            Job đã đăng → KHÔNG hiện khối chuẩn bị: bài đăng đã ra Page thật, mọi
+            progress/lỗi chuẩn bị đều là noise gây mâu thuẫn với kết quả publish. */}
+        {!jobPublished && preparingPost && (
           <div className="flex items-center gap-2 rounded-lg border border-accent-blue/30 bg-accent-blue/10 px-3 py-2 text-[11px] text-accent-blue">
             <UtilIcon name="clock" width={13} height={13} />
             <span>
@@ -2537,13 +2579,13 @@ export default function ProductReviewLanePage() {
             </span>
           </div>
         )}
-        {!preparingPost && preparePostStage && !preparePostError && (
+        {!jobPublished && !preparingPost && preparePostStage && !preparePostError && (
           <div className="flex items-center gap-2 rounded-lg border border-accent-green/30 bg-accent-green/10 px-3 py-2 text-[11px] text-accent-green">
             <UtilIcon name="check" width={13} height={13} />
             <span>{preparePostStage}</span>
           </div>
         )}
-        {preparePostError && (
+        {!jobPublished && preparePostError && (
           <NoticeBox accent="amber">
             <strong>{preparePostError.title}</strong>
             {preparePostError.hint && (
@@ -2553,12 +2595,13 @@ export default function ProductReviewLanePage() {
         )}
 
         {/* Checklist chuẩn bị bài đăng — derive từ STATE THẬT + Facebook preflight.
-            KHÔNG hiện "Sẵn sàng đăng" giả: chỉ ok khi job thật đã PACKAGED. */}
+            KHÔNG hiện "Sẵn sàng đăng" giả: chỉ ok khi job thật đã PACKAGED/PUBLISHED. */}
         {(() => {
           const st = latestJob?.state;
-          // DTO state đỉnh là PACKAGED; "đã đăng" lấy từ preflight (đọc facebook_publish_status).
           const packaged = st === 'PACKAGED';
-          const published = !!publishPreflight?.alreadyPublished;
+          // Job đã đăng ⇒ mọi bước đóng gói đã hoàn tất trong quá khứ — checklist phải
+          // ok "đã đăng", không được rơi về "lỗi/chưa sẵn sàng" (mâu thuẫn với kết quả).
+          const published = jobPublished;
           const videoApproved = !!jobApproved && !!latestJob?.hasPreview;
           const productOk = bindingStatus === 'PASS';
           const affiliateOk = latestJob?.pipeline.affiliateLink === 'pass';
@@ -2566,24 +2609,33 @@ export default function ProductReviewLanePage() {
           const errored = !!preparePostError;
           // Trạng thái chung cho các bước phụ thuộc đóng gói: idle → "chưa sẵn sàng",
           // lỗi → "lỗi", đang chạy → "đang làm" (KHÔNG treo "đang chuẩn bị" vô nghĩa).
-          const pkgState: PrepState = packaged
+          const pkgState: PrepState = published
             ? 'ok'
-            : errored
-              ? 'fail'
-              : preparing
-                ? 'doing'
-                : 'wait';
-          const pkgNote = packaged
-            ? undefined
-            : errored
-              ? 'lỗi'
-              : preparing
-                ? 'đang làm'
-                : 'chưa sẵn sàng';
+            : packaged
+              ? 'ok'
+              : errored
+                ? 'fail'
+                : preparing
+                  ? 'doing'
+                  : 'wait';
+          const pkgNote = published
+            ? 'đã đăng'
+            : packaged
+              ? undefined
+              : errored
+                ? 'lỗi'
+                : preparing
+                  ? 'đang làm'
+                  : 'chưa sẵn sàng';
           const pf = publishPreflight;
           let fbState: PrepState = preparing ? 'doing' : 'wait';
           let fbNote = preparing ? 'đang kiểm tra' : 'chưa kiểm tra';
-          if (pf) {
+          if (published) {
+            // Đã đăng thật — readiness gate không còn ý nghĩa cho job này; khóa
+            // chống đăng trùng (canLivePublish=false) là ĐÚNG, không phải lỗi gate.
+            fbState = 'ok';
+            fbNote = 'đã đăng — khóa chống đăng trùng';
+          } else if (pf) {
             if (!pf.facebookCredentialsConfigured) {
               fbState = 'fail';
               fbNote = 'chưa cấu hình';
@@ -2623,24 +2675,24 @@ export default function ProductReviewLanePage() {
                 label="Sẵn sàng đăng"
                 state={pkgState}
                 note={
-                  packaged
-                    ? published
-                      ? publishPreflight?.publishStatus?.publishVisibility === 'PUBLIC_CONFIRMED'
-                        ? 'đã đăng — public ✓'
-                        : 'đã đăng qua API — Operator kiểm tra public (bổ sung)'
-                      : 'đăng thủ công (Phase C)'
-                    : pkgNote
+                  published
+                    ? publishPreflight?.publishStatus?.publishVisibility === 'PUBLIC_CONFIRMED'
+                      ? 'đã đăng — public ✓'
+                      : 'đã đăng qua API — Operator kiểm tra public (bổ sung)'
+                    : packaged
+                      ? 'chờ Operator bấm "Đăng bài Facebook"'
+                      : pkgNote
                 }
               />
             </div>
           );
         })()}
 
-        {publishPreflight && !publishPreflight.livePublishEnabled && (
+        {!jobPublished && publishPreflight && !publishPreflight.livePublishEnabled && (
           <p className="text-[10px] leading-relaxed text-neutral-500">
             Facebook đang ở <strong className="text-accent-amber">chế độ nháp</strong> — chưa bật
-            đăng thật. Bản nháp bài đăng vẫn được chuẩn bị; bước đăng thật (live publish) làm ở
-            Phase C với gate cứng.
+            đăng thật. Bản nháp bài đăng vẫn được chuẩn bị; bước đăng thật (live publish) chạy
+            qua gate cứng khi Operator bấm.
           </p>
         )}
 
@@ -2877,8 +2929,12 @@ export default function ProductReviewLanePage() {
         </details>
 
         <GateHint
-          ok={latestJob?.state === 'PACKAGED' || !!publishPreflight?.alreadyPublished}
-          okText="Bản nháp bài đăng đã sẵn sàng (PACKAGED) — đăng thủ công ở Phase C"
+          ok={latestJob?.state === 'PACKAGED' || jobPublished}
+          okText={
+            jobPublished
+              ? 'Job đã đăng — không chuẩn bị lại bài đăng; khóa chống đăng trùng đang bật'
+              : 'Bản nháp bài đăng đã sẵn sàng (PACKAGED) — bấm "Đăng bài Facebook" khi gate xanh'
+          }
           waitText="VFOS sẽ tự đóng gói sau khi Operator duyệt video; hoàn tất khi job đạt PACKAGED"
         />
       </ActionPanel>
