@@ -164,6 +164,7 @@ pnpm job:publish-facebook --job <jobId> --confirm-live-publish
 | **CAPTCHA / OTP trên Shopee** | Operator tự xử lý trong **Cốc Cốc**. Script KHÔNG bypass. Xong thì chạy lại `commerce:intake`. |
 | **Audit fail (owner / canonical URL)** | KHÔNG bypass. Sửa ở khâu intake/sanitize (owner phải là `an_17376660568`, URL phải sạch credential) rồi extract lại. |
 | **CDP browser not found** | Mở Cốc Cốc với `--remote-debugging-port=9222`, vào tab Shopee Affiliate, chạy lại `commerce:intake`. KHÔNG tự fallback sang `debug:shopee:login`. |
+| **Facebook token hết hạn (OAuthException 190)** | Đổi sang Page token DÀI HẠN: lấy User token tươi từ Graph Explorer (app riêng, quyền `pages_show_list` + `pages_manage_posts`) → dán vào `FACEBOOK_PAGE_ACCESS_TOKEN` trong `.env` → chạy `pnpm facebook:get-page-token` (cần `META_APP_ID`/`META_APP_SECRET` trong `.env`). Script exchange dài hạn + verify `debug_token` + tự ghi `.env`. Kiểm tra cuối: `pnpm facebook:test`. |
 
 ---
 
