@@ -1296,6 +1296,66 @@ export default function ProductReviewLanePage() {
         </span>
       </div>
 
+      {/* Stepper vòng lặp — derive từ STATE THẬT, cho Operator biết đang ở bước nào
+          và bước tiếp theo (UI Architecture V1 Phase B). */}
+      {(() => {
+        const qaPassed = latestJob?.qaStatus === 'PASS' && !!latestJob?.hasPreview;
+        const packagedOrMore = latestJob?.state === 'PACKAGED' || jobPublished;
+        const flags = [
+          cardReady,
+          sourceApproved,
+          qaPassed,
+          !!jobApproved && qaPassed,
+          packagedOrMore,
+          jobPublished,
+        ];
+        const labels = [
+          'Sản phẩm',
+          'Nguồn sạch',
+          'Sản xuất + QA',
+          'Duyệt preview',
+          'Đóng gói',
+          'Đã đăng',
+        ];
+        const firstPending = flags.findIndex((f) => !f);
+        const stateOf = (i: number): PrepState =>
+          flags[i] ? 'ok' : i === firstPending ? 'doing' : 'wait';
+        return (
+          <div
+            id="lane-loop-top"
+            className="scroll-mt-20 flex flex-wrap items-center gap-1.5 rounded-xl border border-hairline bg-raised/30 px-3.5 py-2.5"
+          >
+            {labels.map((label, i) => (
+              <span key={label} className="flex items-center gap-1.5">
+                {i > 0 && <span className="text-[10px] text-neutral-600">→</span>}
+                <span
+                  className={`flex items-center gap-1.5 rounded-md px-2 py-1 text-[10px] font-semibold ${
+                    stateOf(i) === 'ok'
+                      ? 'bg-accent-green/10 text-accent-green'
+                      : stateOf(i) === 'doing'
+                        ? 'bg-accent-blue/10 text-accent-blue'
+                        : 'bg-panel/40 text-neutral-500'
+                  }`}
+                >
+                  <span className={`h-1.5 w-1.5 rounded-full ${PREP_DOT[stateOf(i)]}`} />
+                  {label}
+                </span>
+              </span>
+            ))}
+            <span className="text-[10px] text-neutral-600">→</span>
+            <span
+              className={`rounded-md px-2 py-1 text-[10px] font-bold ${
+                jobPublished
+                  ? 'bg-accent-amber/15 text-accent-amber'
+                  : 'bg-panel/40 text-neutral-600'
+              }`}
+            >
+              ▶ Video mới
+            </span>
+          </div>
+        );
+      })()}
+
       {/* ===================== HÀNH ĐỘNG 1 ===================== */}
       <ActionPanel
         no={1}
@@ -2938,6 +2998,85 @@ export default function ProductReviewLanePage() {
           waitText="VFOS sẽ tự đóng gói sau khi Operator duyệt video; hoàn tất khi job đạt PACKAGED"
         />
       </ActionPanel>
+
+      {/* ===================== VÒNG LẶP — JOB HOÀN TẤT =====================
+          Reset-to-ready (UI Architecture V1 Phase B): job PUBLISHED → đường rõ ràng
+          để bắt đầu video tiếp theo. KHÔNG xóa data job cũ — evidence nằm trong
+          manifest/registry; màn hình job mới tự sạch nhờ per-job state reset khi
+          Operator chọn sản phẩm mới (binding job-theo-Product-Card). */}
+      {jobPublished &&
+        (() => {
+          const pubStatus = publishResult?.result ?? publishPreflight?.publishStatus ?? null;
+          const permalink = pubStatus?.permalinkUrl ?? null;
+          const publicConfirmed = pubStatus?.publishVisibility === 'PUBLIC_CONFIRMED';
+          return (
+            <Card className="border-accent-green/30">
+              <div className="space-y-3.5 p-5">
+                <div className="flex items-center gap-2">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-accent-green/15 text-accent-green">
+                    <UtilIcon name="check" width={14} height={14} />
+                  </span>
+                  <div>
+                    <p className="text-sm font-bold text-neutral-100">
+                      Job hoàn tất — sẵn sàng video tiếp theo
+                    </p>
+                    <p className="text-[11px] text-neutral-500">
+                      Evidence đã lưu trong manifest/registry — job này không bị xóa, xem lại bất
+                      kỳ lúc nào qua "Chọn job vận hành".
+                    </p>
+                  </div>
+                </div>
+                <div className="grid gap-1.5 text-[11px] sm:grid-cols-2">
+                  <p className="text-neutral-400">
+                    Job: <span className="font-mono text-neutral-200">{latestJob?.id ?? '—'}</span>
+                  </p>
+                  <p className="text-neutral-400">
+                    Sản phẩm: <span className="text-neutral-200">{card?.name ?? '—'}</span>
+                  </p>
+                  <p className="text-neutral-400">
+                    Hiển thị công khai:{' '}
+                    <span className={publicConfirmed ? 'text-accent-green' : 'text-accent-amber'}>
+                      {publicConfirmed
+                        ? 'public ✓'
+                        : 'UNCONFIRMED — Operator kiểm tra bổ sung'}
+                    </span>
+                  </p>
+                  <p className="text-neutral-400">
+                    Link affiliate:{' '}
+                    <span className="text-neutral-200">{card?.shortLink ?? '—'}</span>
+                  </p>
+                </div>
+                {permalink && (
+                  <a
+                    href={permalink}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[11px] text-accent-green underline hover:text-accent-green/80"
+                  >
+                    Xem bài đăng trên Facebook ↗
+                  </a>
+                )}
+                <div className="flex flex-wrap items-center gap-2 border-t border-hairline/50 pt-3">
+                  <Button
+                    variant="primary"
+                    className="!py-1.5 !px-3 text-xs font-semibold"
+                    onClick={() =>
+                      document
+                        .getElementById('lane-loop-top')
+                        ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                    }
+                  >
+                    ▶ Bắt đầu video mới
+                  </Button>
+                  <span className="text-[10px] text-neutral-500">
+                    Lên Hành động 1 → chọn/lấy sản phẩm MỚI — job mới tự tạo theo sản phẩm đó,
+                    màn hình tự sạch state của job cũ.
+                  </span>
+                </div>
+              </div>
+            </Card>
+          );
+        })()}
 
     </div>
   );

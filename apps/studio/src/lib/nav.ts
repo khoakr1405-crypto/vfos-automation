@@ -1,6 +1,12 @@
 // Navigation model for the VFOS Studio shell.
 // Sidebar is organized strictly by Operator business structure.
 // Technical routes are accessed internally within Review Sản phẩm or direct URL.
+//
+// UI Architecture V1 (docs/00_DIEU_HANH/VFOS_UI_ARCHITECTURE_V1.md, duyệt 2026-06-12):
+// - /publish + /schedule GỠ khỏi nav (đang mock — chỉ quay lại khi nối data thật;
+//   URL vẫn truy cập trực tiếp được).
+// - 2 stub vlog gộp thành LANE 2 "Nội dung / Giải trí" (/lanes/content) — Vlog Câu cá
+//   và Vlog Về xe là NGÁCH bên trong lane này theo North Star v2.
 
 export type AccentKey = 'blue' | 'violet' | 'green' | 'amber' | 'cyan' | 'rose';
 export type IconKey =
@@ -47,40 +53,29 @@ export const NAV_GROUPS: NavGroup[] = [
       },
       {
         no: 3,
-        href: '/lanes/fishing-vlog',
-        label: 'Vlog Về Câu cá',
+        href: '/lanes/content',
+        label: 'Nội dung / Giải trí',
         icon: 'rawvisual',
         accent: 'cyan',
       },
-      {
-        no: 4,
-        href: '/lanes/car-vlog',
-        label: 'Vlog Về xe',
-        icon: 'render',
-        accent: 'violet',
-      },
     ],
   },
   {
-    title: 'VẬN HÀNH',
-    items: [
-      { no: 5, href: '/publish', label: 'Xuất bản & Lịch', icon: 'publish', accent: 'green' },
-      { no: 6, href: '/channels', label: 'Cụm kênh & Kênh', icon: 'channels', accent: 'blue' },
-      { no: 7, href: '/schedule', label: 'Lịch đa nền tảng', icon: 'schedule', accent: 'amber' },
-    ],
+    title: 'CẤU TRÚC',
+    items: [{ no: 4, href: '/channels', label: 'Ngách & Kênh', icon: 'channels', accent: 'blue' }],
   },
   {
-    title: 'BÁO CÁO / TƯƠNG TÁC',
+    title: 'KẾT QUẢ / TƯƠNG TÁC',
     items: [
       {
-        no: 8,
+        no: 5,
         href: '/analytics',
         label: 'Hiệu suất / Analytics',
         icon: 'analytics',
         accent: 'green',
       },
       {
-        no: 9,
+        no: 6,
         href: '/comments',
         label: 'Bình luận & Mắt thần',
         icon: 'comments',

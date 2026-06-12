@@ -1,20 +1,22 @@
 import { Card, CardBody, CardHeader } from '@/components/card';
-import { Icon, UtilIcon } from '@/components/icons';
+import { UtilIcon } from '@/components/icons';
 import { MockBanner } from '@/components/mock-banner';
-import { AttentionPanel } from '@/components/overview/attention-panel';
-import { ClusterSummaryCards } from '@/components/overview/cluster-summary-cards';
-import { MiniAnalyticsPanel } from '@/components/overview/mini-analytics-panel';
 import { OperatorJobQueue } from '@/components/overview/operator-job-queue';
-import { OverviewKpiGrid } from '@/components/overview/overview-kpi-grid';
-import { PipelineOverview } from '@/components/overview/pipeline-overview';
 import { ProductQueue } from '@/components/overview/product-queue';
-import { PublishReadinessMini } from '@/components/overview/publish-readiness-mini';
-import { WeeklyActivity } from '@/components/overview/weekly-activity';
 import { PageHeader } from '@/components/page-header';
 import { Button, RuleList } from '@/components/ui';
 import { VFOS_RULES } from '@/lib/mock-data';
 import Link from 'next/link';
 
+/* =============================================================================
+ * Tổng quan — UI Architecture V1 Phase A: CHỈ data thật trên màn điều hành.
+ * Các panel mock cũ (KPI grid, attention, cluster, weekly, pipeline, readiness,
+ * mini analytics) đã GỠ khỏi màn này — số liệu hiệu suất thật (view/click/đơn,
+ * M3–M6) sẽ lên màn "Hiệu suất / Analytics" ở Phase E khi có số liệu thật.
+ * CTA chính trỏ về lane Command Center, không trỏ route kỹ thuật.
+ * ========================================================================== */
+
+// biome-ignore lint/style/noDefaultExport: Next.js page requires default export
 export default function OverviewPage() {
   return (
     <div className="space-y-6">
@@ -25,72 +27,60 @@ export default function OverviewPage() {
         icon="overview"
         accent="blue"
         title="VFOS Operator Overview"
-        description="Active Lane: Review sản phẩm · Mode: Product-first affiliate video production"
+        description="Lane đang chạy: Review Sản phẩm · Chiến lược: content-led affiliate (North Star v2)"
         actions={
-          <>
-            <Link href="/analytics">
-              <Button variant="ghost">
-                <Icon name="analytics" width={14} height={14} /> Analytics
-              </Button>
-            </Link>
-            <Link href="/create">
-              <Button variant="primary">
-                <UtilIcon name="plus" /> Tạo nội dung
-              </Button>
-            </Link>
-          </>
+          <Link href="/lanes/product-review">
+            <Button variant="primary">
+              <UtilIcon name="plus" /> Vào lane Review Sản phẩm
+            </Button>
+          </Link>
         }
       />
 
-      {/* D. KPI Cards - 7 cards */}
-      <OverviewKpiGrid />
-
-      {/* Main Video Jobs Queue (Center of Dashboard) + Attention Alerts */}
+      {/* Hàng đợi job thật (registry/manifest) + đường tiếp tục vòng lặp */}
       <div className="grid gap-5 lg:grid-cols-3">
         <div className="lg:col-span-2">
           <OperatorJobQueue />
         </div>
-        <AttentionPanel />
+        <Card className="border-accent-blue/20">
+          <CardHeader
+            title="Vòng lặp vận hành"
+            subtitle="Outcome cuối theo North Star"
+            accentClass="text-accent-blue"
+          />
+          <CardBody className="p-5 text-[11px] leading-relaxed text-neutral-400 space-y-3">
+            <p>
+              video nguồn → video tiếng Việt đã biên tập → <strong>API publish thật</strong> khi
+              Operator duyệt → người xem → click affiliate → đơn hàng/doanh thu thật.
+            </p>
+            <p className="text-neutral-500">
+              Job hoàn tất sẽ hiện panel <strong>"Bắt đầu video mới"</strong> ngay trong lane — job
+              cũ tự nằm lại trong hàng đợi/lịch sử, không bị xóa.
+            </p>
+            <Link href="/lanes/product-review" className="block">
+              <Button variant="ghost" className="w-full">
+                ▶ Bắt đầu video mới
+              </Button>
+            </Link>
+          </CardBody>
+        </Card>
       </div>
 
-      {/* Product-First Flow Queue + Publish Readiness Status Matrix */}
-      <div className="grid gap-5 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <ProductQueue />
-        </div>
-        <PublishReadinessMini />
-      </div>
+      {/* Hàng đợi sản phẩm thật (Shopee registry) */}
+      <ProductQueue />
 
-      {/* Cụm kênh hiệu quả */}
-      <ClusterSummaryCards />
-
-      {/* Lịch hoạt động tuần này */}
-      <WeeklyActivity />
-
-      {/* Pipeline Overview */}
-      <div className="grid gap-5 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <PipelineOverview />
-        </div>
-        <div className="flex flex-col justify-between">
-          <Card className="h-full flex flex-col justify-center bg-raised/20 border-accent-blue/20">
-            <CardBody className="text-center p-6 space-y-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-accent-blue/10 text-accent-blue mx-auto">
-                <UtilIcon name="sparkle" width={24} height={24} />
-              </div>
-              <div>
-                <p className="text-sm font-bold text-neutral-100">Affiliate Operator Engine</p>
-                <p className="text-xs text-neutral-500 mt-1">
-                  Dữ liệu được cập nhật từ data boundary an toàn của VFOS Studio.
-                </p>
-              </div>
-            </CardBody>
-          </Card>
-        </div>
-      </div>
-
-      {/* Mini Analytics */}
-      <MiniAnalyticsPanel />
+      {/* Ghi chú phạm vi số liệu — tránh hiểu nhầm vì sao không còn KPI */}
+      <Card>
+        <CardBody className="flex flex-wrap items-center gap-2 p-4 text-[11px] text-neutral-500">
+          <UtilIcon name="bell" width={13} height={13} className="text-accent-amber" />
+          <span>
+            KPI/hiệu suất (view, click, đơn, doanh thu — M3–M6) sẽ hiển thị ở màn{' '}
+            <strong className="text-neutral-300">Hiệu suất / Analytics</strong> khi có số liệu thật.
+            Các panel số liệu mock đã được gỡ khỏi Tổng quan theo UI Architecture V1 — không trộn
+            mock với data thật trên màn điều hành.
+          </span>
+        </CardBody>
+      </Card>
 
       {/* Rule vận hành VFOS — luôn hiển thị để tránh hiểu nhầm */}
       <Card>
