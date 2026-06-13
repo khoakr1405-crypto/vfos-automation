@@ -2390,7 +2390,6 @@ async function cmdIntakeClean(args: string[]): Promise<number> {
 
   let originalDownloadedFilename = '';
   let downloadSuccess = false;
-  let isFallback = false;
   let downloadedAt = isoNow();
   let durationMs = 0;
   let errorCode: string | null = null;
@@ -2553,29 +2552,23 @@ async function cmdIntakeClean(args: string[]): Promise<number> {
       }
     } catch (err: any) {
       const msg = err.message || '';
-      const fallbackPath = resolve('runs/job_20260602_003/source/clean_source_video.mp4');
-      if (existsSync(fallbackPath)) {
-        console.log(
-          `⚠️ [Intake Fallback] Downloader failed (${msg}). Falling back to workspace template: ${fallbackPath}`,
-        );
-        copyFileSync(fallbackPath, finalVideoPath);
-        downloadSuccess = true;
-        isFallback = true;
+      // KHÔNG fallback sang video mẫu khi download fail. Đẩy demo/sample vào bước
+      // duyệt nguồn sạch của job THẬT là vi phạm No-Go: operator có thể duyệt nhầm
+      // nguồn sai sản phẩm. Download fail = FAIL rõ ràng (state → FAILED). Operator
+      // dán lại URL đúng, hoặc dùng --file để nạp nguồn thật từ inbox.
+      if (msg.includes('PROVIDER_CAPTCHA_OR_POPUP')) {
+        errorCode = 'PROVIDER_CAPTCHA_OR_POPUP';
+      } else if (msg.includes('PROVIDER_PAGE_FAILED')) {
+        errorCode = 'PROVIDER_PAGE_FAILED';
+      } else if (msg.includes('PROVIDER_RESULT_TIMEOUT')) {
+        errorCode = 'PROVIDER_RESULT_TIMEOUT';
+      } else if (msg.includes('DOWNLOAD_NOT_FOUND')) {
+        errorCode = 'DOWNLOAD_NOT_FOUND';
       } else {
-        if (msg.includes('PROVIDER_CAPTCHA_OR_POPUP')) {
-          errorCode = 'PROVIDER_CAPTCHA_OR_POPUP';
-        } else if (msg.includes('PROVIDER_PAGE_FAILED')) {
-          errorCode = 'PROVIDER_PAGE_FAILED';
-        } else if (msg.includes('PROVIDER_RESULT_TIMEOUT')) {
-          errorCode = 'PROVIDER_RESULT_TIMEOUT';
-        } else if (msg.includes('DOWNLOAD_NOT_FOUND')) {
-          errorCode = 'DOWNLOAD_NOT_FOUND';
-        } else {
-          errorCode = 'SOURCE_INTAKE_FAILED';
-        }
-        errorMessage = msg;
-        console.error(`🛑 Download failed: ${errorCode} - ${errorMessage}`);
+        errorCode = 'SOURCE_INTAKE_FAILED';
       }
+      errorMessage = msg;
+      console.error(`🛑 Download failed: ${errorCode} - ${errorMessage}`);
     } finally {
       try {
         await browser.close();
@@ -2756,15 +2749,10 @@ async function cmdIntakeClean(args: string[]): Promise<number> {
     (manifest.source as any).cleanlinessReportPath =
       `runs/${jobId}/source/source_cleanliness_report.json`;
     (manifest.source as any).framePaths = framePaths;
-    (manifest.source as any).sourceMode = isFallback ? 'fallback' : 'direct';
-    if (isFallback) {
-      (manifest.source as any).sourceJobId = 'job_20260602_003';
-      (manifest.source as any).productionAllowed = false;
-      (manifest.source as any).warning =
-        'Source intake failed; using sample fallback for review only';
-    } else {
-      (manifest.source as any).productionAllowed = true;
-    }
+    // Intake-clean chỉ advance SOURCE_READY khi có nguồn THẬT (download/file thành
+    // công). Không còn nhánh fallback demo → nguồn luôn là 'direct'.
+    (manifest.source as any).sourceMode = 'direct';
+    (manifest.source as any).productionAllowed = true;
     manifest.state = 'SOURCE_READY';
     manifest.lastError = null;
     saveManifest(manifest);
@@ -2831,6 +2819,18 @@ async function cmdApproveCleanliness(args: string[]): Promise<number> {
   if (!manifest) {
     console.error(`🛑 UNKNOWN_JOB: ${jobId}`);
     return 2;
+  }
+
+  // GUARD: KHÔNG cho duyệt SẠCH một nguồn fallback/demo. Nguồn mẫu chỉ phục vụ
+  // dev — không bao giờ được approve làm nguồn sạch của job THẬT (No-Go). Defense
+  // cho job cũ đã nhiễm fallback: phải nạp lại nguồn thật trước khi duyệt.
+  const srcMode = (manifest.source as any).sourceMode ?? null;
+  const prodAllowed = (manifest.source as any).productionAllowed ?? null;
+  if (status === 'pass' && (srcMode === 'fallback' || prodAllowed === false)) {
+    console.error('🛑 SOURCE_IS_FALLBACK: Không thể duyệt sạch nguồn fallback/demo.');
+    console.error(`sourceMode:         ${srcMode ?? '(none)'}`);
+    console.error('Nạp lại nguồn thật (URL đúng hoặc --file) rồi mới duyệt nguồn sạch.');
+    return 13;
   }
 
   const jobSourceDir = resolve(`runs/${jobId}/source`);
