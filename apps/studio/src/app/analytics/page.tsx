@@ -15,16 +15,17 @@ import { computeCtaReadiness } from '@/lib/growth-data/cta-readiness';
 import {
   loadAffiliateCtaPlans,
   loadChannels,
+  loadChannelsWithSource,
   loadContentAngles,
   loadCtaRoleMetrics,
-  loadManualPerformanceSnapshots,
   loadPerformanceMetrics,
   loadPublishedPosts,
 } from '@/lib/growth-data/load';
+import { readRuntimeStore } from '@/lib/growth-data/runtime-store';
 import type { CtaReadiness, LinkRole } from '@/lib/growth-data/types';
 import { LANES, LANE_LABEL, type PlatformId } from '@/lib/mock-data';
 import { ACCENT_TEXT, type AccentKey } from '@/lib/nav';
-import { loadJobById } from '@/lib/studio-data/jobs';
+import { loadJobById, loadOperatorJobs } from '@/lib/studio-data/jobs';
 
 // Hex per accent for the conic-gradient donut (CSS gradients can't read Tailwind classes).
 const ACCENT_HEX: Record<string, string> = {
@@ -240,12 +241,28 @@ export default function AnalyticsPage() {
     })
     .sort((a, b) => b.totalClicks - a.totalClicks);
 
-  // 6. Manual performance input foundation (Real Analytics 01 — manual/import, read-only).
-  const manualSnapshots = loadManualPerformanceSnapshots();
+  // 6. Manual performance — SỐ THẬT Operator đã lưu (P3: đọc LOCAL RUNTIME store,
+  // không còn đọc fixture; fixture chỉ dùng cho bảng so sánh có nhãn mock).
+  const manualSnapshots = readRuntimeStore().snapshots;
   const fixturePostIdByJob = new Map(posts.map((p) => [p.jobId, p.publishedPostId]));
 
-  // 7. Known ids cho preview validate (Real Analytics 02A — chỉ cảnh báo match, không ghi).
-  const knownJobIds = [...new Set([...posts.map((p) => p.jobId), ...ctaPlanByJobId.keys()])];
+  // Tên kênh THẬT từ config/channels.json (source=real only — không trộn fixture)
+  // để breakdown per-channel dùng channelId bind từ Phase 1.
+  const { channels: realChannels, source: channelSource } = loadChannelsWithSource();
+  const channelNameById = new Map(
+    channelSource === 'real' ? realChannels.map((c) => [c.channelId, c.displayName]) : [],
+  );
+
+  // 7. Known ids cho preview validate — job THẬT từ registry/manifest trước,
+  // fixture giữ lại cho demo CSV cũ (chỉ là cảnh báo match, không ghi).
+  const realJobs = loadOperatorJobs();
+  const knownJobIds = [
+    ...new Set([
+      ...realJobs.map((j) => j.id),
+      ...posts.map((p) => p.jobId),
+      ...ctaPlanByJobId.keys(),
+    ]),
+  ];
   const knownPostIds = posts.map((p) => p.publishedPostId);
 
   return (
@@ -477,11 +494,12 @@ export default function AnalyticsPage() {
       {/* Weekly Growth Review Report — Real API 04A */}
       <WeeklyReportCard />
 
-      {/* Manual Performance Input — Foundation (Real Analytics 01) */}
+      {/* Manual Performance — SỐ THẬT đã lưu local runtime (P3 Tracking M3–M6) */}
       <ManualPerformanceSection
         snapshots={manualSnapshots}
         fixtureMetrics={metrics}
         fixturePostIdByJob={fixturePostIdByJob}
+        channelNameById={channelNameById}
       />
 
       {/* Manual Performance Input — Preview Only (Real Analytics 02A) */}

@@ -7,6 +7,7 @@
  * publish, KHÔNG log payload thô, KHÔNG trả path tuyệt đối.
  * ========================================================================== */
 
+import { existsSync, readFileSync } from 'node:fs';
 import {
   type ManualInputDraft,
   deriveSnapshotId,
@@ -19,6 +20,7 @@ import {
   runtimePathConfigured,
 } from '@/lib/growth-data/runtime-store';
 import type { LinkRole, ManualMetricSource } from '@/lib/growth-data/types';
+import { resolveInsideRepo } from '@/lib/studio-data/paths';
 
 export const dynamic = 'force-dynamic';
 
@@ -28,6 +30,39 @@ const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]', '0.0.0.0'
 function isLocalRequest(req: Request): boolean {
   const host = (req.headers.get('host') ?? '').toLowerCase().split(':')[0];
   return LOCAL_HOSTS.has(host);
+}
+
+/** Đọc JSON nhỏ trong repo, never-throw. Chỉ dùng cho file runtime đã biết shape. */
+function readJsonSafe<T>(rel: string): T | null {
+  const abs = resolveInsideRepo(rel);
+  if (!abs || !existsSync(abs)) return null;
+  try {
+    return JSON.parse(readFileSync(abs, 'utf8')) as T;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve binding THẬT cho jobId từ runtime job (Phase 1 Channel→Job):
+ * - channelId từ job_manifest.json (null nếu job legacy/không tồn tại — không đoán).
+ * - facebookPostId public từ facebook_publish_status.json (chỉ id công khai, không token).
+ * Server-side resolve — không tin client gửi lên.
+ */
+function resolveJobBinding(jobId: string): { channelId: string | null; postId: string | null } {
+  if (!/^[A-Za-z0-9_-]+$/.test(jobId)) return { channelId: null, postId: null };
+  const manifest = readJsonSafe<{ channelId?: string | null }>(
+    `data/temp/jobs/${jobId}/job_manifest.json`,
+  );
+  // postId public nằm trong block `facebook` của status file (xem job_20260609_001).
+  const publishStatus = readJsonSafe<{
+    facebook?: { postId?: string | null; videoId?: string | null } | null;
+  }>(`data/temp/jobs/${jobId}/facebook_publish_status.json`);
+  const rawPost = publishStatus?.facebook?.postId ?? publishStatus?.facebook?.videoId ?? null;
+  return {
+    channelId: manifest?.channelId ?? null,
+    postId: rawPost && /^[0-9_]+$/.test(String(rawPost)) ? String(rawPost) : null,
+  };
 }
 
 /** Coerce raw object → ManualInputDraft (server không tin client). Số sai → NaN (validate bắt). */
@@ -109,12 +144,13 @@ export async function POST(req: Request) {
       invalidRows.push({ index, errors });
       return;
     }
+    const binding = resolveJobBinding(draft.jobId);
     valid.push({
       snapshotId: deriveSnapshotId(draft),
       jobId: draft.jobId,
       publishedPostId: draft.publishedPostId,
-      facebookPostId: null,
-      channelId: null,
+      facebookPostId: binding.postId,
+      channelId: binding.channelId,
       platform: 'facebook',
       measuredAt: draft.measuredAt,
       views: draft.views,

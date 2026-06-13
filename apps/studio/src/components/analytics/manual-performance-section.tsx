@@ -1,14 +1,14 @@
 /* =============================================================================
- * VFOS Studio — Manual Performance Input section (Round Real Analytics 01)
+ * VFOS Studio — Manual Performance section (P3 Tracking M3–M6)
  * -----------------------------------------------------------------------------
- * Presentational ONLY, READ-ONLY. Hiển thị nền số liệu Operator NHẬP/IMPORT thủ công
- * (ManualPerformanceSnapshot) + so sánh với fixture mock. CHƯA có form ghi thật —
- * round này chỉ đọc & hiển thị. KHÔNG gọi Facebook/Shopee API, KHÔNG token/secret.
+ * Presentational ONLY, READ-ONLY. Hiển thị SỐ THẬT Operator đã lưu vào LOCAL
+ * RUNTIME store (qua form Preview & Local Save bên dưới) + breakdown theo kênh
+ * (channelId bind từ Phase 1) + so sánh với fixture mock (có nhãn). KHÔNG gọi
+ * Facebook/Shopee API, KHÔNG token/secret.
  * ========================================================================== */
 
 import { Badge } from '@/components/badge';
 import { Card, CardBody, CardHeader } from '@/components/card';
-import { Button } from '@/components/ui';
 import type {
   LinkRole,
   ManualMetricSource,
@@ -62,14 +62,35 @@ export function ManualPerformanceSection({
   snapshots,
   fixtureMetrics,
   fixturePostIdByJob,
+  channelNameById,
 }: {
   snapshots: ManualPerformanceSnapshot[];
   fixtureMetrics: PerformanceMetric[];
   /** jobId → publishedPostId của fixture (để so sánh manual vs mock). */
   fixturePostIdByJob: Map<string, string>;
+  /** channelId → displayName từ config/channels.json (real only — không fixture). */
+  channelNameById: Map<string, string>;
 }) {
   const postLevel = snapshots.filter((s) => s.ctaRole === null);
   const roleLevel = snapshots.filter((s) => s.ctaRole !== null);
+
+  // Breakdown M3–M6 theo kênh (channelId bind từ Phase 1; null = chưa gán kênh).
+  const byChannel = new Map<
+    string,
+    { label: string; views: number; clicks: number; conversions: number }
+  >();
+  for (const s of postLevel) {
+    const key = s.channelId ?? '__unbound__';
+    const label = s.channelId
+      ? (channelNameById.get(s.channelId) ?? `(kênh ${s.channelId} không có trong config)`)
+      : '(chưa gán kênh)';
+    const row = byChannel.get(key) ?? { label, views: 0, clicks: 0, conversions: 0 };
+    row.views += s.views;
+    row.clicks += s.clicks;
+    row.conversions += s.conversions;
+    byChannel.set(key, row);
+  }
+  const channelRows = [...byChannel.entries()].map(([key, r]) => ({ key, ...r }));
 
   const totalViews = postLevel.reduce((s, m) => s + m.views, 0);
   const totalClicks = postLevel.reduce((s, m) => s + m.clicks, 0);
@@ -105,17 +126,18 @@ export function ManualPerformanceSection({
   return (
     <Card>
       <CardHeader
-        title="Manual Performance Input — Foundation"
-        subtitle="Số liệu nhập tay / import sau khi đăng · nền tảng cho số thật, CHƯA có form ghi"
+        title="Evidence M3–M6 — Số liệu Operator đã lưu (local runtime)"
+        subtitle="Đọc từ local runtime store (gitignored) — số Operator nhập từ Shopee/Meta dashboard qua form bên dưới"
         accentClass="text-accent-cyan"
-        right={<Badge accent="cyan">MANUAL-READY / READ-ONLY</Badge>}
+        right={<Badge accent="cyan">LOCAL RUNTIME · ĐÃ LƯU</Badge>}
       />
       <CardBody className="space-y-5">
         <div className="flex items-center gap-2 rounded-xl border border-accent-amber/30 bg-accent-amber/10 px-3.5 py-2 text-[11px] text-accent-amber">
           <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent-amber" />
           <span>
-            Chưa gọi Facebook/Shopee API — số liệu nhập tay hoặc mock. Đừng coi là số liệu thật từ
-            tài khoản trừ khi nguồn ghi rõ <strong>Nhập tay</strong>.
+            Chưa gọi Facebook/Shopee API — đây là số Operator tự nhập/import (nguồn ghi trên từng
+            dòng). Độ tin cậy phụ thuộc người nhập; dòng nguồn <strong>Import (mock)</strong> là
+            dữ liệu thử, không phải số thật.
           </span>
         </div>
 
@@ -130,7 +152,8 @@ export function ManualPerformanceSection({
 
         {snapshots.length === 0 ? (
           <p className="py-6 text-center text-xs text-neutral-500">
-            Chưa có snapshot nhập tay. (Form nhập sẽ thêm ở round write sau.)
+            Chưa có dữ liệu thật — nhập số từ Shopee/Meta dashboard qua form
+            "Preview &amp; Local Save" bên dưới.
           </p>
         ) : (
           <>
@@ -145,6 +168,56 @@ export function ManualPerformanceSection({
               ))}
             </div>
 
+            {/* Breakdown theo kênh — M3–M6 (channelId bind từ Phase 1) */}
+            <div>
+              <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+                Theo kênh (M3–M6)
+              </p>
+              <div className="overflow-x-auto rounded-xl border border-hairline">
+                <table className="w-full min-w-[560px] text-left text-xs">
+                  <thead className="text-[10px] uppercase tracking-wider text-neutral-600">
+                    <tr className="border-b border-hairline">
+                      <th className="px-4 py-2.5 font-medium">Kênh</th>
+                      <th className="px-4 py-2.5 font-medium text-right">Views</th>
+                      <th className="px-4 py-2.5 font-medium text-right">Clicks (M3)</th>
+                      <th className="px-4 py-2.5 font-medium text-right">CTR</th>
+                      <th className="px-4 py-2.5 font-medium text-right">Đơn (M4)</th>
+                      <th className="px-4 py-2.5 font-medium text-right">CVR</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {channelRows.map((r) => (
+                      <tr
+                        key={r.key}
+                        className="border-b border-hairline/60 last:border-0 hover:bg-raised/30"
+                      >
+                        <td className="px-4 py-3 text-neutral-200">{r.label}</td>
+                        <td className="px-4 py-3 text-right text-neutral-200">
+                          {formatNumber(r.views)}
+                        </td>
+                        <td className="px-4 py-3 text-right font-semibold text-neutral-100">
+                          {formatNumber(r.clicks)}
+                        </td>
+                        <td className="px-4 py-3 text-right text-neutral-300">
+                          {r.views > 0 ? `${((r.clicks / r.views) * 100).toFixed(2)}%` : '—'}
+                        </td>
+                        <td className="px-4 py-3 text-right font-semibold text-accent-green">
+                          {formatNumber(r.conversions)}
+                        </td>
+                        <td className="px-4 py-3 text-right text-neutral-300">
+                          {r.clicks > 0 ? `${((r.conversions / r.clicks) * 100).toFixed(2)}%` : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="mt-1.5 px-1 text-[10px] text-neutral-600">
+                Doanh thu (M5) chưa có cột riêng — ghi vào note khi nhập; sẽ thêm field ở round
+                sau.
+              </p>
+            </div>
+
             {/* Post-level snapshots */}
             <div>
               <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
@@ -157,6 +230,7 @@ export function ManualPerformanceSection({
                       <th className="px-4 py-2.5 font-medium">Đo lúc (UTC)</th>
                       <th className="px-4 py-2.5 font-medium">Nguồn</th>
                       <th className="px-4 py-2.5 font-medium">Job / Post</th>
+                      <th className="px-4 py-2.5 font-medium">Kênh</th>
                       <th className="px-4 py-2.5 font-medium text-right">Views</th>
                       <th className="px-4 py-2.5 font-medium text-right">Clicks</th>
                       <th className="px-4 py-2.5 font-medium text-right">Comments</th>
@@ -176,8 +250,13 @@ export function ManualPerformanceSection({
                         <td className="px-4 py-3">
                           <div className="font-mono text-[10px] text-neutral-300">{s.jobId}</div>
                           <div className="font-mono text-[10px] text-neutral-600">
-                            {s.publishedPostId ?? 'chưa map post'}
+                            {s.facebookPostId ?? s.publishedPostId ?? 'chưa map post'}
                           </div>
+                        </td>
+                        <td className="px-4 py-3 text-[10px] text-neutral-300">
+                          {s.channelId
+                            ? (channelNameById.get(s.channelId) ?? s.channelId)
+                            : '(chưa gán kênh)'}
                         </td>
                         <td className="px-4 py-3 text-right text-neutral-200">
                           {formatNumber(s.views)}
@@ -300,14 +379,13 @@ export function ManualPerformanceSection({
           </>
         )}
 
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-hairline bg-raised/30 px-4 py-3">
+        <div className="rounded-xl border border-hairline bg-raised/30 px-4 py-3">
           <p className="text-[10px] leading-relaxed text-neutral-500">
-            Form nhập/import số liệu sẽ thêm ở <strong>round write</strong> sau (có guard rõ). Round
-            này chỉ đọc & hiển thị — không ghi runtime, không gọi API.
+            Nhập/import số liệu qua card <strong>"Manual Performance Input — Preview &amp; Local
+            Save"</strong> ngay bên dưới: lấy số từ Shopee Affiliate dashboard (clicks/đơn) và Meta
+            Business Suite (views) → paste CSV → Validate → Save. Kênh và Facebook post id được hệ
+            thống tự gán theo job (Phase 1) khi lưu.
           </p>
-          <Button variant="outline" disabled className="!py-1.5 shrink-0">
-            Nhập số liệu (sắp có)
-          </Button>
         </div>
       </CardBody>
     </Card>
