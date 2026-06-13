@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-06-13 (**P4 — Publish Safety Scale: token expiry health check (chặn LIVE nếu token hết hạn) + retry-verify-only cho job kẹt uploaded/unpublished** — xem Phần 32. P3 Tracking M3–M6 — xem Phần 31. Phase 1 Channel→Job binding — xem Phần 30.)
-> **Branch**: `fix/shopee-modal-read` | **Commit mốc tại thời điểm cập nhật trạng thái**: `172ae3a` (`feat(publish): retry-verify-only path + token gate for stuck uploads`) — P4, **chưa push** (Operator 1 máy)
+> **Cập nhật lần cuối**: 2026-06-13 (**Fix gốc Source Intake demo/fallback — cấm demo lọt clean-source approval; download fail = FAILED, không fallback video mẫu** — xem Phần 33. P4 Publish Safety Scale — xem Phần 32. P3 Tracking M3–M6 — xem Phần 31.)
+> **Branch**: `fix/shopee-modal-read` | **Commit mốc tại thời điểm cập nhật trạng thái**: `d7a39e1` (`fix(intake): stop demo fallback source entering clean-source approval`) — **chưa push** (Operator 1 máy)
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task → luôn chạy `pnpm vfos:daily` để có chỉ dẫn trạng thái mới nhất
 
 > ⚠️ **ĐƯỜNG VẬN HÀNH CHÍNH THỨC**: dùng `docs/00_DIEU_HANH/HUONG_DAN_VAN_HANH_CHINH_THUC_VFOS.md` (operator guide chuẩn, flow A-Z `commerce:intake` → `job:run-review` → `job:publish-facebook`).
@@ -2260,6 +2260,40 @@ DOM card img
 **Giới hạn trung thực — 3 path CHỈ Operator live-test được (cần live Facebook API, CHƯA chạy theo lệnh Operator)**: (1) LIVE token block exit 17 (cần META_MODE=live + token hết hạn thật); (2) retry-verify happy path (cần job kẹt thật + live readback); (3) get-page-token ghi meta (cần live `debug_token` — sẽ tự chạy lần tới Operator refresh token). Logic đã unit-test + compile; chưa quan sát trên API thật.
 
 **Bước tiếp theo**: (a) Operator live-test 3 path trên khi muốn (`pnpm facebook:get-page-token` → `pnpm job:publish-facebook --job <id> --refresh-facebook-preflight` xem token "healthy"), hoặc (b) tiếp video #2 `job_20260612_001`, hoặc (c) phase kế P2 Batch queue v0. Operator quyết.
+
+---
+
+### ✅ Phần 33 — Fix gốc Source Intake demo/fallback (No-Go: cấm demo lọt clean-source approval): ĐÃ CHỐT (2026-06-13)
+
+**Bối cảnh phát hiện**: Trong Product Review Command Center, job `job_20260612_002` (Ghế hơi tập ngồi) hiển thị Bước 2 "Rà soát hình ảnh (5 frame)" bằng **video người ăn căng tin** không liên quan sản phẩm + chip rose "Demo / Fallback Source", nhưng vẫn ở trạng thái có thể bấm "Duyệt nguồn sạch". Đây là vi phạm No-Go #6 (cấm dùng fallback/demo source để approve nguồn sạch job thật).
+
+**Root cause** (trong `scripts/vfos-job-manager.ts` → `cmdIntakeClean`, URL mode):
+- Khi browser download URL **fail**, code cũ **copy video mẫu `runs/job_20260602_003/source/clean_source_video.mp4`** vào job rồi `downloadSuccess = true`, `isFallback = true` → giả vờ thành công.
+- Hệ quả: ffprobe pass → trích 5 frame từ demo → `state = SOURCE_READY` với `sourceMode: "fallback"` → **demo lọt thẳng vào bước duyệt nguồn sạch**.
+- `job_20260612_002` dính vì mang **URL bogus `https://example.com/vfos-phase1-ui-proof`** (rớt lại từ lần Phase 1 create-job UI proof) → download fail → fallback demo. `job_20260606_011` (nước giặt) dính tương tự từ download douyin fail trước đó.
+
+**Fix commit**: `d7a39e1` `fix(intake): stop demo fallback source entering clean-source approval` (1 file `scripts/vfos-job-manager.ts`, +31/−31, **chưa push** — Operator 1 máy).
+- Bỏ hẳn nhánh copy demo trong catch của intake-clean: download fail = phân loại errorCode → `downloadSuccess` giữ false → `SOURCE_FAILED` → `state = FAILED` (exit 3). Bỏ biến `isFallback`; nguồn khi SOURCE_READY luôn `sourceMode: "direct"`.
+- Thêm gate trong `cmdApproveCleanliness`: nếu `status=pass` và (`sourceMode === 'fallback'` hoặc `productionAllowed === false`) → chặn, exit **13** `SOURCE_IS_FALLBACK`. (Defense cho job cũ đã nhiễm.)
+- Giữ nguyên defense downstream sẵn có: `isFallbackSource`, production gate (block khi fallback), publish gate `not_fallback_source`, UI chip cảnh báo.
+
+**Invariant mới (BẮT BUỘC) cho Source Intake**:
+1. **Download fail ⇒ FAILED / SOURCE_FAILED rõ ràng** — KHÔNG bao giờ fallback sang video mẫu.
+2. **Demo / fallback / mock / fixture source KHÔNG được vào bước approve nguồn sạch** của job thật.
+3. **KHÔNG tạo `clean_source_video.mp4` từ demo** khi job thật download fail (chỉ ghi khi có nguồn THẬT: download/file thành công).
+4. **Production phải bị chặn** nếu source provenance là fallback/demo (`sourceMode==='fallback'` / `productionAllowed===false`) — gate ở intake→production, approve-cleanliness, và live publish.
+
+**Remediation (runtime, gitignored — không commit)**:
+- `job_20260612_002`: reset khỏi demo → `state = WAITING_FOR_SOURCE_VIDEO`, `source = {productCardPath, sourceVideoPath:null}`, URL bogus example.com đã xóa, demo artifacts `runs/job_20260612_002/source/` đã dọn.
+- `job_20260606_011`: reset tương tự, **giữ URL douyin thật** để Operator nạp lại đúng nguồn.
+- Registry sync; quét lại **0 job `sourceMode=fallback` còn lại**. (Lưu ý: `job_20260612_001` là job THẬT cùng sản phẩm ghế hơi đang chờ source; `_002` là bản test dư từ Phase 1 proof.)
+
+**Proof (test thật, không production/publish)**:
+- **UI (Playwright, dev server :3002)** chọn `job_20260612_002`: `Demo / Fallback Source` chip = ẩn; khối "Rà soát hình ảnh (5 frame)" = ẩn; `frame_img_count=0`; nhãn job = "Chờ Operator chọn nguồn"; hiện "Video nguồn chưa được tải" + RUN SOURCE INTAKE; **console_errors=[]**, page_errors=[]. Screenshot `data/temp/debug/proof_intake_002.png`.
+- **Fail-path (job TEST riêng, URL bogus, fallback template `job_20260602_003` vẫn còn trên đĩa)**: intake-clean → `PROVIDER_RESULT_TIMEOUT` → `state=FAILED`, exit 3; `clean_source_video.mp4` **không tạo**; thư mục frames **không tạo** (0 frame); `report status=SOURCE_FAILED`, `sourceMode=(none)`. Test job đã dọn sạch.
+- Biome `vfos-job-manager.ts`: baseline 65 → 64 (0 vi phạm mới); approve-cleanliness gate live-test trên job nhiễm trả đúng exit 13 (return trước khi ghi, không approve).
+
+**Bước tiếp theo**: Operator nạp **source video THẬT** cho `job_20260612_001`/`_002` (ghế hơi): dán URL douyin/tiktok đúng sản phẩm → "Tải & clean nguồn" (giờ fail = báo lỗi rõ, không demo), hoặc dùng `--file` nạp từ inbox → duyệt nguồn sạch → tiếp video #2.
 
 ---
 
