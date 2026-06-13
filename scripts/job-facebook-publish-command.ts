@@ -14,13 +14,21 @@ import { spawnSync, execSync } from 'node:child_process';
 import { loadDotEnv } from '../packages/voice/src/load-env.js';
 import { createMetaClient, maskToken } from '../packages/facebook/src/meta-client.js';
 import { testPageConnection } from '../packages/facebook/src/test-page.js';
-import { publishReelToPage } from '../packages/facebook/src/publish-reels.js';
+import { publishReelToPage, verifyReelPublished } from '../packages/facebook/src/publish-reels.js';
+import {
+  type TokenExpiryClassification,
+  classifyTokenExpiry,
+  parseTokenExpiryMeta,
+} from '../packages/facebook/src/token-health.js';
 import { syncManifestArtifacts } from './job-manifest-helper.js';
 
 // Configuration
 const JOBS_ROOT = 'data/temp/jobs';
 const PACKAGE_ROOT = 'production/archive';
 const REGISTRY_PATH = 'data/temp/vfos_jobs_registry.json';
+// Runtime meta (gitignored) ghi bởi `pnpm facebook:get-page-token` — chứa hạn
+// token + pageId công khai, KHÔNG chứa token. Publish preflight đọc offline.
+const TOKEN_META_PATH = 'data/temp/facebook_token_meta.json';
 
 // Smart exit handler for Windows libuv race conditions
 const originalExit = process.exit;
@@ -85,6 +93,12 @@ interface JobManifest {
    * xác nhận bằng tài khoản ngoài → PUBLIC_CONFIRMED (hoặc NOT_PUBLIC nếu bị hold).
    */
   publishVisibility?: 'UNCONFIRMED' | 'PUBLIC_CONFIRMED' | 'NOT_PUBLIC';
+  /**
+   * videoId Facebook đã nhận khi upload accepted nhưng verify fail/timeout
+   * (uploaded=true, published=false). Cho phép `--retry-verify` re-verify Graph
+   * readback của đúng video này mà KHÔNG re-upload. null khi không có pending.
+   */
+  pendingVerifyVideoId?: string | null;
   createdAt: string;
   updatedAt: string;
   lastError?: string | null;
@@ -275,6 +289,101 @@ function classifyPath(rawPath: string): PathKind {
   return 'other';
 }
 
+/**
+ * Đọc hạn token từ runtime meta (offline — KHÔNG gọi Graph). Trả classification
+ * `unknown` nếu file thiếu/hỏng (preflight vẫn để connection precheck bắt token
+ * chết). PURE đối với mạng: chỉ đọc 1 file JSON nhỏ.
+ */
+function readTokenExpiry(): TokenExpiryClassification {
+  const path = resolve(TOKEN_META_PATH);
+  if (!existsSync(path)) {
+    return classifyTokenExpiry(undefined, Date.now());
+  }
+  try {
+    const meta = parseTokenExpiryMeta(JSON.parse(readFileSync(path, 'utf8')));
+    return classifyTokenExpiry(meta?.expiresAt, Date.now());
+  } catch {
+    return classifyTokenExpiry(undefined, Date.now());
+  }
+}
+
+/**
+ * Ghi trạng thái PUBLISHED sau khi Graph readback verify thật (id + permalink).
+ * Dùng chung cho LIVE success path và `--retry-verify` để 2 đường không phân kỳ
+ * schema. Set safety locks, publishVisibility=UNCONFIRMED, clear pendingVerify.
+ * KHÔNG tự gọi Graph — caller đã verify trước khi gọi hàm này.
+ */
+function finalizePublishSuccess(
+  manifest: JobManifest,
+  p: {
+    maskedPageId: string;
+    pageName: string;
+    videoId: string;
+    permalinkUrl: string;
+    videoFileRel: string | null;
+    caption: string;
+    affiliateLink: string;
+    hashtags: string[];
+  },
+): { statusPath: string; resultPath: string; publishedAt: string } {
+  const publishedAt = isoNow();
+  manifest.state = 'PUBLISHED';
+  manifest.safety.facebookApiCalled = true;
+  manifest.safety.uploaded = true;
+  manifest.safety.published = true;
+  manifest.publishVisibility = 'UNCONFIRMED';
+  manifest.pendingVerifyVideoId = null;
+  manifest.lastError = null;
+  saveManifest(manifest);
+  updateRegistryFromManifest(manifest);
+
+  const statusPayload = {
+    state: 'PUBLISHED',
+    generatedAt: publishedAt,
+    publishVisibility: 'UNCONFIRMED',
+    facebook: {
+      pageId: p.maskedPageId,
+      pageName: p.pageName,
+      postId: p.videoId,
+      videoId: p.videoId,
+      permalinkUrl: p.permalinkUrl,
+      published: true,
+      verifiedByGraphReadback: true,
+      apiPublishConfirmed: true,
+      publicVisibilityConfirmed: false,
+    },
+  };
+  const statusPath = join(JOBS_ROOT, manifest.jobId, 'facebook_publish_status.json');
+  writeFileSync(statusPath, `${JSON.stringify(statusPayload, null, 2)}\n`, 'utf8');
+
+  const resultPayload = {
+    jobId: manifest.jobId,
+    mode: 'LIVE',
+    publishedAt,
+    pageId: p.maskedPageId,
+    pageName: p.pageName,
+    videoId: p.videoId,
+    permalinkUrl: p.permalinkUrl,
+    videoFile: p.videoFileRel,
+    caption: p.caption,
+    affiliateLink: p.affiliateLink,
+    hashtags: p.hashtags,
+    verification: {
+      graphReadback: true,
+      verifiedAt: publishedAt,
+      apiPublishConfirmed: true,
+      publicVisibilityConfirmed: false,
+      publishVisibility: 'UNCONFIRMED',
+      note: 'Graph readback chỉ chứng minh API publish. Public visibility cần Operator xác nhận bằng tài khoản ngoài.',
+    },
+  };
+  const resultPath = join(PACKAGE_ROOT, manifest.jobId, 'facebook_publish_result.json');
+  mkdirSync(dirname(resultPath), { recursive: true });
+  writeFileSync(resultPath, `${JSON.stringify(resultPayload, null, 2)}\n`, 'utf8');
+
+  return { statusPath, resultPath, publishedAt };
+}
+
 function checkGitStagedRisks(): { stagedSensitive: boolean; stagedRuntime: boolean } {
   let stagedSensitive = false;
   let stagedRuntime = false;
@@ -312,6 +421,7 @@ async function main() {
         'dry-run': { type: 'boolean', default: false },
         'confirm-live-publish': { type: 'boolean', default: false },
         'refresh-facebook-preflight': { type: 'boolean', default: false },
+        'retry-verify': { type: 'boolean', default: false },
       },
       allowPositionals: false,
       strict: true,
@@ -327,6 +437,7 @@ async function main() {
   const dryRun = Boolean(values['dry-run']);
   const confirmLivePublish = Boolean(values['confirm-live-publish']);
   const refreshPreflight = Boolean(values['refresh-facebook-preflight']);
+  const retryVerify = Boolean(values['retry-verify']);
 
   if (!jobId) {
     console.error('Error: --job <jobId> is required');
@@ -341,6 +452,7 @@ async function main() {
   console.log(`Dry Run:     ${dryRun ? '✅ YES' : '❌ NO'}`);
   console.log(`Live Mode:   ${confirmLivePublish ? '⚡ LIVE' : '🔍 READ-ONLY'}`);
   console.log(`Preflight:   ${refreshPreflight ? '✅ ENABLED' : '❌ DISABLED'}`);
+  console.log(`Retry Verify:${retryVerify ? ' 🔁 YES' : ' ❌ NO'}`);
   console.log('------------------------------------------------------');
 
   // Load DotEnv
@@ -351,6 +463,110 @@ async function main() {
   if (!manifest) {
     console.error(`🛑 UNKNOWN_JOB: Job directory or manifest missing for ${jobId}`);
     process.exit(2);
+    return;
+  }
+
+  // ── RETRY-VERIFY MODE ───────────────────────────────────────────────────
+  // Escape hatch cho job kẹt uploaded=true/published=false (verify fail/timeout
+  // ở lần publish trước). KHÔNG re-upload — chỉ re-verify Graph readback của
+  // videoId đã persist. Self-contained: bỏ qua gate PACKAGED/QA/package vì
+  // những gate đó đã pass trước khi upload; gate safety-lock (uploaded=true)
+  // lại CHẶN đường publish thường nên retry-verify phải là nhánh riêng.
+  if (retryVerify) {
+    if (!confirmLivePublish) {
+      console.error('🛑 RETRY_VERIFY_NEEDS_LIVE: cần --confirm-live-publish (retry-verify gọi Graph readback thật).');
+      process.exit(18);
+      return;
+    }
+    const metaMode = (process.env.META_MODE || '').trim().toLowerCase();
+    if (metaMode !== 'live') {
+      console.error(`🛑 META_MODE_NOT_LIVE: META_MODE='${metaMode || 'unset'}' — retry-verify bị chặn.`);
+      console.error('  -> KHÔNG có API call nào được thực hiện. Manifest GIỮ NGUYÊN.');
+      process.exit(15);
+      return;
+    }
+    if (manifest.safety?.published === true || manifest.state === 'PUBLISHED') {
+      console.log('ℹ️  Job đã PUBLISHED — không cần retry-verify. Không làm gì.');
+      process.exit(0);
+      return;
+    }
+    if (manifest.safety?.uploaded !== true) {
+      console.error('🛑 NOTHING_TO_VERIFY: job chưa ở trạng thái uploaded=true. retry-verify chỉ dùng khi upload đã được Facebook nhận nhưng verify fail.');
+      process.exit(19);
+      return;
+    }
+    const pendingVideoId = (manifest.pendingVerifyVideoId || '').trim();
+    if (!pendingVideoId) {
+      console.error('🛑 NO_PENDING_VIDEO_ID: không có videoId pending để verify. Operator kiểm tra Page thủ công (upload trước không bắt được videoId).');
+      process.exit(20);
+      return;
+    }
+    const rvPageId = (process.env.FACEBOOK_PAGE_ID || '').trim();
+    const rvToken = (process.env.FACEBOOK_PAGE_ACCESS_TOKEN || '').trim();
+    if (!rvPageId || !rvToken) {
+      console.error('🛑 MISSING_FACEBOOK_CREDENTIALS: thiếu FACEBOOK_PAGE_ID / FACEBOOK_PAGE_ACCESS_TOKEN.');
+      process.exit(13);
+      return;
+    }
+    // Token expiry gate (offline) — hết hạn thì verify cũng sẽ fail, fail sớm rõ ràng.
+    const rvHealth = readTokenExpiry();
+    if (rvHealth.block) {
+      console.error(`🛑 TOKEN_EXPIRED: ${rvHealth.message}`);
+      process.exit(17);
+      return;
+    }
+    console.log(`🔁 RETRY-VERIFY: re-verify Graph readback cho videoId ${pendingVideoId} (KHÔNG re-upload)...`);
+
+    // Read caption/affiliate/hashtags để ghi result artifact đầy đủ (giống success path).
+    let rvCaption = '';
+    let rvHashtags: string[] = [];
+    try {
+      const packageDir = join(PACKAGE_ROOT, jobId);
+      const captionFile = join(packageDir, 'caption.txt');
+      const hashtagsFile = join(packageDir, 'hashtags.txt');
+      if (existsSync(captionFile)) rvCaption = readFileSync(captionFile, 'utf8').trim();
+      if (existsSync(hashtagsFile))
+        rvHashtags = readFileSync(hashtagsFile, 'utf8').trim().split(/\s+/).filter(Boolean);
+    } catch {}
+    let rvAffiliate = '';
+    try {
+      const card = JSON.parse(readFileSync(resolve(manifest.source.productCardPath), 'utf8'));
+      rvAffiliate = (card.shortLink || card.canonicalUrl || '').trim();
+    } catch {}
+
+    const rvClient = createMetaClient({ pageId: rvPageId, pageAccessToken: rvToken });
+    const rvConn = await testPageConnection(rvClient);
+    if (!rvConn.success || !rvConn.page) {
+      console.error(`🛑 PAGE_CONNECTION_FAILED: ${rvConn.error}`);
+      if (rvConn.diagnosis) console.error(`💡 Diagnosis:\n${rvConn.diagnosis}`);
+      process.exit(16);
+      return;
+    }
+    const rvVerify = await verifyReelPublished(rvToken, pendingVideoId);
+    if (!rvVerify.success || !rvVerify.videoId || !rvVerify.permalinkUrl) {
+      console.error(`🛑 RETRY_VERIFY_FAILED (phase: ${rvVerify.phase}): ${rvVerify.error}`);
+      if (rvVerify.diagnosis) console.error(`💡 ${rvVerify.diagnosis}`);
+      console.error('  -> Vẫn CHƯA verify được. Giữ nguyên uploaded=true/published=false. KHÔNG re-upload.');
+      process.exit(23);
+      return;
+    }
+    const { statusPath, resultPath } = finalizePublishSuccess(manifest, {
+      maskedPageId: maskToken(rvPageId),
+      pageName: rvConn.page.name,
+      videoId: rvVerify.videoId,
+      permalinkUrl: rvVerify.permalinkUrl,
+      videoFileRel: manifest.artifacts.captionedPreviewPath,
+      caption: rvCaption,
+      affiliateLink: rvAffiliate,
+      hashtags: rvHashtags,
+    });
+    console.log('✅ RETRY-VERIFY PASS — Graph readback xác nhận video đã publish:');
+    console.log(`  * Video ID:  ${rvVerify.videoId}`);
+    console.log(`  * Permalink: ${rvVerify.permalinkUrl}`);
+    console.log(`Status artifact:  ${statusPath}`);
+    console.log(`Result artifact:  ${resultPath}`);
+    console.log('======================================================');
+    process.exit(0);
     return;
   }
 
@@ -525,6 +741,8 @@ async function main() {
     console.log('🔒 CREDENTIALS CONNECTIVITY DIODE:');
     console.log(`  * Page ID Masked:     ${maskedPageId}`);
     console.log(`  * Access Token:       ${maskedToken}`);
+    const preflightTokenHealth = readTokenExpiry();
+    console.log(`  * Token Health:       ${preflightTokenHealth.status} — ${preflightTokenHealth.message}`);
 
     const metaMode = (process.env.META_MODE || '').trim().toLowerCase();
     let connectionSuccess = false;
@@ -588,6 +806,22 @@ async function main() {
       return;
     }
 
+    // Token expiry gate (offline — đọc data/temp/facebook_token_meta.json do
+    // `facebook:get-page-token` ghi). Token hết hạn → CHẶN trước khi đụng upload.
+    // Sắp hết hạn / chưa rõ hạn → CẢNH BÁO, connection precheck dưới vẫn bắt token chết.
+    const tokenHealth = readTokenExpiry();
+    if (tokenHealth.block) {
+      console.error(`🛑 TOKEN_EXPIRED: ${tokenHealth.message}`);
+      console.error('  -> KHÔNG có video nào được upload. Manifest/registry GIỮ NGUYÊN.');
+      process.exit(17);
+      return;
+    }
+    if (tokenHealth.status === 'expiring_soon' || tokenHealth.status === 'unknown') {
+      console.warn(`⚠️  TOKEN_HEALTH: ${tokenHealth.message}`);
+    } else {
+      console.log(`🔑 Token health: ${tokenHealth.message}`);
+    }
+
     // Precheck kết nối Page (GET read-only) — validate token + lấy pageName thật
     // TRƯỚC khi đụng upload. Token lỗi thì fail ở đây, không upload dở dang.
     console.log('🔗 Precheck: xác thực token & Page qua Graph API (read-only)...');
@@ -624,16 +858,25 @@ async function main() {
       if (reelResult.uploadAccepted) {
         // Facebook ĐÃ nhận video (finish OK) nhưng verify fail/timeout —
         // ghi sự thật một phần: uploaded=true (safety lock chặn double-publish),
-        // published vẫn FALSE, state GIỮ PACKAGED.
+        // published vẫn FALSE, state GIỮ PACKAGED. Persist videoId để
+        // `--retry-verify` re-verify đúng video này mà KHÔNG re-upload.
         manifest.safety.facebookApiCalled = true;
         manifest.safety.uploaded = true;
         manifest.safety.published = false;
+        manifest.pendingVerifyVideoId = reelResult.videoId ?? null;
         manifest.lastError = `PUBLISH_VERIFY_FAILED:${reelResult.phase}`;
         saveManifest(manifest);
         updateRegistryFromManifest(manifest);
         console.error('  -> Upload ĐÃ được Facebook chấp nhận nhưng CHƯA verify được permalink.');
         console.error('  -> KHÔNG ghi PUBLISHED. Safety lock uploaded=true đã bật để chặn đăng lại.');
-        console.error('  -> Operator kiểm tra Page thủ công trước khi quyết định bước tiếp.');
+        if (reelResult.videoId) {
+          console.error(`  -> videoId pending: ${reelResult.videoId}`);
+          console.error(
+            `  -> Sau khi Page ổn, chạy: pnpm job:publish-facebook --job ${jobId} --retry-verify --confirm-live-publish`,
+          );
+        } else {
+          console.error('  -> Không bắt được videoId — Operator kiểm tra Page thủ công.');
+        }
         process.exit(22);
         return;
       }
@@ -653,58 +896,16 @@ async function main() {
     console.log('     mở permalink bằng tài khoản ngoài để xác nhận hiển thị công khai.');
     console.log('     Việc này KHÔNG thuộc điều kiện PASS kỹ thuật của VFOS/Claude.');
 
-    const publishedAt = isoNow();
-    manifest.state = 'PUBLISHED';
-    manifest.safety.facebookApiCalled = true;
-    manifest.safety.uploaded = true;
-    manifest.safety.published = true;
-    manifest.publishVisibility = 'UNCONFIRMED';
-    manifest.lastError = null;
-    saveManifest(manifest);
-    updateRegistryFromManifest(manifest);
-
-    const statusPayload = {
-      state: 'PUBLISHED',
-      generatedAt: publishedAt,
-      publishVisibility: 'UNCONFIRMED',
-      facebook: {
-        pageId: maskedPageId,
-        pageName,
-        postId: reelResult.videoId,
-        videoId: reelResult.videoId,
-        permalinkUrl: reelResult.permalinkUrl,
-        published: true,
-        verifiedByGraphReadback: true,
-        apiPublishConfirmed: true,
-        publicVisibilityConfirmed: false,
-      },
-    };
-    const statusPath = join(JOBS_ROOT, jobId, 'facebook_publish_status.json');
-    writeFileSync(statusPath, `${JSON.stringify(statusPayload, null, 2)}\n`, 'utf8');
-
-    const resultPayload = {
-      jobId,
-      mode: 'LIVE',
-      publishedAt,
-      pageId: maskedPageId,
+    const { statusPath, resultPath } = finalizePublishSuccess(manifest, {
+      maskedPageId,
       pageName,
-      videoId: reelResult.videoId,
-      permalinkUrl: reelResult.permalinkUrl,
-      videoFile: captionedRel,
+      videoId: reelResult.videoId as string,
+      permalinkUrl: reelResult.permalinkUrl as string,
+      videoFileRel: captionedRel,
       caption: captionText,
       affiliateLink,
       hashtags,
-      verification: {
-        graphReadback: true,
-        verifiedAt: publishedAt,
-        apiPublishConfirmed: true,
-        publicVisibilityConfirmed: false,
-        publishVisibility: 'UNCONFIRMED',
-        note: 'Graph readback chỉ chứng minh API publish. Public visibility cần Operator xác nhận bằng tài khoản ngoài.',
-      },
-    };
-    const resultPath = join(PACKAGE_ROOT, jobId, 'facebook_publish_result.json');
-    writeFileSync(resultPath, `${JSON.stringify(resultPayload, null, 2)}\n`, 'utf8');
+    });
 
     console.log(`Status artifact:  ${statusPath}`);
     console.log(`Result artifact:  ${resultPath}`);
