@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-06-13 (**P3 — Tracking M3–M6 manual import THẬT: section đọc runtime store + breakdown theo kênh + resolve channelId/postId từ job** — xem Phần 31. Phase 1 Channel→Job binding — xem Phần 30. 12-Outcome Audit + Phase Roadmap cùng ngày — kết quả trong session log.)
-> **Branch**: `fix/shopee-modal-read` | **Commit mốc tại thời điểm cập nhật trạng thái**: `8266c47` (`feat(studio): real M3-M6 evidence from runtime with channel breakdown`)
+> **Cập nhật lần cuối**: 2026-06-13 (**P4 — Publish Safety Scale: token expiry health check (chặn LIVE nếu token hết hạn) + retry-verify-only cho job kẹt uploaded/unpublished** — xem Phần 32. P3 Tracking M3–M6 — xem Phần 31. Phase 1 Channel→Job binding — xem Phần 30.)
+> **Branch**: `fix/shopee-modal-read` | **Commit mốc tại thời điểm cập nhật trạng thái**: `172ae3a` (`feat(publish): retry-verify-only path + token gate for stuck uploads`) — P4, **chưa push** (Operator 1 máy)
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task → luôn chạy `pnpm vfos:daily` để có chỉ dẫn trạng thái mới nhất
 
 > ⚠️ **ĐƯỜNG VẬN HÀNH CHÍNH THỨC**: dùng `docs/00_DIEU_HANH/HUONG_DAN_VAN_HANH_CHINH_THUC_VFOS.md` (operator guide chuẩn, flow A-Z `commerce:intake` → `job:run-review` → `job:publish-facebook`).
@@ -2231,6 +2231,35 @@ DOM card img
 **Giới hạn trung thực**: doanh thu M5 chưa có cột riêng (ghi vào note khi nhập, field sau); job legacy chưa backfill channelId (hiện "(chưa gán kênh)"); chỉ Facebook (TikTok tracking là roadmap).
 
 **Bước tiếp theo**: (a) Operator nhập evidence thật khi có click/đơn từ Shopee dashboard, hoặc (b) tiếp video #2 `job_20260612_001`, hoặc (c) phase kế P2 Batch queue v0 / P4 Publish safety scale. Operator quyết.
+
+---
+
+### ✅ Phần 32 — P4: Publish Safety Scale (token expiry check + retry-verify-only): ĐÃ CHỐT (2026-06-13)
+
+**Bối cảnh**: Roadmap 12-Outcome Audit chọn P4 sau P3. Mục tiêu: cứng hóa publish lặp lại khi scale nhiều video/kênh, đóng 2 gap an toàn THẬT mà không đổi Core Action 1 (publish flow đang tốt).
+
+**2 gap thật được đóng**:
+1. **Token Page hết hạn giữa chừng**: trước P4 chỉ lộ khi precheck connection fail (chậm, mơ hồ). Giờ preflight đọc OFFLINE file meta → LIVE mode CHẶN ngay trước upload nếu token đã hết hạn (exit 17), cảnh báo nếu sắp hết hạn/chưa rõ. Token thật hạn ~10/08/2026 (~59 ngày) → "healthy".
+2. **Job kẹt `uploaded=true/published=false`** (Graph readback fail/timeout): trước P4 bị safety-lock chặn vĩnh viễn. Giờ persist `pendingVerifyVideoId` + `--retry-verify` chỉ chạy LẠI readback của đúng video đó (KHÔNG re-upload); verified → flip PUBLISHED qua helper `finalizePublishSuccess` dùng chung với LIVE success (chống divergence).
+
+**Commits** (2, chưa push — Operator chỉ 1 máy):
+- `f8b29d5` `feat(facebook): token expiry health check + verify-only readback` (6 file, +358/−4)
+- `172ae3a` `feat(publish): retry-verify-only path + token gate for stuck uploads` (1 file, +252/−51)
+
+**Đã làm**:
+- `packages/facebook/src/token-health.ts` (MỚI) — module PURE (no fs/network): `classifyTokenExpiry()` → expired/expiring_soon/healthy/never/unknown + cờ `block`; `buildTokenExpiryMeta()`/`parseTokenExpiryMeta()`. `tests/token-health.test.ts` (MỚI, 11 test).
+- `packages/facebook/scripts/get-page-token.ts` — sau khi refresh token thành công, ghi `data/temp/facebook_token_meta.json` (gitignored; CHỈ pageId công khai + expiry + verifiedAt — **KHÔNG token/secret**).
+- `packages/facebook/src/publish-reels.ts` — `verifyReelPublished(token, videoId)` read-only, chỉ Graph readback phase-5, gated META_MODE=live, không re-upload. `index.ts` export token-health + verifyReelPublished. `package.json` thêm script `test`.
+- `scripts/job-facebook-publish-command.ts` — token gate (LIVE: expired→exit 17 block, expiring_soon/unknown→warn; PREFLIGHT: hiển thị health), `pendingVerifyVideoId` persist khi partial upload fail, `--retry-verify` branch, helper `finalizePublishSuccess`. Exit code mới: 17 TOKEN_EXPIRED · 18 RETRY_VERIFY_NEEDS_LIVE · 19 NOTHING_TO_VERIFY · 20 NO_PENDING_VIDEO_ID · 23 RETRY_VERIFY_FAILED.
+
+**Evidence OFFLINE (test thật, KHÔNG live API, KHÔNG publish)**:
+- facebook typecheck EXIT 0 · build EXIT 0 · token-health **11/11 pass** · biome 4 file modified = baseline (0 vi phạm mới) · 2 file mới clean sau import-sort.
+- Guard paths: `--retry-verify` thiếu `--confirm-live-publish` → exit 18 (không API); `--retry-verify --confirm-live-publish` + META_MODE=mock → exit 15 "KHÔNG có API call" (không API); `--dry-run` job PACKAGED → exit 0 (full import graph load).
+- Token health display: meta file ghi bằng Node (no-BOM) → phân loại đúng cả 4 trạng thái unknown / healthy(~59d) / expiring_soon(3d) / expired; meta giả đã dọn sạch.
+
+**Giới hạn trung thực — 3 path CHỈ Operator live-test được (cần live Facebook API, CHƯA chạy theo lệnh Operator)**: (1) LIVE token block exit 17 (cần META_MODE=live + token hết hạn thật); (2) retry-verify happy path (cần job kẹt thật + live readback); (3) get-page-token ghi meta (cần live `debug_token` — sẽ tự chạy lần tới Operator refresh token). Logic đã unit-test + compile; chưa quan sát trên API thật.
+
+**Bước tiếp theo**: (a) Operator live-test 3 path trên khi muốn (`pnpm facebook:get-page-token` → `pnpm job:publish-facebook --job <id> --refresh-facebook-preflight` xem token "healthy"), hoặc (b) tiếp video #2 `job_20260612_001`, hoặc (c) phase kế P2 Batch queue v0. Operator quyết.
 
 ---
 
