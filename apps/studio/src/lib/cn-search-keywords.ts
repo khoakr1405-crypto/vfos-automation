@@ -34,6 +34,8 @@ const NOUN_SPECIFIC: readonly Entry[] = [
   ['gia do dien thoai', '手机支架'],
   ['camera hanh trinh', '行车记录仪'],
   ['ghe an dam', '宝宝餐椅'],
+  ['ghe hoi tap ngoi', '宝宝充气沙发'],
+  ['ghe tap ngoi', '宝宝学坐椅'],
   ['binh giu nhiet', '保温杯'],
   ['cay lau nha', '拖把'],
   ['mu bao hiem', '头盔'],
@@ -42,6 +44,10 @@ const NOUN_SPECIFIC: readonly Entry[] = [
   ['ta bim', '纸尿裤'],
   ['binh sua', '奶瓶'],
   ['xe day', '婴儿车'],
+  ['ao dieu hoa', '空调服'],
+  ['sua tam goi', '婴儿洗发沐浴露'],
+  ['nuoc giat', '洗衣液'],
+  ['nuoc xa', '柔顺剂'],
   ['den led', 'LED灯'],
 ];
 
@@ -53,6 +59,7 @@ const FEATURE: readonly Entry[] = [
   ['chong nang', '防晒'],
   ['gap gon', '可折叠'],
   ['da nang', '多功能'],
+  ['han quoc', '韩版'],
 ];
 
 // Category RỘNG (chỉ ra nhóm, KHÔNG đủ sát nghĩa nếu đứng một mình).
@@ -94,8 +101,14 @@ export function buildChineseSearchName(viName: string): string | null {
   const nounsSpecific = collect(NOUN_SPECIFIC, true);
   const features = collect(FEATURE, false);
 
-  const ageMatch = original.match(/(\d+)\s*-\s*(\d+)\s*tuoi/);
-  const age = ageMatch ? [`${ageMatch[1]}-${ageMatch[2]}岁`] : [];
+  // Tuổi: ưu tiên dải năm "X-Y tuổi" → X-Y岁; nếu không có dải năm, bắt "N tháng
+  // tuổi" → N个月 (sản phẩm mẹ-bé thường ghi theo tháng). Yêu cầu "tuoi" sau để
+  // tránh dính "12 tháng bảo hành" / "72H".
+  const yearRange = original.match(/(\d+)\s*-\s*(\d+)\s*tuoi/);
+  const monthAge = original.match(/(\d+)\s*thang\s*tuoi/);
+  const age: string[] = [];
+  if (yearRange) age.push(`${yearRange[1]}-${yearRange[2]}岁`);
+  else if (monthAge) age.push(`${monthAge[1]}个月`);
 
   // Compound đặc thù: "thoáng khí" + sản phẩm địu → 透气背带 (thay vì 透气 rời).
   const isCarrier = /(^|\s)diu(\s|$)/.test(original) || nounsSpecific.includes('婴儿腰凳');

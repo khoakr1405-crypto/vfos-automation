@@ -9,6 +9,7 @@
  * ========================================================================== */
 
 import { existsSync, readFileSync } from 'node:fs';
+import { buildChineseSearchName } from '@/lib/cn-search-keywords';
 import { resolveInsideRepo } from '@/lib/studio-data/paths';
 
 export const dynamic = 'force-dynamic';
@@ -36,6 +37,9 @@ interface CardSummary {
   price?: string;
   productImageUrl: string | null;
   description: string | null;
+  // Display-only: từ khóa tìm kiếm tiếng Trung SÁT NGHĨA suy ra từ tên VI (local,
+  // no API). KHÔNG ảnh hưởng job binding — chỉ giúp Operator tìm source.
+  chineseSearchName: string | null;
 }
 
 /** Plain product text (name/description) — trim + cap length. Local-only read;
@@ -85,6 +89,10 @@ function readCurrentCard(): CardSummary | null {
     const { commissionRate, price } = parseScoring(
       typeof c.scoringCriteria === 'string' ? c.scoringCriteria : undefined,
     );
+    // Tên Trung: ưu tiên giá trị đã persist trong card; nếu chưa có (card cũ),
+    // suy luận lại cục bộ. Read-only — không ghi ngược file ở route GET này.
+    const persistedZh = typeof c.chineseSearchName === 'string' ? c.chineseSearchName.trim() : '';
+    const chineseSearchName = persistedZh || buildChineseSearchName(String(c.name ?? ''));
     // Sanitized projection — never echo canonicalUrl / canonicalCleanUrl.
     return {
       name: String(c.name ?? ''),
@@ -96,6 +104,7 @@ function readCurrentCard(): CardSummary | null {
       validationStatus: String(c.validationStatus ?? 'UNKNOWN'),
       productImageUrl: safeImageUrl(c.productImageUrl),
       description: safeText(c.description, 500),
+      chineseSearchName: chineseSearchName || null,
       ...(typeof c.score === 'number' ? { score: c.score } : {}),
       ...(commissionRate ? { commissionRate } : {}),
       ...(price ? { price } : {}),

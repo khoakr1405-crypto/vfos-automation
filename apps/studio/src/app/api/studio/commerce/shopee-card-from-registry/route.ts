@@ -11,7 +11,8 @@
  * ========================================================================== */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { buildChineseSearchName } from '@/lib/cn-search-keywords';
 import { repoRoot, resolveInsideRepo } from '@/lib/studio-data/paths';
 
 export const dynamic = 'force-dynamic';
@@ -128,6 +129,20 @@ export async function POST(req: Request) {
   try {
     const c = JSON.parse(readFileSync(cardAbs, 'utf8')) as Record<string, unknown>;
     const ownerOk = String(c.affiliateOwnerId ?? '') === EXPECTED_OWNER;
+
+    // Display-only: suy luận tên/từ khóa tìm kiếm tiếng Trung SÁT NGHĨA (local,
+    // deterministic, KHÔNG gọi API) rồi PERSIST vào card để job/agent dùng lại,
+    // các lần chạy sau không phải recompute. KHÔNG phải nguồn sự thật cho
+    // productBinding — chỉ trợ giúp Operator đi tìm source Douyin/Taobao/1688.
+    const chineseSearchName = buildChineseSearchName(String(c.name ?? ''));
+    if (chineseSearchName && c.chineseSearchName !== chineseSearchName) {
+      try {
+        writeFileSync(cardAbs, `${JSON.stringify({ ...c, chineseSearchName }, null, 2)}\n`, 'utf8');
+      } catch {
+        // Persist là best-effort — không chặn promote nếu ghi file lỗi.
+      }
+    }
+
     return Response.json({
       ok: true,
       ownerVerified: ownerOk,
@@ -139,6 +154,7 @@ export async function POST(req: Request) {
         affiliateOwnerId: String(c.affiliateOwnerId ?? ''),
         ...(typeof c.score === 'number' ? { score: c.score } : {}),
         ...(typeof c.validationStatus === 'string' ? { validationStatus: c.validationStatus } : {}),
+        ...(chineseSearchName ? { chineseSearchName } : {}),
       },
       checkedAt: new Date().toISOString(),
     });

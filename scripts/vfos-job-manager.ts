@@ -114,6 +114,9 @@ interface JobManifest {
   productId: string | null;
   // Niche → Channel → Job binding (Phase 1). null = job legacy tạo trước khi có binding.
   channelId?: string | null;
+  // Display-only: từ khóa tìm kiếm tiếng Trung suy ra từ tên VI (đi tìm source
+  // Douyin/Taobao). KHÔNG phải productBinding, KHÔNG gate gì — chỉ tiện tham chiếu.
+  chineseSearchName?: string | null;
   source: {
     productCardPath: string;
     sourceVideoPath: string | null;
@@ -259,6 +262,14 @@ function extractProductId(productCard: Record<string, unknown>): string | null {
     if (typeof val === 'number') return String(val);
   }
   return null;
+}
+
+// Đọc tên tìm kiếm tiếng Trung đã persist trong product card (do Studio promote
+// suy luận cục bộ). Chỉ ĐỌC field có sẵn — KHÔNG tự suy luận ở đây. Display-only,
+// KHÔNG phải nguồn sự thật cho productBinding.
+function extractChineseSearchName(productCard: Record<string, unknown>): string | null {
+  const val = productCard.chineseSearchName;
+  return typeof val === 'string' && val.trim() ? val.trim() : null;
 }
 
 function hasVideoStream(filePath: string): boolean {
@@ -682,6 +693,7 @@ function cmdCreate(args: string[]): number {
 
   const productName = extractProductName(productCardRaw);
   const productId = extractProductId(productCardRaw);
+  const chineseSearchName = extractChineseSearchName(productCardRaw);
 
   console.log('======================================================');
   console.log(`📦  VFOS Job Manager — create  ${dryRun ? '🔍 DRY-RUN' : '⚡ EXECUTE'}`);
@@ -691,6 +703,7 @@ function cmdCreate(args: string[]): number {
   console.log(`Run ID:            ${runId}`);
   console.log(`Product name:      ${productName ?? '(unknown)'}`);
   console.log(`Product ID:        ${productId ?? '(unknown)'}`);
+  console.log(`Tên tìm kiếm Trung: ${chineseSearchName ?? '(chưa có)'}`);
   console.log(
     `Channel:           ${
       channelRes.channelId
@@ -717,6 +730,7 @@ function cmdCreate(args: string[]): number {
     runId,
     productId,
     channelId: channelRes.channelId,
+    chineseSearchName,
     source: {
       productCardPath: `${JOBS_ROOT}/${jobId}/product_card.json`,
       sourceVideoPath: null,
