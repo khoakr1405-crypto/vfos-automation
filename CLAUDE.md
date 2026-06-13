@@ -6,6 +6,8 @@ Before making strategic recommendations, creating implementation plans, or modif
 
 `docs/VFOS_NORTH_STAR.md`
 
+**Before coding VFOS tasks, read `docs/00_DIEU_HANH/VFOS_NORTH_STAR.md`** — the operating standard (mission, 3 Guardians, Fable-5 policy, 12 long-term outcomes, no-go rules, audit method, mandatory final-report sections).
+
 VFOS is not a generic AI automation platform.
 
 Its core purpose is to build a system that helps:
