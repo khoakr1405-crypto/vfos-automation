@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-06-13 (**Phase 1 — Channel→Job binding: channelId vào job manifest + UI/API/gate kênh thật, gỡ mock channel** — xem Phần 30. 12-Outcome Audit + Phase Roadmap cùng ngày — kết quả trong session log. Video #2 intake job_20260612_001 — xem Phần 29.)
-> **Branch**: `fix/shopee-modal-read` | **Commit mốc tại thời điểm cập nhật trạng thái**: `f6569fd` (`feat(studio): bind channel to job`)
+> **Cập nhật lần cuối**: 2026-06-13 (**P3 — Tracking M3–M6 manual import THẬT: section đọc runtime store + breakdown theo kênh + resolve channelId/postId từ job** — xem Phần 31. Phase 1 Channel→Job binding — xem Phần 30. 12-Outcome Audit + Phase Roadmap cùng ngày — kết quả trong session log.)
+> **Branch**: `fix/shopee-modal-read` | **Commit mốc tại thời điểm cập nhật trạng thái**: `8266c47` (`feat(studio): real M3-M6 evidence from runtime with channel breakdown`)
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task → luôn chạy `pnpm vfos:daily` để có chỉ dẫn trạng thái mới nhất
 
 > ⚠️ **ĐƯỜNG VẬN HÀNH CHÍNH THỨC**: dùng `docs/00_DIEU_HANH/HUONG_DAN_VAN_HANH_CHINH_THUC_VFOS.md` (operator guide chuẩn, flow A-Z `commerce:intake` → `job:run-review` → `job:publish-facebook`).
@@ -2203,6 +2203,34 @@ DOM card img
 - Selector nhiều kênh chưa làm (lane mới 1 kênh active — tránh YAGNI, ra đời cùng kênh thứ 2).
 
 **Bước tiếp theo**: (a) Operator tiếp tục video #2 end-to-end (`job_20260612_001`, xem Phần 29), hoặc (b) chọn phase kế từ roadmap: P2 Batch queue v0 / P3 Tracking M3–M6 manual import thật. Operator quyết.
+
+> **2026-06-13: Operator chọn (b) → làm P3 trước (xem Phần 31). Phase 1 đã push lên remote `fix/shopee-modal-read`.**
+
+---
+
+### ✅ Phần 31 — P3: Tracking M3–M6 Manual Import THẬT (evidence click/đơn theo kênh): ĐÃ CHỐT (2026-06-13)
+
+**Bối cảnh**: Roadmap 12-Outcome Audit chọn P3 sau Phase 1. Mục tiêu: biến outcome 5 (Evidence & Tracking M3–M6) từ PARTIAL → có đường nhập số THẬT để Operator ghi click/đơn từ Shopee dashboard + Meta Business Suite, breakdown theo kênh (dùng channelId bind từ Phase 1).
+
+**Phát hiện audit (đính chính báo cáo Agent C vòng audit)**: form CSV nhập số (`ManualInputPreview`) + save route guarded ĐÃ tồn tại từ round Real Analytics 02B. Gap thật là: (1) section "Evidence" đọc **fixture** thay vì runtime store → Operator lưu xong không thấy số; (2) save route hardcode `channelId: null` + `facebookPostId: null`; (3) `knownJobIds` từ fixture (sai cảnh báo cho jobId thật); (4) chưa breakdown per-channel.
+
+**Commit**: `8266c47` `feat(studio): real M3-M6 evidence from runtime with channel breakdown` (3 file, +159/−27).
+
+**Đã làm**:
+- `manual-performance/save/route.ts` — `resolveJobBinding(jobId)` server-side: **channelId** từ `job_manifest.json` (Phase 1) + **facebookPostId** public từ `facebook_publish_status.json` (block `facebook.postId` — chỉ id công khai, không token). Job legacy → null trung thực, không đoán.
+- `analytics/page.tsx` — section đọc `readRuntimeStore()` (số Operator đã lưu) thay vì fixture; `knownJobIds` thêm job thật từ registry; map tên kênh chỉ từ config thật (`source === 'real'`).
+- `manual-performance-section.tsx` — đổi tên card "Evidence M3–M6 — Số liệu Operator đã lưu (local runtime)"; bảng mới "Theo kênh (M3–M6)" (Views / Clicks M3 / CTR / Đơn M4 / CVR per channel); cột Kênh + postId thật trong bảng post-level; gỡ nút chết "Nhập số liệu (sắp có)".
+
+**Evidence thật (test, không suy đoán)**:
+- typecheck PASS · build PASS · biome 3 file: baseline 3 lỗi → 1 lỗi = 0 vi phạm mới.
+- UI proof (Playwright drive form thật): paste CSV 2 dòng → Validate → Save → reload → section hiện data + breakdown kênh; **0 console error**. `job_20260612_002` resolve `channelId=ch_fb_review_nha_ban`; `job_20260609_001` resolve `facebookPostId=1028983246151885` (Reel publish thật). Bug shape lồng `facebook.postId` phát hiện qua proof lần 1, đã fix.
+- Runtime store sau proof đã **restore** về demo gốc rồi **dọn sạch** (Operator chọn (a)): `data/growth/runtime/manual-performance-snapshots.json` giờ `snapshots: []`. Backup demo: `data/temp/debug/mps-demo-backup-20260613.json` (runtime, gitignored). Empty-state UI verified: hiện "Chưa có dữ liệu thật", 0 console error (sau `pnpm studio:dev:clean` fix 500 chunk corruption — không phải lỗi code).
+
+**Flow nhập số thật của Operator từ giờ**: Shopee Affiliate dashboard (clicks/đơn link `s.shopee.vn/LkjNhcNaD`) + Meta Business Suite (views) → `/analytics` → paste CSV 1 dòng cho `job_20260609_001` → Validate → Save → số hiện ở card Evidence với postId thật + kênh. Đây là đường ghi evidence M3 (click) / M4 (đơn) đầu tiên.
+
+**Giới hạn trung thực**: doanh thu M5 chưa có cột riêng (ghi vào note khi nhập, field sau); job legacy chưa backfill channelId (hiện "(chưa gán kênh)"); chỉ Facebook (TikTok tracking là roadmap).
+
+**Bước tiếp theo**: (a) Operator nhập evidence thật khi có click/đơn từ Shopee dashboard, hoặc (b) tiếp video #2 `job_20260612_001`, hoặc (c) phase kế P2 Batch queue v0 / P4 Publish safety scale. Operator quyết.
 
 ---
 
