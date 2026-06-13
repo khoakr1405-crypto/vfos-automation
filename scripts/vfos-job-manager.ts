@@ -2703,23 +2703,30 @@ async function cmdIntakeClean(args: string[]): Promise<number> {
     }
 
     // Generate source_cleanliness_report.json
+    // Option A — these frames are REFERENCE ONLY for the Operator's preview review
+    // (Step 4), NOT a workflow gate. There is no automated logo detection; the
+    // no-watermark download provider is the technical clean guarantee.
     const cleanlinessReport = {
       jobId,
       sourceVideoUrl: sourceRef,
       videoPath: `runs/${jobId}/source/clean_source_video.mp4`,
       framePaths,
-      status: 'UNKNOWN_NEEDS_OPERATOR_REVIEW',
+      frameExtractionOk: cleanlinessPassed,
+      status: 'REFERENCE_FRAMES_ONLY',
       checkedAreas: ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'center'],
       notes:
-        'No automated Vision AI active for logo cleanliness. Fallback to manual Operator review of extracted frames.',
+        'No automated Vision AI for logo cleanliness. Frames are reference for the Operator preview (Step 4); not a source-approval gate.',
     };
     writeFileSync(cleanlinessReportPath, JSON.stringify(cleanlinessReport, null, 2), 'utf8');
     console.log(`[Cleanliness QA] Saved cleanliness report to: ${cleanlinessReportPath}`);
   }
 
   // 4. Write Download Report
-  const finalStatus =
-    downloadSuccess && ffprobePassed && cleanlinessPassed ? 'SOURCE_READY' : 'SOURCE_FAILED';
+  // Technical gate (option A): download + valid ffprobe = source ready. Logo
+  // cleanliness relies on the no-watermark download provider; visual confirmation
+  // is deferred to the Operator preview (Step 4), NOT a separate approval gate.
+  // Frame extraction is best-effort reference only — it must NOT block intake.
+  const finalStatus = downloadSuccess && ffprobePassed ? 'SOURCE_READY' : 'SOURCE_FAILED';
   const report = {
     jobId,
     requestedProvider: provider,
@@ -2745,7 +2752,11 @@ async function cmdIntakeClean(args: string[]): Promise<number> {
     (manifest.source as any).sourceVideoUrl = sourceRef;
     (manifest.source as any).provider = provider;
     (manifest.source as any).localPath = `runs/${jobId}/source/clean_source_video.mp4`;
-    (manifest.source as any).cleanlinessStatus = 'NEEDS_REVIEW';
+    // Option A — no human source-approval gate. A real download via the
+    // no-watermark provider IS the technical clean gate; mark it clean so
+    // production (Step 3) unlocks directly. The Operator's real visual review
+    // happens at preview (Step 4). This is NOT vision-verified de-logo.
+    (manifest.source as any).cleanlinessStatus = 'WATERMARK_NOT_DETECTED';
     (manifest.source as any).cleanlinessReportPath =
       `runs/${jobId}/source/source_cleanliness_report.json`;
     (manifest.source as any).framePaths = framePaths;
@@ -2765,7 +2776,7 @@ async function cmdIntakeClean(args: string[]): Promise<number> {
     saveRegistry(reg);
 
     console.log(
-      `\n✅ Clean Source Intake SUCCESS! State → SOURCE_READY (download + ffprobe pass, logo cleanliness pending QA)`,
+      `\n✅ Clean Source Intake SUCCESS! State → SOURCE_READY, cleanlinessStatus=WATERMARK_NOT_DETECTED (download + ffprobe pass; visual confirm at preview, no human approval gate)`,
     );
     return 0;
   } else {
@@ -2786,6 +2797,11 @@ async function cmdIntakeClean(args: string[]): Promise<number> {
 }
 
 // ---------- approve-cleanliness (Round Clean Source Intake 03) ----------
+// DEPRECATED (Option A — 5-step model): the human source-approval gate was
+// removed from the Product Review Command Center. `intake-clean` now marks a
+// real downloaded source clean automatically; the Operator's visual review is at
+// preview (Step 4). This CLI remains only as a manual recovery/override tool and
+// is NOT wired into the Studio UI. Do not reintroduce it as a workflow gate.
 async function cmdApproveCleanliness(args: string[]): Promise<number> {
   const parsed = parseArgs({
     args,

@@ -1,7 +1,7 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-06-13 (**Fix gốc Source Intake demo/fallback — cấm demo lọt clean-source approval; download fail = FAILED, không fallback video mẫu** — xem Phần 33. P4 Publish Safety Scale — xem Phần 32. P3 Tracking M3–M6 — xem Phần 31.)
+> **Cập nhật lần cuối**: 2026-06-13 (**Bỏ human gate "Duyệt nguồn sạch" — Product Review 5 bước (hướng A): intake auto-clean → production mở thẳng, Operator duyệt ở preview** — xem Phần 34 (implement local, CHƯA commit). Source Intake demo/fallback — Phần 33. P4 Publish Safety Scale — Phần 32. P3 Tracking M3–M6 — Phần 31.)
 > **Branch**: `fix/shopee-modal-read` | **Commit mốc tại thời điểm cập nhật trạng thái**: `d7a39e1` (`fix(intake): stop demo fallback source entering clean-source approval`) — **chưa push** (Operator 1 máy)
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task → luôn chạy `pnpm vfos:daily` để có chỉ dẫn trạng thái mới nhất
 
@@ -2293,7 +2293,29 @@ DOM card img
 - **Fail-path (job TEST riêng, URL bogus, fallback template `job_20260602_003` vẫn còn trên đĩa)**: intake-clean → `PROVIDER_RESULT_TIMEOUT` → `state=FAILED`, exit 3; `clean_source_video.mp4` **không tạo**; thư mục frames **không tạo** (0 frame); `report status=SOURCE_FAILED`, `sourceMode=(none)`. Test job đã dọn sạch.
 - Biome `vfos-job-manager.ts`: baseline 65 → 64 (0 vi phạm mới); approve-cleanliness gate live-test trên job nhiễm trả đúng exit 13 (return trước khi ghi, không approve).
 
-**Bước tiếp theo**: Operator nạp **source video THẬT** cho `job_20260612_001`/`_002` (ghế hơi): dán URL douyin/tiktok đúng sản phẩm → "Tải & clean nguồn" (giờ fail = báo lỗi rõ, không demo), hoặc dùng `--file` nạp từ inbox → duyệt nguồn sạch → tiếp video #2.
+**Bước tiếp theo**: Operator nạp **source video THẬT** cho `job_20260612_001`/`_002` (ghế hơi): dán URL douyin/tiktok đúng sản phẩm → "Tải & clean nguồn" (giờ fail = báo lỗi rõ, không demo) → (sau Phần 34) mở thẳng Bước 3 production, Operator duyệt ở preview.
+
+---
+
+### ✅ Phần 34 — Bỏ human gate "Duyệt nguồn sạch" (Operator chọn hướng A — mô hình 5 bước): IMPLEMENT LOCAL, CHỜ OPERATOR DUYỆT UI + COMMIT (2026-06-13)
+
+**Bối cảnh**: Operator chốt Product Review chuẩn = **5 bước**; Operator là người kiểm duyệt gắt nhất → bỏ hẳn human gate "Duyệt nguồn sạch / APPROVE SOURCE" giữa Bước 2–3. Cổng kỹ thuật DUY NHẤT ở nguồn = tải được video + clean logo TikTok (provider no-watermark). Operator duyệt hình ảnh/nội dung ở **preview (Bước 4)**.
+
+**5 bước chuẩn**: (1) Chọn sản phẩm · (2) Dán link + "Tải & clean nguồn" · (3) Chạy production (script→voice→BGM→render→caption→QA) · (4) Xem preview (Operator duyệt) · (5) Đóng gói + publish. Ánh xạ vào 3-Action cũ: Action 2 = Bước 2+3+4.
+
+**Phát hiện trung thực (đã ghi trong code/skill)**: KHÔNG có dò-logo tự động (khớp mục 5 "Watermark detection tự động — Chưa làm"). "Clean" = download qua provider no-watermark + trích frame **tham khảo**. Bỏ human gate ⇒ cam kết sạch logo dựa vào provider; bắt lỗi hình ảnh dời về preview. `cleanlinessStatus=WATERMARK_NOT_DETECTED` set tự động ở intake = "đã tải & clean (download-based)", **KHÔNG phải vision-verified**. Operator đã xác nhận ngữ nghĩa này.
+
+**Đã sửa (CHƯA commit)**:
+- `scripts/vfos-job-manager.ts` (`intake-clean`): success set `cleanlinessStatus='WATERMARK_NOT_DETECTED'` (was `'NEEDS_REVIEW'`) → production mở thẳng. Gate kỹ thuật = download + ffprobe (frame extraction = best-effort reference, không block). `cmdApproveCleanliness` đánh dấu DEPRECATED (chỉ còn CLI recovery, không wire UI).
+- `apps/studio/.../product-review/page.tsx`: xóa UI gate (frames + APPROVE SOURCE + Duyệt/Từ chối nguồn) + handler `handleApproveCleanliness` + state `approveConfirmInput/cleanlinessNotes/submittingApprove`; Bước 2 còn 2 case (chưa clean → intake / đã clean → mở Bước 3); reword copy bỏ "duyệt nguồn sạch".
+- `apps/studio/.../jobs/[jobId]/source-approve/route.ts`: **KHÔNG xóa** (Operator chốt giữ lại) — gỡ wiring khỏi UI + thêm banner **DEPRECATED**; chỉ còn recovery/debug-only, KHÔNG phải gate main-path.
+- `vfos-product-review-workflow-skill/SKILL.md`: gỡ "Cleanliness approval gate" + state `WAITING_OPERATOR_SOURCE_APPROVAL` khỏi đường chính.
+
+**Guard giữ nguyên**: không fallback demo/mock (Phần 33 intact) · URL persist vào manifest trước intake · download/clean fail = lỗi rõ, không success giả · production gate Rule 1/3/5 (clean-file/binding/owner/anti-fallback) giữ nguyên · không auto-publish.
+
+**Verify (static, KHÔNG production/publish)**: `tsc -p` PASS; Biome page.tsx + job-manager **0 lỗi mới** (chỉ nợ pre-existing); route `/lanes/product-review` trả 200. **CHƯA browser-review tay + CHƯA commit** — chờ Operator duyệt UI :3002.
+
+**Bước tiếp theo**: Operator mở `http://localhost:3002/lanes/product-review` duyệt UI 5 bước (không còn APPROVE SOURCE) → nếu OK, cho phép commit scoped (page.tsx + vfos-job-manager.ts + SKILL.md + source-approve route [deprecated banner, không xóa] + state doc).
 
 ---
 

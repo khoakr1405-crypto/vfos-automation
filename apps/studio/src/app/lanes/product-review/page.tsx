@@ -5,7 +5,7 @@
  * -----------------------------------------------------------------------------
  * KHÔNG còn là navigation shell. Đây là Command Center với 3 workflow action
  * panel đã wire THẬT: Action 1 (Product Card + kho link Shopee + trích xuất CDP),
- * Action 2 (nguồn → clean → duyệt sạch → production → QA → duyệt preview),
+ * Action 2 (nguồn → tải & clean → production → QA → duyệt preview),
  * Action 3 (đóng gói → preflight readiness → publish Facebook qua gate cứng
  * server-side; live publish CHỈ chạy khi Operator bấm, không auto).
  *
@@ -196,7 +196,7 @@ function friendlyPrepareError(code: string | undefined): PrepareError {
     case 'FALLBACK_SOURCE_BLOCKED':
       return {
         title: 'Nguồn video hiện là bản mẫu, không dùng để đăng thật.',
-        hint: 'Dùng nguồn video thật đã duyệt sạch ở Action 2.',
+        hint: 'Dùng nguồn video thật đã tải & clean ở Action 2.',
         kind: 'needs_action',
       };
     case 'NOT_APPROVED':
@@ -263,12 +263,9 @@ export default function ProductReviewLanePage() {
   const [jobError, setJobError] = useState<string | null>(null);
   const [showConfirmJob, setShowConfirmJob] = useState(false);
 
-  // Round C2 states
+  // Round C2 states (source intake — option A: no human source-approval gate)
   const [intakeConfirmInput, setIntakeConfirmInput] = useState('');
-  const [approveConfirmInput, setApproveConfirmInput] = useState('');
-  const [cleanlinessNotes, setCleanlinessNotes] = useState('');
   const [submittingIntake, setSubmittingIntake] = useState(false);
-  const [submittingApprove, setSubmittingApprove] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   // Round D — Operator phê duyệt PREVIEW (Bước 3–7). Lỗi để cạnh nút cho rõ ràng.
   const [submittingApprovePreview, setSubmittingApprovePreview] = useState(false);
@@ -579,6 +576,22 @@ export default function ProductReviewLanePage() {
       });
       const body = await res.json();
       if (res.ok && body.ok) {
+        // Also persist URL to the selected job's manifest so source-intake can
+        // find it. Without this, "Lưu nháp" only wrote to the shared draft file
+        // and the manifest stayed empty — causing "Không tìm thấy URL nguồn".
+        const targetJobId = selectedJobId || findJobForCard(jobs, card)?.id;
+        if (targetJobId) {
+          try {
+            await fetch(`/api/studio/jobs/${targetJobId}/source-url`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ sourceUrl: url }),
+            });
+          } catch {
+            // Best-effort: draft saved, manifest persist failed silently.
+            // The "Tải & clean nguồn" button will persist anyway before intake.
+          }
+        }
         setSourceNotice('Nguồn đã được lưu thành công.');
         setDraft(body.draft);
         await load();
@@ -616,9 +629,9 @@ export default function ProductReviewLanePage() {
 
   // Linear Workflow Continuity — 1 nút "Tải & clean nguồn" điều phối prep AN TOÀN:
   // lưu draft → tạo job đúng Product Card (nếu chưa có) → auto-select → source
-  // intake/download/clean → trích frame. KHÔNG tự duyệt sạch, KHÔNG chạy production,
-  // KHÔNG publish, KHÔNG gọi OpenAI/ElevenLabs. Confirm phrase prep do client cấp
-  // tự động (đây là guard UX, không phải Production Gate); 2 gate thật vẫn human.
+  // intake/download/clean → trích frame tham khảo. KHÔNG chạy production, KHÔNG
+  // publish, KHÔNG gọi OpenAI/ElevenLabs. Option A: tải + clean (provider
+  // no-watermark) thành công là mở thẳng Bước 3 — KHÔNG còn human gate duyệt nguồn.
   const handlePrepareSource = async () => {
     if (!cardReady) {
       setSourceError('Cần Product Card hợp lệ (Hành động 1) trước khi tải nguồn.');
@@ -679,10 +692,13 @@ export default function ProductReviewLanePage() {
       const needsIntake = !existing || (!existing.cleanlinessStatus && !existing.sourceVideoPath);
       if (needsIntake) {
         setPrepStage('Đang tải & clean nguồn (có thể mất ~30s)…');
+        // Always send the extracted URL so the server persists it to the manifest
+        // BEFORE running intake — no URL should live only in React state.
+        const prepSourceUrl = extractFirstUrl(sourceUrlInput) || undefined;
         const intakeRes = await fetch(`/api/studio/jobs/${jobId}/source-intake`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ confirmPhrase: 'RUN SOURCE INTAKE' }),
+          body: JSON.stringify({ confirmPhrase: 'RUN SOURCE INTAKE', sourceUrl: prepSourceUrl }),
         });
         const intakeBody = await intakeRes.json();
         if (!intakeRes.ok || !intakeBody.ok) {
@@ -691,10 +707,11 @@ export default function ProductReviewLanePage() {
           return;
         }
       }
-      // (d) DỪNG ở human gate: Operator xem frame + duyệt nguồn sạch (hệ thống KHÔNG tự duyệt).
+      // (d) Option A — không còn human gate "Duyệt nguồn sạch". Tải + clean (provider
+      //     no-watermark) thành công → mở thẳng Bước 3. Operator duyệt hình ảnh ở preview.
       setSourceUrlInput('');
       setSourceNotice(
-        'Đã chuẩn bị nguồn xong. Xem frame và bấm "Duyệt nguồn sạch" bên dưới để tiếp tục — hệ thống KHÔNG tự duyệt.',
+        'Đã tải & clean nguồn xong. Bấm "Chạy sản xuất video" (Bước 3) để tiếp tục — Operator duyệt hình ảnh ở bước preview.',
       );
       await load();
     } catch {
@@ -759,10 +776,12 @@ export default function ProductReviewLanePage() {
     setSubmittingIntake(true);
     setActionError(null);
     try {
+      // Send sourceUrl so the server persists it to the manifest before intake.
+      const manualSourceUrl = extractFirstUrl(sourceUrlInput) || undefined;
       const res = await fetch(`/api/studio/jobs/${jobId}/source-intake`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirmPhrase: intakeConfirmInput }),
+        body: JSON.stringify({ confirmPhrase: intakeConfirmInput, sourceUrl: manualSourceUrl }),
       });
       const data = await res.json();
       if (res.ok && data.ok) {
@@ -775,42 +794,6 @@ export default function ProductReviewLanePage() {
       setActionError('Lỗi kết nối đến API server.');
     } finally {
       setSubmittingIntake(false);
-    }
-  };
-
-  const handleApproveCleanliness = async (jobId: string, status: 'pass' | 'fail') => {
-    if (status === 'pass' && approveConfirmInput !== 'APPROVE SOURCE') {
-      setActionError('Cụm từ xác nhận không khớp. Nhập đúng "APPROVE SOURCE".');
-      return;
-    }
-    if (!cleanlinessNotes.trim()) {
-      setActionError('Ghi chú là bắt buộc và không được để trống.');
-      return;
-    }
-    setSubmittingApprove(true);
-    setActionError(null);
-    try {
-      const res = await fetch(`/api/studio/jobs/${jobId}/source-approve`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          status,
-          notes: cleanlinessNotes,
-          confirmPhrase: status === 'pass' ? approveConfirmInput : undefined,
-        }),
-      });
-      const data = await res.json();
-      if (res.ok && data.ok) {
-        setApproveConfirmInput('');
-        setCleanlinessNotes('');
-        await load();
-      } else {
-        setActionError(data.message || 'Xử lý duyệt nguồn sạch thất bại.');
-      }
-    } catch {
-      setActionError('Lỗi kết nối đến API server.');
-    } finally {
-      setSubmittingApprove(false);
     }
   };
 
@@ -1242,7 +1225,8 @@ export default function ProductReviewLanePage() {
     !isFallbackSource &&
     cardMatchesJob;
 
-  // Round C3 — production gates derived from real job state
+  // Round C3 — production gates derived from real job state. Option A: cleanliness
+  // is auto-set at intake (no human approval); này = "nguồn thật đã tải & clean".
   const sourceApproved = latestJob?.cleanlinessStatus === 'WATERMARK_NOT_DETECTED';
   const productionRunning =
     productionLaunched ||
@@ -1329,7 +1313,7 @@ export default function ProductReviewLanePage() {
         <UtilIcon name="clock" width={13} height={13} className="text-neutral-500" />
         <span>
           <strong className="text-neutral-300">Action 1–2–3 đã wire thật.</strong> Action 1: kho
-          link Shopee + trích xuất CDP. Action 2: nguồn → clean source → duyệt sạch → chạy sản xuất
+          link Shopee + trích xuất CDP. Action 2: nguồn → tải & clean → chạy sản xuất
           video (script→voice→BGM→render→caption→QA). Action 3: đóng gói → kiểm tra readiness → đăng
           Facebook qua gate cứng — live publish chỉ chạy khi Operator bấm.
         </span>
@@ -1863,7 +1847,8 @@ export default function ProductReviewLanePage() {
               </div>
             )}
 
-            {/* Nút CHÍNH của Operator — 1 click điều phối prep an toàn tới cổng duyệt sạch.
+            {/* Nút CHÍNH của Operator — 1 click điều phối prep an toàn: tải & clean nguồn
+                → mở thẳng Bước 3 (Option A, không còn human gate duyệt nguồn).
                 "Lưu nháp" chỉ là phụ (auto-save thủ công), không còn là CTA chính. */}
             <div className="flex flex-wrap items-center gap-2">
               <Button
@@ -2120,18 +2105,12 @@ export default function ProductReviewLanePage() {
               {latestJob.cleanlinessStatus && (
                 <StatusChip
                   accent={
-                    latestJob.cleanlinessStatus === 'WATERMARK_NOT_DETECTED'
-                      ? 'green'
-                      : latestJob.cleanlinessStatus === 'WATERMARK_DETECTED'
-                        ? 'rose'
-                        : 'amber'
+                    latestJob.cleanlinessStatus === 'WATERMARK_NOT_DETECTED' ? 'green' : 'amber'
                   }
                 >
                   {latestJob.cleanlinessStatus === 'WATERMARK_NOT_DETECTED'
-                    ? 'Nguồn sạch'
-                    : latestJob.cleanlinessStatus === 'WATERMARK_DETECTED'
-                      ? 'Bị từ chối'
-                      : 'Chờ duyệt'}
+                    ? 'Đã tải & clean'
+                    : 'Chưa tải/clean'}
                 </StatusChip>
               )}
             </div>
@@ -2142,12 +2121,13 @@ export default function ProductReviewLanePage() {
               </div>
             )}
 
-            {/* Case 1: Waiting for download / failed to download */}
-            {(latestJob.state === 'WAITING_FOR_SOURCE_VIDEO' ||
-              (latestJob.state === 'FAILED' && !latestJob.cleanlinessStatus)) && (
+            {/* Case 1: Source not yet clean (waiting / failed / legacy) — show intake.
+                Option A: a successful download+clean auto-marks the source clean. */}
+            {latestJob.cleanlinessStatus !== 'WATERMARK_NOT_DETECTED' && (
               <div className="space-y-2.5">
                 <p className="text-xs text-neutral-400">
-                  Video nguồn chưa được tải hoặc tải lỗi. Tiến hành tải và phân tích frame sạch:
+                  Video nguồn chưa được tải/clean (hoặc tải lỗi). Tải & clean nguồn (provider
+                  no-watermark) — frame trích xuất chỉ để tham khảo:
                 </p>
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
                   <div className="flex-1 min-w-0">
@@ -2190,134 +2170,19 @@ export default function ProductReviewLanePage() {
               </div>
             )}
 
-            {/* Case 2: Needs Operator Review (NEEDS_REVIEW or UNKNOWN_NEEDS_OPERATOR_REVIEW) */}
-            {(latestJob.cleanlinessStatus === 'NEEDS_REVIEW' ||
-              latestJob.cleanlinessStatus === 'UNKNOWN_NEEDS_OPERATOR_REVIEW') && (
-              <div className="space-y-3">
-                <p className="text-xs font-medium text-neutral-300">
-                  Rà soát hình ảnh (5 frame trích xuất) để kiểm tra watermark/logo:
-                </p>
-
-                {/* Grid of 5 frame thumbnails */}
-                <div className="grid grid-cols-5 gap-2">
-                  {[1, 2, 3, 4, 5].map((index) => (
-                    <div
-                      key={index}
-                      className="group relative aspect-video overflow-hidden rounded border border-hairline bg-neutral-900 transition hover:border-neutral-500"
-                    >
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={`/api/studio/jobs/${latestJob.id}/source-frame/${index}`}
-                        alt={`Review frame ${index}`}
-                        className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
-                      />
-                      <span className="absolute bottom-1 left-1 rounded bg-black/60 px-1 text-[8px] font-mono text-neutral-300">
-                        F{index}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="space-y-2">
-                  <div>
-                    <label
-                      htmlFor="cleanlinessNotes"
-                      className="block text-[10px] text-neutral-400 font-medium mb-1"
-                    >
-                      Ghi chú Operator <span className="text-accent-rose">*</span>
-                    </label>
-                    <textarea
-                      id="cleanlinessNotes"
-                      required
-                      rows={2}
-                      disabled={submittingApprove}
-                      value={cleanlinessNotes}
-                      onChange={(e) => setCleanlinessNotes(e.target.value)}
-                      placeholder="Nhập ghi chú rà soát (ví dụ: Video sạch không logo, hoặc Phát hiện logo watermark ở góc dưới)..."
-                      className="w-full rounded-lg border border-hairline bg-panel px-3 py-2 text-xs text-neutral-200 focus:outline-none focus:border-accent-violet disabled:opacity-50"
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-2.5 sm:flex-row sm:items-end">
-                    <div className="flex-1 min-w-0">
-                      <label
-                        htmlFor="approveConfirmInput"
-                        className="block text-[10px] text-neutral-400 font-medium mb-1"
-                      >
-                        Gõ để duyệt sạch:{' '}
-                        <code className="bg-neutral-800 px-1 py-0.5 rounded text-neutral-200">
-                          APPROVE SOURCE
-                        </code>
-                      </label>
-                      <input
-                        id="approveConfirmInput"
-                        type="text"
-                        disabled={submittingApprove}
-                        value={approveConfirmInput}
-                        onChange={(e) => setApproveConfirmInput(e.target.value)}
-                        placeholder="APPROVE SOURCE"
-                        className="w-full rounded-lg border border-hairline bg-panel px-3 py-1.5 text-xs text-neutral-200 focus:outline-none focus:border-accent-violet disabled:opacity-50"
-                      />
-                    </div>
-                    <div className="flex gap-2 shrink-0">
-                      <Button
-                        onClick={() => handleApproveCleanliness(latestJob.id, 'fail')}
-                        variant="outline"
-                        disabled={submittingApprove || !cleanlinessNotes.trim()}
-                        className="!py-1.5 !px-3 text-[11px] border-accent-rose hover:bg-accent-rose/10 text-accent-rose font-semibold disabled:opacity-30"
-                      >
-                        {submittingApprove ? 'Từ chối...' : 'Từ chối nguồn'}
-                      </Button>
-                      <Button
-                        onClick={() => handleApproveCleanliness(latestJob.id, 'pass')}
-                        variant="success"
-                        disabled={
-                          submittingApprove ||
-                          !cleanlinessNotes.trim() ||
-                          approveConfirmInput !== 'APPROVE SOURCE'
-                        }
-                        className="!py-1.5 !px-3 text-[11px] bg-accent-green hover:bg-accent-green/90 text-neutral-900 border-none font-semibold disabled:opacity-30"
-                      >
-                        {submittingApprove ? 'Đang duyệt...' : 'Duyệt nguồn sạch'}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Case 3: Watermark Not Detected (Clean) */}
+            {/* Case 2: Source downloaded & cleaned (Option A — no human approval gate).
+                Real visual review happens at preview (Step 4), not here. */}
             {latestJob.cleanlinessStatus === 'WATERMARK_NOT_DETECTED' && (
               <div className="space-y-2">
                 <p className="text-xs text-accent-green flex items-center gap-1 font-semibold">
-                  <span>✓</span> Nguồn video đã được duyệt sạch (Không phát hiện logo/watermark).
+                  <span>✓</span> Nguồn đã tải & clean (provider no-watermark). Hình ảnh được Operator
+                  duyệt ở bước preview.
                 </p>
                 {isFallbackSource && (
                   <NoticeBox accent="rose">
                     Nguồn hiện tại là fallback mẫu, không được dùng để sản xuất video thật cho sản
                     phẩm này.
                   </NoticeBox>
-                )}
-                {latestJob.notes && (
-                  <div className="rounded-lg border border-hairline/60 bg-panel/30 p-2.5 text-xs text-neutral-300 leading-relaxed">
-                    <span className="font-semibold text-neutral-400">Ghi chú duyệt:</span>{' '}
-                    {latestJob.notes}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Case 4: Watermark Detected (Rejected) */}
-            {latestJob.cleanlinessStatus === 'WATERMARK_DETECTED' && (
-              <div className="space-y-2">
-                <p className="text-xs text-accent-rose flex items-center gap-1 font-semibold">
-                  <span>✗</span> Nguồn video bị từ chối (Phát hiện logo/watermark).
-                </p>
-                {latestJob.notes && (
-                  <div className="rounded-lg border border-accent-rose/30 bg-accent-rose/10 p-2.5 text-xs text-accent-rose leading-relaxed">
-                    <span className="font-semibold text-neutral-400">Ghi chú từ chối:</span>{' '}
-                    {latestJob.notes}
-                  </div>
                 )}
               </div>
             )}
@@ -2463,11 +2328,11 @@ export default function ProductReviewLanePage() {
 
           {!latestJob ? (
             <p className="text-[11px] text-neutral-500">
-              Tạo job + duyệt nguồn sạch (Bước 1–2) để mở bước sản xuất.
+              Tạo job + tải & clean nguồn (Bước 1–2) để mở bước sản xuất.
             </p>
           ) : !sourceApproved ? (
             <NoticeBox accent="amber">
-              Cần duyệt nguồn sạch (Bước 2 → WATERMARK_NOT_DETECTED) trước khi chạy sản xuất video.
+              Cần tải & clean nguồn (Bước 2) trước khi chạy sản xuất video.
             </NoticeBox>
           ) : productionDone ? (
             <div className="space-y-2">
@@ -2538,8 +2403,8 @@ export default function ProductReviewLanePage() {
           ) : (
             <div className="space-y-2.5">
               <p className="text-xs text-neutral-400">
-                Nguồn đã duyệt sạch & Product Card khớp job. Chạy pipeline sản xuất từ clean source
-                đã duyệt (không nhảy route kỹ thuật).
+                Nguồn đã tải & clean & Product Card khớp job. Chạy pipeline sản xuất từ clean source
+                (không nhảy route kỹ thuật).
               </p>
               {isFallbackSource ? (
                 <NoticeBox accent="rose">

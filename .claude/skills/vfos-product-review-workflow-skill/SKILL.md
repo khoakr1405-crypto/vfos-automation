@@ -73,8 +73,7 @@ Hành động 2 đảm nhận toàn bộ khâu xử lý kỹ thuật và mỹ th
 * **Các thành phần chính**:
   - Dán và lưu nguồn (Source URL).
   - Khởi tạo bản nháp Job (Job draft).
-  - Làm sạch nguồn / Tải video (Clean source / source intake).
-  - Phê duyệt độ sạch của nguồn từ Operator (Cleanliness approval gate) nếu cần.
+  - Tải & clean nguồn (Clean source / source intake). Cổng kỹ thuật DUY NHẤT ở nguồn: tải được video + clean logo TikTok (provider no-watermark). Download/clean fail → báo lỗi rõ, KHÔNG fallback demo/mock. KHÔNG có gate Operator "duyệt nguồn sạch" — Operator duyệt hình ảnh ở preview (Bước 4).
   - Tiền xử lý hình ảnh (Raw Visual) nếu cần.
   - Sinh kịch bản (Script).
   - Thu âm giọng nói AI (Voice).
@@ -113,8 +112,7 @@ Dưới đây là các trạng thái của Job ở mức workflow để Claude t
 * `SOURCE_DRAFT_READY`: Đã lưu liên kết nguồn thô.
 * `JOB_DRAFT_READY`: Bản nháp Job đã được khởi tạo thành công.
 * `WAITING_FOR_SOURCE_VIDEO`: Đang tải video gốc.
-* `SOURCE_READY`: Video gốc đã tải xong.
-* `WAITING_OPERATOR_SOURCE_APPROVAL`: Chờ Operator duyệt nguồn sạch (không dính watermark/logo).
+* `SOURCE_READY` (+ `cleanlinessStatus=WATERMARK_NOT_DETECTED`): Video gốc đã tải & clean (auto, provider no-watermark) → production (Bước 3) mở thẳng. (Option A — KHÔNG còn state/gate `WAITING_OPERATOR_SOURCE_APPROVAL`; human approve nguồn đã gỡ. Operator duyệt hình ảnh ở preview.)
 * `PRODUCTION_RUNNING`: Tiến trình sinh script/voice/render đang chạy.
 * `RENDER_READY`: Video đã render xong.
 * `QA_PENDING`: Đang chờ kiểm duyệt chất lượng (phát hiện lỗi timing/voice).
@@ -163,6 +161,6 @@ Khi cần hiển thị chi tiết hoặc debug cho lập trình viên, các rout
 Mọi tính năng an toàn phải được cài đặt inline trong lòng Command Center:
 * Yêu cầu nhập phrase xác nhận trước khi chạy CDP.
 * Ràng buộc local-only và giới hạn số lượng tác vụ (max action limits).
-* Kiểm tra chủ sở hữu sản phẩm (owner validation) và duyệt nguồn sạch (cleanliness approval gate).
+* Kiểm tra chủ sở hữu sản phẩm (owner validation). Gate nguồn = KỸ THUẬT (tải được + clean logo TikTok), KHÔNG phải human cleanliness approval — Operator duyệt hình ảnh ở preview (Bước 4).
 * Trả về kết quả sạch (sanitized response) không lộ bí mật hệ thống.
 * Không sử dụng an toàn như một lý do để đẩy tính năng chính ra khỏi giao diện Command Center tích hợp.

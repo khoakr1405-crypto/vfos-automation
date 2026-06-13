@@ -1,3 +1,13 @@
+/* =============================================================================
+ * DEPRECATED (Option A — Product Review 5-step model, 2026-06-13)
+ * -----------------------------------------------------------------------------
+ * The human "Duyệt nguồn sạch / APPROVE SOURCE" gate was removed from the
+ * Product Review Command Center main path. `intake-clean` now marks a real
+ * downloaded source clean automatically; the Operator's visual review happens at
+ * preview (Step 4). This endpoint is NO LONGER wired into the Studio UI and is
+ * kept ONLY as a manual recovery/override tool (parity with the deprecated
+ * `approve-cleanliness` CLI). Do NOT re-wire it as a workflow gate.
+ * ========================================================================== */
 import { existsSync } from 'node:fs';
 import { resolveInsideRepo } from '@/lib/studio-data/paths';
 import { loadJobById } from '@/lib/studio-data/jobs';
