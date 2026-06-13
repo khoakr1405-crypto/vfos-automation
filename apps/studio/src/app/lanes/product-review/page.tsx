@@ -538,6 +538,42 @@ export default function ProductReviewLanePage() {
     window.history.pushState({}, '', url.toString());
   }, []);
 
+  // "Bắt đầu video mới" (vòng lặp sau khi job hoàn tất/published): rời job cũ để màn
+  // hình sạch state + đưa Operator về Hành động 1 chọn sản phẩm cho job mới.
+  // KHÔNG xóa evidence (job vẫn trong manifest/registry, xem lại qua "Chọn job vận
+  // hành"), KHÔNG đụng job đã publish, KHÔNG tự chạy production/publish.
+  const handleStartNewVideo = useCallback(() => {
+    // Bỏ chọn job + xóa ?jobId khỏi URL → latestJob=null → các panel Action 2/3 và
+    // card "Job hoàn tất" tự ẩn; load() sau cũng không tái chọn job cũ.
+    applySelectedJob('');
+    // Dọn state tạm của job cũ để màn hình thật sự sạch.
+    setPublishResult(null);
+    setPublishError(null);
+    setPublishStderr(null);
+    setPublishPreflight(null);
+    setRunNotice(null);
+    setRunStage(null);
+    setRunReport(null);
+    setProductionLaunched(false);
+    setPollTimedOut(false);
+    setShowRunConfirm(false);
+    setRunConfirmInput('');
+    setSourceUrlInput('');
+    setSourceNotice(null);
+    setSourceError(null);
+    setActionError(null);
+    setJobCreatedSuccess(null);
+    setJobError(null);
+    setShowConfirmJob(false);
+    setIntakeConfirmInput('');
+    setApprovePreviewError(null);
+    setPreparePostError(null);
+    setPreparePostDetails(null);
+    document
+      .getElementById('lane-loop-top')
+      ?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [applySelectedJob]);
+
   const handleCopyChineseName = async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -3000,11 +3036,7 @@ export default function ProductReviewLanePage() {
                   <Button
                     variant="primary"
                     className="!py-1.5 !px-3 text-xs font-semibold"
-                    onClick={() =>
-                      document
-                        .getElementById('lane-loop-top')
-                        ?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-                    }
+                    onClick={handleStartNewVideo}
                   >
                     ▶ Bắt đầu video mới
                   </Button>
