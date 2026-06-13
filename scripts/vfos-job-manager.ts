@@ -2703,19 +2703,22 @@ async function cmdIntakeClean(args: string[]): Promise<number> {
     }
 
     // Generate source_cleanliness_report.json
-    // Option A — these frames are REFERENCE ONLY for the Operator's preview review
-    // (Step 4), NOT a workflow gate. There is no automated logo detection; the
-    // no-watermark download provider is the technical clean guarantee.
+    // Option A — a real download via the no-watermark provider IS the technical
+    // clean gate; the frames are REFERENCE ONLY for the Operator preview (Step 4).
+    // `status` MUST mirror manifest.cleanlinessStatus (WATERMARK_NOT_DETECTED):
+    // the downstream gate in review-video-orchestrator.ts (resolveApprovedCleanSource)
+    // reads THIS field and requires it === 'WATERMARK_NOT_DETECTED' to run production.
+    // The honest "no automated vision / reference only" semantic lives in `notes`.
     const cleanlinessReport = {
       jobId,
       sourceVideoUrl: sourceRef,
       videoPath: `runs/${jobId}/source/clean_source_video.mp4`,
       framePaths,
       frameExtractionOk: cleanlinessPassed,
-      status: 'REFERENCE_FRAMES_ONLY',
+      status: 'WATERMARK_NOT_DETECTED',
       checkedAreas: ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'center'],
       notes:
-        'No automated Vision AI for logo cleanliness. Frames are reference for the Operator preview (Step 4); not a source-approval gate.',
+        'No automated Vision AI for logo cleanliness (download-based clean via no-watermark provider). Frames are reference for the Operator preview (Step 4); not a source-approval gate.',
     };
     writeFileSync(cleanlinessReportPath, JSON.stringify(cleanlinessReport, null, 2), 'utf8');
     console.log(`[Cleanliness QA] Saved cleanliness report to: ${cleanlinessReportPath}`);

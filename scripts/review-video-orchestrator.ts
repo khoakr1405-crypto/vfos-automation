@@ -50,6 +50,7 @@ import {
   extractCombinedVoiceText,
 } from './job-artifact-freshness.js';
 import { selectBgmForJob } from './job-bgm-selector.js';
+import { syncManifestArtifacts } from './job-manifest-helper.js';
 
 const DEFAULT_RUN_ID = 'run_review_product_p9';
 const DEFAULT_CAPTION_PRESET = 'viral_review_v2';
