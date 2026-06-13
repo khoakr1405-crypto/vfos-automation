@@ -156,6 +156,84 @@ function normalizePermalink(raw: string): string {
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /**
+ * Re-verify một reel ĐÃ upload (uploaded=true) nhưng verify fail/timeout lần
+ * trước — KHÔNG re-upload. Chỉ chạy phase 5 (Graph readback GET) trên videoId
+ * đã có. READ-ONLY: 1 GET request, token qua Authorization header (không log).
+ *
+ * Dùng cho `--retry-verify`: khi finish phase đã được Facebook chấp nhận nhưng
+ * verify trước đó fail (mạng/timeout/processing chưa xong), gọi lại để biết
+ * video giờ đã publish chưa. success=true CHỈ khi readback trả id + permalink
+ * thật (cùng truth rule với publishReelToPage). KHÔNG mock-success.
+ */
+export async function verifyReelPublished(
+  pageAccessToken: string,
+  videoId: string,
+): Promise<ReelPublishResult> {
+  const metaMode = (process.env.META_MODE ?? '').trim().toLowerCase();
+  if (metaMode !== 'live') {
+    return fail('mode_gate', `META_MODE_NOT_LIVE: META_MODE='${metaMode || 'unset'}' — verify bị chặn.`, {
+      diagnosis: 'Set META_MODE=live để re-verify. KHÔNG có API call nào đã được thực hiện.',
+    });
+  }
+  if (!videoId.trim()) {
+    return fail('verify', 'VERIFY_NO_VIDEO_ID: thiếu videoId để re-verify.');
+  }
+
+  const accepted: Partial<ReelPublishResult> = { uploadAccepted: true, videoId };
+  try {
+    const verifyFields = encodeURIComponent(
+      'id,permalink_url,published,privacy{value},status{publishing_phase}',
+    );
+    const verify = await getGraph(`/${videoId}?fields=${verifyFields}`, pageAccessToken, 30_000);
+    if (!verify.ok) {
+      return {
+        ...fail(
+          'verify',
+          `VERIFY_FAILED: [${verify.error?.type}] ${verify.error?.message} (code: ${verify.error?.code})`,
+        ),
+        ...accepted,
+        diagnosis: 'Readback vẫn fail. Kiểm tra Page thủ công trước khi thử lại.',
+      } as ReelPublishResult;
+    }
+    const verifiedId = String(verify.body.id ?? '');
+    const permalinkRaw = String(verify.body.permalink_url ?? '');
+    if (!verifiedId || !permalinkRaw) {
+      return {
+        ...fail('verify', 'VERIFY_INCOMPLETE: Graph readback thiếu id hoặc permalink_url.'),
+        ...accepted,
+      } as ReelPublishResult;
+    }
+    const readbackPrivacy = (verify.body.privacy ?? {}) as Record<string, unknown>;
+    const readbackStatus = (verify.body.status ?? {}) as Record<string, unknown>;
+    const readbackPublishing = (readbackStatus.publishing_phase ?? {}) as Record<string, unknown>;
+    return {
+      success: true,
+      phase: 'done',
+      uploadAccepted: true,
+      verified: true,
+      apiPublishConfirmed: true,
+      publicVisibilityConfirmed: false,
+      publishVisibility: 'UNCONFIRMED',
+      videoId: verifiedId,
+      permalinkUrl: normalizePermalink(permalinkRaw),
+      ...(typeof verify.body.published === 'boolean'
+        ? { readbackPublished: verify.body.published }
+        : {}),
+      ...(readbackPrivacy.value ? { readbackPrivacy: String(readbackPrivacy.value) } : {}),
+      ...(readbackPublishing.publish_status
+        ? { readbackPublishStatus: String(readbackPublishing.publish_status) }
+        : {}),
+    };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return fail('verify', `NETWORK_OR_RUNTIME_ERROR: ${message}`, {
+      ...accepted,
+      diagnosis: 'Lỗi mạng/timeout khi re-verify. Video đã upload trước đó vẫn còn — thử lại được.',
+    });
+  }
+}
+
+/**
  * Publish one reel to the Page. See module header for the truth rules.
  */
 export async function publishReelToPage(

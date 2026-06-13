@@ -27,8 +27,18 @@ export {
 } from "./post-page.js";
 export {
   publishReelToPage,
+  verifyReelPublished,
   type ReelPublishOptions,
   type ReelPublishResult,
   type ReelPublishPhase,
   type PublishVisibility,
 } from "./publish-reels.js";
+export {
+  classifyTokenExpiry,
+  buildTokenExpiryMeta,
+  parseTokenExpiryMeta,
+  DEFAULT_TOKEN_WARN_DAYS,
+  type TokenExpiryMeta,
+  type TokenExpiryStatus,
+  type TokenExpiryClassification,
+} from "./token-health.js";

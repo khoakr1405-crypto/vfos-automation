@@ -21,9 +21,10 @@
  * giờ in URL. Chỉ in maskToken + metadata (type/hạn/scopes).
  */
 
-import { existsSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { maskToken } from '../src/meta-client.js';
+import { buildTokenExpiryMeta } from '../src/token-health.js';
 
 // Workaround libuv race trên Windows khi exit ngay sau fetch (cùng pattern
 // job-facebook-publish-command.ts): hoãn exit 200ms cho handle đóng sạch.
@@ -39,8 +40,18 @@ const FALLBACK_PAGE_ID = '1169116176282221'; // "Review Nhà bạn" — dùng kh
 
 // ── Load .env ───────────────────────────────────────────────────────────────
 
+function repoRoot(): string {
+  return resolve(import.meta.dirname ?? '.', '..', '..', '..');
+}
+
 function envPath(): string {
-  return resolve(import.meta.dirname ?? '.', '..', '..', '..', '.env');
+  return resolve(repoRoot(), '.env');
+}
+
+/** File runtime (gitignored) ghi hạn token để publish preflight đọc offline.
+ * CHỈ chứa expiry + pageId công khai + thời điểm verify — KHÔNG chứa token. */
+function tokenMetaPath(): string {
+  return resolve(repoRoot(), 'data', 'temp', 'facebook_token_meta.json');
 }
 
 function loadEnvFile(): boolean {
@@ -329,13 +340,29 @@ async function main(): Promise<void> {
     `FACEBOOK_PAGE_ACCESS_TOKEN=${pageToken}`,
   );
   if (newEnvContent !== envContent) {
-    const { writeFileSync } = await import('node:fs');
     writeFileSync(path, newEnvContent, 'utf-8');
     console.log('═══════════════════════════════════════════════');
     console.log('✅ ĐÃ CẬP NHẬT .env VỚI PAGE TOKEN DÀI HẠN!');
     console.log('═══════════════════════════════════════════════');
     console.log(`   Token mới: ${maskToken(pageToken)}`);
     console.log(`   Hạn:       ${describeExpiry(pageInfo.expiresAt)}`);
+
+    // Ghi hạn token ra runtime meta (gitignored) cho publish preflight đọc offline.
+    // KHÔNG ghi token — chỉ expiry + pageId công khai + verifiedAt.
+    try {
+      const metaPath = tokenMetaPath();
+      mkdirSync(dirname(metaPath), { recursive: true });
+      const meta = buildTokenExpiryMeta(
+        pageInfo.profileId ?? targetPageId,
+        pageInfo.expiresAt,
+        new Date().toISOString(),
+        'get-page-token',
+      );
+      writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`, 'utf-8');
+      console.log(`   Token meta: ${metaPath} (publish preflight đọc hạn từ đây)`);
+    } catch (e) {
+      console.warn(`   ⚠️  Không ghi được token meta: ${(e as Error).message}`);
+    }
   } else {
     console.log('⚠️  Không tự thay được dòng FACEBOOK_PAGE_ACCESS_TOKEN trong .env.');
     console.log('   → Mở .env và dán tay giá trị mới (token KHÔNG in ra đây vì lý do an toàn).');
