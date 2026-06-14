@@ -342,14 +342,18 @@ export default function ProductReviewLanePage() {
   const [copiedCaption, setCopiedCaption] = useState(false);
 
   // Phase D — channel context của lane (read-only, từ config/channels.json qua API).
-  // Phase 1 (Channel→Job): channelId của kênh này được gửi kèm khi tạo job để bind.
-  const [laneChannel, setLaneChannel] = useState<{
-    channelId: string;
-    displayName: string;
-    platform: string;
-    status: string;
-    pageAccessConfigured: boolean;
-  } | null>(null);
+  // Phase 2B-1 (Channel→Job, nhiều kênh/1 ngách): danh sách kênh active của lane +
+  // kênh Operator chọn để bind job. 1 kênh → auto-select; >1 → bắt chọn tường minh.
+  const [laneChannels, setLaneChannels] = useState<
+    Array<{
+      channelId: string;
+      displayName: string;
+      platform: string;
+      status: string;
+      pageAccessConfigured: boolean;
+    }>
+  >([]);
+  const [selectedChannelId, setSelectedChannelId] = useState<string>('');
 
   const latestJob = jobs.find((j) => j.id === selectedJobId) ?? null;
 
@@ -423,9 +427,17 @@ export default function ProductReviewLanePage() {
         // Chỉ nhận kênh THẬT (config/channels.json). Fixture không được dùng cho
         // workflow thật → coi như chưa có kênh, job tạo sẽ không bind.
         const chans = chanBody.source === 'real' ? (chanBody.channels ?? []) : [];
-        setLaneChannel(
-          chans.find((c) => c.lane === 'product-review' && c.status === 'active') ?? null,
+        const activeLaneChannels = chans.filter(
+          (c) => c.lane === 'product-review' && c.status === 'active',
         );
+        setLaneChannels(activeLaneChannels);
+        // 1 kênh → auto-select (giữ hành vi cũ). >1 → giữ lựa chọn cũ nếu còn hợp lệ,
+        // ngược lại để rỗng (bắt Operator chọn tường minh). 0 → rỗng.
+        setSelectedChannelId((prev) => {
+          if (activeLaneChannels.length === 1) return activeLaneChannels[0].channelId;
+          if (prev && activeLaneChannels.some((c) => c.channelId === prev)) return prev;
+          return '';
+        });
       }
 
       // Auto-populate source input if draft matches card
@@ -715,14 +727,19 @@ export default function ProductReviewLanePage() {
           setSourceError(draftBody.message || 'Lưu nguồn thất bại.');
           return;
         }
+        // >1 kênh active mà chưa chọn → bắt chọn tường minh, không để floating.
+        if (laneChannels.length > 1 && !selectedChannelId) {
+          setSourceError('Lane có nhiều kênh — chọn "Kênh đăng" trước khi tạo job.');
+          return;
+        }
         setPrepStage('Đang tạo job cho Product Card…');
         const jobRes = await fetch('/api/studio/create/job-draft', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          // Phase 1: bind job vào kênh active của lane (server validate lại).
+          // Phase 2B-1: bind job vào kênh Operator chọn (server validate lại).
           body: JSON.stringify({
             confirmPhrase: 'CREATE JOB',
-            ...(laneChannel ? { channelId: laneChannel.channelId } : {}),
+            ...(selectedChannelId ? { channelId: selectedChannelId } : {}),
           }),
         });
         const jobBody = await jobRes.json();
@@ -775,6 +792,11 @@ export default function ProductReviewLanePage() {
       setJobError('Cụm từ xác nhận không đúng. Cần nhập "CREATE JOB".');
       return;
     }
+    // >1 kênh active mà chưa chọn → bắt chọn tường minh, không để floating.
+    if (laneChannels.length > 1 && !selectedChannelId) {
+      setJobError('Lane có nhiều kênh — chọn "Kênh đăng" trước khi tạo job.');
+      return;
+    }
     setCreatingJob(true);
     setJobError(null);
     setJobCreatedSuccess(null);
@@ -782,10 +804,10 @@ export default function ProductReviewLanePage() {
       const res = await fetch('/api/studio/create/job-draft', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // Phase 1: bind job vào kênh active của lane (server validate lại).
+        // Phase 2B-1: bind job vào kênh Operator chọn (server validate lại).
         body: JSON.stringify({
           confirmPhrase: confirmJobPhrase,
-          ...(laneChannel ? { channelId: laneChannel.channelId } : {}),
+          ...(selectedChannelId ? { channelId: selectedChannelId } : {}),
         }),
       });
       const body = await res.json();
@@ -1218,6 +1240,9 @@ export default function ProductReviewLanePage() {
   // ---- derived gates -------------------------------------------------------
   const ownerOk = card?.ownerVerified ?? false;
   const cardReady = card !== null && ownerOk;
+  // Kênh đang chọn (Phase 2B-1) + cờ "lane nhiều kênh nhưng chưa chọn" → chặn tạo job.
+  const selectedChannel = laneChannels.find((c) => c.channelId === selectedChannelId) ?? null;
+  const needsChannelChoice = laneChannels.length > 1 && !selectedChannelId;
   // Metadata nguồn tiếng Trung → cần bản dịch tiếng Việt trước khi tạo job.
   const cardNeedsTranslation = !!card && (hasCJK(card.name) || hasCJK(card.description ?? ''));
   // Từ khóa tiếng Trung (local, không API) để Operator copy đi tìm source video.
@@ -1360,28 +1385,53 @@ export default function ProductReviewLanePage() {
         <UtilIcon name="clock" width={13} height={13} className="text-neutral-500" />
         <span>
           <strong className="text-neutral-300">Action 1–2–3 đã wire thật.</strong> Action 1: kho
-          link Shopee + trích xuất CDP. Action 2: nguồn → tải & clean → chạy sản xuất
-          video (script→voice→BGM→render→caption→QA). Action 3: đóng gói → kiểm tra readiness → đăng
+          link Shopee + trích xuất CDP. Action 2: nguồn → tải & clean → chạy sản xuất video
+          (script→voice→BGM→render→caption→QA). Action 3: đóng gói → kiểm tra readiness → đăng
           Facebook qua gate cứng — live publish chỉ chạy khi Operator bấm.
         </span>
       </div>
 
-      {/* Phase D — kênh đăng của lane (Niche → Channel, đọc từ config/channels.json) */}
-      {laneChannel && (
+      {/* Phase 2B-1 — kênh đăng của lane (Niche → Channel). 1 kênh: label tĩnh.
+          >1 kênh: dropdown để Operator chọn kênh đích trước khi tạo job. */}
+      {laneChannels.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-hairline bg-raised/30 px-3.5 py-2 text-[11px]">
           <span className="text-neutral-500">Kênh đăng của lane:</span>
-          <span className="font-semibold text-neutral-200">{laneChannel.displayName}</span>
-          <span className="rounded bg-accent-blue/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent-blue">
-            {laneChannel.platform}
-          </span>
-          <span className="rounded bg-accent-green/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent-green">
-            {laneChannel.status}
-          </span>
-          <span
-            className={laneChannel.pageAccessConfigured ? 'text-accent-green' : 'text-accent-amber'}
-          >
-            {laneChannel.pageAccessConfigured ? 'credential ✓' : 'credential chưa cấu hình'}
-          </span>
+          {laneChannels.length === 1 ? (
+            <span className="font-semibold text-neutral-200">{laneChannels[0].displayName}</span>
+          ) : (
+            <select
+              value={selectedChannelId}
+              onChange={(e) => setSelectedChannelId(e.target.value)}
+              className="rounded border border-hairline bg-panel px-2 py-1 text-[11px] font-semibold text-neutral-100"
+            >
+              <option value="">— Chọn kênh đăng —</option>
+              {laneChannels.map((c) => (
+                <option key={c.channelId} value={c.channelId}>
+                  {c.displayName}
+                </option>
+              ))}
+            </select>
+          )}
+          {selectedChannel && (
+            <>
+              <span className="rounded bg-accent-blue/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent-blue">
+                {selectedChannel.platform}
+              </span>
+              <span className="rounded bg-accent-green/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent-green">
+                {selectedChannel.status}
+              </span>
+              <span
+                className={
+                  selectedChannel.pageAccessConfigured ? 'text-accent-green' : 'text-accent-amber'
+                }
+              >
+                {selectedChannel.pageAccessConfigured ? 'credential ✓' : 'credential chưa cấu hình'}
+              </span>
+            </>
+          )}
+          {needsChannelChoice && (
+            <span className="font-semibold text-accent-amber">· chọn kênh trước khi tạo job</span>
+          )}
           <span className="text-neutral-600">
             · job mới sẽ bind vào kênh này · cấu hình ở mục "Ngách & Kênh"
           </span>
