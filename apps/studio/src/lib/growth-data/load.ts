@@ -31,6 +31,7 @@ import type {
   GrowthSnapshot,
   LearningSignal,
   ManualPerformanceSnapshot,
+  Niche,
   PerformanceMetric,
   PostingPlan,
   PublishedPost,
@@ -113,6 +114,25 @@ export function loadChannelsWithSource(): { channels: Channel[]; source: 'real' 
 
 export function loadChannels(): Channel[] {
   return loadChannelsWithSource().channels;
+}
+
+/** Ngách THẬT từ config/niches.json (Niche → Channel → Job, North Star #3).
+ * Real-first như channels; never-throw → []. Không secret, không side effect. */
+function loadRealNiches(): Niche[] {
+  try {
+    const abs = resolveInsideRepo('config/niches.json');
+    if (!abs || !existsSync(abs)) return [];
+    const parsed: unknown = JSON.parse(readFileSync(abs, 'utf8'));
+    return Array.isArray(parsed) ? (parsed as Niche[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function loadNichesWithSource(): { niches: Niche[]; source: 'real' | 'fixture' } {
+  const real = loadRealNiches();
+  if (real.length > 0) return { niches: real, source: 'real' };
+  return { niches: loadArray<Niche>('niches.json'), source: 'fixture' };
 }
 
 export function loadContentAngles(): ContentAngle[] {

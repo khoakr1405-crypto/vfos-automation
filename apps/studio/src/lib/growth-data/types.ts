@@ -66,6 +66,21 @@ export interface Channel {
   pageAccessConfigured: boolean;
 }
 
+/**
+ * Ngách (Niche) — gốc của phân cấp Niche → Channel → Job (North Star #3). Một
+ * niche gom các Channel cùng `lane`. Nguồn thật: config/niches.json (commit được,
+ * không secret). "Review Nhà bạn" chỉ là channel đầu của ngách review-nha-ban.
+ */
+export interface Niche {
+  nicheId: string;
+  displayName: string;
+  /** Khớp Channel.lane — khóa nối niche với cụm kênh của nó. */
+  lane: string;
+  platforms: Platform[];
+  status: 'active' | 'paused' | 'testing';
+  note: string;
+}
+
 /** Góc nội dung kéo view — định hình hook/audience cho batch tương lai. */
 export interface ContentAngle {
   angleId: string;

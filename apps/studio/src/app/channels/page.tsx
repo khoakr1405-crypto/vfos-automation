@@ -1,7 +1,11 @@
 import { ChannelsSection } from '@/components/channels/channels-section';
 import { ContentAnglesSection } from '@/components/channels/content-angles-section';
 import { PageHeader } from '@/components/page-header';
-import { loadChannelsWithSource, loadContentAngles } from '@/lib/growth-data/load';
+import {
+  loadChannelsWithSource,
+  loadContentAngles,
+  loadNichesWithSource,
+} from '@/lib/growth-data/load';
 
 // Đọc channel config thật ở mỗi request — không prerender tĩnh.
 export const dynamic = 'force-dynamic';
@@ -9,6 +13,7 @@ export const dynamic = 'force-dynamic';
 // biome-ignore lint/style/noDefaultExport: Next.js page requires default export
 export default async function ChannelsPage() {
   const { channels, source } = loadChannelsWithSource();
+  const { niches } = loadNichesWithSource();
   const angles = loadContentAngles();
   const realSource = source === 'real';
 
@@ -49,7 +54,7 @@ export default async function ChannelsPage() {
         description="Cấu trúc Niche → Channel theo North Star. Thêm/sửa kênh = Operator sửa config/channels.json (không có nút ghi từ UI — màn này read-only)."
       />
 
-      <ChannelsSection channels={channels} />
+      <ChannelsSection niches={niches} channels={channels} />
       <ContentAnglesSection angles={angles} />
     </div>
   );
