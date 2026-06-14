@@ -117,13 +117,24 @@ function hasCJK(s: string): boolean {
   return /[㐀-䶿一-鿿豈-﫿]/.test(s);
 }
 
-// Tìm job có productBinding khớp Product Card hiện tại (nguồn sự thật).
+// Job "đã xong vòng" (đã publish hoặc bị loại) KHÔNG khóa sản phẩm: chọn lại sản
+// phẩm đó phải mở job MỚI cho video kế tiếp (vòng lặp nhiều-video). Job đang dở —
+// kể cả READY_FOR_OPERATOR_REVIEW/APPROVED/PACKAGED — vẫn được resume.
+const DONE_JOB_STATES = ['PUBLISHED', 'REJECTED'];
+
+// Tìm job ĐANG HOẠT ĐỘNG có productBinding khớp Product Card hiện tại (nguồn sự
+// thật). Bỏ qua job đã xong vòng (PUBLISHED/REJECTED) để vòng lặp tạo job mới;
+// job đã xong vẫn xem lại qua Command Center / dropdown / URL ?jobId.
 function findJobForCard(
   jobs: OperatorJobDTO[],
   card: CardIdentity | null | undefined,
 ): OperatorJobDTO | null {
   if (!card) return null;
-  return jobs.find((j) => bindingMatchesCard(j.productBinding, card)) ?? null;
+  return (
+    jobs.find(
+      (j) => bindingMatchesCard(j.productBinding, card) && !DONE_JOB_STATES.includes(j.state),
+    ) ?? null
+  );
 }
 
 // Trich URL http/https DAU TIEN trong chuoi. Operator thuong paste nguyen doan

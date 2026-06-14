@@ -1,6 +1,6 @@
 'use client';
 
-import type { OperatorJobDTO } from '@/lib/studio-data/types';
+import type { OperatorJobDTO, VfosJobState } from '@/lib/studio-data/types';
 import { useEffect, useState } from 'react';
 import { Badge } from '../badge';
 import { Card, CardBody } from '../card';
@@ -8,6 +8,81 @@ import { Icon, UtilIcon } from '../icons';
 import { Button } from '../ui';
 
 type LoadState = 'loading' | 'ready' | 'error';
+
+// Command Center (#8): thứ tự ưu tiên để Operator quét nhanh khi nhiều job/ngày —
+// việc cần hành động (chờ duyệt, lỗi) nổi lên đầu, job đã xong (publish/loại) xuống cuối.
+const STATE_ORDER: Record<VfosJobState, number> = {
+  READY_FOR_OPERATOR_REVIEW: 0,
+  FAILED: 1,
+  RENDERING: 2,
+  READY_TO_RENDER: 2,
+  SOURCE_READY: 2,
+  WAITING_FOR_SOURCE_VIDEO: 2,
+  CREATED: 2,
+  APPROVED: 3,
+  PACKAGED: 3,
+  PUBLISHED: 4,
+  REJECTED: 5,
+};
+
+const RUNNING_STATES: VfosJobState[] = [
+  'CREATED',
+  'WAITING_FOR_SOURCE_VIDEO',
+  'SOURCE_READY',
+  'READY_TO_RENDER',
+  'RENDERING',
+];
+
+// Đếm job theo nhóm trạng thái cho hàng chip tổng quan (read-only, data thật đã load).
+function summarizeJobs(jobs: OperatorJobDTO[]) {
+  let pendingReview = 0;
+  let running = 0;
+  let failed = 0;
+  let readyToPublish = 0;
+  let published = 0;
+  for (const j of jobs) {
+    if (j.state === 'READY_FOR_OPERATOR_REVIEW') pendingReview++;
+    else if (j.state === 'FAILED') failed++;
+    else if (j.state === 'APPROVED' || j.state === 'PACKAGED') readyToPublish++;
+    else if (j.state === 'PUBLISHED') published++;
+    else if (RUNNING_STATES.includes(j.state)) running++;
+  }
+  return { pendingReview, running, failed, readyToPublish, published, total: jobs.length };
+}
+
+// Sắp xếp job cần hành động lên đầu; tiebreak theo cập nhật gần nhất. Không lọc bỏ
+// job nào — job đã publish/loại vẫn hiển thị (xem lại được), chỉ xuống cuối danh sách.
+function sortJobsForQueue(jobs: OperatorJobDTO[]): OperatorJobDTO[] {
+  return [...jobs].sort((a, b) => {
+    const pa = STATE_ORDER[a.state] ?? 9;
+    const pb = STATE_ORDER[b.state] ?? 9;
+    if (pa !== pb) return pa - pb;
+    return (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '');
+  });
+}
+
+type ChipAccent = 'amber' | 'blue' | 'rose' | 'cyan' | 'green';
+
+const CHIP_TONES: Record<ChipAccent, string> = {
+  amber: 'text-accent-amber bg-accent-amber/10 border-accent-amber/20',
+  blue: 'text-accent-blue bg-accent-blue/10 border-accent-blue/20',
+  rose: 'text-accent-rose bg-accent-rose/10 border-accent-rose/20',
+  cyan: 'text-accent-cyan bg-accent-cyan/10 border-accent-cyan/20',
+  green: 'text-accent-green bg-accent-green/10 border-accent-green/20',
+};
+
+function StatChip({ label, count, accent }: { label: string; count: number; accent: ChipAccent }) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-semibold ${
+        count > 0 ? CHIP_TONES[accent] : 'border-hairline/40 bg-transparent text-neutral-600'
+      }`}
+    >
+      {label}
+      <span className="font-mono font-bold">{count}</span>
+    </span>
+  );
+}
 
 // Round UI-03: dữ liệu job đọc THẬT và wire nút bấm Approve/Reject thật.
 export function OperatorJobQueue() {
@@ -152,6 +227,8 @@ export function OperatorJobQueue() {
     );
   };
 
+  const summary = summarizeJobs(jobs);
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -202,8 +279,21 @@ export function OperatorJobQueue() {
       )}
 
       {load === 'ready' && jobs.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-hairline/60 bg-raised/20 px-3 py-2">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
+            Tổng quan {summary.total} job
+          </span>
+          <StatChip label="Chờ duyệt" count={summary.pendingReview} accent="amber" />
+          <StatChip label="Đang chạy" count={summary.running} accent="blue" />
+          <StatChip label="Lỗi" count={summary.failed} accent="rose" />
+          <StatChip label="Sẵn sàng đăng" count={summary.readyToPublish} accent="cyan" />
+          <StatChip label="Đã publish" count={summary.published} accent="green" />
+        </div>
+      )}
+
+      {load === 'ready' && jobs.length > 0 && (
         <div className="grid gap-5">
-          {jobs.map((job) => (
+          {sortJobsForQueue(jobs).map((job) => (
             <Card
               key={job.id}
               className={`transition border ${
