@@ -84,6 +84,85 @@ function StatChip({ label, count, accent }: { label: string; count: number; acce
   );
 }
 
+const COUNT_TEXT_TONES: Record<ChipAccent, string> = {
+  amber: 'text-accent-amber',
+  blue: 'text-accent-blue',
+  rose: 'text-accent-rose',
+  cyan: 'text-accent-cyan',
+  green: 'text-accent-green',
+};
+
+type JobSummary = ReturnType<typeof summarizeJobs>;
+
+// Dòng đếm gọn theo state cho mỗi ngách/kênh (dim khi 0). Cùng nhóm trạng thái với
+// chip tổng — tổng các nhóm == tổng list (không bịa).
+function RollupCounts({ s }: { s: JobSummary }) {
+  const items: Array<{ label: string; n: number; accent: ChipAccent }> = [
+    { label: 'chờ duyệt', n: s.pendingReview, accent: 'amber' },
+    { label: 'đang chạy', n: s.running, accent: 'blue' },
+    { label: 'lỗi', n: s.failed, accent: 'rose' },
+    { label: 'sẵn sàng', n: s.readyToPublish, accent: 'cyan' },
+    { label: 'publish', n: s.published, accent: 'green' },
+  ];
+  return (
+    <span className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[10px]">
+      {items.map((it) => (
+        <span
+          key={it.label}
+          className={it.n > 0 ? COUNT_TEXT_TONES[it.accent] : 'text-neutral-600'}
+        >
+          {it.label} <span className="font-mono font-bold">{it.n}</span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
+type ChannelRollup = { channelId: string | null; channelName: string; summary: JobSummary };
+type NicheRollup = {
+  nicheId: string | null;
+  nicheName: string;
+  channels: ChannelRollup[];
+  summary: JobSummary;
+};
+
+const NONE = '__none__';
+
+// Gom job theo Niche → Channel (Command Center #8). Job chưa gán ngách/kênh vào
+// nhóm "Chưa gán". Read-only trên data thật đã load; không bịa số.
+function buildNicheRollup(jobs: OperatorJobDTO[]): NicheRollup[] {
+  const byNiche = new Map<string, { name: string; jobs: OperatorJobDTO[] }>();
+  for (const j of jobs) {
+    const key = j.nicheId ?? NONE;
+    const e = byNiche.get(key) ?? { name: j.nicheDisplayName ?? 'Chưa gán ngách', jobs: [] };
+    e.jobs.push(j);
+    byNiche.set(key, e);
+  }
+  return [...byNiche.entries()].map(([nicheKey, n]) => {
+    const byChannel = new Map<string, { name: string; jobs: OperatorJobDTO[] }>();
+    for (const j of n.jobs) {
+      const ck = j.channelId ?? NONE;
+      const e = byChannel.get(ck) ?? {
+        name: j.channelId ? j.suggestedChannel : 'chưa gán kênh',
+        jobs: [],
+      };
+      e.jobs.push(j);
+      byChannel.set(ck, e);
+    }
+    const channels = [...byChannel.entries()].map(([ck, c]) => ({
+      channelId: ck === NONE ? null : ck,
+      channelName: c.name,
+      summary: summarizeJobs(c.jobs),
+    }));
+    return {
+      nicheId: nicheKey === NONE ? null : nicheKey,
+      nicheName: n.name,
+      channels,
+      summary: summarizeJobs(n.jobs),
+    };
+  });
+}
+
 // Round UI-03: dữ liệu job đọc THẬT và wire nút bấm Approve/Reject thật.
 export function OperatorJobQueue() {
   const [jobs, setJobs] = useState<OperatorJobDTO[]>([]);
@@ -288,6 +367,41 @@ export function OperatorJobQueue() {
           <StatChip label="Lỗi" count={summary.failed} accent="rose" />
           <StatChip label="Sẵn sàng đăng" count={summary.readyToPublish} accent="cyan" />
           <StatChip label="Đã publish" count={summary.published} accent="green" />
+        </div>
+      )}
+
+      {load === 'ready' && jobs.length > 0 && (
+        <div className="space-y-2 rounded-xl border border-hairline/60 bg-raised/10 p-3">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
+            Ngách → Kênh → Job
+          </p>
+          {buildNicheRollup(jobs).map((n) => (
+            <div
+              key={n.nicheId ?? NONE}
+              className="rounded-lg border border-hairline/50 bg-card/60 p-2.5"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-xs font-bold text-neutral-100">
+                  Ngách · {n.nicheName}
+                  <span className="ml-1.5 font-normal text-neutral-500">
+                    ({n.summary.total} job)
+                  </span>
+                </span>
+                <RollupCounts s={n.summary} />
+              </div>
+              <div className="mt-1.5 space-y-1 border-t border-hairline/30 pt-1.5">
+                {n.channels.map((c) => (
+                  <div
+                    key={c.channelId ?? NONE}
+                    className="flex flex-wrap items-center justify-between gap-2 pl-3 text-[11px]"
+                  >
+                    <span className="text-neutral-300">└ {c.channelName}</span>
+                    <RollupCounts s={c.summary} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 

@@ -13,7 +13,11 @@
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { activeNicheLanes, loadChannelsWithSource } from '@/lib/growth-data/load';
+import {
+  activeNicheLanes,
+  loadChannelsWithSource,
+  loadNichesWithSource,
+} from '@/lib/growth-data/load';
 import type { Channel as GrowthChannel } from '@/lib/growth-data/types';
 import { repoRoot, resolveInsideRepo } from './paths';
 import {
@@ -174,6 +178,21 @@ function resolveBoundChannel(channelId: string | null | undefined): BoundChannel
     platform: narrowPlatform(found.platform),
     active: found.status === 'active',
   };
+}
+
+/** Niche của job suy từ lane của channel bind (Niche → Channel → Job, rollup #8).
+ * null nếu chưa gán kênh, kênh không còn trong config, hoặc lane không khớp niche
+ * active nào. Chỉ tính niche THẬT (config/niches.json) — không đoán. */
+function resolveNicheForChannel(
+  channelId: string | null | undefined,
+): { nicheId: string; nicheDisplayName: string } | null {
+  if (!channelId) return null;
+  const channel = realLaneChannels().find((c) => c.channelId === channelId);
+  if (!channel) return null;
+  const { niches, source } = loadNichesWithSource();
+  if (source !== 'real') return null;
+  const niche = niches.find((n) => n.status === 'active' && n.lane === channel.lane);
+  return niche ? { nicheId: niche.nicheId, nicheDisplayName: niche.displayName } : null;
 }
 
 /** Kênh mặc định của lane: đúng 1 kênh active trong config thật → kênh đó.
@@ -339,6 +358,7 @@ function buildJobDTO(entry: RegistryEntry): OperatorJobDTO {
   // Niche → Channel → Job (Phase 1): channelId bind trong manifest là nguồn sự thật.
   const channelId = manifest?.channelId ?? null;
   const boundChannel = resolveBoundChannel(channelId);
+  const niche = resolveNicheForChannel(channelId);
 
   return {
     id,
@@ -353,6 +373,8 @@ function buildJobDTO(entry: RegistryEntry): OperatorJobDTO {
       : channelId
         ? `(kênh ${channelId} không có trong config)`
         : '(chưa gán kênh)',
+    nicheId: niche?.nicheId ?? null,
+    nicheDisplayName: niche?.nicheDisplayName ?? null,
     platform: boundChannel?.platform ?? 'facebook',
     reason: boundChannel
       ? `Kênh bind khi tạo job (config/channels.json): ${boundChannel.channelId}.`

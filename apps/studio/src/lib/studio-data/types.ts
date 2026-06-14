@@ -37,6 +37,10 @@ export interface OperatorJobDTO {
   channelId: string | null;
   /** Tên kênh thật từ config/channels.json nếu bind; '(chưa gán kênh)' cho job legacy. */
   suggestedChannel: string;
+  /** Niche suy từ lane của channel bind (Command Center rollup #8). null = chưa gán
+   * kênh hoặc lane không khớp niche active nào trong config/niches.json. */
+  nicheId: string | null;
+  nicheDisplayName: string | null;
   platform: 'tiktok' | 'facebook' | 'youtube';
   reason: string;
   state: VfosJobState;
