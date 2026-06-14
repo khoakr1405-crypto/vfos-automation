@@ -7,8 +7,9 @@
  *
  * CSV cột (theo thứ tự, header optional):
  *   jobId,publishedPostId,measuredAt,views,clicks,comments,reactions,shares,
- *   conversions,ctaRole,source
- * - publishedPostId/ctaRole/source optional. source mặc định 'manual_import'.
+ *   conversions,ctaRole,source,revenue
+ * - publishedPostId/ctaRole/source/revenue optional. source mặc định 'manual_import'.
+ *   revenue (VND, M5) đặt CUỐI để tương thích CSV cũ (thiếu → 0).
  * ========================================================================== */
 
 import type { LinkRole, ManualMetricSource } from './types';
@@ -29,6 +30,7 @@ export const MANUAL_CSV_COLUMNS = [
   'conversions',
   'ctaRole',
   'source',
+  'revenue',
 ] as const;
 
 /** Một dòng số liệu Operator nhập/paste — TRƯỚC khi thành ManualPerformanceSnapshot (chưa có snapshotId). */
@@ -42,6 +44,8 @@ export interface ManualInputDraft {
   reactions: number;
   shares: number;
   conversions: number;
+  /** Doanh thu affiliate VND (M5). Optional ở CSV; thiếu → 0. */
+  revenue: number;
   ctaRole: LinkRole | null;
   source: ManualMetricSource;
 }
@@ -63,7 +67,7 @@ export interface ManualCsvParseResult {
   invalidCount: number;
   warningCount: number;
   /** Tổng chỉ tính các row hợp lệ (errors rỗng). */
-  totals: { views: number; clicks: number; conversions: number };
+  totals: { views: number; clicks: number; conversions: number; revenue: number };
 }
 
 export interface ManualInputContext {
@@ -100,6 +104,9 @@ function parseRow(line: number, raw: string, ctx: ManualInputContext): ManualDra
     return n;
   };
 
+  // numOpt(): như num() nhưng ô trống → 0 (không lỗi) — dùng cho cột optional (revenue).
+  const numOpt = (raw1: string, field: string): number => (raw1 === '' ? 0 : num(raw1, field));
+
   const jobId = cells[0] ?? '';
   const publishedPostId = (cells[1] ?? '') === '' ? null : (cells[1] as string);
   const measuredAt = cells[2] ?? '';
@@ -114,6 +121,8 @@ function parseRow(line: number, raw: string, ctx: ManualInputContext): ManualDra
   const ctaRole = ctaRoleRaw === '' ? null : (ctaRoleRaw as LinkRole);
   const sourceRaw = (cells[10] ?? '') === '' ? 'manual_import' : (cells[10] as string);
   const source = sourceRaw as ManualMetricSource;
+  // revenue (VND, M5) — cột CUỐI, optional: thiếu → 0 (tương thích CSV cũ).
+  const revenue = numOpt(cells[11] ?? '', 'revenue');
 
   if (cells.length < 9) errors.push(`Cần tối thiểu 9 cột (đang có ${cells.length})`);
   if (jobId === '') errors.push('jobId: thiếu giá trị');
@@ -143,6 +152,7 @@ function parseRow(line: number, raw: string, ctx: ManualInputContext): ManualDra
       reactions,
       shares,
       conversions,
+      revenue,
       ctaRole,
       source,
     },
@@ -170,8 +180,9 @@ export function parseManualCsv(text: string, ctx: ManualInputContext): ManualCsv
       views: acc.views + r.draft.views,
       clicks: acc.clicks + r.draft.clicks,
       conversions: acc.conversions + r.draft.conversions,
+      revenue: acc.revenue + r.draft.revenue,
     }),
-    { views: 0, clicks: 0, conversions: 0 },
+    { views: 0, clicks: 0, conversions: 0, revenue: 0 },
   );
 
   return {
@@ -239,6 +250,7 @@ export function validateSavableDraft(d: ManualInputDraft): string[] {
   intNonNeg(d.reactions, 'reactions');
   intNonNeg(d.shares, 'shares');
   intNonNeg(d.conversions, 'conversions');
+  intNonNeg(d.revenue, 'revenue');
   if (d.views > 0 && d.clicks > d.views) errors.push(`clicks (${d.clicks}) > views (${d.views})`);
   if (d.clicks > 0 && d.conversions > d.clicks)
     errors.push(`conversions (${d.conversions}) > clicks (${d.clicks})`);

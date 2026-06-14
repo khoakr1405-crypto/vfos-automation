@@ -27,10 +27,10 @@ const SOURCE_ACCENT: Record<string, AccentKey> = {
 };
 
 const SAMPLE_CSV = [
-  'job_20260530_001,pp_001,2026-06-04T10:00:00Z,12000,320,45,800,20,12,HUB_NATIVE,manual_import',
-  'job_20260601_001,pp_002,2026-06-04T10:00:00Z,9500,160,18,240,11,6,,manual',
-  'job_99999999_999,,2026-06-04T10:00:00Z,5000,80,3,40,2,1,REPLY_LINK,manual_import',
-  'job_20260530_001,pp_001,2026-06-04T10:00:00Z,100,500,2,5,1,3,,manual',
+  'job_20260530_001,pp_001,2026-06-04T10:00:00Z,12000,320,45,800,20,12,HUB_NATIVE,manual_import,1500000',
+  'job_20260601_001,pp_002,2026-06-04T10:00:00Z,9500,160,18,240,11,6,,manual,800000',
+  'job_99999999_999,,2026-06-04T10:00:00Z,5000,80,3,40,2,1,REPLY_LINK,manual_import,300000',
+  'job_20260530_001,pp_001,2026-06-04T10:00:00Z,100,500,2,5,1,3,,manual,0',
 ].join('\n');
 
 function formatNumber(n: number): string {
@@ -131,8 +131,9 @@ export function ManualInputPreview({
             {MANUAL_CSV_COLUMNS.join(',')}
           </p>
           <p className="mt-1 text-[10px] text-neutral-600">
-            <code>publishedPostId</code> / <code>ctaRole</code> / <code>source</code> optional ·
-            source mặc định <code>manual_import</code> · header tự bỏ qua.
+            <code>publishedPostId</code> / <code>ctaRole</code> / <code>source</code> /{' '}
+            <code>revenue</code> optional · source mặc định <code>manual_import</code> ·{' '}
+            <code>revenue</code> (VND, M5) đặt cuối, thiếu → 0 · header tự bỏ qua.
           </p>
         </div>
 
@@ -173,7 +174,7 @@ export function ManualInputPreview({
         {result && (
           <div className="space-y-4">
             {/* Summary */}
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               <div className="rounded-xl border border-hairline bg-raised/40 p-3">
                 <p className="text-[10px] text-neutral-500">Hợp lệ / Lỗi / Cảnh báo</p>
                 <p className="mt-1 text-sm font-semibold">
@@ -194,6 +195,12 @@ export function ManualInputPreview({
                 <p className="text-[10px] text-neutral-500">Tổng conversions (hợp lệ)</p>
                 <p className="mt-1 text-sm font-semibold text-accent-green">
                   {formatNumber(result.totals.conversions)}
+                </p>
+              </div>
+              <div className="rounded-xl border border-hairline bg-raised/40 p-3">
+                <p className="text-[10px] text-neutral-500">Tổng doanh thu VND (hợp lệ)</p>
+                <p className="mt-1 text-sm font-semibold text-accent-green">
+                  {formatNumber(result.totals.revenue)}
                 </p>
               </div>
             </div>
@@ -222,6 +229,7 @@ export function ManualInputPreview({
                         <th className="px-3 py-2.5 font-medium text-right">Views</th>
                         <th className="px-3 py-2.5 font-medium text-right">Clicks</th>
                         <th className="px-3 py-2.5 font-medium text-right">Conv.</th>
+                        <th className="px-3 py-2.5 font-medium text-right">Doanh thu</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -264,6 +272,9 @@ export function ManualInputPreview({
                           </td>
                           <td className="px-3 py-2.5 text-right font-semibold text-accent-green">
                             {formatNumber(r.draft.conversions)}
+                          </td>
+                          <td className="px-3 py-2.5 text-right text-accent-green">
+                            {formatNumber(r.draft.revenue)}
                           </td>
                         </tr>
                       ))}

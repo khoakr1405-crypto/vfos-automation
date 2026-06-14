@@ -84,6 +84,8 @@ function coerceDraft(raw: unknown): ManualInputDraft | null {
     reactions: num(o.reactions),
     shares: num(o.shares),
     conversions: num(o.conversions),
+    // revenue optional: thiếu/sai → 0 (không NaN) để tương thích payload cũ.
+    revenue: typeof o.revenue === 'number' && Number.isFinite(o.revenue) ? o.revenue : 0,
     ctaRole: ctaRole === '' ? null : (ctaRole as LinkRole),
     source: str(o.source) as ManualMetricSource,
   };
@@ -159,6 +161,7 @@ export async function POST(req: Request) {
       reactions: draft.reactions,
       shares: draft.shares,
       conversions: draft.conversions,
+      revenue: draft.revenue,
       ctaRole: draft.ctaRole,
       source: draft.source,
       savedAt,

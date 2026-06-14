@@ -288,6 +288,9 @@ export interface ManualPerformanceSnapshot {
   shares: number;
   /** Đơn/chuyển đổi affiliate (manual/import). */
   conversions: number;
+  /** Doanh thu affiliate (M5) bằng VND, Operator nhập tay. Optional để đọc tương
+   * thích snapshot cũ chưa có field (đọc `?? 0`). KHÔNG token/secret. */
+  revenue?: number;
   /** Vai trò CTA nếu dòng thuộc 1 role; null = tổng post-level. */
   ctaRole: LinkRole | null;
   source: ManualMetricSource;

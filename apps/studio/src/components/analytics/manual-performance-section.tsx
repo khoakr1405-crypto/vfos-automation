@@ -77,17 +77,24 @@ export function ManualPerformanceSection({
   const postLevel = snapshots.filter((s) => s.ctaRole === null);
   const roleLevel = snapshots.filter((s) => s.ctaRole !== null);
 
-  type MetricRow = { label: string; views: number; clicks: number; conversions: number };
+  type MetricRow = {
+    label: string;
+    views: number;
+    clicks: number;
+    conversions: number;
+    revenue: number;
+  };
   const addTo = (
     m: Map<string, MetricRow>,
     key: string,
     label: string,
     s: ManualPerformanceSnapshot,
   ) => {
-    const row = m.get(key) ?? { label, views: 0, clicks: 0, conversions: 0 };
+    const row = m.get(key) ?? { label, views: 0, clicks: 0, conversions: 0, revenue: 0 };
     row.views += s.views;
     row.clicks += s.clicks;
     row.conversions += s.conversions;
+    row.revenue += s.revenue ?? 0;
     m.set(key, row);
   };
 
@@ -112,6 +119,7 @@ export function ManualPerformanceSection({
   const totalClicks = postLevel.reduce((s, m) => s + m.clicks, 0);
   const totalComments = postLevel.reduce((s, m) => s + m.comments, 0);
   const totalConversions = snapshots.reduce((s, m) => s + m.conversions, 0);
+  const totalRevenue = snapshots.reduce((s, m) => s + (m.revenue ?? 0), 0);
 
   const fixtureByPostId = new Map(fixtureMetrics.map((m) => [m.publishedPostId, m]));
 
@@ -136,7 +144,8 @@ export function ManualPerformanceSection({
     { label: 'Views (nhập tay)', value: totalViews },
     { label: 'Clicks (nhập tay)', value: totalClicks },
     { label: 'Comments (nhập tay)', value: totalComments },
-    { label: 'Conversions', value: totalConversions },
+    { label: 'Conversions (đơn)', value: totalConversions },
+    { label: 'Doanh thu (VND)', value: totalRevenue },
   ];
 
   return (
@@ -199,6 +208,7 @@ export function ManualPerformanceSection({
                       <th className="px-4 py-2.5 font-medium text-right">CTR</th>
                       <th className="px-4 py-2.5 font-medium text-right">Đơn (M4)</th>
                       <th className="px-4 py-2.5 font-medium text-right">CVR</th>
+                      <th className="px-4 py-2.5 font-medium text-right">Doanh thu (M5)</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -223,6 +233,9 @@ export function ManualPerformanceSection({
                         <td className="px-4 py-3 text-right text-neutral-300">
                           {r.clicks > 0 ? `${((r.conversions / r.clicks) * 100).toFixed(2)}%` : '—'}
                         </td>
+                        <td className="px-4 py-3 text-right font-semibold text-accent-green">
+                          {formatNumber(r.revenue)}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -245,6 +258,7 @@ export function ManualPerformanceSection({
                       <th className="px-4 py-2.5 font-medium text-right">CTR</th>
                       <th className="px-4 py-2.5 font-medium text-right">Đơn (M4)</th>
                       <th className="px-4 py-2.5 font-medium text-right">CVR</th>
+                      <th className="px-4 py-2.5 font-medium text-right">Doanh thu (M5)</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -269,14 +283,17 @@ export function ManualPerformanceSection({
                         <td className="px-4 py-3 text-right text-neutral-300">
                           {r.clicks > 0 ? `${((r.conversions / r.clicks) * 100).toFixed(2)}%` : '—'}
                         </td>
+                        <td className="px-4 py-3 text-right font-semibold text-accent-green">
+                          {formatNumber(r.revenue)}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
               <p className="mt-1.5 px-1 text-[10px] text-neutral-600">
-                Doanh thu (M5) chưa có cột riêng — ghi vào note khi nhập; sẽ thêm field ở round
-                sau.
+                Doanh thu (M5) bằng VND — Operator nhập ở cột <code>revenue</code> (cuối CSV);
+                snapshot cũ chưa có → hiển thị 0.
               </p>
             </div>
 
@@ -297,6 +314,7 @@ export function ManualPerformanceSection({
                       <th className="px-4 py-2.5 font-medium text-right">Clicks</th>
                       <th className="px-4 py-2.5 font-medium text-right">Comments</th>
                       <th className="px-4 py-2.5 font-medium text-right">Conv.</th>
+                      <th className="px-4 py-2.5 font-medium text-right">Doanh thu</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -331,6 +349,9 @@ export function ManualPerformanceSection({
                         </td>
                         <td className="px-4 py-3 text-right font-semibold text-accent-green">
                           {formatNumber(s.conversions)}
+                        </td>
+                        <td className="px-4 py-3 text-right font-semibold text-accent-green">
+                          {formatNumber(s.revenue ?? 0)}
                         </td>
                       </tr>
                     ))}
