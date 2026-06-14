@@ -63,6 +63,7 @@ export function ManualPerformanceSection({
   fixtureMetrics,
   fixturePostIdByJob,
   channelNameById,
+  channelNicheById,
 }: {
   snapshots: ManualPerformanceSnapshot[];
   fixtureMetrics: PerformanceMetric[];
@@ -70,26 +71,41 @@ export function ManualPerformanceSection({
   fixturePostIdByJob: Map<string, string>;
   /** channelId → displayName từ config/channels.json (real only — không fixture). */
   channelNameById: Map<string, string>;
+  /** channelId → niche active (real only). Để gom evidence theo ngách (#5 G1). */
+  channelNicheById: Map<string, { nicheId: string; nicheDisplayName: string }>;
 }) {
   const postLevel = snapshots.filter((s) => s.ctaRole === null);
   const roleLevel = snapshots.filter((s) => s.ctaRole !== null);
 
-  // Breakdown M3–M6 theo kênh (channelId bind từ Phase 1; null = chưa gán kênh).
-  const byChannel = new Map<
-    string,
-    { label: string; views: number; clicks: number; conversions: number }
-  >();
-  for (const s of postLevel) {
-    const key = s.channelId ?? '__unbound__';
-    const label = s.channelId
-      ? (channelNameById.get(s.channelId) ?? `(kênh ${s.channelId} không có trong config)`)
-      : '(chưa gán kênh)';
-    const row = byChannel.get(key) ?? { label, views: 0, clicks: 0, conversions: 0 };
+  type MetricRow = { label: string; views: number; clicks: number; conversions: number };
+  const addTo = (
+    m: Map<string, MetricRow>,
+    key: string,
+    label: string,
+    s: ManualPerformanceSnapshot,
+  ) => {
+    const row = m.get(key) ?? { label, views: 0, clicks: 0, conversions: 0 };
     row.views += s.views;
     row.clicks += s.clicks;
     row.conversions += s.conversions;
-    byChannel.set(key, row);
+    m.set(key, row);
+  };
+
+  // Breakdown M3–M6 theo NGÁCH (channelId → niche; không khớp → "Chưa gán ngách").
+  const byNiche = new Map<string, MetricRow>();
+  // Breakdown M3–M6 theo kênh (channelId bind từ Phase 1; null = chưa gán kênh).
+  const byChannel = new Map<string, MetricRow>();
+  for (const s of postLevel) {
+    const niche = s.channelId ? channelNicheById.get(s.channelId) : undefined;
+    addTo(byNiche, niche?.nicheId ?? '__unbound__', niche?.nicheDisplayName ?? 'Chưa gán ngách', s);
+
+    const chKey = s.channelId ?? '__unbound__';
+    const chLabel = s.channelId
+      ? (channelNameById.get(s.channelId) ?? `(kênh ${s.channelId} không có trong config)`)
+      : '(chưa gán kênh)';
+    addTo(byChannel, chKey, chLabel, s);
   }
+  const nicheRows = [...byNiche.entries()].map(([key, r]) => ({ key, ...r }));
   const channelRows = [...byChannel.entries()].map(([key, r]) => ({ key, ...r }));
 
   const totalViews = postLevel.reduce((s, m) => s + m.views, 0);
@@ -166,6 +182,52 @@ export function ManualPerformanceSection({
                   </p>
                 </div>
               ))}
+            </div>
+
+            {/* Breakdown theo NGÁCH — M3–M6 (#5 G1: Niche → Channel → Job) */}
+            <div>
+              <p className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+                Theo ngách (M3–M6)
+              </p>
+              <div className="overflow-x-auto rounded-xl border border-hairline">
+                <table className="w-full min-w-[560px] text-left text-xs">
+                  <thead className="text-[10px] uppercase tracking-wider text-neutral-600">
+                    <tr className="border-b border-hairline">
+                      <th className="px-4 py-2.5 font-medium">Ngách</th>
+                      <th className="px-4 py-2.5 font-medium text-right">Views</th>
+                      <th className="px-4 py-2.5 font-medium text-right">Clicks (M3)</th>
+                      <th className="px-4 py-2.5 font-medium text-right">CTR</th>
+                      <th className="px-4 py-2.5 font-medium text-right">Đơn (M4)</th>
+                      <th className="px-4 py-2.5 font-medium text-right">CVR</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {nicheRows.map((r) => (
+                      <tr
+                        key={r.key}
+                        className="border-b border-hairline/60 last:border-0 hover:bg-raised/30"
+                      >
+                        <td className="px-4 py-3 text-neutral-200">{r.label}</td>
+                        <td className="px-4 py-3 text-right text-neutral-200">
+                          {formatNumber(r.views)}
+                        </td>
+                        <td className="px-4 py-3 text-right font-semibold text-neutral-100">
+                          {formatNumber(r.clicks)}
+                        </td>
+                        <td className="px-4 py-3 text-right text-neutral-300">
+                          {r.views > 0 ? `${((r.clicks / r.views) * 100).toFixed(2)}%` : '—'}
+                        </td>
+                        <td className="px-4 py-3 text-right font-semibold text-accent-green">
+                          {formatNumber(r.conversions)}
+                        </td>
+                        <td className="px-4 py-3 text-right text-neutral-300">
+                          {r.clicks > 0 ? `${((r.conversions / r.clicks) * 100).toFixed(2)}%` : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
             {/* Breakdown theo kênh — M3–M6 (channelId bind từ Phase 1) */}

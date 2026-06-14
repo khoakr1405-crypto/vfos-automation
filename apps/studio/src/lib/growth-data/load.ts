@@ -146,6 +146,22 @@ export function activeNicheLanes(): Set<string> {
   return lanes.length > 0 ? new Set(lanes) : new Set(['product-review']);
 }
 
+/** Map channelId → niche active (qua channel.lane). Dùng cho rollup evidence/job
+ * theo ngách (Niche → Channel → Job). Chỉ tính channel THẬT + niche THẬT
+ * (real-first); kênh/lane không khớp niche active → không có trong map. */
+export function channelNicheMap(): Map<string, { nicheId: string; nicheDisplayName: string }> {
+  const map = new Map<string, { nicheId: string; nicheDisplayName: string }>();
+  const { channels, source: chSource } = loadChannelsWithSource();
+  const { niches, source: nSource } = loadNichesWithSource();
+  if (chSource !== 'real' || nSource !== 'real') return map;
+  const actives = niches.filter((n) => n.status === 'active');
+  for (const c of channels) {
+    const niche = actives.find((n) => n.lane === c.lane);
+    if (niche) map.set(c.channelId, { nicheId: niche.nicheId, nicheDisplayName: niche.displayName });
+  }
+  return map;
+}
+
 export function loadContentAngles(): ContentAngle[] {
   return loadArray<ContentAngle>('content-angles.json');
 }

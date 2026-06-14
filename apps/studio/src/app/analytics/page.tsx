@@ -13,6 +13,7 @@ import { StatCard } from '@/components/stat-card';
 import { Button } from '@/components/ui';
 import { computeCtaReadiness } from '@/lib/growth-data/cta-readiness';
 import {
+  channelNicheMap,
   loadAffiliateCtaPlans,
   loadChannels,
   loadChannelsWithSource,
@@ -252,6 +253,8 @@ export default function AnalyticsPage() {
   const channelNameById = new Map(
     channelSource === 'real' ? realChannels.map((c) => [c.channelId, c.displayName]) : [],
   );
+  // channelId → niche (Niche → Channel → Job): evidence gom theo ngách (#5 G1).
+  const channelNicheById = channelNicheMap();
 
   // 7. Known ids cho preview validate — job THẬT từ registry/manifest trước,
   // fixture giữ lại cho demo CSV cũ (chỉ là cảnh báo match, không ghi).
@@ -500,6 +503,7 @@ export default function AnalyticsPage() {
         fixtureMetrics={metrics}
         fixturePostIdByJob={fixturePostIdByJob}
         channelNameById={channelNameById}
+        channelNicheById={channelNicheById}
       />
 
       {/* Manual Performance Input — Preview Only (Real Analytics 02A) */}
