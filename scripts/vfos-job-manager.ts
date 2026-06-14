@@ -38,7 +38,10 @@ import { syncManifestArtifacts } from './job-manifest-helper.js';
 const JOBS_ROOT = 'data/temp/jobs';
 const REGISTRY_PATH = 'data/temp/vfos_jobs_registry.json';
 const CHANNELS_CONFIG_PATH = 'config/channels.json';
-const JOB_LANE = 'product-review';
+const NICHES_CONFIG_PATH = 'config/niches.json';
+// Lane mặc định khi chưa có niche active nào trong config/niches.json — giữ hành vi
+// cũ (behavior-preserving), không vỡ khi registry ngách rỗng/thiếu.
+const FALLBACK_LANE = 'product-review';
 
 // Default local-only inbox where the Operator drops downloaded/selected source
 // videos. The whole `data/` tree is gitignored, so videos here never commit.
@@ -562,11 +565,17 @@ function readFinalQaStatus(manifest: JobManifest): 'PASS' | 'FAIL' | 'MISSING' {
   }
 }
 
-// ---------- channel binding (Niche → Channel → Job, Phase 1) ----------
+// ---------- channel binding (Niche → Channel → Job) ----------
 interface ChannelConfigEntry {
   channelId?: string;
   platform?: string;
   displayName?: string;
+  lane?: string;
+  status?: string;
+}
+
+interface NicheConfigEntry {
+  nicheId?: string;
   lane?: string;
   status?: string;
 }
@@ -583,9 +592,36 @@ function loadChannelsConfig(): ChannelConfigEntry[] {
   }
 }
 
-function activeChannelsForLane(lane: string): ChannelConfigEntry[] {
+/** Đọc config/niches.json (nguồn thật). Never-throw → []. Mirror loadChannelsConfig. */
+function loadNichesConfig(): NicheConfigEntry[] {
+  const abs = resolve(NICHES_CONFIG_PATH);
+  if (!existsSync(abs)) return [];
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(abs, 'utf8'));
+    return Array.isArray(parsed) ? (parsed as NicheConfigEntry[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Tập lane của niche active. Fallback {FALLBACK_LANE} khi rỗng/thiếu → giữ hành
+ * vi cũ (chỉ product-review). Nguồn sự thật thay literal cho đa-ngách về sau. */
+function nicheLanes(): Set<string> {
+  const lanes = loadNichesConfig()
+    .filter((n) => n.status === 'active' && typeof n.lane === 'string')
+    .map((n) => n.lane as string);
+  return lanes.length > 0 ? new Set(lanes) : new Set([FALLBACK_LANE]);
+}
+
+/** Kênh active thuộc lane của bất kỳ niche active nào. */
+function activeNicheChannels(): ChannelConfigEntry[] {
+  const lanes = nicheLanes();
   return loadChannelsConfig().filter(
-    (c) => c.status === 'active' && c.lane === lane && typeof c.channelId === 'string',
+    (c) =>
+      c.status === 'active' &&
+      typeof c.lane === 'string' &&
+      lanes.has(c.lane) &&
+      typeof c.channelId === 'string',
   );
 }
 
@@ -602,7 +638,8 @@ function resolveChannelForCreate(explicitChannelId: string | undefined): {
   warning: string | null;
   error: string | null;
 } {
-  const laneChannels = activeChannelsForLane(JOB_LANE);
+  const laneChannels = activeNicheChannels();
+  const laneLabel = [...nicheLanes()].join('/');
   if (explicitChannelId) {
     const found = laneChannels.find((c) => c.channelId === explicitChannelId);
     if (!found) {
@@ -611,7 +648,7 @@ function resolveChannelForCreate(explicitChannelId: string | undefined): {
         channelId: null,
         channelName: null,
         warning: null,
-        error: `INVALID_CHANNEL: "${explicitChannelId}" không phải kênh active của lane ${JOB_LANE} trong ${CHANNELS_CONFIG_PATH}.`,
+        error: `INVALID_CHANNEL: "${explicitChannelId}" không phải kênh active của ngách (lane: ${laneLabel}) trong ${CHANNELS_CONFIG_PATH}.`,
       };
     }
     return {
@@ -638,8 +675,8 @@ function resolveChannelForCreate(explicitChannelId: string | undefined): {
     channelName: null,
     warning:
       laneChannels.length === 0
-        ? `Không có kênh active cho lane ${JOB_LANE} trong ${CHANNELS_CONFIG_PATH} — job tạo KHÔNG gán kênh.`
-        : `Lane ${JOB_LANE} có ${laneChannels.length} kênh active — cần --channel <channelId> tường minh; job tạo KHÔNG gán kênh.`,
+        ? `Không có kênh active cho ngách (lane: ${laneLabel}) trong ${CHANNELS_CONFIG_PATH} — job tạo KHÔNG gán kênh.`
+        : `Ngách (lane: ${laneLabel}) có ${laneChannels.length} kênh active — cần --channel <channelId> tường minh; job tạo KHÔNG gán kênh.`,
     error: null,
   };
 }

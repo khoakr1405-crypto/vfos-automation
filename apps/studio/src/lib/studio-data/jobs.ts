@@ -13,7 +13,7 @@
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { loadChannelsWithSource } from '@/lib/growth-data/load';
+import { activeNicheLanes, loadChannelsWithSource } from '@/lib/growth-data/load';
 import type { Channel as GrowthChannel } from '@/lib/growth-data/types';
 import { repoRoot, resolveInsideRepo } from './paths';
 import {
@@ -140,9 +140,10 @@ interface ProductCard {
   name?: string | null;
 }
 
-/* ---- channel binding (Niche → Channel → Job, Phase 1) ----------------------
+/* ---- channel binding (Niche → Channel → Job) -------------------------------
  * Kênh THẬT từ config/channels.json qua loader real-first. KHÔNG dùng fixture
- * cho workflow thật: source !== 'real' → coi như chưa có kênh cấu hình. */
+ * cho workflow thật: source !== 'real' → coi như chưa có kênh cấu hình. Lane hợp
+ * lệ derive từ niche active (config/niches.json) thay vì literal 'product-review'. */
 interface BoundChannel {
   channelId: string;
   displayName: string;
@@ -156,7 +157,9 @@ function narrowPlatform(p: string | null | undefined): OperatorJobDTO['platform'
 
 function realLaneChannels(): GrowthChannel[] {
   const { channels, source } = loadChannelsWithSource();
-  return source === 'real' ? channels.filter((c) => c.lane === 'product-review') : [];
+  if (source !== 'real') return [];
+  const lanes = activeNicheLanes();
+  return channels.filter((c) => lanes.has(c.lane));
 }
 
 /** Kênh bind của job từ manifest.channelId. null nếu chưa gán hoặc kênh không

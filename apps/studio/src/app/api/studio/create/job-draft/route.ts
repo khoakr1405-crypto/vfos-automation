@@ -9,7 +9,7 @@
 
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { loadChannelsWithSource } from '@/lib/growth-data/load';
+import { activeNicheLanes, loadChannelsWithSource } from '@/lib/growth-data/load';
 import { findSensitiveTerms } from '@/lib/growth-data/manual-input';
 import { resolveInsideRepo } from '@/lib/studio-data/paths';
 import { runRepoScript } from '@/lib/studio-data/run-command';
@@ -172,11 +172,11 @@ export async function POST(req: Request) {
       );
     }
     const { channels, source } = loadChannelsWithSource();
+    const lanes = activeNicheLanes();
     const found =
       source === 'real'
         ? channels.find(
-            (c) =>
-              c.channelId === o.channelId && c.status === 'active' && c.lane === 'product-review',
+            (c) => c.channelId === o.channelId && c.status === 'active' && lanes.has(c.lane),
           )
         : undefined;
     if (!found) {
@@ -185,7 +185,7 @@ export async function POST(req: Request) {
           ok: false,
           code: 'INVALID_CHANNEL',
           message:
-            'channelId không khớp kênh active nào của lane Review Sản phẩm trong config/channels.json (không nhận kênh fixture).',
+            'channelId không khớp kênh active nào của ngách đang hoạt động trong config/channels.json (không nhận kênh fixture).',
         },
         { status: 400 },
       );

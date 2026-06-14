@@ -135,6 +135,17 @@ export function loadNichesWithSource(): { niches: Niche[]; source: 'real' | 'fix
   return { niches: loadArray<Niche>('niches.json'), source: 'fixture' };
 }
 
+/** Tập lane của các niche ĐANG HOẠT ĐỘNG (THẬT). Nguồn sự thật để lọc/validate
+ * kênh theo ngách thay cho literal 'product-review'. Chỉ tính niche THẬT (fixture
+ * không dùng cho workflow). Fallback {'product-review'} khi rỗng/thiếu →
+ * behavior-preserving, không vỡ khi chưa có config/niches.json. */
+export function activeNicheLanes(): Set<string> {
+  const { niches, source } = loadNichesWithSource();
+  const lanes =
+    source === 'real' ? niches.filter((n) => n.status === 'active').map((n) => n.lane) : [];
+  return lanes.length > 0 ? new Set(lanes) : new Set(['product-review']);
+}
+
 export function loadContentAngles(): ContentAngle[] {
   return loadArray<ContentAngle>('content-angles.json');
 }
