@@ -39,6 +39,9 @@ interface CardSummary {
   price?: string;
   productImageUrl?: string | null;
   description?: string | null;
+  /** Từ khóa tìm kiếm tiếng Trung đã persist/suy luận ở route current-product-card.
+   * Đọc giá trị canonical này trước, chỉ recompute client khi route không trả. */
+  chineseSearchName?: string | null;
 }
 interface CardResponse {
   ok: boolean;
@@ -1246,7 +1249,11 @@ export default function ProductReviewLanePage() {
   // Metadata nguồn tiếng Trung → cần bản dịch tiếng Việt trước khi tạo job.
   const cardNeedsTranslation = !!card && (hasCJK(card.name) || hasCJK(card.description ?? ''));
   // Từ khóa tiếng Trung (local, không API) để Operator copy đi tìm source video.
-  const chineseSearchName = card ? buildChineseSearchName(card.name) : null;
+  // Ưu tiên giá trị canonical từ route (persisted-or-recompute); chỉ tự suy luận
+  // client khi route không trả — tránh recompute mù bỏ qua giá trị đã persist.
+  const chineseSearchName = card
+    ? (card.chineseSearchName ?? buildChineseSearchName(card.name))
+    : null;
 
   // Source intake: URL trích từ chuỗi pasted (Douyin/Trung). Preview cho Operator
   // trước khi lưu; chỉ chặn lưu khi không có URL nào.

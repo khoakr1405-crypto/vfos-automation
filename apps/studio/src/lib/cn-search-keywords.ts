@@ -49,6 +49,22 @@ const NOUN_SPECIFIC: readonly Entry[] = [
   ['nuoc giat', '洗衣液'],
   ['nuoc xa', '柔顺剂'],
   ['den led', 'LED灯'],
+  // Bổ sung nhóm hàng affiliate phổ biến VN còn thiếu (cụm dài trước cụm ngắn để
+  // claim token con; "kem chong nang" claim trước FEATURE "chong nang").
+  ['ban chai danh rang', '牙刷'],
+  ['kem danh rang', '牙膏'],
+  ['kem chong nang', '防晒霜'],
+  ['nuoc rua chen', '洗洁精'],
+  ['nuoc lau san', '地板清洁剂'],
+  ['nuoc rua tay', '洗手液'],
+  ['khan uot', '湿巾'],
+  ['khan giay', '纸巾'],
+  ['bang ve sinh', '卫生巾'],
+  ['dao cao rau', '剃须刀'],
+  ['son moi', '口红'],
+  ['sac du phong', '充电宝'],
+  ['chuot khong day', '无线鼠标'],
+  ['ban phim', '键盘'],
 ];
 
 // Đặc tính phân biệt (sát nghĩa). Không xóa khỏi chuỗi — là token độc lập.
