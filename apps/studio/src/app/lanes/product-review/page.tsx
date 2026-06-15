@@ -244,6 +244,9 @@ export default function ProductReviewLanePage() {
   const [loading, setLoading] = useState(true);
   const [imgError, setImgError] = useState(false);
   const [copiedCn, setCopiedCn] = useState(false);
+  // Tên Trung bằng AI (hybrid layer 2) — Operator-click-only.
+  const [enrichingCn, setEnrichingCn] = useState(false);
+  const [enrichCnError, setEnrichCnError] = useState<string | null>(null);
 
   // Action 1 states
   const [registry, setRegistry] = useState<RegistryItem[]>([]);
@@ -607,6 +610,33 @@ export default function ProductReviewLanePage() {
       setTimeout(() => setCopiedCn(false), 1500);
     } catch {
       // Clipboard bị chặn (không phải lỗi workflow) — không làm gì thêm.
+    }
+  };
+
+  // Tạo Tên Trung bằng AI (layer 2) — CHỈ chạy khi Operator bấm nút. Dictionary-first
+  // + persist ở server; thành công → cập nhật state, thất bại → giữ placeholder (không bịa).
+  const handleEnrichChineseName = async () => {
+    setEnrichingCn(true);
+    setEnrichCnError(null);
+    try {
+      const res = await fetch('/api/studio/commerce/enrich-chinese-name', { method: 'POST' });
+      const data = (await res.json()) as { ok?: boolean; keyword?: string; reason?: string };
+      if (data.ok && data.keyword) {
+        const kw = data.keyword;
+        setCard((prev) => (prev ? { ...prev, chineseSearchName: kw } : prev));
+      } else {
+        setEnrichCnError(
+          data.reason === 'NO_API_KEY'
+            ? 'Chưa cấu hình AI (ANTHROPIC_API_KEY).'
+            : data.reason === 'INVALID_OUTPUT'
+              ? 'AI trả kết quả không hợp lệ — thử lại.'
+              : 'Không tạo được từ khóa Trung. Thử lại sau.',
+        );
+      }
+    } catch {
+      setEnrichCnError('Lỗi mạng khi gọi AI.');
+    } finally {
+      setEnrichingCn(false);
     }
   };
 
@@ -1609,9 +1639,22 @@ export default function ProductReviewLanePage() {
                     </Button>
                   </>
                 ) : (
-                  <span className="text-[10px] italic text-neutral-600">
-                    Chưa có tên Trung sát nghĩa
-                  </span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[10px] italic text-neutral-600">
+                      Chưa có tên Trung sát nghĩa
+                    </span>
+                    <Button
+                      variant="outline"
+                      className="!py-0.5 !px-1.5 text-[9px]"
+                      onClick={handleEnrichChineseName}
+                      disabled={enrichingCn}
+                    >
+                      {enrichingCn ? 'Đang tạo…' : 'Tạo từ khóa Trung (AI)'}
+                    </Button>
+                    {enrichCnError && (
+                      <span className="text-[9px] text-accent-rose">{enrichCnError}</span>
+                    )}
+                  </div>
                 )}
               </div>
 
