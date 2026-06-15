@@ -98,6 +98,7 @@ interface RegistryEntry {
   sourceVideoPath?: string | null;
   captionedPreviewPath?: string | null;
   operatorDecision?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  createdAt?: string;
   updatedAt?: string;
   sourceVideoUrl?: string | null;
 }
@@ -135,6 +136,7 @@ interface Manifest {
   qaStatus?: string | null;
   lastError?: string | null;
   duration?: { sourceVideoDurationSec?: number; captionedPreviewDurationSec?: number };
+  createdAt?: string;
   updatedAt?: string;
 }
 
@@ -403,6 +405,7 @@ function buildJobDTO(entry: RegistryEntry): OperatorJobDTO {
     ownerValid,
     notes: manifest?.review?.notes ?? null,
     errorLog,
+    createdAt: entry.createdAt ?? manifest?.createdAt ?? null,
     updatedAt: manifest?.updatedAt ?? entry.updatedAt ?? null,
     source: {
       sourceMode: manifest?.source?.sourceMode ?? null,

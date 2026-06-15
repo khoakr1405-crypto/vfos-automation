@@ -6,6 +6,7 @@ import { Badge } from '../badge';
 import { Card, CardBody } from '../card';
 import { Icon, UtilIcon } from '../icons';
 import { Button } from '../ui';
+import { BatchProgressPanel } from './batch-progress';
 
 type LoadState = 'loading' | 'ready' | 'error';
 
@@ -379,6 +380,8 @@ export function OperatorJobQueue() {
           <StatChip label="Đã publish" count={summary.published} accent="green" />
         </div>
       )}
+
+      {load === 'ready' && jobs.length > 0 && <BatchProgressPanel jobs={jobs} />}
 
       {load === 'ready' && jobs.length > 0 && (
         <div className="space-y-2 rounded-xl border border-hairline/60 bg-raised/10 p-3">

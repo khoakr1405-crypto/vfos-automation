@@ -91,6 +91,8 @@ export interface OperatorJobDTO {
   ownerId: string | null;
   ownerValid: boolean;
   notes: string | null;
+  /** Thời điểm tạo job (registry/manifest). Dùng gom batch theo ngày (#2). null = legacy. */
+  createdAt: string | null;
   updatedAt: string | null;
   source?: {
     sourceMode?: string | null;
