@@ -205,10 +205,33 @@ async function discoverProductCards(page: Page): Promise<ProductCard[]> {
       );
       if (a?.href) href = a.href;
 
-      // Gom MỌI candidate ảnh từ card (browser KHÔNG chọn — chỉ thu thập, tránh
-      // closure over Node). Node sẽ chọn ảnh thật + loại badge qua pickProductImageUrl.
+      // Ảnh sản phẩm nằm ở cột thumbnail của ItemCard, NGOÀI card hẹp (cột info chỉ
+      // có badge). Mở rộng scope ảnh lên ItemCard block: bound 4 cấp, dừng khi scope
+      // đã có <img> non-badge HOẶC tới block "ItemCard" (>1 img) → không gộp card kế.
+      let imgScope: Element | null = card;
+      for (let up = 0; up < 4 && imgScope; up++) {
+        const hasReal = Array.from(imgScope.querySelectorAll('img')).some((im) => {
+          const s = (
+            im.currentSrc ||
+            im.getAttribute('src') ||
+            im.getAttribute('data-src') ||
+            ''
+          ).toLowerCase();
+          return s !== '' && !/label_|badge|icon|logo|\.svg/.test(s);
+        });
+        if (hasReal) break;
+        const cls = imgScope.getAttribute('class') ?? '';
+        if (/(^|\s)ItemCard(\s|$|--)/.test(cls) && imgScope.querySelectorAll('img').length > 1) {
+          break;
+        }
+        imgScope = imgScope.parentElement;
+      }
+      if (!imgScope) imgScope = card;
+
+      // Gom MỌI candidate ảnh từ imgScope (browser KHÔNG chọn — chỉ thu thập). Node
+      // chọn ảnh thật + loại badge qua pickProductImageUrl.
       const image_candidates: string[] = [];
-      for (const imgEl of Array.from(card?.querySelectorAll('img') ?? [])) {
+      for (const imgEl of Array.from(imgScope?.querySelectorAll('img') ?? [])) {
         const c =
           imgEl.currentSrc ||
           imgEl.getAttribute('src') ||
@@ -220,8 +243,8 @@ async function discoverProductCards(page: Page): Promise<ProductCard[]> {
         const first = ss ? ss.split(',')[0]?.trim().split(/\s+/)[0] : '';
         if (first) image_candidates.push(first);
       }
-      if (card instanceof HTMLElement) {
-        const m = (card.style.backgroundImage || '').match(/url\(["']?([^"')]+)["']?\)/);
+      if (imgScope instanceof HTMLElement) {
+        const m = (imgScope.style.backgroundImage || '').match(/url\(["']?([^"')]+)["']?\)/);
         if (m?.[1]) image_candidates.push(m[1]);
       }
 
@@ -320,9 +343,23 @@ async function recaptureTargetImage(page: Page, index: number): Promise<string[]
       if (card.querySelector('img') && card.textContent?.includes('₫')) break;
       card = card.parentElement;
     }
-    card?.scrollIntoView({ block: 'center' });
+    // Mở rộng lên ItemCard block (ảnh ở cột thumbnail, ngoài card hẹp). Cùng quy tắc
+    // với scan: bound 4 cấp, dừng khi có <img> non-badge hoặc tới block ItemCard.
+    let scope: Element | null = card;
+    for (let up = 0; up < 4 && scope; up++) {
+      const hasReal = Array.from(scope.querySelectorAll('img')).some((im) => {
+        const s = (im.currentSrc || im.getAttribute('src') || im.getAttribute('data-src') || '').toLowerCase();
+        return s !== '' && !/label_|badge|icon|logo|\.svg/.test(s);
+      });
+      if (hasReal) break;
+      const cls = scope.getAttribute('class') ?? '';
+      if (/(^|\s)ItemCard(\s|$|--)/.test(cls) && scope.querySelectorAll('img').length > 1) break;
+      scope = scope.parentElement;
+    }
+    if (!scope) scope = card;
+    scope?.scrollIntoView({ block: 'center' });
     const out: string[] = [];
-    for (const imgEl of Array.from(card?.querySelectorAll('img') ?? [])) {
+    for (const imgEl of Array.from(scope?.querySelectorAll('img') ?? [])) {
       const c =
         imgEl.currentSrc ||
         imgEl.getAttribute('src') ||
@@ -333,6 +370,15 @@ async function recaptureTargetImage(page: Page, index: number): Promise<string[]
       const ss = imgEl.getAttribute('srcset');
       const first = ss ? ss.split(',')[0]?.trim().split(/\s+/)[0] : '';
       if (first) out.push(first);
+    }
+    // 1 target card → đủ rẻ để soi cả background-image (computed) của descendant:
+    // ảnh sản phẩm có thể là CSS bg, không phải <img>.
+    for (const el of Array.from(scope?.querySelectorAll('*') ?? [])) {
+      const bg = getComputedStyle(el).backgroundImage;
+      if (bg && bg !== 'none' && bg.includes('url(')) {
+        const m = bg.match(/url\(["']?([^"')]+)["']?\)/);
+        if (m?.[1]) out.push(m[1]);
+      }
     }
     return out;
   };
