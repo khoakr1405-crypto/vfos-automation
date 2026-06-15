@@ -67,7 +67,7 @@ import {
   shouldSkipPreClick,
 } from '../src/cdp-extract-helpers.js';
 import { type LinkRegistryConfig, appendRejected, upsertEntry } from '../src/link-registry.js';
-import { sanitizeProductImageUrl } from '../src/url-sanitize.js';
+import { pickProductImageUrl } from '../src/product-image.js';
 
 // ── workspace + env ─────────────────────────────────────────────────────────
 
@@ -156,8 +156,9 @@ interface ProductCard {
   price_vnd: number | 'unknown';
   commission_pct: string | 'unknown';
   sales_count: string | 'unknown';
-  /** RAW image URL captured from the card DOM; sanitised in Node before persist. */
-  image_url?: string | null;
+  /** RAW image candidate URLs từ DOM card (mọi <img> + background). Node chọn ảnh
+   * thật + sanitise qua pickProductImageUrl trước khi persist (KHÔNG chọn ở browser). */
+  image_candidates?: string[];
   score?: number;
   criteria?: string;
 }
@@ -204,43 +205,24 @@ async function discoverProductCards(page: Page): Promise<ProductCard[]> {
       );
       if (a?.href) href = a.href;
 
-      // Capture RAW image URL from the card thumbnail. SELF-CONTAINED in the
-      // browser context — no closure over Node helpers (DOM-helper contract).
-      // Sanitised later in Node via sanitizeProductImageUrl().
-      // Loops through all images to filter out labels/badges (e.g. svg or containing 'label'/'badge'/'icon'/'logo').
-      let image_url: string | null = null;
-      const imgEls = Array.from(card?.querySelectorAll('img') ?? []);
-      for (const imgEl of imgEls) {
-        let candidate =
+      // Gom MỌI candidate ảnh từ card (browser KHÔNG chọn — chỉ thu thập, tránh
+      // closure over Node). Node sẽ chọn ảnh thật + loại badge qua pickProductImageUrl.
+      const image_candidates: string[] = [];
+      for (const imgEl of Array.from(card?.querySelectorAll('img') ?? [])) {
+        const c =
           imgEl.currentSrc ||
           imgEl.getAttribute('src') ||
           imgEl.getAttribute('data-src') ||
           imgEl.getAttribute('data-original') ||
-          null;
-        if (!candidate) {
-          const ss = imgEl.getAttribute('srcset');
-          if (ss) candidate = ss.split(',')[0]?.trim().split(/\s+/)[0] ?? null;
-        }
-        if (candidate) {
-          const lowerCand = candidate.toLowerCase();
-          const isBadgeOrIcon =
-            lowerCand.includes('.svg') ||
-            lowerCand.includes('/label_') ||
-            lowerCand.includes('label_xtra') ||
-            lowerCand.includes('badge') ||
-            lowerCand.includes('icon') ||
-            lowerCand.includes('logo');
-          if (!isBadgeOrIcon) {
-            image_url = candidate;
-            break;
-          } else if (!image_url) {
-            image_url = candidate; // Fallback to first badge if no product image found
-          }
-        }
+          '';
+        if (c) image_candidates.push(c);
+        const ss = imgEl.getAttribute('srcset');
+        const first = ss ? ss.split(',')[0]?.trim().split(/\s+/)[0] : '';
+        if (first) image_candidates.push(first);
       }
-      if (!image_url && card instanceof HTMLElement) {
+      if (card instanceof HTMLElement) {
         const m = (card.style.backgroundImage || '').match(/url\(["']?([^"')]+)["']?\)/);
-        if (m) image_url = m[1] ?? null;
+        if (m?.[1]) image_candidates.push(m[1]);
       }
 
       let price_vnd: number | 'unknown' = 'unknown';
@@ -269,7 +251,7 @@ async function discoverProductCards(page: Page): Promise<ProductCard[]> {
         }
       }
 
-      return { index: idx, name, href, price_vnd, commission_pct, sales_count, image_url };
+      return { index: idx, name, href, price_vnd, commission_pct, sales_count, image_candidates };
     });
   });
 }
@@ -311,6 +293,58 @@ async function clickGetLinkButton(page: Page, index: number): Promise<boolean> {
       return true; // Treat as click initiated, let outer loop handle page state
     }
     throw err;
+  }
+}
+
+/**
+ * Phase B (image-fix): scroll card target [index] vào view + chờ lazy-load + thu thập
+ * lại MỌI candidate ảnh đã render. Chỉ scroll + đọc DOM (KHÔNG click nút nào). Trả []
+ * khi lỗi/không tìm thấy. Node chọn ảnh thật qua pickProductImageUrl.
+ */
+async function recaptureTargetImage(page: Page, index: number): Promise<string[]> {
+  const findCardImgs = (idx: number): string[] => {
+    const buttons = Array.from(document.querySelectorAll<HTMLElement>('*')).filter((el) => {
+      const t = (el.textContent ?? '').trim().toLowerCase();
+      if (!t.includes('lấy link') && !t.includes('get link')) return false;
+      if (t.length > 15) return false;
+      const hasChild = Array.from(el.children).some((c) => {
+        const ct = (c.textContent ?? '').trim().toLowerCase();
+        return ct.includes('lấy link') || ct.includes('get link');
+      });
+      return !hasChild;
+    });
+    const btn = buttons[idx];
+    if (!btn) return [];
+    let card: Element | null = btn;
+    for (let i = 0; i < 12 && card; i++) {
+      if (card.querySelector('img') && card.textContent?.includes('₫')) break;
+      card = card.parentElement;
+    }
+    card?.scrollIntoView({ block: 'center' });
+    const out: string[] = [];
+    for (const imgEl of Array.from(card?.querySelectorAll('img') ?? [])) {
+      const c =
+        imgEl.currentSrc ||
+        imgEl.getAttribute('src') ||
+        imgEl.getAttribute('data-src') ||
+        imgEl.getAttribute('data-original') ||
+        '';
+      if (c) out.push(c);
+      const ss = imgEl.getAttribute('srcset');
+      const first = ss ? ss.split(',')[0]?.trim().split(/\s+/)[0] : '';
+      if (first) out.push(first);
+    }
+    return out;
+  };
+  try {
+    // 1) scroll vào view (kích lazy-load) — đọc lần đầu có thể chưa có ảnh
+    await page.evaluate(findCardImgs, index);
+    // 2) chờ ảnh lazy-load gắn src thật
+    await page.waitForTimeout(900);
+    // 3) đọc lại candidate ảnh (đã load)
+    return await page.evaluate(findCardImgs, index);
+  } catch {
+    return [];
   }
 }
 
@@ -1054,6 +1088,10 @@ async function main(): Promise<number> {
     attemptedNames.add(target.name);
     clicks++;
 
+    // Phase B (image-fix): scroll target vào view + chờ lazy-load → ảnh đã render.
+    // Ưu tiên ảnh re-capture (đã load) hơn ảnh từ scan ban đầu (có thể off-screen/null).
+    const recapturedImages = await recaptureTargetImage(page, target.index);
+
     finalStage = 'click';
     let clicked = false;
     try {
@@ -1211,7 +1249,12 @@ async function main(): Promise<number> {
     }
 
     finalStage = 'registry_write';
-    const sanitizedImage = sanitizeProductImageUrl(target.image_url) ?? null;
+    // Chọn ảnh thật: ưu tiên ảnh re-capture (đã load) → fallback ảnh scan ban đầu.
+    // pickProductImageUrl loại badge/credential + sanitise; không có ảnh thật → null.
+    const sanitizedImage = pickProductImageUrl([
+      ...recapturedImages,
+      ...(target.image_candidates ?? []),
+    ]);
     const upsert = await upsertEntry(registryConfig, {
       product_name: target.name,
       shopid,
