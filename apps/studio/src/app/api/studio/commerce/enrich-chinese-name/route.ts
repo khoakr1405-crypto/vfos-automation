@@ -6,15 +6,15 @@
  * Operator-click-only (UI gọi khi bấm nút) — KHÔNG auto. Key vắng → NO_API_KEY graceful
  * (không throw). TUYỆT ĐỐI không log/echo key. Chỉ gửi TÊN sản phẩm tới Claude.
  *
- * PERSIST: ghi vào CURRENT card `data/temp/selected_product_card.json` (gitignored) —
- * đây là persist current-card/session. Shopee link registry hiện KHÔNG có field
- * chineseSearchName → vòng này CHƯA cập nhật durable registry (báo rõ trong response).
- * KHÔNG overwrite giá trị tốt bằng null (chỉ ghi khi có keyword hợp lệ).
+ * PERSIST: (a) CURRENT card `data/temp/selected_product_card.json` (session) + (b) durable
+ * store `data/cn-search-keywords.json` theo shopId_itemId (sống qua re-promote). KHÔNG
+ * đụng shopee_link_registry (secret/CDP). KHÔNG overwrite giá trị tốt bằng null/rỗng.
  * ========================================================================== */
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { buildChineseSearchName } from '@/lib/cn-search-keywords';
 import { DEFAULT_CN_MODEL, enrichChineseNameViaLLM } from '@/lib/cn-search-llm';
+import { writeDurableKeyword } from '@/lib/cn-search-store';
 import { findSensitiveTerms } from '@/lib/growth-data/manual-input';
 import { resolveInsideRepo } from '@/lib/studio-data/paths';
 
@@ -95,24 +95,31 @@ export async function POST(req: Request) {
   if (!name) {
     return Response.json({ ok: false, reason: 'EMPTY_NAME' }, { status: 400 });
   }
+  // Product identity (public) để ghi store bền — sống qua mọi lần đổi/re-promote card.
+  const shopId = String(card.shopId ?? '');
+  const itemId = String(card.itemId ?? '');
 
-  // (0) Card đã có giá trị tốt → trả luôn, KHÔNG gọi API, KHÔNG overwrite.
+  // (0) Card đã có giá trị tốt → trả luôn, KHÔNG gọi API, KHÔNG overwrite. Backfill
+  // store bền (source suy từ việc có khớp dictionary không) để giá trị cũ thành durable.
   const existing = typeof card.chineseSearchName === 'string' ? card.chineseSearchName.trim() : '';
   if (existing) {
-    return Response.json({ ok: true, keyword: existing, source: 'card', persisted: false });
+    const src = buildChineseSearchName(name) === existing ? 'dictionary' : 'llm';
+    const durable = writeDurableKeyword(shopId, itemId, existing, src);
+    return Response.json({ ok: true, keyword: existing, source: 'card', persisted: false, durable });
   }
 
-  // (1) Dictionary hit → persist + trả, KHÔNG gọi API.
+  // (1) Dictionary hit → persist card + store bền + trả, KHÔNG gọi API.
   const dict = buildChineseSearchName(name);
   if (dict) {
     const persisted = persistToCard(abs, card, dict);
+    const durable = writeDurableKeyword(shopId, itemId, dict, 'dictionary');
     return Response.json({
       ok: true,
       keyword: dict,
       source: 'dictionary',
       persisted,
       persistTarget: 'current-card',
-      durableRegistry: false,
+      durable,
     });
   }
 
@@ -135,12 +142,13 @@ export async function POST(req: Request) {
 
   // Chỉ persist khi có keyword hợp lệ — không overwrite bằng null.
   const persisted = persistToCard(abs, card, result.keyword);
+  const durable = writeDurableKeyword(shopId, itemId, result.keyword, 'llm');
   return Response.json({
     ok: true,
     keyword: result.keyword,
     source: 'llm',
     persisted,
     persistTarget: 'current-card',
-    durableRegistry: false,
+    durable,
   });
 }

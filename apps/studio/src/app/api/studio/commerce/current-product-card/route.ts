@@ -10,6 +10,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { buildChineseSearchName } from '@/lib/cn-search-keywords';
+import { readDurableKeyword } from '@/lib/cn-search-store';
 import { resolveInsideRepo } from '@/lib/studio-data/paths';
 
 export const dynamic = 'force-dynamic';
@@ -89,10 +90,15 @@ function readCurrentCard(): CardSummary | null {
     const { commissionRate, price } = parseScoring(
       typeof c.scoringCriteria === 'string' ? c.scoringCriteria : undefined,
     );
-    // Tên Trung: ưu tiên giá trị đã persist trong card; nếu chưa có (card cũ),
-    // suy luận lại cục bộ. Read-only — không ghi ngược file ở route GET này.
+    // Tên Trung — thứ tự: (1) persisted trong card → (2) durable store theo identity
+    // (sống qua re-promote, khôi phục giá trị AI không gọi lại API) → (3) suy luận
+    // dictionary. Read-only — KHÔNG ghi ngược file ở route GET này.
     const persistedZh = typeof c.chineseSearchName === 'string' ? c.chineseSearchName.trim() : '';
-    const chineseSearchName = persistedZh || buildChineseSearchName(String(c.name ?? ''));
+    const durable = persistedZh
+      ? null
+      : readDurableKeyword(String(c.shopId ?? ''), String(c.itemId ?? ''));
+    const chineseSearchName =
+      persistedZh || durable?.keyword || buildChineseSearchName(String(c.name ?? ''));
     // Sanitized projection — never echo canonicalUrl / canonicalCleanUrl.
     return {
       name: String(c.name ?? ''),
