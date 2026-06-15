@@ -20,7 +20,6 @@ import { Icon, UtilIcon } from '@/components/icons';
 import { MockBanner } from '@/components/mock-banner';
 import { PageHeader } from '@/components/page-header';
 import { Button } from '@/components/ui';
-import { buildChineseSearchName } from '@/lib/cn-search-keywords';
 import { ACCENT_BG_SOFT, ACCENT_TEXT, type AccentKey } from '@/lib/nav';
 import type { GateState, OperatorJobDTO } from '@/lib/studio-data/types';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
@@ -39,9 +38,13 @@ interface CardSummary {
   price?: string;
   productImageUrl?: string | null;
   description?: string | null;
-  /** Từ khóa tìm kiếm tiếng Trung đã persist/suy luận ở route current-product-card.
-   * Đọc giá trị canonical này trước, chỉ recompute client khi route không trả. */
+  /** Từ khóa tìm kiếm tiếng Trung đã re-validate (loại feature-only) ở route. Đọc
+   * giá trị canonical này — KHÔNG recompute dictionary mù ở client. */
   chineseSearchName?: string | null;
+  /** Cụm lõi tiếng Việt đã rút gọn (vd "Áo chống nắng cho bé UPF50"). */
+  vietnameseCoreKeyword?: string | null;
+  /** true khi thiếu zh / zh yếu / thiếu coreVi → hiện nút AI hoàn thiện. */
+  chineseNeedsAi?: boolean;
 }
 interface CardResponse {
   ok: boolean;
@@ -620,10 +623,20 @@ export default function ProductReviewLanePage() {
     setEnrichCnError(null);
     try {
       const res = await fetch('/api/studio/commerce/enrich-chinese-name', { method: 'POST' });
-      const data = (await res.json()) as { ok?: boolean; keyword?: string; reason?: string };
+      const data = (await res.json()) as {
+        ok?: boolean;
+        keyword?: string;
+        coreVi?: string | null;
+        reason?: string;
+      };
       if (data.ok && data.keyword) {
         const kw = data.keyword;
-        setCard((prev) => (prev ? { ...prev, chineseSearchName: kw } : prev));
+        const cv = data.coreVi ?? null;
+        setCard((prev) =>
+          prev
+            ? { ...prev, chineseSearchName: kw, vietnameseCoreKeyword: cv, chineseNeedsAi: !cv }
+            : prev,
+        );
       } else {
         setEnrichCnError(
           data.reason === 'NO_API_KEY'
@@ -1278,12 +1291,13 @@ export default function ProductReviewLanePage() {
   const needsChannelChoice = laneChannels.length > 1 && !selectedChannelId;
   // Metadata nguồn tiếng Trung → cần bản dịch tiếng Việt trước khi tạo job.
   const cardNeedsTranslation = !!card && (hasCJK(card.name) || hasCJK(card.description ?? ''));
-  // Từ khóa tiếng Trung (local, không API) để Operator copy đi tìm source video.
-  // Ưu tiên giá trị canonical từ route (persisted-or-recompute); chỉ tự suy luận
-  // client khi route không trả — tránh recompute mù bỏ qua giá trị đã persist.
-  const chineseSearchName = card
-    ? (card.chineseSearchName ?? buildChineseSearchName(card.name))
-    : null;
+  // Tên Trung — route đã re-validate (loại feature-only như 防晒) + chọn nguồn. KHÔNG
+  // recompute dictionary mù ở client (tránh tái xuất giá trị yếu). coreVi + needsAi
+  // theo route; needsAi=true → mời Operator bấm AI hoàn thiện.
+  const chineseSearchName = card?.chineseSearchName ?? null;
+  const vietnameseCoreKeyword = card?.vietnameseCoreKeyword ?? null;
+  const chineseNeedsAi =
+    !!card && (card.chineseNeedsAi ?? (!chineseSearchName || !vietnameseCoreKeyword));
 
   // Source intake: URL trích từ chuỗi pasted (Douyin/Trung). Preview cho Operator
   // trước khi lưu; chỉ chặn lưu khi không có URL nào.
@@ -1618,44 +1632,60 @@ export default function ProductReviewLanePage() {
                 )}
               </div>
 
-              {/* Tên tìm kiếm tiếng Trung — copy đi tìm source video/sản phẩm trên
-                  Douyin/Taobao/1688. Suy ra cục bộ từ tên VI (không gọi translate API).
-                  Display-only: KHÔNG ảnh hưởng job binding. */}
-              <div className="flex flex-wrap items-center gap-2 border-t border-hairline/50 pt-2">
-                <span className="text-[10px] font-medium text-neutral-500">
-                  Tên tìm kiếm tiếng Trung:
-                </span>
-                {chineseSearchName ? (
-                  <>
-                    <span lang="zh" className="font-medium text-neutral-100">
-                      {chineseSearchName}
-                    </span>
-                    <Button
-                      variant="outline"
-                      className="!py-0.5 !px-1.5 text-[9px]"
-                      onClick={() => handleCopyChineseName(chineseSearchName)}
-                    >
-                      {copiedCn ? '✓ Đã copy' : 'Copy từ khóa Trung'}
-                    </Button>
-                  </>
-                ) : (
+              {/* Từ khóa tìm source: rút gọn lõi VI → dịch cụm lõi sang tiếng Trung (AI).
+                  Copy đi tìm trên Douyin/Taobao/1688. Display-only: KHÔNG ảnh hưởng job
+                  binding. Không cho feature-only (vd 防晒) lọt ra. */}
+              <div className="flex flex-col gap-1 border-t border-hairline/50 pt-2">
+                {vietnameseCoreKeyword && (
                   <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[10px] font-medium text-neutral-500">
+                      Từ khóa lõi (VI):
+                    </span>
+                    <span className="font-medium text-neutral-200">{vietnameseCoreKeyword}</span>
+                  </div>
+                )}
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[10px] font-medium text-neutral-500">
+                    Tên tìm kiếm tiếng Trung:
+                  </span>
+                  {chineseSearchName ? (
+                    <>
+                      <span lang="zh" className="font-medium text-neutral-100">
+                        {chineseSearchName}
+                      </span>
+                      <Button
+                        variant="outline"
+                        className="!py-0.5 !px-1.5 text-[9px]"
+                        onClick={() => handleCopyChineseName(chineseSearchName)}
+                      >
+                        {copiedCn ? '✓ Đã copy' : 'Copy từ khóa Trung'}
+                      </Button>
+                    </>
+                  ) : (
                     <span className="text-[10px] italic text-neutral-600">
                       Chưa có tên Trung sát nghĩa
                     </span>
-                    <Button
-                      variant="outline"
-                      className="!py-0.5 !px-1.5 text-[9px]"
-                      onClick={handleEnrichChineseName}
-                      disabled={enrichingCn}
-                    >
-                      {enrichingCn ? 'Đang tạo…' : 'Tạo từ khóa Trung (AI)'}
-                    </Button>
-                    {enrichCnError && (
-                      <span className="text-[9px] text-accent-rose">{enrichCnError}</span>
-                    )}
-                  </div>
-                )}
+                  )}
+                  {chineseNeedsAi && (
+                    <>
+                      <Button
+                        variant="outline"
+                        className="!py-0.5 !px-1.5 text-[9px]"
+                        onClick={handleEnrichChineseName}
+                        disabled={enrichingCn}
+                      >
+                        {enrichingCn
+                          ? 'Đang tạo…'
+                          : chineseSearchName
+                            ? 'Hoàn thiện bằng AI'
+                            : 'Tạo từ khóa Trung (AI)'}
+                      </Button>
+                      {enrichCnError && (
+                        <span className="text-[9px] text-accent-rose">{enrichCnError}</span>
+                      )}
+                    </>
+                  )}
+                </div>
               </div>
 
               {!card.productImageUrl && (

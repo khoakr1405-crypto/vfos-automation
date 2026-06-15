@@ -12,7 +12,7 @@
  * ========================================================================== */
 
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { buildChineseSearchName } from '@/lib/cn-search-keywords';
+import { buildChineseSearchName, isWeakChineseKeyword } from '@/lib/cn-search-keywords';
 import { DEFAULT_CN_MODEL, enrichChineseNameViaLLM } from '@/lib/cn-search-llm';
 import { writeDurableKeyword } from '@/lib/cn-search-store';
 import { findSensitiveTerms } from '@/lib/growth-data/manual-input';
@@ -61,14 +61,18 @@ function readCard(): { abs: string; card: Record<string, unknown> } | null {
   }
 }
 
-/** Ghi keyword vào current card (never null). Best-effort; trả true nếu ghi xong. */
-function persistToCard(abs: string, card: Record<string, unknown>, keyword: string): boolean {
+/** Ghi keyword (zh) + cụm lõi VI vào current card. Best-effort; trả true nếu ghi xong.
+ * coreVi rỗng → KHÔNG ghi field (giữ card gọn, không tạo field rác). */
+function persistToCard(
+  abs: string,
+  card: Record<string, unknown>,
+  keyword: string,
+  coreVi: string,
+): boolean {
   try {
-    writeFileSync(
-      abs,
-      `${JSON.stringify({ ...card, chineseSearchName: keyword }, null, 2)}\n`,
-      'utf8',
-    );
+    const next: Record<string, unknown> = { ...card, chineseSearchName: keyword };
+    if (coreVi) next.vietnameseCoreKeyword = coreVi;
+    writeFileSync(abs, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
     return true;
   } catch {
     return false;
@@ -99,26 +103,20 @@ export async function POST(req: Request) {
   const shopId = String(card.shopId ?? '');
   const itemId = String(card.itemId ?? '');
 
-  // (0) Card đã có giá trị tốt → trả luôn, KHÔNG gọi API, KHÔNG overwrite. Backfill
-  // store bền (source suy từ việc có khớp dictionary không) để giá trị cũ thành durable.
-  const existing = typeof card.chineseSearchName === 'string' ? card.chineseSearchName.trim() : '';
-  if (existing) {
-    const src = buildChineseSearchName(name) === existing ? 'dictionary' : 'llm';
-    const durable = writeDurableKeyword(shopId, itemId, existing, src);
-    return Response.json({ ok: true, keyword: existing, source: 'card', persisted: false, durable });
-  }
-
-  // (1) Dictionary hit → persist card + store bền + trả, KHÔNG gọi API.
-  const dict = buildChineseSearchName(name);
-  if (dict) {
-    const persisted = persistToCard(abs, card, dict);
-    const durable = writeDurableKeyword(shopId, itemId, dict, 'dictionary');
+  // (0) Card đã có giá trị HOÀN CHỈNH: zh non-weak (ràng buộc 2: re-validate, loại
+  // feature-only như 防晒) VÀ có coreVi (ràng buộc 3) → trả luôn, KHÔNG gọi API.
+  const existingZh =
+    typeof card.chineseSearchName === 'string' ? card.chineseSearchName.trim() : '';
+  const existingVi =
+    typeof card.vietnameseCoreKeyword === 'string' ? card.vietnameseCoreKeyword.trim() : '';
+  if (existingZh && !isWeakChineseKeyword(existingZh) && existingVi) {
+    const durable = writeDurableKeyword(shopId, itemId, existingZh, 'llm', existingVi);
     return Response.json({
       ok: true,
-      keyword: dict,
-      source: 'dictionary',
-      persisted,
-      persistTarget: 'current-card',
+      keyword: existingZh,
+      coreVi: existingVi,
+      source: 'card',
+      persisted: false,
       durable,
     });
   }
@@ -128,27 +126,46 @@ export async function POST(req: Request) {
     return Response.json({ ok: false, reason: 'INVALID_OUTPUT' }, { status: 200 });
   }
 
-  // (2) Dictionary MISS → Claude. Key vắng → NO_API_KEY graceful (không throw).
+  // (1) AI rút gọn + dịch (ƯU TIÊN — cho cả coreVi + zh sát nghĩa). Loại zh feature-only.
   const apiKey = readEnvVar('ANTHROPIC_API_KEY');
-  if (!apiKey) {
-    return Response.json({ ok: false, reason: 'NO_API_KEY' }, { status: 200 });
+  if (apiKey) {
+    const model = readEnvVar('ANTHROPIC_MODEL') || DEFAULT_CN_MODEL;
+    const result = await enrichChineseNameViaLLM(name, { apiKey, model });
+    if (result.ok && result.keyword && !isWeakChineseKeyword(result.keyword)) {
+      const coreVi = (result.coreVi ?? '').trim();
+      const persisted = persistToCard(abs, card, result.keyword, coreVi);
+      const durable = writeDurableKeyword(shopId, itemId, result.keyword, 'llm', coreVi);
+      return Response.json({
+        ok: true,
+        keyword: result.keyword,
+        coreVi: coreVi || null,
+        source: 'llm',
+        persisted,
+        persistTarget: 'current-card',
+        durable,
+      });
+    }
+    // AI fail / trả feature-only → rớt xuống dictionary fallback bên dưới.
   }
-  const model = readEnvVar('ANTHROPIC_MODEL') || DEFAULT_CN_MODEL;
 
-  const result = await enrichChineseNameViaLLM(name, { apiKey, model });
-  if (!result.ok || !result.keyword) {
-    return Response.json({ ok: false, reason: result.reason ?? 'API_ERROR' }, { status: 200 });
+  // (2) Fallback offline: dictionary CHỈ khi MẠNH (non-weak) (ràng buộc 1). Không có
+  // coreVi → client vẫn thấy nút AI để hoàn thiện (ràng buộc 3).
+  const dict = buildChineseSearchName(name);
+  if (dict && !isWeakChineseKeyword(dict)) {
+    const persisted = persistToCard(abs, card, dict, '');
+    const durable = writeDurableKeyword(shopId, itemId, dict, 'dictionary');
+    return Response.json({
+      ok: true,
+      keyword: dict,
+      coreVi: null,
+      source: 'dictionary',
+      persisted,
+      persistTarget: 'current-card',
+      durable,
+    });
   }
 
-  // Chỉ persist khi có keyword hợp lệ — không overwrite bằng null.
-  const persisted = persistToCard(abs, card, result.keyword);
-  const durable = writeDurableKeyword(shopId, itemId, result.keyword, 'llm');
-  return Response.json({
-    ok: true,
-    keyword: result.keyword,
-    source: 'llm',
-    persisted,
-    persistTarget: 'current-card',
-    durable,
-  });
+  // (3) Không có nguồn nào ra kết quả mạnh.
+  if (!apiKey) return Response.json({ ok: false, reason: 'NO_API_KEY' }, { status: 200 });
+  return Response.json({ ok: false, reason: 'INVALID_OUTPUT' }, { status: 200 });
 }

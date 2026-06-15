@@ -9,7 +9,7 @@
  * ========================================================================== */
 
 import { existsSync, readFileSync } from 'node:fs';
-import { buildChineseSearchName } from '@/lib/cn-search-keywords';
+import { buildChineseSearchName, isWeakChineseKeyword } from '@/lib/cn-search-keywords';
 import { readDurableKeyword } from '@/lib/cn-search-store';
 import { resolveInsideRepo } from '@/lib/studio-data/paths';
 
@@ -38,9 +38,13 @@ interface CardSummary {
   price?: string;
   productImageUrl: string | null;
   description: string | null;
-  // Display-only: từ khóa tìm kiếm tiếng Trung SÁT NGHĨA suy ra từ tên VI (local,
-  // no API). KHÔNG ảnh hưởng job binding — chỉ giúp Operator tìm source.
+  // Display-only: từ khóa tìm kiếm tiếng Trung SÁT NGHĨA (đã re-validate, loại feature-
+  // only). KHÔNG ảnh hưởng job binding — chỉ giúp Operator tìm source.
   chineseSearchName: string | null;
+  // Cụm lõi tiếng Việt đã rút gọn (vd "Áo chống nắng cho bé UPF50"). null nếu chưa có.
+  vietnameseCoreKeyword: string | null;
+  // true khi thiếu zh / zh yếu / thiếu coreVi → UI cần mời Operator bấm AI hoàn thiện.
+  chineseNeedsAi: boolean;
 }
 
 /** Plain product text (name/description) — trim + cap length. Local-only read;
@@ -90,15 +94,33 @@ function readCurrentCard(): CardSummary | null {
     const { commissionRate, price } = parseScoring(
       typeof c.scoringCriteria === 'string' ? c.scoringCriteria : undefined,
     );
-    // Tên Trung — thứ tự: (1) persisted trong card → (2) durable store theo identity
-    // (sống qua re-promote, khôi phục giá trị AI không gọi lại API) → (3) suy luận
-    // dictionary. Read-only — KHÔNG ghi ngược file ở route GET này.
-    const persistedZh = typeof c.chineseSearchName === 'string' ? c.chineseSearchName.trim() : '';
+    // Tên Trung — RE-VALIDATE mọi nguồn, loại feature-only (vd 防晒) (ràng buộc 1+2).
+    // Thứ tự: (1) persisted card (non-weak) → (2) durable (non-weak) → (3) dictionary
+    // CHỈ khi mạnh. Read-only — KHÔNG ghi ngược file ở route GET này.
+    const persistedZhRaw =
+      typeof c.chineseSearchName === 'string' ? c.chineseSearchName.trim() : '';
+    const persistedViRaw =
+      typeof c.vietnameseCoreKeyword === 'string' ? c.vietnameseCoreKeyword.trim() : '';
+    const persistedZh =
+      persistedZhRaw && !isWeakChineseKeyword(persistedZhRaw) ? persistedZhRaw : '';
     const durable = persistedZh
       ? null
       : readDurableKeyword(String(c.shopId ?? ''), String(c.itemId ?? ''));
-    const chineseSearchName =
-      persistedZh || durable?.keyword || buildChineseSearchName(String(c.name ?? ''));
+    const durableZh = durable && !isWeakChineseKeyword(durable.keyword) ? durable.keyword : '';
+    let zh = persistedZh || durableZh;
+    let coreVi = persistedZh ? persistedViRaw : durableZh ? (durable?.keywordVi ?? '') : '';
+    if (!zh) {
+      // Dictionary fallback — chỉ nhận khi mạnh; dictionary KHÔNG cung cấp coreVi.
+      const dict = buildChineseSearchName(String(c.name ?? ''));
+      if (dict && !isWeakChineseKeyword(dict)) {
+        zh = dict;
+        coreVi = '';
+      }
+    }
+    const chineseSearchName = zh || null;
+    const vietnameseCoreKeyword = coreVi || null;
+    // Ràng buộc 3: thiếu zh (hoặc yếu) HOẶC thiếu coreVi → cần AI hoàn thiện.
+    const chineseNeedsAi = !chineseSearchName || !vietnameseCoreKeyword;
     // Sanitized projection — never echo canonicalUrl / canonicalCleanUrl.
     return {
       name: String(c.name ?? ''),
@@ -110,7 +132,9 @@ function readCurrentCard(): CardSummary | null {
       validationStatus: String(c.validationStatus ?? 'UNKNOWN'),
       productImageUrl: safeImageUrl(c.productImageUrl),
       description: safeText(c.description, 500),
-      chineseSearchName: chineseSearchName || null,
+      chineseSearchName,
+      vietnameseCoreKeyword,
+      chineseNeedsAi,
       ...(typeof c.score === 'number' ? { score: c.score } : {}),
       ...(commissionRate ? { commissionRate } : {}),
       ...(price ? { price } : {}),

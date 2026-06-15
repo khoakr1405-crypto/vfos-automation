@@ -19,6 +19,8 @@ export type CnKeywordSource = 'dictionary' | 'llm';
 
 interface CnKeywordEntry {
   keyword: string;
+  /** Cụm lõi tiếng Việt đã rút gọn (optional — entry cũ không có vẫn đọc được). */
+  keywordVi?: string;
   source: CnKeywordSource;
   updatedAt: string;
 }
@@ -74,12 +76,14 @@ function readStore(): CnKeywordStoreFile {
 export function readDurableKeyword(
   shopId: string,
   itemId: string,
-): { keyword: string; source: CnKeywordSource } | null {
+): { keyword: string; keywordVi: string | null; source: CnKeywordSource } | null {
   const key = keyOf(shopId, itemId);
   if (!key) return null;
   const e = readStore().entries[key];
   if (!e || typeof e.keyword !== 'string' || e.keyword.trim() === '') return null;
-  return { keyword: e.keyword, source: e.source === 'llm' ? 'llm' : 'dictionary' };
+  const keywordVi =
+    typeof e.keywordVi === 'string' && e.keywordVi.trim() !== '' ? e.keywordVi.trim() : null;
+  return { keyword: e.keyword, keywordVi, source: e.source === 'llm' ? 'llm' : 'dictionary' };
 }
 
 /**
@@ -91,6 +95,7 @@ export function writeDurableKeyword(
   itemId: string,
   keyword: string,
   source: CnKeywordSource,
+  keywordVi?: string,
 ): boolean {
   const key = keyOf(shopId, itemId);
   const kw = (keyword || '').trim();
@@ -100,7 +105,8 @@ export function writeDurableKeyword(
 
   const store = readStore();
   const now = new Date().toISOString();
-  store.entries[key] = { keyword: kw, source, updatedAt: now };
+  const viCore = (keywordVi || '').trim();
+  store.entries[key] = { keyword: kw, source, updatedAt: now, ...(viCore ? { keywordVi: viCore } : {}) };
   store.schemaVersion = SCHEMA_VERSION;
   store.updatedAt = now;
 

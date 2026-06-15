@@ -45,6 +45,7 @@ const NOUN_SPECIFIC: readonly Entry[] = [
   ['binh sua', '奶瓶'],
   ['xe day', '婴儿车'],
   ['ao dieu hoa', '空调服'],
+  ['ao chong nang', '防晒衣'],
   ['sua tam goi', '婴儿洗发沐浴露'],
   ['nuoc giat', '洗衣液'],
   ['nuoc xa', '柔顺剂'],
@@ -94,9 +95,27 @@ const NOUN_BROAD: readonly Entry[] = [
   ['kinh', '眼镜'],
 ];
 
+// Tập token tiếng Trung CHỈ-đặc-tính (feature) — kể cả '透气' thêm động ở runtime. Một
+// keyword gồm TOÀN token loại này (vd '防晒', '防晒 多功能') là FEATURE-ONLY: không có
+// danh từ sản phẩm → KHÔNG đủ sát nghĩa làm kết quả cuối.
+const FEATURE_ZH = new Set<string>([...FEATURE.map(([, zh]) => zh), '透气']);
+
+/**
+ * True nếu keyword tiếng Trung là FEATURE-ONLY (vd '防晒') hoặc rỗng — tức chỉ có đặc
+ * tính, thiếu danh từ sản phẩm. Dùng re-validate giá trị từ dictionary/persisted/durable/
+ * AI để KHÔNG cho feature-only lọt ra (ràng buộc bắt buộc 1 + 2).
+ */
+export function isWeakChineseKeyword(zh: string | null | undefined): boolean {
+  const s = (zh ?? '').trim();
+  if (!s) return true;
+  const parts = s.split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return true;
+  return parts.every((p) => FEATURE_ZH.has(p));
+}
+
 /**
  * Suy ra cụm từ khóa tiếng Trung SÁT NGHĨA từ tên VI. Trả null nếu không đủ sát
- * nghĩa (chỉ match category rộng / không match gì).
+ * nghĩa (chỉ match category rộng / feature-only / không match gì).
  */
 export function buildChineseSearchName(viName: string): string | null {
   if (!viName) return null;
@@ -138,10 +157,11 @@ export function buildChineseSearchName(viName: string): string | null {
 
   const nounsBroad = collect(NOUN_BROAD, false);
 
-  // Gate sát nghĩa: cần ≥1 cụm cụ thể (specific noun / feature / age / compound).
-  const hasSpecific =
-    nounsSpecific.length > 0 || features.length > 0 || age.length > 0 || compound.length > 0;
-  if (!hasSpecific) return null;
+  // Gate sát nghĩa: PHẢI có DANH TỪ sản phẩm cụ thể (noun-specific) hoặc compound đặc
+  // thù. FEATURE/age/broad đứng MỘT MÌNH (vd chỉ '防晒') KHÔNG đủ — trả null để lớp AI
+  // dịch cả cụm. (Không cho feature-only lọt ra làm kết quả cuối.)
+  const hasProductAnchor = nounsSpecific.length > 0 || compound.length > 0;
+  if (!hasProductAnchor) return null;
 
   const seen = new Set<string>();
   const parts: string[] = [];
