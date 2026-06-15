@@ -163,6 +163,16 @@ function buildNicheRollup(jobs: OperatorJobDTO[]): NicheRollup[] {
   });
 }
 
+// Evidence-on-job (#5 G3): format doanh thu VND + ngày đo (UTC) cho strip per-job.
+const formatVnd = (n: number): string => new Intl.NumberFormat('vi-VN').format(n);
+function formatMeasuredAt(iso: string | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const pad = (x: number) => String(x).padStart(2, '0');
+  return `${pad(d.getUTCDate())}/${pad(d.getUTCMonth() + 1)}/${d.getUTCFullYear()}`;
+}
+
 // Round UI-03: dữ liệu job đọc THẬT và wire nút bấm Approve/Reject thật.
 export function OperatorJobQueue() {
   const [jobs, setJobs] = useState<OperatorJobDTO[]>([]);
@@ -576,6 +586,31 @@ export function OperatorJobQueue() {
                       </p>
                     </div>
                   </div>
+
+                  {/* Evidence-on-job (#5 G3) — chỉ hiện khi job đã có số đo thật (runtime
+                      snapshots join theo jobId). Chưa đo → không hiện (không "0 đ" gây hiểu nhầm). */}
+                  {job.evidence && (
+                    <div className="rounded-xl border border-accent-green/20 bg-accent-green/5 p-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                      <span className="inline-flex items-center gap-1.5 text-xs font-bold text-accent-green">
+                        <UtilIcon name="check" width={12} height={12} />
+                        Đã đo
+                      </span>
+                      <span className="text-xs text-neutral-200">
+                        Doanh thu{' '}
+                        <span className="font-bold text-accent-green">
+                          {formatVnd(job.evidence.revenue)} đ
+                        </span>
+                      </span>
+                      <span className="text-[11px] text-neutral-400">
+                        {formatVnd(job.evidence.clicks)} clicks · {formatVnd(job.evidence.conversions)}{' '}
+                        đơn
+                      </span>
+                      <span className="text-[10px] text-neutral-500">
+                        {job.evidence.snapshotCount} snapshot · đo{' '}
+                        {formatMeasuredAt(job.evidence.lastMeasuredAt)}
+                      </span>
+                    </div>
+                  )}
 
                   {/* Technical error log — chỉ hiện khi state = FAILED */}
                   {job.errorLog && (

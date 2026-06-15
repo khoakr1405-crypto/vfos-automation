@@ -26,6 +26,23 @@ export type VfosJobState =
 
 export type StatusAccent = 'blue' | 'violet' | 'green' | 'amber' | 'cyan' | 'rose';
 
+/**
+ * Evidence-on-job (#5 G3): tổng số liệu Operator ĐÃ ĐO cho job (join từ local
+ * runtime snapshots theo jobId, chỉ post-level để tránh double-count role). null
+ * khi job chưa có snapshot nào — KHÔNG bịa 0. Doanh thu là số nhập tay, không API.
+ */
+export interface JobEvidenceSummary {
+  /** Doanh thu affiliate (M5) bằng VND — tổng post-level. */
+  revenue: number;
+  clicks: number;
+  conversions: number;
+  views: number;
+  /** Số snapshot post-level đã đo cho job. */
+  snapshotCount: number;
+  /** measuredAt mới nhất (ISO) trong các snapshot của job; null nếu không có. */
+  lastMeasuredAt: string | null;
+}
+
 export interface OperatorJobDTO {
   id: string;
   title: string;
@@ -81,6 +98,8 @@ export interface OperatorJobDTO {
     productionAllowed?: boolean | null;
     warning?: string | null;
   } | null;
+  /** Evidence-on-job (#5 G3): số liệu đã đo, join từ runtime snapshots. null = chưa đo. */
+  evidence?: JobEvidenceSummary | null;
 }
 
 export interface ProductRowDTO {

@@ -18,6 +18,7 @@ import {
   loadChannelsWithSource,
   loadNichesWithSource,
 } from '@/lib/growth-data/load';
+import { readRuntimeStore } from '@/lib/growth-data/runtime-store';
 import type { Channel as GrowthChannel } from '@/lib/growth-data/types';
 import { repoRoot, resolveInsideRepo } from './paths';
 import {
@@ -57,6 +58,7 @@ function loadStudioEnv() {
 loadStudioEnv();
 import type {
   GateState,
+  JobEvidenceSummary,
   LivePublishAuditRecord,
   LivePublishGate,
   LivePublishGateResult,
@@ -71,6 +73,7 @@ import type {
 export type {
   AffiliateGate,
   GateState,
+  JobEvidenceSummary,
   LivePublishAuditRecord,
   LivePublishGate,
   LivePublishGateResult,
@@ -416,10 +419,39 @@ function loadRegistryEntries(): RegistryEntry[] {
   return reg.jobs.filter((j) => j && typeof j.jobId === 'string');
 }
 
+/**
+ * Evidence-on-job (#5 G3): đọc local runtime store 1 LẦN, gom snapshot post-level
+ * (ctaRole === null) theo jobId → tổng đã đo. Chỉ post-level để tránh double-count
+ * với role-level. Read-only, never-throw (store rỗng → map rỗng). KHÔNG bịa số.
+ */
+function evidenceByJob(): Map<string, JobEvidenceSummary> {
+  const map = new Map<string, JobEvidenceSummary>();
+  for (const s of readRuntimeStore().snapshots) {
+    if (s.ctaRole !== null) continue;
+    const e = map.get(s.jobId) ?? {
+      revenue: 0,
+      clicks: 0,
+      conversions: 0,
+      views: 0,
+      snapshotCount: 0,
+      lastMeasuredAt: null,
+    };
+    e.revenue += s.revenue ?? 0;
+    e.clicks += s.clicks;
+    e.conversions += s.conversions;
+    e.views += s.views;
+    e.snapshotCount += 1;
+    if (!e.lastMeasuredAt || s.measuredAt > e.lastMeasuredAt) e.lastMeasuredAt = s.measuredAt;
+    map.set(s.jobId, e);
+  }
+  return map;
+}
+
 /** Tất cả job thật, mới nhất trước. Read-only, fallback an toàn. */
 export function loadOperatorJobs(): OperatorJobDTO[] {
   const entries = loadRegistryEntries();
-  const jobs = entries.map(buildJobDTO);
+  const evidence = evidenceByJob();
+  const jobs = entries.map(buildJobDTO).map((j) => ({ ...j, evidence: evidence.get(j.id) ?? null }));
   jobs.sort((x, y) => (y.updatedAt ?? '').localeCompare(x.updatedAt ?? ''));
   return jobs;
 }
