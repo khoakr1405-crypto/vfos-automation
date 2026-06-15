@@ -2,7 +2,7 @@
  * VFOS Multi-Job Foundation — Round 36.
  *
  * Subcommands:
- *   pnpm job:create        --from-product <path> [--dry-run]
+ *   pnpm job:create        --from-product <path> [--channel <id>] [--batch <id>] [--dry-run]
  *   pnpm job:attach-source --job <jobId> [--file <path|inbox-filename>] [--dry-run]
  *   pnpm job:source-inbox  [--job <jobId>]   (list videos in the operator inbox)
  *   pnpm job:status        --job <jobId>
@@ -117,6 +117,9 @@ interface JobManifest {
   productId: string | null;
   // Niche → Channel → Job binding (Phase 1). null = job legacy tạo trước khi có binding.
   channelId?: string | null;
+  // Batch cohort (#2 Phase B). Set khi tạo nhiều job 1 lần (job:create --batch <id>).
+  // null = job đơn lẻ / legacy. KHÔNG phải gate, chỉ để gom batch ở Command Center.
+  batchId?: string | null;
   // Display-only: từ khóa tìm kiếm tiếng Trung suy ra từ tên VI (đi tìm source
   // Douyin/Taobao). KHÔNG phải productBinding, KHÔNG gate gì — chỉ tiện tham chiếu.
   chineseSearchName?: string | null;
@@ -165,6 +168,7 @@ interface RegistryEntry {
   sourceVideoPath: string | null;
   captionedPreviewPath: string | null;
   operatorDecision: 'PENDING' | 'APPROVED' | 'REJECTED';
+  batchId?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -530,6 +534,7 @@ function entryFromManifest(manifest: JobManifest, productName: string | null): R
     sourceVideoPath: manifest.source.sourceVideoPath,
     captionedPreviewPath: manifest.artifacts.captionedPreviewPath,
     operatorDecision: manifest.review.operatorDecision,
+    batchId: manifest.batchId ?? null,
     createdAt: manifest.createdAt,
     updatedAt: manifest.updatedAt,
   };
@@ -688,6 +693,7 @@ function cmdCreate(args: string[]): number {
     options: {
       'from-product': { type: 'string' },
       channel: { type: 'string' },
+      batch: { type: 'string' },
       'dry-run': { type: 'boolean', default: false },
     },
     allowPositionals: false,
@@ -695,11 +701,23 @@ function cmdCreate(args: string[]): number {
   });
   const fromProduct = parsed.values['from-product'] as string | undefined;
   const explicitChannel = parsed.values.channel as string | undefined;
+  const batchArg = parsed.values.batch as string | undefined;
   const dryRun = Boolean(parsed.values['dry-run']);
 
   if (!fromProduct) {
     console.error('Error: --from-product <path> is required');
     return 1;
+  }
+
+  // Batch cohort (#2 Phase B) — optional. Thiếu → null (hành vi cũ y hệt). Có thì
+  // phải đúng định dạng id an toàn; KHÔNG phải gate, chỉ để gom batch ở Command Center.
+  let batchId: string | null = null;
+  if (batchArg != null && batchArg !== '') {
+    if (!/^[A-Za-z0-9_-]+$/.test(batchArg)) {
+      console.error('🛑 INVALID_BATCH_ID: chỉ cho phép [A-Za-z0-9_-].');
+      return 2;
+    }
+    batchId = batchArg;
   }
 
   const productCardPath = resolve(fromProduct);
@@ -749,6 +767,7 @@ function cmdCreate(args: string[]): number {
     }`,
   );
   if (channelRes.warning) console.log(`⚠️  ${channelRes.warning}`);
+  console.log(`Batch:             ${batchId ?? '(không thuộc batch)'}`);
   console.log(`Job dir:           ${JOBS_ROOT}/${jobId}/`);
   console.log(`Initial state:     WAITING_FOR_SOURCE_VIDEO`);
   console.log('------------------------------------------------------');
@@ -767,6 +786,7 @@ function cmdCreate(args: string[]): number {
     runId,
     productId,
     channelId: channelRes.channelId,
+    batchId,
     chineseSearchName,
     source: {
       productCardPath: `${JOBS_ROOT}/${jobId}/product_card.json`,
@@ -3050,7 +3070,9 @@ async function main(): Promise<number> {
       return cmdList(rest);
     default:
       console.error('Usage:');
-      console.error('  pnpm job:create        --from-product <path> [--dry-run]');
+      console.error(
+        '  pnpm job:create        --from-product <path> [--channel <id>] [--batch <id>] [--dry-run]',
+      );
       console.error(
         '  pnpm job:attach-source --job <jobId> [--file <path|inbox-filename>] [--dry-run]',
       );

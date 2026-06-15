@@ -21,8 +21,10 @@ const RUNNING_STATES = new Set<VfosJobState>([
 const UNKNOWN = '__unknown__';
 
 interface BatchRow {
-  dayKey: string;
-  dayLabel: string;
+  key: string;
+  label: string;
+  /** Mốc thời gian đại diện (max createdAt trong cohort) để sắp xếp mới nhất trước. '' = không rõ. */
+  sortTs: string;
   total: number;
   pendingReview: number;
   running: number;
@@ -51,14 +53,24 @@ function dayLabelOf(key: string): string {
   return `${d}/${m}/${y}`;
 }
 
-// Gom theo ngày tạo. Ngày mới nhất trước; nhóm không rõ ngày xuống cuối.
+// Cohort của 1 job: batchId tường minh (#2 Phase B) ưu tiên; chưa tag → gom theo
+// ngày tạo (giữ nguyên hành vi Phase A cho job legacy/đơn lẻ).
+function cohortOf(j: OperatorJobDTO): { key: string; label: string } {
+  if (j.batchId) return { key: `batch:${j.batchId}`, label: `Batch ${j.batchId}` };
+  const dk = dayKeyOf(j.createdAt);
+  return { key: dk, label: `Batch · ${dayLabelOf(dk)}` };
+}
+
+// Gom theo cohort (batchId hoặc ngày). Cohort mới nhất (max createdAt) trước; nhóm
+// không rõ thời gian xuống cuối.
 function buildBatches(jobs: OperatorJobDTO[]): BatchRow[] {
   const map = new Map<string, BatchRow>();
   for (const j of jobs) {
-    const key = dayKeyOf(j.createdAt);
+    const { key, label } = cohortOf(j);
     const row = map.get(key) ?? {
-      dayKey: key,
-      dayLabel: dayLabelOf(key),
+      key,
+      label,
+      sortTs: '',
       total: 0,
       pendingReview: 0,
       running: 0,
@@ -82,12 +94,13 @@ function buildBatches(jobs: OperatorJobDTO[]): BatchRow[] {
       row.conversions += j.evidence.conversions;
       row.measuredCount += 1;
     }
+    if (j.createdAt && j.createdAt > row.sortTs) row.sortTs = j.createdAt;
     map.set(key, row);
   }
   return [...map.values()].sort((a, b) => {
-    if (a.dayKey === UNKNOWN) return 1;
-    if (b.dayKey === UNKNOWN) return -1;
-    return b.dayKey.localeCompare(a.dayKey);
+    if (a.sortTs === '') return 1;
+    if (b.sortTs === '') return -1;
+    return b.sortTs.localeCompare(a.sortTs);
   });
 }
 
@@ -113,10 +126,10 @@ export function BatchProgressPanel({ jobs }: { jobs: OperatorJobDTO[] }) {
           { label: 'lỗi', n: b.failed, cls: 'text-accent-rose' },
         ];
         return (
-          <div key={b.dayKey} className="rounded-lg border border-hairline/50 bg-card/60 p-2.5">
+          <div key={b.key} className="rounded-lg border border-hairline/50 bg-card/60 p-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="text-xs font-bold text-neutral-100">
-                Batch · {b.dayLabel}
+                {b.label}
                 <span className="ml-1.5 font-normal text-neutral-500">({b.total} job)</span>
               </span>
               <span className="text-[11px] font-semibold text-accent-green">{pct}% xong</span>

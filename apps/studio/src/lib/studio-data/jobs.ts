@@ -98,6 +98,7 @@ interface RegistryEntry {
   sourceVideoPath?: string | null;
   captionedPreviewPath?: string | null;
   operatorDecision?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  batchId?: string | null;
   createdAt?: string;
   updatedAt?: string;
   sourceVideoUrl?: string | null;
@@ -118,6 +119,7 @@ interface Manifest {
   jobId: string;
   productId?: string | null;
   channelId?: string | null;
+  batchId?: string | null;
   source?: {
     productCardPath?: string | null;
     sourceVideoPath?: string | null;
@@ -405,6 +407,7 @@ function buildJobDTO(entry: RegistryEntry): OperatorJobDTO {
     ownerValid,
     notes: manifest?.review?.notes ?? null,
     errorLog,
+    batchId: entry.batchId ?? manifest?.batchId ?? null,
     createdAt: entry.createdAt ?? manifest?.createdAt ?? null,
     updatedAt: manifest?.updatedAt ?? entry.updatedAt ?? null,
     source: {

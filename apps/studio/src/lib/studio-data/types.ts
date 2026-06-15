@@ -58,6 +58,8 @@ export interface OperatorJobDTO {
    * kênh hoặc lane không khớp niche active nào trong config/niches.json. */
   nicheId: string | null;
   nicheDisplayName: string | null;
+  /** Batch cohort (#2 Phase B): set khi tạo nhiều job 1 lần. null = job đơn lẻ/legacy. */
+  batchId: string | null;
   platform: 'tiktok' | 'facebook' | 'youtube';
   reason: string;
   state: VfosJobState;
