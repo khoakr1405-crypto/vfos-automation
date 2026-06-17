@@ -4,10 +4,16 @@ import type { NextConfig } from 'next';
 // Round UI-01: front-end shell only. No backend rewrites, no real API calls.
 const config: NextConfig = {
   transpilePackages: ['@vfos/facebook'],
-  webpack: (config) => {
+  experimental: {
+    webpackMemoryOptimizations: true,
+    cpus: 2,
+    preloadEntriesOnStart: false,
+  },
+  webpack: (config, { dev }) => {
     config.resolve.extensionAlias = {
       '.js': ['.ts', '.tsx', '.js', '.jsx'],
     };
+    if (dev) config.parallelism = 2;
     return config;
   },
 };
