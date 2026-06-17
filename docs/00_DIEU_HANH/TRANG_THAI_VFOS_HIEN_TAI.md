@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-06-16 (**Source Subtitle Scrub — tự động detect & XÓA phụ đề Trung burned-in (delogo, dải canh giữa = bề rộng dòng dài nhất + pad, kẹp ≤88% khung, KHÔNG full-frame) + canh phụ đề Việt giữa dải đã che; default-ON cho job mới, guard `--skip-scrub-subtitle`** — xem Phần 35, commit `74fc0c2`. Trước đó: bỏ human gate "Duyệt nguồn sạch" — Phần 34 (vẫn CHƯA commit). Source Intake demo/fallback — Phần 33.)
-> **Branch**: `fix/shopee-modal-read` | **Commit mốc tại thời điểm cập nhật trạng thái**: `74fc0c2` (`feat(captions): auto-detect & erase source CN subtitles, burn VN caption`) — **chưa push tại thời điểm soạn doc** (commit doc này xong sẽ push branch `fix/shopee-modal-read`, theo lệnh Operator)
+> **Cập nhật lần cuối**: 2026-06-16 (**Subtitle Scrub — NÂNG ENGINE detect sang PaddleOCR text-detection (paddle 2.6 + mkldnn)**: dò VÙNG chữ (polygon ôm trọn dòng) thay word-box → hết lòi ký tự mép 就/夹, tự thích nghi mọi video, KHÔNG chỉnh tay; nhanh ~7× (60s video ≈ 40s); fallback tesseract — xem **Phần 36**, commit `43ab827` (đã push). Nền tảng Subtitle Scrub (detect→xóa delogo→phụ đề Việt canh giữa dải, default-ON) — Phần 35, commit `74fc0c2`. Bỏ human gate "Duyệt nguồn sạch" — Phần 34 (vẫn CHƯA commit).)
+> **Branch**: `fix/shopee-modal-read` | **Commit mốc**: `43ab827` (`feat(captions): PaddleOCR text-detection engine for subtitle scrub (auto width)`) — **ĐÃ push** (origin/fix/shopee-modal-read, sync 0/0). Chuỗi: `74fc0c2` (scrub core) → `ca39051` (docs) → `43ab827` (PaddleOCR engine).
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task → luôn chạy `pnpm vfos:daily` để có chỉ dẫn trạng thái mới nhất
 
 > ⚠️ **ĐƯỜNG VẬN HÀNH CHÍNH THỨC**: dùng `docs/00_DIEU_HANH/HUONG_DAN_VAN_HANH_CHINH_THUC_VFOS.md` (operator guide chuẩn, flow A-Z `commerce:intake` → `job:run-review` → `job:publish-facebook`).
@@ -2341,6 +2341,31 @@ DOM card img
 
 ---
 
+### ✅ Phần 36 — Nâng engine detect phụ đề Trung sang PaddleOCR text-detection (paddle 2.6 + mkldnn): ĐÃ CHỐT + PUSH (2026-06-16)
+
+**Vì sao**: Phần 35 dùng tesseract.js (word-box) suy hình học → OCR **rớt ký tự mép** + lấy mẫu thưa → dải che hụt, **lòi 就/夹** ở 2 bên; phải chỉnh tay theo từng video (Operator bác). Cốt lõi: sai công cụ đo kích thước.
+
+**Giải pháp (Operator chọn hướng B → B1 PaddleOCR)**: dò **VÙNG chữ** (DBNet text-detection) → polygon **ôm trọn cả dòng** (không rớt mép). Geometry (Y/H, width, tâm, thời gian) suy từ detection chính xác → **bỏ hẳn hằng số pad chỉnh tay**, tự thích nghi mọi cỡ/vị trí.
+
+**Quyết định kỹ thuật (đo thật)**:
+- paddle **3.x trên CPU buộc tắt mkldnn** (lỗi `onednn×PIR` — tắt PIR cũng không cứu) → ~3s/frame, video 60s ~6 phút. **Không scale.**
+- → hạ xuống **paddlepaddle 2.6.2 + paddleocr 2.7.3 + mkldnn ON** (numpy<2 bắt buộc theo ABI) → ~0.3s/frame, **nhanh ~7-10×** (003: 102s→**15s**; ước 60s video ≈ **40s**).
+- Frame OCR hạ 384px + 2fps (số box detect không đổi).
+
+**Kiến trúc**: `tools/subtitle-detect-paddle/` (venv Python: `detect.py` PP-OCR det+rec lang ch → JSON polygon; venv/model/log **gitignored**, setup 1 lần ở README). `source-subtitle-detector.ts`: `--engine paddle` (default) gọi detect.py, **fallback tesseract.js** nếu thiếu venv/lỗi; `--det-width`, `--fps`. Mask schema giữ nguyên → cover-filter/detect-core **không đổi** (box paddle chính xác feed thẳng band-unify + clamp).
+
+**Verify offline (KHÔNG OpenAI/ElevenLabs, KHÔNG publish) — 4 video**:
+- 615_003 kẹp tóc (có phụ đề): dải `[0.229–0.810]` → render **sạch, hết lòi 就/夹** ✅
+- 616_002 selfie (có phụ đề): 1 dải sạch, không hồi quy ✅
+- 615_002 hộp/tủ lạnh (chữ CẢNH trên màn hình sản phẩm): **0 dải → không che → không phá sản phẩm** ✅
+- 615_001 tiktok VN (không phụ đề Trung): **0 dải → không che nhầm** ✅
+
+**Commit `43ab827`** (5 file, +315/-31): `source-subtitle-detector.ts` + `.gitignore` + `tools/subtitle-detect-paddle/{detect.py,requirements.txt,README.md}`. **KHÔNG commit**: `.venv/`, model cache, `_install*.log`, runtime mask/frame; và (ngoài scope) `source-intake/route.ts`, `source-url/`, `bgm_library.json`, `implementation_plan.md`. Self-review: tsc 0 lỗi · biome chỉ baseline · test 16/16 · preview vẫn là cổng duyệt.
+
+**Bước tiếp theo**: (a) test thêm video mới (giờ ~15–40s/video), hoặc (b) nếu cần nhanh hơn cho scale lớn: cache model thường trú / giảm fps-zone, hoặc cân nhắc ONNX (B2) bỏ Python. Operator quyết.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
@@ -2537,11 +2562,11 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `fix/shopee-modal-read` |
-| HEAD local | `74fc0c2` `feat(captions): auto-detect & erase source CN subtitles, burn VN caption` (2026-06-16) + commit doc Phần 35 ngay sau |
+| HEAD local | `43ab827` `feat(captions): PaddleOCR text-detection engine for subtitle scrub (auto width)` (2026-06-16) + commit doc Phần 36 ngay sau |
 | Remote | `origin` (GitHub) |
-| origin/... | sẽ cập nhật sau push branch `fix/shopee-modal-read` (theo lệnh Operator vòng này) |
-| Sync status | Local **ahead** (subtitle scrub `74fc0c2` + commit doc) — **push ngay sau commit doc này** |
-| Working tree | Còn mở (NGOÀI scope subtitle, KHÔNG commit vòng này): `source-intake/route.ts`, `source-url/` (Phần 34 chưa chốt), `production/_media/bgm_library.json` (runtime media), `implementation_plan.md`. |
+| origin/fix/shopee-modal-read | `43ab827` — đã push (chuỗi `74fc0c2` → `ca39051` docs → `43ab827`) |
+| Sync status | **0 / 0** sau push `43ab827` (commit doc Phần 36 này sẽ push tiếp). |
+| Working tree | Còn mở (NGOÀI scope, KHÔNG commit): `source-intake/route.ts`, `source-url/` (Phần 34 chưa chốt), `production/_media/bgm_library.json` (runtime media), `implementation_plan.md`. Runtime PaddleOCR (`tools/subtitle-detect-paddle/.venv`, model cache, `_install*.log`) đã gitignore. |
 | Dev server | Port 3002 (bật khi review). Dừng bằng `pnpm studio:dev:clean --no-start`. |
 
 **Trạng thái artifacts production** (tính đến 2026-05-29 phiên sync):
