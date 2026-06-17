@@ -2012,11 +2012,13 @@ Hãy trả về duy nhất một đối tượng JSON có định dạng chính 
     };
 
     // --- Retry policy cho OpenAI 429 (đặc biệt token TPM) -------------------
-    // TPM reset theo PHÚT nên backoff 1s/2s cũ không bao giờ qua được cửa sổ.
-    // Ưu tiên header server (Retry-After / x-ratelimit-reset-*); không có thì
-    // backoff dài min-aware (15s→30s→60s…), cap 60s, giới hạn lần rõ ràng.
+    // TPM reset theo PHÚT, nên dù server báo reset nhỏ (vd "292ms") bucket vẫn
+    // có thể đầy cả phút (Vision vừa đốt token ảnh). => sàn chờ LEO THANG
+    // 15s→30s→60s→75s để chắc chắn vượt cửa sổ TPM; chỉ ưu tiên gợi ý server khi
+    // gợi ý đó LỚN hơn sàn. Trần mỗi lần 75s, trần tổng 180s — rõ ràng, hữu hạn.
     const MAX_RATE_LIMIT_WAITS = 5;
-    const MAX_RATE_LIMIT_BACKOFF_MS = 60_000;
+    const MAX_PER_WAIT_MS = 75_000;
+    const MAX_TOTAL_RATE_LIMIT_WAIT_MS = 180_000;
     // Parse chuỗi duration kiểu OpenAI: "292ms", "1.5s", "1m30s", "6m0s" → ms.
     const parseResetDuration = (v: string | null): number | null => {
       if (!v) return null;
@@ -2025,31 +2027,56 @@ Hãy trả về duy nhất một đối tượng JSON có định dạng chính 
       const re = /(\d+(?:\.\d+)?)(ms|h|m|s)/g;
       let m: RegExpExecArray | null = re.exec(v.trim());
       while (m !== null) {
-        matched = true;
-        const n = Number.parseFloat(m[1]);
-        if (m[2] === 'ms') ms += n;
-        else if (m[2] === 's') ms += n * 1000;
-        else if (m[2] === 'm') ms += n * 60_000;
-        else ms += n * 3_600_000;
+        const num = m[1];
+        const unit = m[2];
+        if (num !== undefined && unit !== undefined) {
+          matched = true;
+          const n = Number.parseFloat(num);
+          if (unit === 'ms') ms += n;
+          else if (unit === 's') ms += n * 1000;
+          else if (unit === 'm') ms += n * 60_000;
+          else ms += n * 3_600_000;
+        }
         m = re.exec(v.trim());
       }
       return matched ? Math.round(ms) : null;
     };
-    // Thời gian chờ trước khi thử lại sau 429: header server > backoff min-aware.
-    const rateLimitWaitMs = (headers: Headers, n: number): number => {
+    // Parse message body kiểu "Please try again in 1m30s" / "try again in 292ms".
+    const parseTryAgainMessage = (msg: string | null): number | null => {
+      if (!msg) return null;
+      const m = /try again in\s+([0-9.]+\s*(?:ms|h|m|s)(?:\s*[0-9.]+\s*(?:ms|h|m|s))*)/i.exec(msg);
+      return m ? parseResetDuration(m[1] ?? null) : null;
+    };
+    // Sàn leo thang theo lần: 15s, 30s, 60s, 75s, 75s (cap MAX_PER_WAIT_MS).
+    const escalatingFloorMs = (n: number): number =>
+      Math.min(15_000 * 2 ** (n - 1), MAX_PER_WAIT_MS);
+    // Gợi ý chờ từ server: retry-after header > x-ratelimit-reset-* header >
+    // message body "try again in Xs". null nếu không có nguồn nào.
+    const serverSuggestedMs = (headers: Headers, bodyMsg: string | null): number | null => {
       const retryAfter = headers.get('retry-after');
-      let serverMs: number | null = null;
-      if (retryAfter && Number.isFinite(Number(retryAfter))) {
-        serverMs = Number(retryAfter) * 1000;
-      }
-      if (serverMs === null) {
-        serverMs =
-          parseResetDuration(headers.get('x-ratelimit-reset-tokens')) ??
-          parseResetDuration(headers.get('x-ratelimit-reset-requests'));
-      }
-      // Pad 1s để chắc chắn vượt mốc reset; cap để không treo vô hạn.
-      if (serverMs !== null) return Math.min(serverMs + 1000, MAX_RATE_LIMIT_BACKOFF_MS);
-      return Math.min(15_000 * 2 ** (n - 1), MAX_RATE_LIMIT_BACKOFF_MS);
+      if (retryAfter && Number.isFinite(Number(retryAfter))) return Number(retryAfter) * 1000;
+      const hdr =
+        parseResetDuration(headers.get('x-ratelimit-reset-tokens')) ??
+        parseResetDuration(headers.get('x-ratelimit-reset-requests'));
+      if (hdr !== null) return hdr;
+      return parseTryAgainMessage(bodyMsg);
+    };
+    // Thời gian chờ trước khi thử lại sau 429 + nguồn (để log minh bạch).
+    const rateLimitWaitMs = (
+      headers: Headers,
+      bodyMsg: string | null,
+      n: number,
+    ): { ms: number; source: string } => {
+      const server = serverSuggestedMs(headers, bodyMsg);
+      const floor = escalatingFloorMs(n);
+      // Gợi ý server pad 1s để chắc chắn vượt mốc reset; rồi lấy max với sàn.
+      const padded = server !== null ? server + 1000 : 0;
+      const ms = Math.min(Math.max(padded, floor), MAX_PER_WAIT_MS);
+      const source =
+        server !== null
+          ? `server~${Math.round(server / 1000)}s vs sàn ${Math.round(floor / 1000)}s`
+          : `sàn leo thang ${Math.round(floor / 1000)}s (không có gợi ý server)`;
+      return { ms, source };
     };
 
     let validation: ValidationResult | null = null;
@@ -2083,17 +2110,36 @@ Hãy trả về duy nhất một đối tượng JSON có định dạng chính 
             temperature: 0.7,
           }),
         };
-        // Rate-limit aware: 429 (đặc biệt token TPM) chờ theo header/min-aware,
-        // KHÔNG phải 1-2s. Vòng chờ có giới hạn rõ (MAX_RATE_LIMIT_WAITS).
+        // Rate-limit aware: 429 (đặc biệt token TPM) chờ theo gợi ý server HOẶC
+        // sàn leo thang, có trần mỗi lần (75s) và trần tổng (180s) rõ ràng.
         let response = await fetch('https://api.openai.com/v1/chat/completions', openAiRequest);
         let rateLimitWaits = 0;
+        let totalWaitedMs = 0;
         while (response.status === 429 && rateLimitWaits < MAX_RATE_LIMIT_WAITS) {
-          rateLimitWaits++;
-          const waitMs = rateLimitWaitMs(response.headers, rateLimitWaits);
+          // Đọc body (best-effort, qua clone() để không tiêu response gốc) lấy
+          // message "try again in Xs" khi server không trả header reset.
+          let bodyMsg: string | null = null;
+          try {
+            const peek = (await response.clone().json()) as { error?: { message?: string } };
+            bodyMsg = peek?.error?.message ?? null;
+          } catch {
+            /* body không phải JSON → bỏ qua, dùng sàn leo thang */
+          }
+          const nextWait = rateLimitWaits + 1;
+          const { ms: waitMs, source } = rateLimitWaitMs(response.headers, bodyMsg, nextWait);
+          // Trần tổng: nếu chờ thêm sẽ vượt 180s → dừng retry, fail trung thực.
+          if (totalWaitedMs + waitMs > MAX_TOTAL_RATE_LIMIT_WAIT_MS) {
+            console.warn(
+              `⚠️  OpenAI 429 — đã chờ tổng ~${Math.round(totalWaitedMs / 1000)}s, lần kế (${Math.round(waitMs / 1000)}s) sẽ vượt trần ${Math.round(MAX_TOTAL_RATE_LIMIT_WAIT_MS / 1000)}s → dừng retry.`,
+            );
+            break;
+          }
+          rateLimitWaits = nextWait;
           console.warn(
-            `⚠️  OpenAI 429 rate limit (token TPM) — chờ ${Math.round(waitMs / 1000)}s rồi thử lại (lần ${rateLimitWaits}/${MAX_RATE_LIMIT_WAITS})...`,
+            `⚠️  OpenAI 429 rate limit (token TPM) — lần ${rateLimitWaits}/${MAX_RATE_LIMIT_WAITS}: chờ ${Math.round(waitMs / 1000)}s [${source}] (tổng đã chờ ~${Math.round(totalWaitedMs / 1000)}s)`,
           );
           await sleep(waitMs);
+          totalWaitedMs += waitMs;
           response = await fetch('https://api.openai.com/v1/chat/completions', openAiRequest);
         }
 
@@ -2114,6 +2160,7 @@ Hãy trả về duy nhất một đối tượng JSON có định dạng chính 
             openaiErrorMessage: apiMessage,
             attempt,
             rateLimitWaits,
+            totalRateLimitWaitMs: totalWaitedMs,
             model: 'gpt-4o-mini',
           };
           // 429 đã chờ hết MAX_RATE_LIMIT_WAITS ở trên mà rate limit vẫn còn →
