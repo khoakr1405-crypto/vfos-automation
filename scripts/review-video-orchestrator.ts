@@ -156,6 +156,8 @@ interface JobManifest {
   createdAt: string;
   updatedAt: string;
   lastError?: string | null;
+  // Source-subtitle scrub: mặc định BẬT (undefined/true). Đặt false để tắt cho job này.
+  scrubSourceSubtitle?: boolean;
   bgmPolicy?: 'BGM_REQUIRED' | 'ALLOW_NO_BGM_OPERATOR_OVERRIDE' | null;
   duration?: {
     sourceVideoDurationSec: number;
@@ -639,6 +641,9 @@ async function main(): Promise<void> {
       'confirm-openai': { type: 'boolean', default: false },
       'confirm-ai': { type: 'boolean', default: false },
       'allow-no-bgm': { type: 'boolean', default: false },
+      // Source-subtitle scrub MẶC ĐỊNH BẬT cho job mới. Guard tắt: cờ này HOẶC
+      // manifest scrubSourceSubtitle=false.
+      'skip-scrub-subtitle': { type: 'boolean', default: false },
     },
     allowPositionals: false,
     strict: true,
@@ -1652,7 +1657,29 @@ async function main(): Promise<void> {
   let captionExecuted = false;
   if (jobId && jobPreviewPath && jobCaptionedPath && jobCaptionPlanPath && jobAssPath) {
     // ---- JOB MODE: direct caption:kinetic with job-local paths ----
+    // Source-subtitle scrub: MẶC ĐỊNH BẬT cho job. Tắt qua --skip-scrub-subtitle
+    // HOẶC manifest scrubSourceSubtitle=false. Detect → mask; caption burn sẽ tự
+    // xóa (delogo) vùng chữ Trung + canh phụ đề Việt giữa dải. KHÔNG publish; preview
+    // vẫn là cổng duyệt cuối. Best-effort: detect lỗi → render tiếp KHÔNG che.
+    const scrubSub =
+      jobManifest?.scrubSourceSubtitle !== false && !Boolean(values['skip-scrub-subtitle']);
+    if (scrubSub) {
+      const maskAbs = resolve(JOBS_ROOT, jobId, 'source_subtitle_mask.json');
+      if (!existsSync(maskAbs)) {
+        const detectStatus = runCommand(
+          'STEP 2.7 — Source subtitle scrub: detect (tesseract.js)',
+          'pnpm',
+          ['subtitle:detect', '--job', jobId],
+        );
+        if (detectStatus !== 0) {
+          console.warn(
+            '⚠️ SUBTITLE_DETECT_SKIPPED — detect lỗi, render tiếp KHÔNG che phụ đề Trung.',
+          );
+        }
+      }
+    }
     const captionArgs = ['caption:kinetic', '--job', jobId, '--preset', preset];
+    if (scrubSub) captionArgs.push('--cover-mode', 'delogo');
     const captionStatus = runCommand(
       'STEP 3/3 — Burn kinetic captions (job-native)',
       'pnpm',
