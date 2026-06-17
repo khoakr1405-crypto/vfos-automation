@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-06-13 (**Bỏ human gate "Duyệt nguồn sạch" — Product Review 5 bước (hướng A): intake auto-clean → production mở thẳng, Operator duyệt ở preview** — xem Phần 34 (implement local, CHƯA commit). Source Intake demo/fallback — Phần 33. P4 Publish Safety Scale — Phần 32. P3 Tracking M3–M6 — Phần 31.)
-> **Branch**: `fix/shopee-modal-read` | **Commit mốc tại thời điểm cập nhật trạng thái**: `d7a39e1` (`fix(intake): stop demo fallback source entering clean-source approval`) — **chưa push** (Operator 1 máy)
+> **Cập nhật lần cuối**: 2026-06-16 (**Source Subtitle Scrub — tự động detect & XÓA phụ đề Trung burned-in (delogo, dải canh giữa = bề rộng dòng dài nhất + pad, kẹp ≤88% khung, KHÔNG full-frame) + canh phụ đề Việt giữa dải đã che; default-ON cho job mới, guard `--skip-scrub-subtitle`** — xem Phần 35, commit `74fc0c2`. Trước đó: bỏ human gate "Duyệt nguồn sạch" — Phần 34 (vẫn CHƯA commit). Source Intake demo/fallback — Phần 33.)
+> **Branch**: `fix/shopee-modal-read` | **Commit mốc tại thời điểm cập nhật trạng thái**: `74fc0c2` (`feat(captions): auto-detect & erase source CN subtitles, burn VN caption`) — **chưa push tại thời điểm soạn doc** (commit doc này xong sẽ push branch `fix/shopee-modal-read`, theo lệnh Operator)
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task → luôn chạy `pnpm vfos:daily` để có chỉ dẫn trạng thái mới nhất
 
 > ⚠️ **ĐƯỜNG VẬN HÀNH CHÍNH THỨC**: dùng `docs/00_DIEU_HANH/HUONG_DAN_VAN_HANH_CHINH_THUC_VFOS.md` (operator guide chuẩn, flow A-Z `commerce:intake` → `job:run-review` → `job:publish-facebook`).
@@ -2319,6 +2319,28 @@ DOM card img
 
 ---
 
+### ✅ Phần 35 — Source Subtitle Scrub (tự động detect → XÓA phụ đề Trung → phụ đề Việt canh giữa dải): ĐÃ CHỐT + COMMIT (2026-06-16)
+
+**Bối cảnh**: Video reup TQ thường có phụ đề Trung burned-in. Cần tự động nhận diện + xóa, rồi burn phụ đề Việt đúng vùng đã xóa, tích hợp vào pipeline render caption — KHÔNG làm demo rời.
+
+**Kiến trúc (logic thuần, có test, không IO ở core)**:
+- `scripts/subtitle-mask/detect-core.ts` — lọc CJK, gộp word-box→dòng, cluster theo thời gian, `consolidateBands` (phủ liên tục + bắc cầu gap OCR).
+- `scripts/subtitle-mask/cover-filter.ts` — (A) lọc "dòng phụ đề" bằng **aspect-ratio** (rộng & thấp) + trần chiều cao 0.16 (phân biệt logo/khối, KHÔNG dùng chiều cao tuyệt đối); (B) `toUnifiedBands`: gom theo dải y, cover = **bề rộng phủ hết dòng thật (≈ dòng dài nhất) + pad nhỏ, CANH GIỮA theo tâm box OCR, kẹp ≤ `maxBandWidth` 0.88 (KHÔNG full-frame)**, Y/H median ổn định (mỏng, không nhảy). Đoạn OCR hẹp dùng chung width chuẩn → hết lòi 2 bên. delogo default, blur/solid fallback.
+- `scripts/source-subtitle-detector.ts` — CLI `pnpm subtitle:detect` (ffmpeg sample frame → tesseract.js chi_sim → mask chuẩn hoá 0–1). Chỉ network = tải traineddata.
+- `scripts/kinetic-caption-renderer.ts` — opt-in `--cover-mode`; canh phụ đề Việt giữa dải đã che (`centerPresetOnBand`); args `cover-max-h/min-aspect/band-mode/band-maxw/band-pad`.
+- `scripts/review-video-orchestrator.ts` — **STEP 2.7 detect default-ON cho job mới**; guard tắt: `--skip-scrub-subtitle` HOẶC manifest `scrubSourceSubtitle=false`; best-effort (detect lỗi → render tiếp KHÔNG che). **Preview vẫn là cổng duyệt cuối; KHÔNG publish.**
+
+**Đã verify thật (offline, không API ngoài)**:
+- job_20260616_002 (gậy selfie, 576×1024): detect 43/44 frame → 11 đoạn delogo `x=43 w=477` (≈82.8% khung, dưới clamp 88%, KHÔNG full-frame), `y=756 h=85` (~8.3% mỏng, y hệt mọi đoạn), phủ 1s→21.5s. Operator xem preview 3 lần → **"Đạt yêu cầu"**: đầu video hết sót, giữa hết lòi 可/节, cuối không bỏ sót, không full màn hình, phụ đề Việt canh giữa dải.
+- job_20260616_001 (áo chống nắng): bản scrub delogo full-pipeline (recover 429 — Vision skip) cũng READY_FOR_OPERATOR_REVIEW.
+- Self-review: `pnpm test` **16/16 PASS** (detect-core + cover-filter); tsc 2 file code sửa 0 lỗi; biome chỉ `noNonNullAssertion` (baseline repo); detect-core không bị đụng ở vòng B-revised.
+
+**Commit `74fc0c2`** (9 file, +1365/-44): 3 file mới (detect-core, cover-filter, source-subtitle-detector) + test + 2 script sửa + package.json/pnpm-lock/pnpm-workspace (tesseract.js, build script disabled). **KHÔNG commit**: runtime (data/temp, runs/, mask, mp4 demo), `source-intake/route.ts`, `source-url/`, `production/_media/bgm_library.json`, `implementation_plan.md`.
+
+**Bước tiếp theo**: push branch `fix/shopee-modal-read` (commit `74fc0c2` + commit doc này). Sau push: (a) Operator chạy thêm job mới có phụ đề Trung để kiểm độ bền detect trên video khác, hoặc (b) chỉnh tinh (clamp %, pad, vị trí dải) nếu gặp ca lệch. Lưu ý ca biên: video chữ Trung trải gần hết khung → dải chạm trần 88% (vẫn không full-frame); delogo trên nền rối có thể để vệt mờ → cân nhắc fallback blur.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
@@ -2514,13 +2536,13 @@ docs/
 
 | Thông tin | Giá trị |
 |---|---|
-| Branch | `master` |
-| HEAD local | `963bc2a` `feat(shopee): capture product image through product card flow` (2026-06-05) |
+| Branch | `fix/shopee-modal-read` |
+| HEAD local | `74fc0c2` `feat(captions): auto-detect & erase source CN subtitles, burn VN caption` (2026-06-16) + commit doc Phần 35 ngay sau |
 | Remote | `origin` (GitHub) |
-| origin/master | `963bc2a` — Product Image 04B đã push |
-| Sync status | **0 / 0** (up to date, không ahead/behind) |
-| Working tree | **Sạch** sau push Product Image 04B. Thay đổi đang mở duy nhất: 2 file điều hành (`TRANG_THAI_VFOS_HIEN_TAI.md` + `HANDOFF_AGENT_HIEN_TAI.md`) — chờ Operator duyệt commit `docs: record product image capture flow completion`. |
-| Dev server | Port 3002 **đang CHẠY** (bật ở bước browser review 04B). Dừng bằng `pnpm studio:dev:clean --no-start`. |
+| origin/... | sẽ cập nhật sau push branch `fix/shopee-modal-read` (theo lệnh Operator vòng này) |
+| Sync status | Local **ahead** (subtitle scrub `74fc0c2` + commit doc) — **push ngay sau commit doc này** |
+| Working tree | Còn mở (NGOÀI scope subtitle, KHÔNG commit vòng này): `source-intake/route.ts`, `source-url/` (Phần 34 chưa chốt), `production/_media/bgm_library.json` (runtime media), `implementation_plan.md`. |
+| Dev server | Port 3002 (bật khi review). Dừng bằng `pnpm studio:dev:clean --no-start`. |
 
 **Trạng thái artifacts production** (tính đến 2026-05-29 phiên sync):
 - `production/batch_001/yt_007/` (text artifacts): ĐÃ commit ở `df1609e` — reference cho vòng Voice Sync autonomy.
