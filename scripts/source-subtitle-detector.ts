@@ -1,24 +1,30 @@
 #!/usr/bin/env tsx
 
 /* =============================================================================
- * VFOS — Source Subtitle Detector (tesseract.js, SERVER/LOCAL ONLY)
+ * VFOS — Source Subtitle Detector (SERVER/LOCAL ONLY)
  * -----------------------------------------------------------------------------
  * Tự động NHẬN DIỆN vùng phụ đề tiếng Trung burned-in trong video reup:
- *   ffmpeg cắt frame @fps → tesseract.js (chi_sim) OCR → lọc box CJK trong vùng
- *   phụ đề → gộp dòng → cluster theo thời gian → đoạn {start,end,box,bgComplexity}
- *   → ghi data/temp/jobs/<id>/source_subtitle_mask.json (toạ độ 0–1).
+ *   ffmpeg cắt frame @fps → ENGINE dò vùng chữ → lọc box CJK trong vùng phụ đề
+ *   → gộp dòng → cluster theo thời gian → dải {start,end,box} → ghi
+ *   data/temp/jobs/<id>/source_subtitle_mask.json (toạ độ 0–1).
  *
- * Safety: KHÔNG gọi API mạng nào (ngoài tesseract.js tải traineddata về cache
- *   gitignored lần đầu). KHÔNG publish, KHÔNG đọc .env/secret. Output runtime.
+ * Engine (--engine):
+ *   - 'paddle' (DEFAULT): PP-OCR text-detection (DBNet) qua venv Python
+ *     (tools/subtitle-detect-paddle) — polygon ÔM TRỌN cả dòng, không rớt ký tự
+ *     mép như word-box. Quét dày (5fps). Thiếu venv/lỗi → tự fallback tesseract.
+ *   - 'tesseract': tesseract.js (chi_sim) word-box, 2fps — fallback.
+ *
+ * Safety: KHÔNG gọi API mạng nào (model/traineddata cache gitignored lần đầu).
+ *   KHÔNG publish, KHÔNG đọc .env/secret. Output runtime.
  *
  * Usage:
- *   pnpm subtitle:detect --job <jobId>
- *   pnpm subtitle:detect --input <video> --output <mask.json>
- *   pnpm subtitle:detect --job <id> --fps 2 --dry-run
+ *   pnpm subtitle:detect --job <jobId>                  # engine paddle (default)
+ *   pnpm subtitle:detect --job <id> --engine tesseract  # ép fallback
+ *   pnpm subtitle:detect --input <video> --output <mask.json> --dry-run
  * ========================================================================== */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { createWorker, OEM, PSM } from 'tesseract.js';
@@ -65,17 +71,92 @@ function ffprobe(video: string): ProbeInfo {
   return { width, height, durationSec };
 }
 
+const PADDLE_PY = 'tools/subtitle-detect-paddle/.venv/Scripts/python.exe';
+const PADDLE_SCRIPT = 'tools/subtitle-detect-paddle/detect.py';
+
+interface PaddleRegion {
+  box: [number, number, number, number];
+  text: string;
+  score: number;
+}
+
+/**
+ * Dò vùng chữ bằng PP-OCR text-detection (det ôm TRỌN cả dòng — không rớt ký tự
+ * mép như word-box). Gọi venv Python qua detect.py, đọc JSON, lọc CJK + zone +
+ * size → FrameDetection[]. Trả null nếu venv/script chưa có hoặc lỗi (→ caller
+ * fallback tesseract). KHÔNG network (model đã cache).
+ */
+function detectPaddle(
+  framesDir: string,
+  frameFiles: string[],
+  fW: number,
+  fH: number,
+  fps: number,
+  yTop: number,
+  yBot: number,
+  minScore: number,
+  lang: string,
+): { dets: FrameDetection[]; sampleText: string } | null {
+  const venvPy = resolve(PADDLE_PY);
+  const script = resolve(PADDLE_SCRIPT);
+  if (!existsSync(venvPy) || !existsSync(script)) return null;
+  const outJson = join(framesDir, 'paddle_out.json');
+  const paddleLang = lang === 'chi_sim' || lang === 'chi_tra' ? 'ch' : lang;
+  const r = spawnSync(
+    venvPy,
+    [script, '--frames-dir', framesDir, '--out', outJson, '--lang', paddleLang],
+    { encoding: 'utf-8', maxBuffer: 64 * 1024 * 1024 },
+  );
+  if (r.status !== 0 || !existsSync(outJson)) {
+    console.warn((r.stderr ?? '').slice(-400));
+    return null;
+  }
+  let data: { frames?: Array<{ file: string; regions: PaddleRegion[] }> };
+  try {
+    data = JSON.parse(readFileSync(outJson, 'utf-8'));
+  } catch {
+    return null;
+  }
+  const indexOf = new Map(frameFiles.map((f, i) => [f, i] as const));
+  const dets: FrameDetection[] = [];
+  let sampleText = '';
+  for (const fr of data.frames ?? []) {
+    const idx = indexOf.get(fr.file);
+    if (idx === undefined) continue;
+    const boxes: PixelBox[] = [];
+    for (const reg of fr.regions ?? []) {
+      const text = (reg.text ?? '').trim();
+      if (!isCjk(text) || cjkRatio(text) < 0.5) continue;
+      if ((reg.score ?? 0) < minScore) continue;
+      const [x, y, w, h] = reg.box;
+      const midY = y + h / 2;
+      if (midY < yTop || midY > yBot) continue;
+      if (w < fW * 0.03 || h < fH * 0.012) continue; // bỏ noise quá nhỏ
+      boxes.push({ x, y, w, h });
+      if (!sampleText) sampleText = text;
+    }
+    const lines = mergeBoxesToLines(boxes);
+    if (lines.length > 0) dets.push({ timeSec: idx / fps, lines });
+  }
+  return { dets, sampleText };
+}
+
 async function main(): Promise<void> {
   const { values } = parseArgs({
     options: {
       job: { type: 'string' },
       input: { type: 'string' },
       output: { type: 'string' },
-      fps: { type: 'string', default: '2' },
+      // Engine dò vùng chữ: 'paddle' (PP-OCR text-detection, ôm trọn dòng — default)
+      // hoặc 'tesseract' (word-box, fallback khi venv paddle chưa có).
+      engine: { type: 'string', default: 'paddle' },
+      fps: { type: 'string' },
+      'det-width': { type: 'string' },
       'zone-top': { type: 'string', default: '0.45' },
       'zone-bottom': { type: 'string', default: '0.96' },
       'min-conf': { type: 'string', default: '45' },
-      'max-frames': { type: 'string', default: '160' },
+      'min-score': { type: 'string', default: '0.6' },
+      'max-frames': { type: 'string', default: '400' },
       lang: { type: 'string', default: 'chi_sim' },
       'dry-run': { type: 'boolean', default: false },
     },
@@ -105,19 +186,31 @@ async function main(): Promise<void> {
       ? resolve(JOBS_ROOT, jobId, 'source_subtitle_mask.json')
       : resolve('data/temp/source_subtitle_mask.json');
 
-  const fps = Math.max(0.5, Number(values.fps));
+  const engine = (values.engine as string) === 'tesseract' ? 'tesseract' : 'paddle';
+  // 2fps đủ bắt dòng phụ đề (mỗi dòng hiển thị vài giây → vài frame). Override --fps.
+  const fps = values.fps ? Math.max(0.5, Number(values.fps)) : 2;
+  // Bề rộng frame khi OCR: paddle CPU chậm theo pixel² → hạ 384px (số box detect
+  // không đổi, nhanh ~2.5×). tesseract giữ 720px. Override --det-width.
+  const detWidth = values['det-width']
+    ? Math.max(160, Number(values['det-width']))
+    : engine === 'paddle'
+      ? 384
+      : 720;
   const zoneTop = Number(values['zone-top']);
   const zoneBottom = Number(values['zone-bottom']);
   const minConf = Number(values['min-conf']);
+  const minScore = Number(values['min-score']);
   const maxFrames = Number(values['max-frames']);
 
   const probe = ffprobe(inputVideo);
   console.log('======================================================');
-  console.log('🈲  VFOS Source Subtitle Detector (tesseract.js)');
+  console.log(`🈲  VFOS Source Subtitle Detector (engine: ${engine})`);
   console.log('======================================================');
   console.log(`Input:    ${inputVideo}`);
   console.log(`Video:    ${probe.width}x${probe.height}, ${probe.durationSec.toFixed(1)}s`);
-  console.log(`Sample:   ${fps} fps, zone y=[${zoneTop}, ${zoneBottom}], minConf=${minConf}`);
+  console.log(
+    `Sample:   ${fps} fps @${detWidth}px, zone y=[${zoneTop}, ${zoneBottom}], minConf=${minConf}`,
+  );
   console.log(`Output:   ${outputPath}`);
   console.log('------------------------------------------------------');
   if (!probe.width || !probe.height) {
@@ -140,7 +233,7 @@ async function main(): Promise<void> {
       '-i',
       inputVideo,
       '-vf',
-      `fps=${fps},scale='min(720,iw)':-2`,
+      `fps=${fps},scale='min(${detWidth},iw)':-2`,
       '-frames:v',
       String(maxFrames),
       join(framesDir, 'f_%05d.png'),
@@ -165,19 +258,42 @@ async function main(): Promise<void> {
   const fH = firstProbe.height || probe.height;
   console.log(`Frames:   ${frameFiles.length} @ ${fW}x${fH}`);
 
-  // 2) OCR từng frame, lọc box CJK trong vùng phụ đề.
-  const worker = await createWorker(values.lang ?? 'chi_sim', OEM.LSTM_ONLY, {
-    cachePath: resolve(TESS_CACHE),
-    cacheMethod: 'readWrite',
-  });
-  await worker.setParameters({ tessedit_pageseg_mode: PSM.SPARSE_TEXT });
-
-  const frameDetections: FrameDetection[] = [];
-  let firstSampleText = '';
+  // 2) Detect: engine 'paddle' (PP-OCR text-detection) → fallback 'tesseract'.
   const yTop = zoneTop * fH;
   const yBot = zoneBottom * fH;
+  let frameDetections: FrameDetection[] = [];
+  let firstSampleText = '';
+  let engineUsed = engine;
 
-  for (let i = 0; i < frameFiles.length; i++) {
+  if (engine === 'paddle') {
+    const paddle = detectPaddle(
+      framesDir,
+      frameFiles,
+      fW,
+      fH,
+      fps,
+      yTop,
+      yBot,
+      minScore,
+      values.lang ?? 'chi_sim',
+    );
+    if (paddle) {
+      frameDetections = paddle.dets;
+      firstSampleText = paddle.sampleText;
+    } else {
+      console.warn('⚠️ PaddleOCR không khả dụng (venv/script thiếu hoặc lỗi) → fallback tesseract.js');
+      engineUsed = 'tesseract';
+    }
+  }
+
+  if (engineUsed === 'tesseract') {
+    const worker = await createWorker(values.lang ?? 'chi_sim', OEM.LSTM_ONLY, {
+      cachePath: resolve(TESS_CACHE),
+      cacheMethod: 'readWrite',
+    });
+    await worker.setParameters({ tessedit_pageseg_mode: PSM.SPARSE_TEXT });
+
+    for (let i = 0; i < frameFiles.length; i++) {
     const timeSec = i / fps;
     const fpath = join(framesDir, frameFiles[i]!);
     let words: Array<{
@@ -223,12 +339,15 @@ async function main(): Promise<void> {
       boxes.push(box);
       if (!firstSampleText) firstSampleText = text;
     }
-    const lines = mergeBoxesToLines(boxes);
-    if (lines.length > 0) frameDetections.push({ timeSec, lines });
+      const lines = mergeBoxesToLines(boxes);
+      if (lines.length > 0) frameDetections.push({ timeSec, lines });
+    }
+    await worker.terminate();
   }
-  await worker.terminate();
 
-  console.log(`Detected: ${frameDetections.length}/${frameFiles.length} frame có chữ Trung`);
+  console.log(
+    `Detected: ${frameDetections.length}/${frameFiles.length} frame có chữ Trung (engine: ${engineUsed})`,
+  );
 
   // 3) Cluster theo thời gian → đoạn rời rạc.
   const rawSegments: SubtitleSegment[] = clusterFramesToSegments(frameDetections, fW, fH);
@@ -251,7 +370,7 @@ async function main(): Promise<void> {
     videoWidth: probe.width,
     videoHeight: probe.height,
     sampleFps: fps,
-    engine: 'tesseract.js',
+    engine: engineUsed === 'paddle' ? 'paddleocr' : 'tesseract.js',
     lang: values.lang ?? 'chi_sim',
     sampleText: firstSampleText.slice(0, 40),
     segments,

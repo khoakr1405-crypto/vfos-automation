@@ -93,3 +93,11 @@ production/archive/**
 runs/
 **/clean_source_video.mp4
 
+# Subtitle-detect PaddleOCR tool: never commit the Python venv, downloaded
+# models, install logs, or Python caches (runtime — installed per machine).
+tools/subtitle-detect-paddle/.venv/
+tools/subtitle-detect-paddle/_install*.log
+tools/subtitle-detect-paddle/models/
+**/__pycache__/
+*.pyc
+
