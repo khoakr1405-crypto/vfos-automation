@@ -644,11 +644,18 @@ async function main(): Promise<void> {
       // Source-subtitle scrub MẶC ĐỊNH BẬT cho job mới. Guard tắt: cờ này HOẶC
       // manifest scrubSourceSubtitle=false.
       'skip-scrub-subtitle': { type: 'boolean', default: false },
+      // Voice picker: female=HoaiMy / male=NamMinh cho bước sinh voiceover (edge-tts).
+      voice: { type: 'string' },
     },
     allowPositionals: false,
     strict: true,
   });
   const values = parsed.values;
+
+  const requestedVoice =
+    values.voice === 'female' || values.voice === 'male'
+      ? (values.voice as 'female' | 'male')
+      : null;
 
   const runId = values.run as string;
   const preset = values.preset as string;
@@ -1241,7 +1248,22 @@ async function main(): Promise<void> {
 
   // ---------- GATE 2: voiceover fixture (or ElevenLabs consent) ----------
   let elevenLabsApiCalled = false;
-  if (!effectiveVoicePresent) {
+  // Voice picker: nếu đã có voiceover nhưng KHÁC giọng đang chọn → tạo lại đúng giọng
+  // (freshness gate chỉ so hash script, không bắt được đổi giọng → check tại đây).
+  const VOICE_NAME_MAP = { female: 'vi-VN-HoaiMyNeural', male: 'vi-VN-NamMinhNeural' } as const;
+  let voiceMismatch = false;
+  if (requestedVoice && jobId && jobOutputDir) {
+    const vaPath = join(jobOutputDir, 'voice_artifact.json');
+    if (existsSync(vaPath)) {
+      try {
+        const va = JSON.parse(readFileSync(vaPath, 'utf8'));
+        if (va.voice && va.voice !== VOICE_NAME_MAP[requestedVoice]) voiceMismatch = true;
+      } catch {
+        /* không đọc được → để các gate khác xử như cũ */
+      }
+    }
+  }
+  if (!effectiveVoicePresent || voiceMismatch) {
     if (!confirmElevenLabs) {
       if (jobId) {
         console.log('🛑 MISSING_JOB_VOICEOVER');
@@ -1267,6 +1289,7 @@ async function main(): Promise<void> {
     const voiceArgs = jobId
       ? ['voice:elevenlabs', '--job', jobId, '--confirm-api-call']
       : ['voice:elevenlabs', '--run', runId, '--confirm-api-call', '--sync-fixture'];
+    if (requestedVoice) voiceArgs.push('--voice', requestedVoice);
 
     const voiceStatus = runCommand(
       jobId

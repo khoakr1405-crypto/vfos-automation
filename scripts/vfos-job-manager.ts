@@ -1567,6 +1567,8 @@ async function cmdRunReview(args: string[]): Promise<number> {
       'confirm-openai': { type: 'boolean', default: false },
       'confirm-elevenlabs': { type: 'boolean', default: false },
       'dry-run': { type: 'boolean', default: false },
+      // Voice picker: female=HoaiMy / male=NamMinh — forward xuống orchestrator.
+      voice: { type: 'string' },
     },
     allowPositionals: false,
     strict: true,
@@ -1578,6 +1580,10 @@ async function cmdRunReview(args: string[]): Promise<number> {
   const confirmOpenai = Boolean(parsed.values['confirm-openai']) || confirmAi;
   const confirmElevenlabs = Boolean(parsed.values['confirm-elevenlabs']) || confirmAi;
   const dryRun = Boolean(parsed.values['dry-run']);
+  const voice =
+    parsed.values.voice === 'female' || parsed.values.voice === 'male'
+      ? (parsed.values.voice as 'female' | 'male')
+      : null;
 
   if (!jobId) {
     console.error('Error: --job <jobId> is required');
@@ -1707,6 +1713,7 @@ async function cmdRunReview(args: string[]): Promise<number> {
   if (confirmOpenai) reviewArgs.push('--confirm-openai');
   if (confirmElevenlabs) reviewArgs.push('--confirm-elevenlabs');
   if (dryRun) reviewArgs.push('--dry-run');
+  if (voice) reviewArgs.push('--voice', voice);
 
   const reviewRes = spawnSync(
     'npx',

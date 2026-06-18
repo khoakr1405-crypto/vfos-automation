@@ -331,6 +331,7 @@ export default function ProductReviewLanePage() {
   const [runReport, setRunReport] = useState<string | null>(null);
   const [productionLaunched, setProductionLaunched] = useState(false);
   const [pollTimedOut, setPollTimedOut] = useState(false);
+  const [voiceChoice, setVoiceChoice] = useState<'female' | 'male'>('female');
   const pollStartRef = useRef<number | null>(null);
   // Phase B — nhớ jobId đã AUTO-RESUME preparePost trong PHIÊN hiện tại (chống loop).
   const autoResumedRef = useRef<Set<string>>(new Set());
@@ -1143,8 +1144,8 @@ export default function ProductReviewLanePage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(
           dryRun
-            ? { dryRun: true, expectedProduct }
-            : { confirmPhrase: runConfirmInput, expectedProduct },
+            ? { dryRun: true, expectedProduct, voice: voiceChoice }
+            : { confirmPhrase: runConfirmInput, expectedProduct, voice: voiceChoice },
         ),
       });
       const data = await res.json();
@@ -2605,6 +2606,27 @@ export default function ProductReviewLanePage() {
                 Nguồn đã tải & clean & Product Card khớp job. Chạy pipeline sản xuất từ clean source
                 (không nhảy route kỹ thuật).
               </p>
+              <div className="flex items-center gap-2 text-[11px]">
+                <span className="text-neutral-400">Giọng đọc:</span>
+                <div className="inline-flex overflow-hidden rounded-lg border border-hairline">
+                  <button
+                    type="button"
+                    disabled={submittingRun}
+                    onClick={() => setVoiceChoice('female')}
+                    className={`px-2.5 py-1 text-[11px] ${voiceChoice === 'female' ? 'bg-accent-violet font-semibold text-white' : 'text-neutral-300 hover:bg-panel'} disabled:opacity-50`}
+                  >
+                    Nữ (HoaiMy)
+                  </button>
+                  <button
+                    type="button"
+                    disabled={submittingRun}
+                    onClick={() => setVoiceChoice('male')}
+                    className={`border-l border-hairline px-2.5 py-1 text-[11px] ${voiceChoice === 'male' ? 'bg-accent-violet font-semibold text-white' : 'text-neutral-300 hover:bg-panel'} disabled:opacity-50`}
+                  >
+                    Nam (NamMinh)
+                  </button>
+                </div>
+              </div>
               {isFallbackSource ? (
                 <NoticeBox accent="rose">
                   Nguồn hiện tại là fallback mẫu, không được dùng để sản xuất video thật cho sản

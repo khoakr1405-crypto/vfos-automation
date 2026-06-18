@@ -58,6 +58,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ jobId: string 
       confirmPhrase?: string;
       dryRun?: boolean;
       expectedProduct?: { shortLink?: string; shopId?: string; itemId?: string };
+      voice?: string;
     } = {};
     try {
       body = (await req.json()) ?? {};
@@ -167,6 +168,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ jobId: string 
     // 8. Build args — REUSE đúng command vận hành chính thức
     const args = ['run-review', '--job', jobId, '--file', cleanSourceRel, '--confirm-ai'];
     if (dryRun) args.push('--dry-run');
+    // Voice picker: chỉ chấp nhận female|male; sai/thiếu → bridge dùng default (female).
+    if (body?.voice === 'female' || body?.voice === 'male') args.push('--voice', body.voice);
 
     // 9a. DRY-RUN: sync, không gọi API, không tạo video → trả gate/plan
     if (dryRun) {
