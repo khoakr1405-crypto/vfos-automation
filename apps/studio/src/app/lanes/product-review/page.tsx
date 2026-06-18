@@ -165,7 +165,7 @@ function captionContainsHashtags(caption: string | null, hashtags: string | null
 // Auto-refresh production status: poll GET /api/studio/jobs trong lúc pipeline chạy
 // nền. Interval 5s; dừng tại terminal; có max-duration để không poll vô hạn.
 const PRODUCTION_POLL_INTERVAL_MS = 5_000;
-const PRODUCTION_POLL_TIMEOUT_MS = 10 * 60_000; // 10 phút
+const PRODUCTION_POLL_TIMEOUT_MS = 7 * 60_000; // 7 phút (đủ render+scrub+caption+QA + biên)
 const PRODUCTION_RUNNING_STATES = ['READY_TO_RENDER', 'RENDERING'];
 const PRODUCTION_TERMINAL_STATES = [
   'READY_FOR_OPERATOR_REVIEW',
@@ -1352,9 +1352,10 @@ export default function ProductReviewLanePage() {
   // is auto-set at intake (no human approval); này = "nguồn thật đã tải & clean".
   const sourceApproved = latestJob?.cleanlinessStatus === 'WATERMARK_NOT_DETECTED';
   const productionRunning =
-    productionLaunched ||
-    latestJob?.state === 'READY_TO_RENDER' ||
-    latestJob?.state === 'RENDERING';
+    !pollTimedOut &&
+    (productionLaunched ||
+      latestJob?.state === 'READY_TO_RENDER' ||
+      latestJob?.state === 'RENDERING');
   const productionDone =
     latestJob?.state === 'READY_FOR_OPERATOR_REVIEW' ||
     latestJob?.state === 'APPROVED' ||
@@ -1367,9 +1368,11 @@ export default function ProductReviewLanePage() {
       ? 'FAILED'
       : latestJob?.state === 'REJECTED'
         ? 'REJECTED'
-        : productionRunning
-          ? 'RUNNING'
-          : runStage;
+        : pollTimedOut
+          ? 'QUÁ HẠN'
+          : productionRunning
+            ? 'RUNNING'
+            : runStage;
 
   // Gate nút "Duyệt preview video" (Bước 3–7). Mọi điều kiện này CŨNG được route
   // /approve enforce lại server-side; UI chỉ để không hiện nút khi chưa đủ điều kiện.
@@ -2536,6 +2539,25 @@ export default function ProductReviewLanePage() {
                   Làm mới trạng thái
                 </Button>
               </div>
+            </div>
+          ) : pollTimedOut ? (
+            <div className="space-y-2">
+              <p className="flex items-center gap-1.5 text-xs font-semibold text-accent-amber">
+                <span>⏱</span>
+                Tiến trình quá hạn hoặc đã dừng — chưa thấy kết quả cuối.
+              </p>
+              <p className="text-[10px] text-neutral-500">
+                Bấm "Làm mới trạng thái" để lấy trạng thái thật. Nếu vẫn chưa xong, xem tiến độ
+                render/QA bên dưới hoặc chạy lại sản xuất.
+              </p>
+              <Button
+                variant="outline"
+                className="!py-1 !px-2.5 text-[10px]"
+                onClick={() => load()}
+                disabled={loading}
+              >
+                Làm mới trạng thái
+              </Button>
             </div>
           ) : productionRunning ? (
             <div className="space-y-2">
