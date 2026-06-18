@@ -32,7 +32,15 @@
  *   pnpm voice:elevenlabs --job job_20260530_001 --confirm-api-call (Round 39)
  */
 
-import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { loadDotEnv } from '../packages/voice/src/load-env.js';
@@ -126,11 +134,12 @@ function buildBaseArtifact(
   textSource: string,
   textLength: number,
   textHash?: string,
+  provider = 'elevenlabs',
 ) {
   return {
     voiceArtifactVersion: 'v4',
     runId,
-    provider: 'elevenlabs',
+    provider,
     model,
     languageCode: 'vi',
     textSource,
@@ -265,6 +274,123 @@ function isModelUnsupportedError(status: number, reason: string): boolean {
   return false;
 }
 
+// ── edge-tts provider (free, no API key) ────────────────────────────────────
+const EDGE_VOICES = {
+  female: 'vi-VN-HoaiMyNeural',
+  male: 'vi-VN-NamMinhNeural',
+} as const;
+const EDGE_DEFAULT_RATE = '+18%';
+const EDGE_DEFAULT_PITCH = '+22Hz';
+
+interface CharAlign {
+  characters: string[];
+  starts: number[];
+  ends: number[];
+}
+
+interface EdgeWord {
+  text: string;
+  offsetSec: number;
+  durationSec: number;
+}
+
+// edge-tts trả timing theo TỪ. Dựng char-level alignment (chia đều ký tự trong
+// mỗi từ + space lấp khoảng trống giữa từ) để khớp schema voice_timing_artifact
+// cũ — kinetic-caption-renderer groupWords() dựng lại đúng word timing, không sửa.
+function edgeWordsToCharAlign(words: EdgeWord[]): CharAlign {
+  const characters: string[] = [];
+  const starts: number[] = [];
+  const ends: number[] = [];
+  const round4 = (n: number) => Math.round(n * 1e4) / 1e4;
+  words.forEach((w, i) => {
+    const wStart = w.offsetSec;
+    const wEnd = w.offsetSec + w.durationSec;
+    const chars = [...w.text];
+    const n = chars.length;
+    chars.forEach((ch, j) => {
+      characters.push(ch);
+      starts.push(round4(wStart + (j / n) * (wEnd - wStart)));
+      ends.push(round4(wStart + ((j + 1) / n) * (wEnd - wStart)));
+    });
+    const next = words[i + 1];
+    if (next) {
+      characters.push(' ');
+      starts.push(round4(wEnd));
+      ends.push(round4(Math.max(wEnd, next.offsetSec)));
+    }
+  });
+  return { characters, starts, ends };
+}
+
+function synthesizeWithEdge(args: {
+  workDir: string;
+  text: string;
+  voice: string;
+  rate: string;
+  pitch: string;
+}):
+  | { ok: true; audioBuffer: Buffer; align: CharAlign }
+  | { ok: false; status: number; reason: string } {
+  const venvPy = resolve('tools/edge-tts-voice/.venv/Scripts/python.exe');
+  if (!existsSync(venvPy)) {
+    return {
+      ok: false,
+      status: 0,
+      reason: 'edge-tts venv missing — chạy setup trong tools/edge-tts-voice/README.md',
+    };
+  }
+  const script = resolve('tools/edge-tts-voice/synthesize.py');
+  const textFile = join(args.workDir, '_edge_tts_input.txt');
+  const outAudio = join(args.workDir, '_edge_tts_audio.mp3');
+  const outWords = join(args.workDir, '_edge_tts_words.json');
+  mkdirSync(args.workDir, { recursive: true });
+  writeFileSync(textFile, args.text, 'utf8');
+  const res = spawnSync(
+    venvPy,
+    [
+      script,
+      '--text-file', textFile,
+      '--voice', args.voice,
+      '--rate', args.rate,
+      '--pitch', args.pitch,
+      '--out-audio', outAudio,
+      '--out-words', outWords,
+    ],
+    { encoding: 'utf8', timeout: 120_000, env: { ...process.env, PYTHONIOENCODING: 'utf-8' } },
+  );
+  const cleanup = () => {
+    for (const f of [textFile, outAudio, outWords]) {
+      try {
+        if (existsSync(f)) rmSync(f);
+      } catch {
+        /* best-effort temp cleanup */
+      }
+    }
+  };
+  if (res.status !== 0) {
+    const reason = (res.stderr || res.error?.message || 'edge-tts failed').toString().slice(0, 400);
+    cleanup();
+    return { ok: false, status: res.status ?? -1, reason };
+  }
+  if (!existsSync(outAudio) || !existsSync(outWords)) {
+    cleanup();
+    return { ok: false, status: -1, reason: 'edge-tts produced no output files' };
+  }
+  const audioBuffer = readFileSync(outAudio);
+  let words: EdgeWord[] = [];
+  try {
+    words = (JSON.parse(readFileSync(outWords, 'utf8')).words ?? []) as EdgeWord[];
+  } catch (err) {
+    cleanup();
+    return { ok: false, status: -1, reason: `parse words.json: ${(err as Error).message}` };
+  }
+  cleanup();
+  if (words.length === 0) {
+    return { ok: false, status: -1, reason: 'edge-tts returned 0 word boundaries' };
+  }
+  return { ok: true, audioBuffer, align: edgeWordsToCharAlign(words) };
+}
+
 async function main(): Promise<void> {
   const parsed = parseArgs({
     options: {
@@ -275,11 +401,32 @@ async function main(): Promise<void> {
       'sync-fixture': { type: 'boolean', default: false },
       'allow-short-script': { type: 'boolean', default: false },
       model: { type: 'string' },
+      // edge-tts (mặc định) vs elevenlabs (fallback). voice: female=HoaiMy, male=NamMinh.
+      provider: { type: 'string' },
+      voice: { type: 'string' },
+      rate: { type: 'string' },
+      pitch: { type: 'string' },
     },
     allowPositionals: false,
     strict: true,
   });
   const values = parsed.values;
+
+  // Provider: edge-tts mặc định (free); elevenlabs là fallback (--provider elevenlabs).
+  const provider = ((values.provider as string | undefined) ?? 'edge').toLowerCase();
+  if (provider !== 'edge' && provider !== 'elevenlabs') {
+    console.error(`Error: --provider phải là 'edge' hoặc 'elevenlabs' (got: ${provider})`);
+    process.exit(1);
+  }
+  const providerLabel = provider === 'edge' ? 'edge-tts' : 'elevenlabs';
+  const voiceSel = ((values.voice as string | undefined) ?? 'female').toLowerCase();
+  if (voiceSel !== 'female' && voiceSel !== 'male') {
+    console.error(`Error: --voice phải là 'female' hoặc 'male' (got: ${voiceSel})`);
+    process.exit(1);
+  }
+  const edgeVoice = EDGE_VOICES[voiceSel as 'female' | 'male'];
+  const edgeRate = (values.rate as string | undefined) ?? EDGE_DEFAULT_RATE;
+  const edgePitch = (values.pitch as string | undefined) ?? EDGE_DEFAULT_PITCH;
 
   const jobId = (values.job as string | undefined) ?? null;
   const runId = jobId ? null : ((values.run as string | undefined) ?? null);
@@ -403,7 +550,13 @@ async function main(): Promise<void> {
   } else {
     console.log('BGM mood:       (no bgm_selection_artifact — voice direction NOT applied)');
   }
-  console.log(`Model request:  ${requestedModel}`);
+  console.log(`Provider:       ${providerLabel}`);
+  if (provider === 'edge') {
+    console.log(`Edge voice:     ${voiceSel} → ${edgeVoice}`);
+    console.log(`Edge prosody:   rate ${edgeRate}, pitch ${edgePitch}`);
+  } else {
+    console.log(`Model request:  ${requestedModel}`);
+  }
   console.log(`Audio out:      ${audioPath}`);
   console.log(`Timing out:     ${timingArtifactPath}`);
   console.log(`Artifact out:   ${voiceArtifactPath}`);
@@ -417,10 +570,11 @@ async function main(): Promise<void> {
     const artifact = {
       ...buildBaseArtifact(
         effectiveRunId,
-        requestedModel,
+        provider === 'edge' ? edgeVoice : requestedModel,
         textSource,
         voiceText.length,
         currentScriptHash,
+        providerLabel,
       ),
       status: 'SCRIPT_TEXT_TOO_SHORT',
       apiCalled: false,
@@ -439,10 +593,11 @@ async function main(): Promise<void> {
     const artifact = {
       ...buildBaseArtifact(
         effectiveRunId,
-        requestedModel,
+        provider === 'edge' ? edgeVoice : requestedModel,
         textSource,
         voiceText.length,
         currentScriptHash,
+        providerLabel,
       ),
       status: 'DRY_RUN_PLAN_ONLY',
       apiCalled: false,
@@ -459,7 +614,138 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  // ── LIVE PATH ─────────────────────────────────────────────────────────
+  // ── EDGE-TTS PATH (free, no API key) — provider mặc định ──────────────────
+  if (provider === 'edge') {
+    console.log(`Synthesizing via edge-tts (${edgeVoice}) …`);
+    const edge = synthesizeWithEdge({
+      workDir,
+      text: voiceText,
+      voice: edgeVoice,
+      rate: edgeRate,
+      pitch: edgePitch,
+    });
+    if (!edge.ok) {
+      const artifact = {
+        ...buildBaseArtifact(
+          effectiveRunId,
+          edgeVoice,
+          textSource,
+          voiceText.length,
+          undefined,
+          'edge-tts',
+        ),
+        status: 'API_ERROR',
+        apiCalled: true,
+        tokensLogged: false,
+        voice: edgeVoice,
+        rate: edgeRate,
+        pitch: edgePitch,
+        httpStatus: edge.status,
+        reasonExcerpt: edge.reason.slice(0, 200),
+        notes: 'edge-tts synthesis failed. See reasonExcerpt. Fallback: --provider elevenlabs.',
+      };
+      writeArtifact(voiceArtifactPath, artifact);
+      console.error(`API_ERROR (edge-tts) — ${edge.reason.slice(0, 200)}`);
+      process.exit(1);
+    }
+
+    mkdirSync(dirname(audioPath), { recursive: true });
+    writeFileSync(audioPath, edge.audioBuffer);
+
+    const timingArtifact = {
+      timingVersion: 'v2',
+      runId: effectiveRunId,
+      provider: 'edge-tts',
+      model: edgeVoice,
+      alignmentType: 'character',
+      scriptTextHash: currentScriptHash,
+      voiceDirectionHash: bgmDir?.voiceDirectionHash ?? null,
+      alignment: {
+        characters: edge.align.characters,
+        characterStartTimesSeconds: edge.align.starts,
+        characterEndTimesSeconds: edge.align.ends,
+      },
+      // edge-tts không có normalized riêng → dùng cùng alignment.
+      normalizedAlignment: {
+        characters: edge.align.characters,
+        characterStartTimesSeconds: edge.align.starts,
+        characterEndTimesSeconds: edge.align.ends,
+      },
+      captionReady: true,
+      generatedAt: new Date().toISOString(),
+      notes: 'Char-level timing dựng từ word boundary của edge-tts.',
+    };
+    writeArtifact(timingArtifactPath, timingArtifact);
+
+    let fixtureSyncedPath: string | null = null;
+    if (values['sync-fixture']) {
+      mkdirSync(dirname(FIXTURE_AUDIO_PATH), { recursive: true });
+      copyFileSync(audioPath, FIXTURE_AUDIO_PATH);
+      fixtureSyncedPath = FIXTURE_AUDIO_PATH;
+    }
+
+    const voiceArtifact = {
+      ...buildBaseArtifact(
+        effectiveRunId,
+        edgeVoice,
+        textSource,
+        voiceText.length,
+        currentScriptHash,
+        'edge-tts',
+      ),
+      status: 'SUCCESS',
+      freshnessStatus: 'FRESH',
+      voice: edgeVoice,
+      bgmTrackId: bgmDir?.bgmTrackId ?? null,
+      bgmMood: bgmDir?.bgmMood ?? null,
+      voiceDirectionHash: bgmDir?.voiceDirectionHash ?? null,
+      voiceDirectionApplied: bgmDir != null,
+      voiceDirection: bgmDir?.voiceDirection ?? null,
+      ttsSettings: { provider: 'edge-tts', voice: edgeVoice, rate: edgeRate, pitch: edgePitch },
+      audioPath,
+      timingArtifactPath,
+      fixtureSyncedPath,
+      audioBytes: edge.audioBuffer.length,
+      apiCalled: true,
+      tokensLogged: false,
+      notes: `Voiceover generated by edge-tts (${edgeVoice}, rate ${edgeRate}, pitch ${edgePitch}).`,
+    };
+    writeArtifact(voiceArtifactPath, voiceArtifact);
+
+    if (jobId && jobManifest) {
+      jobManifest.artifacts.voiceArtifactPath = `${JOBS_ROOT}/${jobId}/voice_artifact.json`;
+      jobManifest.artifacts.voiceTimingArtifactPath = `${JOBS_ROOT}/${jobId}/voice_timing_artifact.json`;
+      jobManifest.updatedAt = new Date().toISOString();
+      writeFileSync(
+        join(workDir, 'job_manifest.json'),
+        JSON.stringify(jobManifest, null, 2) + '\n',
+        'utf8',
+      );
+      const registryPath = resolve('data/temp/vfos_jobs_registry.json');
+      if (existsSync(registryPath)) {
+        try {
+          const reg = JSON.parse(readFileSync(registryPath, 'utf8'));
+          const idx = reg.jobs.findIndex((j: { jobId?: string }) => j.jobId === jobId);
+          if (idx >= 0) {
+            reg.jobs[idx].updatedAt = jobManifest.updatedAt;
+            writeFileSync(registryPath, JSON.stringify(reg, null, 2) + '\n', 'utf8');
+          }
+        } catch {
+          /* registry update best-effort */
+        }
+      }
+    }
+
+    console.log('SUCCESS — voiceover.mp3 + timing artifact written (edge-tts).');
+    console.log(`  voice: ${edgeVoice}  rate: ${edgeRate}  pitch: ${edgePitch}`);
+    console.log(`  audio bytes: ${edge.audioBuffer.length}`);
+    console.log(`  alignment chars: ${edge.align.characters.length}`);
+    if (fixtureSyncedPath) console.log(`  fixture synced: ${fixtureSyncedPath}`);
+    console.log('======================================================');
+    return;
+  }
+
+  // ── LIVE PATH (ElevenLabs fallback) ───────────────────────────────────────
   // Only read .env when we actually need to call the API.
   loadDotEnv();
   const apiKey = process.env['ELEVENLABS_API_KEY'];

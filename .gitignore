@@ -98,6 +98,9 @@ runs/
 tools/subtitle-detect-paddle/.venv/
 tools/subtitle-detect-paddle/_install*.log
 tools/subtitle-detect-paddle/models/
+# edge-tts voiceover tool: never commit the Python venv or install logs.
+tools/edge-tts-voice/.venv/
+tools/edge-tts-voice/_install*.log
 **/__pycache__/
 *.pyc
 
