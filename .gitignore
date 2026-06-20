@@ -101,6 +101,9 @@ tools/subtitle-detect-paddle/models/
 # edge-tts voiceover tool: never commit the Python venv or install logs.
 tools/edge-tts-voice/.venv/
 tools/edge-tts-voice/_install*.log
+# Demucs audio source-separation tool: never commit the Python venv (torch/CPU
+# ~1.35GB) or its model cache — runtime, installed per machine.
+tools/demucs-sep/
 **/__pycache__/
 *.pyc
 
