@@ -1,16 +1,17 @@
 /* =============================================================================
  * VFOS Studio — Entertainment Command Center (Lane 2: Nội dung / Giải trí)
  * -----------------------------------------------------------------------------
- * Phase E-UI-1 — UI SKELETON ONLY. Giao diện vận hành 3 BƯỚC / 3 NÚT LỚN cho
- * Operator dễ dùng, NHƯNG bên trong vẫn là workflow 8 bước + 2 gate theo
+ * Giao diện vận hành 3 BƯỚC / 3 NÚT LỚN cho Operator dễ dùng, NHƯNG bên trong
+ * vẫn là workflow 8 bước + 2 gate theo
  * docs/00_DIEU_HANH/VFOS_ENTERTAINMENT_LANE_SPEC.md:
  *   source intake → analyze → montage → transcreation → voice/caption →
  *   audio mix → preview → package.
  *
  * 3 nút lớn:  1) Tải link   2) Sản xuất video   3) Đóng gói & hướng dẫn đăng tay
  * 2 gate Operator (duyệt script + duyệt preview) nằm BÊN TRONG bước 2.
- * KHÔNG action thật, KHÔNG data thật, KHÔNG gọi pipeline/API — mỗi nút ghi rõ
- * phase sẽ wire (E-UI-2..6). KHÔNG auto publish TikTok ở phase này.
+ * Wired: nút 1 = IntakePanel (E-UI-2); nút 2 = ProductionPanel chạy chuỗi
+ * analyze→montage→script + GATE 1 duyệt script (E-UI-3, DỪNG trước voice). Nút 3
+ * (đóng gói/đăng tay) còn skeleton (E-UI-6). KHÔNG auto publish TikTok.
  *
  * Isolation: page riêng, KHÔNG tái dùng component Product Review, KHÔNG đụng
  * /lanes/product-review, jobs/[jobId], orchestrator, Product Card, nav.ts.
@@ -19,6 +20,7 @@
 import { Badge } from '@/components/badge';
 import { Card, CardBody } from '@/components/card';
 import { IntakePanel } from '@/components/entertainment/intake-panel';
+import { ProductionPanel } from '@/components/entertainment/production-panel';
 import { PageHeader } from '@/components/page-header';
 
 // 7 sub-step bên trong nút "Sản xuất video" (intake = nút 1, package = nút 3).
@@ -35,13 +37,39 @@ const PRODUCE_SUBSTEPS: Array<{ label: string; gate?: boolean }> = [
 // Workflow 8 bước đầy đủ (mục expandable cho dev/operator xem sâu).
 const FULL_WORKFLOW: Array<{ no: number; label: string; note: string; gate?: string }> = [
   { no: 1, label: 'Source Intake', note: 'Tải source no-watermark + metadata (nút "Tải link").' },
-  { no: 2, label: 'Analyze + Clip Mining', note: 'Vision-anchored: tìm money-shot bằng hình, ASR bám nhịp.' },
+  {
+    no: 2,
+    label: 'Analyze + Clip Mining',
+    note: 'Vision-anchored: tìm money-shot bằng hình, ASR bám nhịp.',
+  },
   { no: 3, label: 'Montage Build', note: 'Dựng visual base: lead-up + money-shot + reaction.' },
-  { no: 4, label: 'Script — Transcreation', note: 'Bám lời/nhịp gốc, Việt hóa, tag source-bound/micro.', gate: 'GATE 1 — Operator duyệt script' },
-  { no: 5, label: 'Voice + Caption Sync', note: 'Edge TTS (swappable ElevenLabs); hash voice==caption, overlap=0.' },
-  { no: 6, label: 'Audio Mix', note: 'remove_speech_keep_ambient (Demucs no_vocals + ducking); fallback stock/mute.' },
-  { no: 7, label: 'Preview', note: 'Player + QA checklist.', gate: 'GATE 2 — Operator duyệt preview' },
-  { no: 8, label: 'Package', note: 'Final mp4 + caption + hashtag + hướng dẫn đăng tay (nút "Đóng gói").' },
+  {
+    no: 4,
+    label: 'Script — Transcreation',
+    note: 'Bám lời/nhịp gốc, Việt hóa, tag source-bound/micro.',
+    gate: 'GATE 1 — Operator duyệt script',
+  },
+  {
+    no: 5,
+    label: 'Voice + Caption Sync',
+    note: 'Edge TTS (swappable ElevenLabs); hash voice==caption, overlap=0.',
+  },
+  {
+    no: 6,
+    label: 'Audio Mix',
+    note: 'remove_speech_keep_ambient (Demucs no_vocals + ducking); fallback stock/mute.',
+  },
+  {
+    no: 7,
+    label: 'Preview',
+    note: 'Player + QA checklist.',
+    gate: 'GATE 2 — Operator duyệt preview',
+  },
+  {
+    no: 8,
+    label: 'Package',
+    note: 'Final mp4 + caption + hashtag + hướng dẫn đăng tay (nút "Đóng gói").',
+  },
 ];
 
 function NicheSelector() {
@@ -96,13 +124,15 @@ export default function ContentLanePage() {
         icon="rawvisual"
         accent="cyan"
         title="Nội dung / Giải trí — Command Center"
-        description="Lane reup biến đổi → Việt hóa. Phase E-UI-1: khung 3 bước (skeleton), chưa bật action."
+        description="Lane reup biến đổi → Việt hóa. Tải link + Sản xuất (đến duyệt script) đã chạy thật; voice/đăng ở phase sau."
         actions={<NicheSelector />}
       />
 
       <Card>
         <CardBody className="flex flex-wrap items-center gap-x-6 gap-y-2 px-5 py-3 text-[11px] text-neutral-500">
-          <span className="font-semibold text-neutral-300">3 bước vận hành · 8 bước nội bộ · 2 gate</span>
+          <span className="font-semibold text-neutral-300">
+            3 bước vận hành · 8 bước nội bộ · 2 gate
+          </span>
           <span>audioMode: remove_speech_keep_ambient</span>
           <span>Không Product Card · Không affiliate · Không auto-publish TikTok</span>
         </CardBody>
@@ -132,12 +162,12 @@ export default function ContentLanePage() {
               title="Sản xuất video"
               sub="Analyze → Montage → Script → Voice → Caption → Audio mix → Preview"
             />
-            <Badge accent="cyan">E-UI-3…5</Badge>
+            <Badge accent="cyan">E-UI-3</Badge>
           </div>
           <p className="text-xs leading-relaxed text-neutral-400">
-            Hệ thống tự chạy chuỗi sub-step bên trong. Có <strong>2 điểm dừng chờ Operator
-            duyệt</strong>: duyệt <strong>script</strong> trước khi voice/render, và duyệt{' '}
-            <strong>preview</strong> trước khi đóng gói.
+            Hệ thống tự chạy chuỗi sub-step bên trong. Có{' '}
+            <strong>2 điểm dừng chờ Operator duyệt</strong>: duyệt <strong>script</strong> trước khi
+            voice/render, và duyệt <strong>preview</strong> trước khi đóng gói.
           </p>
           {/* Timeline sub-step thu gọn */}
           <div className="flex flex-wrap items-center gap-1.5">
@@ -157,7 +187,7 @@ export default function ContentLanePage() {
               </span>
             ))}
           </div>
-          <BigButton label="Sản xuất video" phase="E-UI-3…5" />
+          <ProductionPanel />
         </CardBody>
       </Card>
 
@@ -165,11 +195,7 @@ export default function ContentLanePage() {
       <Card>
         <CardBody className="space-y-3 p-6">
           <div className="flex items-start justify-between gap-3">
-            <StepHeader
-              no={3}
-              title="Đăng TikTok"
-              sub="Đóng gói & hướng dẫn đăng tay"
-            />
+            <StepHeader no={3} title="Đăng TikTok" sub="Đóng gói & hướng dẫn đăng tay" />
             <Badge accent="cyan">E-UI-6</Badge>
           </div>
           <p className="text-xs leading-relaxed text-neutral-400">

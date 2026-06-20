@@ -32,7 +32,10 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   if (!isLocalRequest(req)) {
-    return Response.json({ ok: false, code: 'NOT_LOCAL', message: 'Chỉ chạy từ local.' }, { status: 403 });
+    return Response.json(
+      { ok: false, code: 'NOT_LOCAL', message: 'Chỉ chạy từ local.' },
+      { status: 403 },
+    );
   }
 
   let body: CreateBody;
@@ -64,7 +67,11 @@ export async function POST(req: Request) {
     return Response.json({ ok, job }, { status: ok ? 200 : 502 });
   } catch (e) {
     return Response.json(
-      { ok: false, code: 'CREATE_FAILED', message: e instanceof Error ? e.message : 'Tạo job lỗi.' },
+      {
+        ok: false,
+        code: 'CREATE_FAILED',
+        message: e instanceof Error ? e.message : 'Tạo job lỗi.',
+      },
       { status: 500 },
     );
   }

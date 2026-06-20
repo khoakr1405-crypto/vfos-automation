@@ -1,11 +1,12 @@
 /* =============================================================================
- * VFOS Studio — Entertainment lane job detail API (E-UI-2 → E-UI-3)
+ * VFOS Studio — Entertainment lane GATE 1 (script approve) API (E-UI-3)
  * -----------------------------------------------------------------------------
- * GET: trạng thái 1 job giải trí (manifest + live step status + script summary +
- * gate, reconcile state machine). Local-only, jobId validated.
+ * POST: Operator duyệt nội dung script → set reviewGates.scriptApproved.
+ * READY ≠ được đăng. Voice/render (E-UI-4) sẽ BỊ CHẶN tới khi gate này pass.
+ * Local-only. Không auto qua gate, không publish.
  * ========================================================================== */
 
-import { getJobDetail, isValidJobId } from '@/lib/entertainment/jobs';
+import { approveScript, isValidJobId } from '@/lib/entertainment/jobs';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,7 +17,14 @@ function isLocalRequest(req: Request): boolean {
   return LOCAL_HOSTS.has(host ?? '');
 }
 
-export async function GET(req: Request, ctx: { params: Promise<{ jobId: string }> }) {
+const HTTP_FOR: Record<string, number> = {
+  NOT_FOUND: 404,
+  NO_SCRIPT: 409,
+  BUSY: 409,
+  BAD_STATE: 500,
+};
+
+export async function POST(req: Request, ctx: { params: Promise<{ jobId: string }> }) {
   if (!isLocalRequest(req)) {
     return Response.json({ ok: false, code: 'NOT_LOCAL' }, { status: 403 });
   }
@@ -24,9 +32,9 @@ export async function GET(req: Request, ctx: { params: Promise<{ jobId: string }
   if (!isValidJobId(jobId)) {
     return Response.json({ ok: false, code: 'BAD_JOB_ID' }, { status: 400 });
   }
-  const job = getJobDetail(jobId);
-  if (!job) {
-    return Response.json({ ok: false, code: 'NOT_FOUND' }, { status: 404 });
+  const res = approveScript(jobId);
+  if (!res.ok) {
+    return Response.json(res, { status: HTTP_FOR[res.code] ?? 400 });
   }
-  return Response.json({ ok: true, job });
+  return Response.json(res, { status: 200 });
 }

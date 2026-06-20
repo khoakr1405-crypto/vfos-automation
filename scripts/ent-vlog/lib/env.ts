@@ -5,7 +5,7 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-function findWorkspaceRoot(start: string): string {
+export function findWorkspaceRoot(start: string): string {
   let dir = start;
   for (let i = 0; i < 8; i += 1) {
     if (existsSync(join(dir, 'pnpm-workspace.yaml'))) return dir;

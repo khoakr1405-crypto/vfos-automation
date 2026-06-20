@@ -210,6 +210,12 @@ Product Review.** Back-to-lane, orchestrate inline, không lộ route kỹ thu�
 | 7 | **Preview (GATE 2)** | video player, QA checklist (§7), Approve/Reject |
 | 8 | Package | final mp4 path, caption đăng, hashtag, hướng dẫn đăng tay (**no auto publish**) |
 
+> **Cập nhật (E-UI-1/3):** UI triển khai dạng **3 NÚT LỚN** cho Operator dễ dùng,
+> 8 panel ở trên là mô hình nội bộ. Nút 1 = Tải link (panel 1). Nút 2 = **Sản xuất
+> video** gộp panel 2–7: bấm 1 lần chạy chuỗi **analyze→montage→script** rồi DỪNG ở
+> **GATE 1** (bảng duyệt script bám lời gốc) — chưa voice/render (E-UI-4+). Nút 3 =
+> Đóng gói/đăng tay (panel 8, E-UI-6). 2 gate Operator giữ nguyên, không auto qua.
+
 ---
 
 ## 6. API — namespace riêng `/api/studio/entertainment/...`
@@ -232,6 +238,16 @@ logic engine vào API.
 | POST `/jobs/[id]/approve` · `/reject` | manifest | GATE 2 |
 | POST `/jobs/[id]/package` | `16` | package + hướng dẫn đăng tay (no publish) |
 | GET `/jobs/[id]/preview` | serve | trả mp4 preview |
+
+> **Cập nhật (E-UI-3) — gộp analyze/montage/script thành CHUỖI:** các bước này vượt
+> 120s ⇒ chạy **DETACHED** qua engine wrapper `scripts/ent-vlog/20-pipeline.ts`
+> (`--step analyze|montage|script|produce`), ghi status `data/temp/ent/<id>/steps/
+> <step>.json` (engine sở hữu; API chỉ đọc → không race với `ent_job.json`).
+> Route thật đã làm: **POST `/jobs/[id]/produce`** (chuỗi analyze→montage→script,
+> dừng GATE 1), **POST `/jobs/[id]/script`** (chạy lại riêng `13` sau khi sửa text),
+> **GET `/jobs/[id]/script`** (dữ liệu duyệt: beats Việt hóa + lời gốc + review.md),
+> **POST `/jobs/[id]/script/approve`** (GATE 1). GET `/jobs/[id]` reconcile state
+> machine từ artifact + overlay step status. Single-flight: 1 step/job tại 1 thời điểm.
 
 ---
 

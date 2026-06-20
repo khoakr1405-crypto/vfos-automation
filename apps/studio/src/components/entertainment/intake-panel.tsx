@@ -8,7 +8,7 @@
  * Product Review. Không publish.
  * ========================================================================== */
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 interface EntJob {
   jobId: string;
@@ -40,7 +40,7 @@ export function IntakePanel() {
   const [msg, setMsg] = useState<string | null>(null);
   const [jobs, setJobs] = useState<EntJob[]>([]);
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     try {
       const r = await fetch('/api/studio/entertainment/jobs');
       const j = (await r.json()) as { ok: boolean; jobs?: EntJob[] };
@@ -48,11 +48,11 @@ export function IntakePanel() {
     } catch {
       /* ignore */
     }
-  }
+  }, []);
 
   useEffect(() => {
     void refresh();
-  }, []);
+  }, [refresh]);
 
   async function onSubmit() {
     const u = url.trim();
@@ -67,7 +67,9 @@ export function IntakePanel() {
       });
       const j = (await r.json()) as { ok: boolean; job?: EntJob; message?: string };
       if (j.ok && j.job) {
-        setMsg(`✅ ${j.job.jobId} — đã tải (${j.job.source.durationSec ?? '?'}s, audio ${j.job.source.hasAudio ? 'có' : 'không'}).`);
+        setMsg(
+          `✅ ${j.job.jobId} — đã tải (${j.job.source.durationSec ?? '?'}s, audio ${j.job.source.hasAudio ? 'có' : 'không'}).`,
+        );
         setUrl('');
       } else {
         setMsg(`🛑 ${j.message ?? j.job?.error?.message ?? 'Tải thất bại.'}`);
