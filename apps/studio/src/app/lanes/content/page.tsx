@@ -18,6 +18,7 @@
 
 import { Badge } from '@/components/badge';
 import { Card, CardBody } from '@/components/card';
+import { IntakePanel } from '@/components/entertainment/intake-panel';
 import { PageHeader } from '@/components/page-header';
 
 // 7 sub-step bên trong nút "Sản xuất video" (intake = nút 1, package = nút 3).
@@ -115,15 +116,10 @@ export default function ContentLanePage() {
             <Badge accent="cyan">E-UI-2</Badge>
           </div>
           <p className="text-xs leading-relaxed text-neutral-400">
-            Dán URL Douyin/TikTok hoặc đường dẫn file local → tạo job giải trí, tải source
-            no-watermark, lưu metadata. Không Product Card, không affiliate.
+            Dán URL Douyin/TikTok → tạo job giải trí, tải source no-watermark, lưu metadata. Không
+            Product Card, không affiliate.
           </p>
-          <input
-            disabled
-            placeholder="Dán URL Douyin/TikTok hoặc đường dẫn file…"
-            className="w-full cursor-not-allowed rounded-lg border border-hairline/60 bg-panel/40 px-3 py-2 text-xs text-neutral-500 placeholder:text-neutral-600"
-          />
-          <BigButton label="Tải link" phase="E-UI-2" />
+          <IntakePanel />
         </CardBody>
       </Card>
 
