@@ -1,18 +1,18 @@
 /* =============================================================================
  * VFOS Studio — Entertainment Command Center (Lane 2: Nội dung / Giải trí)
  * -----------------------------------------------------------------------------
- * Giao diện vận hành 3 BƯỚC / 3 NÚT LỚN cho Operator dễ dùng, NHƯNG bên trong
+ * Giao diện vận hành 3 PHẦN / ĐÚNG 4 NÚT cho Operator dễ dùng, NHƯNG bên trong
  * vẫn là workflow 8 bước + 2 gate theo
  * docs/00_DIEU_HANH/VFOS_ENTERTAINMENT_LANE_SPEC.md:
  *   source intake → analyze → montage → transcreation → voice/caption →
  *   audio mix → preview → package.
  *
- * 3 nút lớn:  1) Tải link   2) Sản xuất video   3) Đóng gói & hướng dẫn đăng tay
- * 2 gate Operator (duyệt script + duyệt preview) nằm BÊN TRONG bước 2.
- * Wired: nút 1 = IntakePanel (E-UI-2); nút 2 = ProductionPanel chạy
- * analyze→montage→script (GATE 1) → voice/render + audio policy (GATE 2)
- * (E-UI-3/4); nút 3 = PackagePanel đóng gói + hướng dẫn đăng tay (E-UI-6).
- * KHÔNG auto publish TikTok.
+ * ĐÚNG 4 NÚT (E-UI-7 gom nút):
+ *   1) Tải link  2) Sản xuất video  3) Duyệt (1 nút cho cả 2 cổng)  4) Đăng lên TikTok
+ * 1 ô chọn job DÙNG CHUNG cho cả 3 phần (EntJobSelector). Mọi sub-step + render
+ * chạy NGẦM; nút "Duyệt" lần 1 = duyệt script rồi TỰ render ngầm → dừng GATE 2,
+ * lần 2 = duyệt video. Nút 4 hiện = đóng gói đăng TAY (roadmap: nối TikTok API).
+ * 2 gate Operator (duyệt script + duyệt video) GIỮ NGUYÊN. KHÔNG auto publish.
  *
  * Isolation: page riêng, KHÔNG tái dùng component Product Review, KHÔNG đụng
  * /lanes/product-review, jobs/[jobId], orchestrator, Product Card, nav.ts.
@@ -20,6 +20,7 @@
 
 import { Badge } from '@/components/badge';
 import { Card, CardBody } from '@/components/card';
+import { EntJobSelector, EntLaneProvider } from '@/components/entertainment/ent-lane-context';
 import { IntakePanel } from '@/components/entertainment/intake-panel';
 import { PackagePanel } from '@/components/entertainment/package-panel';
 import { ProductionPanel } from '@/components/entertainment/production-panel';
@@ -104,127 +105,132 @@ function StepHeader({ no, title, sub }: { no: number; title: string; sub: string
 // biome-ignore lint/style/noDefaultExport: Next.js page requires default export
 export default function ContentLanePage() {
   return (
-    <div className="space-y-6">
-      <PageHeader
-        no={3}
-        icon="rawvisual"
-        accent="cyan"
-        title="Nội dung / Giải trí — Command Center"
-        description="Lane reup biến đổi → Việt hóa. Tải link + Sản xuất (đến duyệt script) đã chạy thật; voice/đăng ở phase sau."
-        actions={<NicheSelector />}
-      />
+    <EntLaneProvider>
+      <div className="space-y-6">
+        <PageHeader
+          no={3}
+          icon="rawvisual"
+          accent="cyan"
+          title="Nội dung / Giải trí — Command Center"
+          description="Lane reup biến đổi → Việt hóa. Đúng 4 nút (Tải link · Sản xuất · Duyệt · Đăng), mọi thứ còn lại chạy ngầm."
+          actions={<NicheSelector />}
+        />
 
-      <Card>
-        <CardBody className="flex flex-wrap items-center gap-x-6 gap-y-2 px-5 py-3 text-[11px] text-neutral-500">
-          <span className="font-semibold text-neutral-300">
-            3 bước vận hành · 8 bước nội bộ · 2 gate
-          </span>
-          <span>audioMode: remove_speech_keep_ambient</span>
-          <span>Không Product Card · Không affiliate · Không auto-publish TikTok</span>
-        </CardBody>
-      </Card>
-
-      {/* BƯỚC 1 — Tải link */}
-      <Card>
-        <CardBody className="space-y-3 p-6">
-          <div className="flex items-start justify-between gap-3">
-            <StepHeader no={1} title="Tải link" sub="Tạo job + tải source từ nguồn ngoài" />
-            <Badge accent="cyan">E-UI-2</Badge>
-          </div>
-          <p className="text-xs leading-relaxed text-neutral-400">
-            Dán URL Douyin/TikTok → tạo job giải trí, tải source no-watermark, lưu metadata. Không
-            Product Card, không affiliate.
-          </p>
-          <IntakePanel />
-        </CardBody>
-      </Card>
-
-      {/* BƯỚC 2 — Sản xuất video (chứa 8-bước nội bộ + 2 gate) */}
-      <Card className="ring-1 ring-accent-amber/20">
-        <CardBody className="space-y-3 p-6">
-          <div className="flex items-start justify-between gap-3">
-            <StepHeader
-              no={2}
-              title="Sản xuất video"
-              sub="Analyze → Montage → Script → Voice → Caption → Audio mix → Preview"
-            />
-            <Badge accent="cyan">E-UI-3/4</Badge>
-          </div>
-          <p className="text-xs leading-relaxed text-neutral-400">
-            Hệ thống tự chạy chuỗi sub-step bên trong. Có{' '}
-            <strong>2 điểm dừng chờ Operator duyệt</strong>: duyệt <strong>script</strong> trước khi
-            voice/render, và duyệt <strong>preview</strong> trước khi đóng gói.
-          </p>
-          {/* Timeline sub-step thu gọn */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            {PRODUCE_SUBSTEPS.map((s, i) => (
-              <span key={s.label} className="flex items-center gap-1.5">
-                <span
-                  className={`rounded-md px-2 py-1 text-[10px] font-medium ${
-                    s.gate
-                      ? 'border border-accent-amber/40 bg-accent-amber/10 text-accent-amber'
-                      : 'border border-hairline/50 bg-panel/40 text-neutral-400'
-                  }`}
-                >
-                  {s.gate ? '⛔ ' : ''}
-                  {s.label}
-                </span>
-                {i < PRODUCE_SUBSTEPS.length - 1 && <span className="text-neutral-700">›</span>}
-              </span>
-            ))}
-          </div>
-          <ProductionPanel />
-        </CardBody>
-      </Card>
-
-      {/* BƯỚC 3 — Đóng gói & hướng dẫn đăng tay */}
-      <Card>
-        <CardBody className="space-y-3 p-6">
-          <div className="flex items-start justify-between gap-3">
-            <StepHeader no={3} title="Đăng TikTok" sub="Đóng gói & hướng dẫn đăng tay" />
-            <Badge accent="cyan">E-UI-6</Badge>
-          </div>
-          <p className="text-xs leading-relaxed text-neutral-400">
-            Xuất final mp4 + caption đề xuất + hashtag đề xuất + checklist đăng thủ công.{' '}
-            <strong className="text-neutral-300">KHÔNG auto-publish.</strong> Auto-publish TikTok là
-            phase riêng sau này (cần TikTok API/token + safety gate).
-          </p>
-          <PackagePanel />
-        </CardBody>
-      </Card>
-
-      {/* Expandable — chi tiết workflow 8 bước (dev/operator xem sâu) */}
-      <Card>
-        <CardBody className="p-0">
-          <details className="group">
-            <summary className="flex cursor-pointer items-center justify-between px-5 py-3 text-xs font-semibold text-neutral-300">
-              <span>Chi tiết workflow 8 bước (dev/operator)</span>
-              <span className="text-neutral-600 transition group-open:rotate-90">›</span>
-            </summary>
-            <div className="space-y-2 border-t border-hairline/40 px-5 py-4">
-              {FULL_WORKFLOW.map((step) => (
-                <div key={step.no} className="flex gap-3 text-[11px]">
-                  <span className="w-4 shrink-0 font-bold text-neutral-500">{step.no}</span>
-                  <div>
-                    <span className="font-semibold text-neutral-300">{step.label}</span>
-                    {step.gate && (
-                      <span className="ml-2 rounded bg-accent-amber/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent-amber">
-                        ⛔ {step.gate}
-                      </span>
-                    )}
-                    <p className="mt-0.5 text-neutral-500">{step.note}</p>
-                  </div>
-                </div>
-              ))}
-              <p className="border-t border-hairline/40 pt-2 text-[10px] text-neutral-600">
-                Skeleton E-UI-1 — engine CLI (scripts/ent-vlog) đã chạy thật bước 1–6; E-UI-2…6 nối
-                từng nút vào API namespace riêng /api/studio/entertainment. Spec:
-                docs/00_DIEU_HANH/VFOS_ENTERTAINMENT_LANE_SPEC.md
-              </p>
+        <Card>
+          <CardBody className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 px-5 py-3 text-[11px] text-neutral-500">
+            <EntJobSelector />
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
+              <span>audioMode: remove_speech_keep_ambient</span>
+              <span>Không Product Card · Không affiliate · Không auto-publish</span>
             </div>
-          </details>
-        </CardBody>
-      </Card>
-    </div>
+          </CardBody>
+        </Card>
+
+        {/* BƯỚC 1 — Tải link */}
+        <Card>
+          <CardBody className="space-y-3 p-6">
+            <div className="flex items-start justify-between gap-3">
+              <StepHeader no={1} title="Tải link" sub="Tạo job + tải source từ nguồn ngoài" />
+              <Badge accent="cyan">E-UI-2</Badge>
+            </div>
+            <p className="text-xs leading-relaxed text-neutral-400">
+              Dán URL Douyin/TikTok → tạo job giải trí, tải source no-watermark, lưu metadata. Không
+              Product Card, không affiliate.
+            </p>
+            <IntakePanel />
+          </CardBody>
+        </Card>
+
+        {/* BƯỚC 2 — Sản xuất video (chứa 8-bước nội bộ + 2 gate) */}
+        <Card className="ring-1 ring-accent-amber/20">
+          <CardBody className="space-y-3 p-6">
+            <div className="flex items-start justify-between gap-3">
+              <StepHeader
+                no={2}
+                title="Sản xuất video"
+                sub="2 nút: Sản xuất + Duyệt — mọi sub-step chạy ngầm"
+              />
+              <Badge accent="cyan">E-UI-7</Badge>
+            </div>
+            <p className="text-xs leading-relaxed text-neutral-400">
+              Bấm <strong>Sản xuất video</strong> → chạy ngầm tới <strong>Duyệt script</strong>. Bấm{' '}
+              <strong>Duyệt</strong> lần 1 = duyệt script rồi TỰ render ngầm → dừng ở{' '}
+              <strong>Duyệt video</strong>. Bấm <strong>Duyệt</strong> lần 2 = duyệt video. 2 cổng
+              duyệt tay giữ nguyên (luật an toàn).
+            </p>
+            {/* Timeline sub-step thu gọn */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              {PRODUCE_SUBSTEPS.map((s, i) => (
+                <span key={s.label} className="flex items-center gap-1.5">
+                  <span
+                    className={`rounded-md px-2 py-1 text-[10px] font-medium ${
+                      s.gate
+                        ? 'border border-accent-amber/40 bg-accent-amber/10 text-accent-amber'
+                        : 'border border-hairline/50 bg-panel/40 text-neutral-400'
+                    }`}
+                  >
+                    {s.gate ? '⛔ ' : ''}
+                    {s.label}
+                  </span>
+                  {i < PRODUCE_SUBSTEPS.length - 1 && <span className="text-neutral-700">›</span>}
+                </span>
+              ))}
+            </div>
+            <ProductionPanel />
+          </CardBody>
+        </Card>
+
+        {/* BƯỚC 3 — Đóng gói & hướng dẫn đăng tay */}
+        <Card>
+          <CardBody className="space-y-3 p-6">
+            <div className="flex items-start justify-between gap-3">
+              <StepHeader no={3} title="Đăng lên TikTok" sub="1 nút: đóng gói → đăng tay" />
+              <Badge accent="cyan">E-UI-7</Badge>
+            </div>
+            <p className="text-xs leading-relaxed text-neutral-400">
+              1 nút <strong>Đăng lên TikTok</strong>: xuất final mp4 + caption + hashtag +
+              checklist.{' '}
+              <strong className="text-neutral-300">Hiện đăng TAY, KHÔNG auto-publish.</strong>{' '}
+              Roadmap: nối TikTok API → tự đăng + tự viết caption như lane Review (cần token +
+              safety gate).
+            </p>
+            <PackagePanel />
+          </CardBody>
+        </Card>
+
+        {/* Expandable — chi tiết workflow 8 bước (dev/operator xem sâu) */}
+        <Card>
+          <CardBody className="p-0">
+            <details className="group">
+              <summary className="flex cursor-pointer items-center justify-between px-5 py-3 text-xs font-semibold text-neutral-300">
+                <span>Chi tiết workflow 8 bước (dev/operator)</span>
+                <span className="text-neutral-600 transition group-open:rotate-90">›</span>
+              </summary>
+              <div className="space-y-2 border-t border-hairline/40 px-5 py-4">
+                {FULL_WORKFLOW.map((step) => (
+                  <div key={step.no} className="flex gap-3 text-[11px]">
+                    <span className="w-4 shrink-0 font-bold text-neutral-500">{step.no}</span>
+                    <div>
+                      <span className="font-semibold text-neutral-300">{step.label}</span>
+                      {step.gate && (
+                        <span className="ml-2 rounded bg-accent-amber/15 px-1.5 py-0.5 text-[10px] font-semibold text-accent-amber">
+                          ⛔ {step.gate}
+                        </span>
+                      )}
+                      <p className="mt-0.5 text-neutral-500">{step.note}</p>
+                    </div>
+                  </div>
+                ))}
+                <p className="border-t border-hairline/40 pt-2 text-[10px] text-neutral-600">
+                  Skeleton E-UI-1 — engine CLI (scripts/ent-vlog) đã chạy thật bước 1–6; E-UI-2…6
+                  nối từng nút vào API namespace riêng /api/studio/entertainment. Spec:
+                  docs/00_DIEU_HANH/VFOS_ENTERTAINMENT_LANE_SPEC.md
+                </p>
+              </div>
+            </details>
+          </CardBody>
+        </Card>
+      </div>
+    </EntLaneProvider>
   );
 }

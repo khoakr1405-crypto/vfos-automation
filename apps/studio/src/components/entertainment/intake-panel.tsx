@@ -1,23 +1,15 @@
 'use client';
 
 /* =============================================================================
- * VFOS Studio — Entertainment intake panel (E-UI-2) — CLIENT island
+ * VFOS Studio — Entertainment intake panel (E-UI-2 / gom nút E-UI-7) — CLIENT
  * -----------------------------------------------------------------------------
- * Nút "Tải link" thật: POST /api/studio/entertainment/jobs (tạo job + tải
- * source qua 01-fetch), hiện trạng thái + danh sách job gần đây. Không đụng
- * Product Review. Không publish.
+ * 1 NÚT "Tải link": POST /api/studio/entertainment/jobs (tạo job + tải source
+ * qua 01-fetch). Job gần đây dùng chung context — bấm 1 dòng = chọn job đó cho
+ * cả 3 phần. Không đụng Product Review. Không publish.
  * ========================================================================== */
 
-import { useCallback, useEffect, useState } from 'react';
-
-interface EntJob {
-  jobId: string;
-  niche: string;
-  state: string;
-  createdAt: string;
-  source: { url: string; durationSec?: number; hasAudio?: boolean };
-  error?: { code: string; message: string } | null;
-}
+import { useState } from 'react';
+import { useEntLane } from './ent-lane-context';
 
 const STATE_META: Record<string, { label: string; cls: string }> = {
   INTAKE_RUNNING: { label: 'Đang tải…', cls: 'bg-accent-amber/15 text-accent-amber' },
@@ -35,24 +27,10 @@ function StatePill({ state }: { state: string }) {
 }
 
 export function IntakePanel() {
+  const { jobs, selectedId, selectJob, refreshJobs } = useEntLane();
   const [url, setUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
-  const [jobs, setJobs] = useState<EntJob[]>([]);
-
-  const refresh = useCallback(async () => {
-    try {
-      const r = await fetch('/api/studio/entertainment/jobs');
-      const j = (await r.json()) as { ok: boolean; jobs?: EntJob[] };
-      if (j.ok && j.jobs) setJobs(j.jobs);
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
 
   async function onSubmit() {
     const u = url.trim();
@@ -65,20 +43,25 @@ export function IntakePanel() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ url: u, niche: 'fishing-vlog' }),
       });
-      const j = (await r.json()) as { ok: boolean; job?: EntJob; message?: string };
+      const j = (await r.json()) as {
+        ok: boolean;
+        job?: { jobId: string; source: { durationSec?: number; hasAudio?: boolean } };
+        message?: string;
+      };
       if (j.ok && j.job) {
         setMsg(
-          `✅ ${j.job.jobId} — đã tải (${j.job.source.durationSec ?? '?'}s, audio ${j.job.source.hasAudio ? 'có' : 'không'}).`,
+          `✅ ${j.job.jobId} — đã tải (${j.job.source.durationSec ?? '?'}s, audio ${j.job.source.hasAudio ? 'có' : 'không'}). Đã chọn job này.`,
         );
         setUrl('');
+        selectJob(j.job.jobId);
       } else {
-        setMsg(`🛑 ${j.message ?? j.job?.error?.message ?? 'Tải thất bại.'}`);
+        setMsg(`🛑 ${j.message ?? 'Tải thất bại.'}`);
       }
     } catch (e) {
       setMsg(`🛑 ${e instanceof Error ? e.message : 'Lỗi mạng.'}`);
     } finally {
       setBusy(false);
-      void refresh();
+      void refreshJobs();
     }
   }
 
@@ -105,24 +88,38 @@ export function IntakePanel() {
 
       {jobs.length > 0 && (
         <div className="space-y-1.5 border-t border-hairline/40 pt-3">
-          <p className="text-[11px] font-semibold text-neutral-400">Job gần đây</p>
-          {jobs.slice(0, 6).map((job) => (
-            <div
-              key={job.jobId}
-              className="flex items-center justify-between gap-2 rounded-lg border border-hairline/50 bg-panel/30 px-3 py-1.5"
-            >
-              <div className="min-w-0">
-                <p className="truncate text-[11px] font-medium text-neutral-300">{job.jobId}</p>
-                <p className="truncate text-[10px] text-neutral-600">{job.source.url}</p>
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                {job.source.durationSec != null && (
-                  <span className="text-[10px] text-neutral-500">{job.source.durationSec}s</span>
-                )}
-                <StatePill state={job.state} />
-              </div>
-            </div>
-          ))}
+          <p className="text-[11px] font-semibold text-neutral-400">
+            Job gần đây <span className="text-neutral-600">(bấm để chọn cho cả 3 phần)</span>
+          </p>
+          {jobs.slice(0, 6).map((job) => {
+            const active = job.jobId === selectedId;
+            return (
+              <button
+                type="button"
+                key={job.jobId}
+                onClick={() => selectJob(job.jobId)}
+                className={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-1.5 text-left transition ${
+                  active
+                    ? 'border-accent-cyan/50 bg-accent-cyan/10'
+                    : 'border-hairline/50 bg-panel/30 hover:bg-panel/50'
+                }`}
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-[11px] font-medium text-neutral-300">
+                    {active && <span className="text-accent-cyan">● </span>}
+                    {job.jobId}
+                  </p>
+                  <p className="truncate text-[10px] text-neutral-600">{job.source?.url}</p>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  {job.source?.durationSec != null && (
+                    <span className="text-[10px] text-neutral-500">{job.source.durationSec}s</span>
+                  )}
+                  <StatePill state={job.state} />
+                </div>
+              </button>
+            );
+          })}
         </div>
       )}
     </div>

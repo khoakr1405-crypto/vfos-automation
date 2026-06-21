@@ -1,14 +1,17 @@
 'use client';
 
 /* =============================================================================
- * VFOS Studio — Entertainment package panel (E-UI-6) — CLIENT island
+ * VFOS Studio — Entertainment package panel (E-UI-7 gom nút) — CLIENT island
  * -----------------------------------------------------------------------------
- * Nút "Đóng gói & hướng dẫn đăng tay": từ job ĐÃ qua GATE 2 (duyệt preview) →
- * POST /package (16-package) → hiện final video + caption + hashtag + checklist
- * đăng TAY. KHÔNG auto-publish, KHÔNG TikTok API, KHÔNG affiliate.
+ * CHỈ 1 NÚT: "Đăng lên TikTok". Hiện tại = đóng gói (final mp4 + caption gpt-5.5
+ * + hashtag + checklist) để đăng TAY. Caption/hashtag bấm-vào-là-copy (không nút
+ * Copy riêng), player nhúng tại chỗ. KHÔNG auto-publish.
+ * ROADMAP: sau này nối TikTok API → nút này tự đăng + tự viết caption như lane
+ * Review (cần token + safety gate, làm ở phase riêng).
  * ========================================================================== */
 
 import { useCallback, useEffect, useState } from 'react';
+import { useEntLane } from './ent-lane-context';
 
 interface PackageSummary {
   finalVideo: string;
@@ -23,61 +26,44 @@ interface JobDetail {
   state: string;
   package?: PackageSummary | null;
 }
-interface JobListItem {
-  jobId: string;
-  state: string;
-}
 
 const ELIGIBLE = new Set(['APPROVED', 'PACKAGED']);
 
 function CopyBox({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false);
+  const copy = () => {
+    void navigator.clipboard.writeText(value).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
   return (
     <div className="space-y-1">
       <div className="flex items-center justify-between">
         <span className="text-[11px] font-semibold text-neutral-400">{label}</span>
-        <button
-          type="button"
-          onClick={() => {
-            void navigator.clipboard.writeText(value).then(() => {
-              setCopied(true);
-              setTimeout(() => setCopied(false), 1500);
-            });
-          }}
-          className="rounded border border-hairline/60 px-2 py-0.5 text-[10px] text-neutral-300 hover:bg-panel/60"
-        >
-          {copied ? 'Đã copy ✓' : 'Copy'}
-        </button>
+        <span className="text-[10px] text-neutral-500">
+          {copied ? 'Đã copy ✓' : 'Bấm vào ô để copy'}
+        </span>
       </div>
-      <textarea
-        readOnly
-        value={value}
-        className="h-16 w-full resize-none rounded-lg border border-hairline/50 bg-panel/40 px-2 py-1.5 text-[11px] text-neutral-200"
-      />
+      <button
+        type="button"
+        onClick={copy}
+        className="block w-full cursor-pointer rounded-lg border border-hairline/50 bg-panel/40 px-2 py-1.5 text-left text-[11px] text-neutral-200 transition hover:border-accent-cyan/40 hover:bg-panel/60"
+      >
+        {value}
+      </button>
     </div>
   );
 }
 
 export function PackagePanel() {
-  const [jobs, setJobs] = useState<JobListItem[]>([]);
-  const [selectedId, setSelectedId] = useState('');
+  const { jobs, selectedId, refreshJobs } = useEntLane();
   const [detail, setDetail] = useState<JobDetail | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
-  const loadJobs = useCallback(async () => {
-    try {
-      const r = await fetch('/api/studio/entertainment/jobs');
-      const j = (await r.json()) as { ok: boolean; jobs?: JobListItem[] };
-      if (j.ok && j.jobs) {
-        const eligible = j.jobs.filter((x) => ELIGIBLE.has(x.state));
-        setJobs(eligible);
-        setSelectedId((cur) => cur || eligible[0]?.jobId || '');
-      }
-    } catch {
-      /* ignore */
-    }
-  }, []);
+  const selJob = jobs.find((j) => j.jobId === selectedId);
+  const eligible = !!selJob && ELIGIBLE.has(selJob.state);
 
   const loadDetail = useCallback(async (id: string) => {
     if (!id) {
@@ -94,14 +80,11 @@ export function PackagePanel() {
   }, []);
 
   useEffect(() => {
-    void loadJobs();
-  }, [loadJobs]);
-  useEffect(() => {
     void loadDetail(selectedId);
   }, [selectedId, loadDetail]);
 
   async function onPackage() {
-    if (!selectedId || busy) return;
+    if (!selectedId || busy || !eligible) return;
     setBusy(true);
     setMsg('Đang đóng gói + viết caption…');
     try {
@@ -124,7 +107,7 @@ export function PackagePanel() {
       setMsg(`🛑 ${e instanceof Error ? e.message : 'Lỗi mạng.'}`);
     } finally {
       setBusy(false);
-      void loadJobs();
+      void refreshJobs();
     }
   }
 
@@ -132,35 +115,24 @@ export function PackagePanel() {
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[11px] text-neutral-500">Job đã duyệt preview:</span>
-        <select
-          value={selectedId}
-          onChange={(e) => setSelectedId(e.target.value)}
-          disabled={busy}
-          className="rounded-lg border border-hairline/60 bg-panel/40 px-2 py-1.5 text-xs text-neutral-200 focus:border-accent-cyan/50 focus:outline-none disabled:opacity-60"
-        >
-          {jobs.length === 0 && <option value="">— chưa có job qua GATE 2 —</option>}
-          {jobs.map((j) => (
-            <option key={j.jobId} value={j.jobId}>
-              {j.jobId} · {j.state}
-            </option>
-          ))}
-        </select>
-      </div>
-
       <div className="flex flex-wrap items-center gap-3">
         <button
           type="button"
           onClick={onPackage}
-          disabled={!selectedId || busy}
+          disabled={!selectedId || busy || !eligible}
           className="rounded-xl border border-accent-cyan/40 bg-accent-cyan/15 px-5 py-2.5 text-sm font-bold text-accent-cyan transition hover:bg-accent-cyan/25 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {busy ? 'Đang đóng gói…' : pkg ? 'Đóng gói lại' : 'Đóng gói & hướng dẫn đăng tay'}
+          {busy ? 'Đang đóng gói…' : 'Đăng lên TikTok'}
         </button>
         <span className="text-[11px] text-neutral-600">
-          Tạo caption + hashtag + checklist.{' '}
-          <strong className="text-neutral-400">KHÔNG tự đăng.</strong>
+          {eligible ? (
+            <>
+              Xuất gói + caption.{' '}
+              <strong className="text-neutral-400">Anh tự đăng tay, chưa auto-publish.</strong>
+            </>
+          ) : (
+            <>⛔ Cần duyệt video (GATE 2) ở phần "Sản xuất video" trước.</>
+          )}
         </span>
       </div>
       {msg && <p className="text-[11px] text-neutral-400">{msg}</p>}
@@ -175,17 +147,14 @@ export function PackagePanel() {
             </span>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 text-[11px]">
-            <a
-              href={`/api/studio/entertainment/jobs/${selectedId}/preview`}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-lg border border-accent-cyan/40 bg-accent-cyan/10 px-3 py-1.5 font-semibold text-accent-cyan hover:bg-accent-cyan/20"
-            >
-              ▶ Mở video final
-            </a>
-            <span className="truncate text-neutral-500">{pkg.finalVideo}</span>
-          </div>
+          {/* Video final nhúng tại chỗ */}
+          {/* biome-ignore lint/a11y/useMediaCaption: caption đã bake vào video */}
+          <video
+            controls
+            className="w-full max-w-[280px] rounded-lg border border-hairline/40"
+            src={`/api/studio/entertainment/jobs/${selectedId}/preview`}
+          />
+          <p className="truncate text-[10px] text-neutral-600">{pkg.finalVideo}</p>
 
           <CopyBox label="Caption" value={pkg.caption} />
           <CopyBox label={`Hashtag (${pkg.hashtags.length})`} value={pkg.hashtags.join(' ')} />
@@ -200,6 +169,10 @@ export function PackagePanel() {
           </div>
           <p className="text-[10px] text-accent-amber">
             ⚠️ READY ≠ được đăng tự động. Operator tự đăng tay trên TikTok. Affiliate chưa gắn.
+          </p>
+          <p className="text-[10px] text-neutral-600">
+            🔜 Roadmap: nối TikTok API → nút này tự đăng + tự viết caption như lane Review (phase
+            riêng, cần token + safety gate).
           </p>
         </div>
       )}
