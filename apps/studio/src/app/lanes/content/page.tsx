@@ -162,7 +162,7 @@ export default function ContentLanePage() {
               title="Sản xuất video"
               sub="Analyze → Montage → Script → Voice → Caption → Audio mix → Preview"
             />
-            <Badge accent="cyan">E-UI-3</Badge>
+            <Badge accent="cyan">E-UI-3/4</Badge>
           </div>
           <p className="text-xs leading-relaxed text-neutral-400">
             Hệ thống tự chạy chuỗi sub-step bên trong. Có{' '}

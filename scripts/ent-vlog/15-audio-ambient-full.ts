@@ -9,7 +9,7 @@
 // No visual/caption re-render, no publish, no Review, no commit. Local only.
 //   pnpm tsx scripts/ent-vlog/15-audio-ambient-full.ts --id ent_squid_001
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { workDir } from './lib/env.js';
@@ -32,7 +32,9 @@ function sh(cmd: string, args: string[], label: string): boolean {
 }
 
 function measureDb(path: string): { mean: number; max: number } {
-  const r = spawnSync('ffmpeg', ['-i', path, '-af', 'volumedetect', '-f', 'null', '-'], { encoding: 'utf8' });
+  const r = spawnSync('ffmpeg', ['-i', path, '-af', 'volumedetect', '-f', 'null', '-'], {
+    encoding: 'utf8',
+  });
   const err = r.stderr ?? '';
   const mm = err.match(/mean_volume:\s*(-?[\d.]+) dB/);
   const xm = err.match(/max_volume:\s*(-?[\d.]+) dB/);
@@ -67,18 +69,22 @@ async function main(): Promise<void> {
       process.exit(2);
     }
   }
-  const meta = JSON.parse(readFileSync(join(dir, 'source_meta.json'), 'utf8')) as { durationSec: number };
+  const meta = JSON.parse(readFileSync(join(dir, 'source_meta.json'), 'utf8')) as {
+    durationSec: number;
+  };
   const ad = join(dir, 'audio_proof');
   mkdirSync(ad, { recursive: true });
 
   // 1) Source windows (same montage segments) → extract + concat original audio.
   let running = 0;
-  const segs = [...DEFAULT_ANCHORS].sort((a, b) => a - b).map((tSec) => {
-    const s = Math.max(0, tSec - LEAD);
-    const e = Math.min(meta.durationSec, tSec + REACTION);
-    running += e - s;
-    return { s, dur: Number((e - s).toFixed(3)) };
-  });
+  const segs = [...DEFAULT_ANCHORS]
+    .sort((a, b) => a - b)
+    .map((tSec) => {
+      const s = Math.max(0, tSec - LEAD);
+      const e = Math.min(meta.durationSec, tSec + REACTION);
+      running += e - s;
+      return { s, dur: Number((e - s).toFixed(3)) };
+    });
   const montageTotal = Number(running.toFixed(2));
   const ambientRaw = join(ad, 'montage_ambient_raw.wav');
   const inputs: string[] = [];
@@ -89,13 +95,48 @@ async function main(): Promise<void> {
   }
   const concat = `${labels.join(';')};${segs.map((_, i) => `[a${i}]`).join('')}concat=n=${segs.length}:v=0:a=1[out]`;
   console.log(`[15] Trích + concat audio gốc ${segs.length} cửa sổ (${montageTotal}s)…`);
-  if (!sh('ffmpeg', ['-y', ...inputs, '-filter_complex', concat, '-map', '[out]', '-ar', '44100', '-ac', '2', ambientRaw], 'AMBIENT_CONCAT'))
+  if (
+    !sh(
+      'ffmpeg',
+      [
+        '-y',
+        ...inputs,
+        '-filter_complex',
+        concat,
+        '-map',
+        '[out]',
+        '-ar',
+        '44100',
+        '-ac',
+        '2',
+        ambientRaw,
+      ],
+      'AMBIENT_CONCAT',
+    )
+  )
     process.exit(3);
 
   // 2) Demucs → no_vocals (Chinese speech removed, ambient kept).
   const sepDir = join(ad, 'demucs_full');
   console.log('[15] Demucs htdemucs --two-stems=vocals (CPU)…');
-  if (!sh(DEMUCS_PY, ['-m', 'demucs', '--two-stems=vocals', '-n', 'htdemucs', '-d', 'cpu', '-o', sepDir, ambientRaw], 'DEMUCS'))
+  if (
+    !sh(
+      DEMUCS_PY,
+      [
+        '-m',
+        'demucs',
+        '--two-stems=vocals',
+        '-n',
+        'htdemucs',
+        '-d',
+        'cpu',
+        '-o',
+        sepDir,
+        ambientRaw,
+      ],
+      'DEMUCS',
+    )
+  )
     process.exit(4);
   const noVocals = join(sepDir, 'htdemucs', 'montage_ambient_raw', 'no_vocals.wav');
   const vocals = join(sepDir, 'htdemucs', 'montage_ambient_raw', 'vocals.wav');
@@ -108,21 +149,75 @@ async function main(): Promise<void> {
   const finalAudio = join(ad, 'montage_v2_ambient_audio.wav');
   const mixFilter = `[1:a]aformat=sample_rates=44100:channel_layouts=stereo,asplit=2[vok][vom];[0:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=${AMBIENT_VOL}[amb];[amb][vok]sidechaincompress=${DUCK}[ambd];[ambd][vom]amix=inputs=2:normalize=0:dropout_transition=0[out]`;
   console.log('[15] Mix ambient(ducked) + VO (no BGM)…');
-  if (!sh('ffmpeg', ['-y', '-i', noVocals, '-i', voPath, '-filter_complex', mixFilter, '-map', '[out]', '-t', String(montageTotal), '-ar', '44100', '-ac', '2', finalAudio], 'MIX'))
+  if (
+    !sh(
+      'ffmpeg',
+      [
+        '-y',
+        '-i',
+        noVocals,
+        '-i',
+        voPath,
+        '-filter_complex',
+        mixFilter,
+        '-map',
+        '[out]',
+        '-t',
+        String(montageTotal),
+        '-ar',
+        '44100',
+        '-ac',
+        '2',
+        finalAudio,
+      ],
+      'MIX',
+    )
+  )
     process.exit(5);
 
   // 4) Mux onto the existing PASS video (caption/VO untouched).
   const out = join(dir, 'montage_v2_short_ambient.mp4');
   console.log('[15] Mux audio mới lên video PASS (caption giữ nguyên)…');
-  if (!sh('ffmpeg', ['-y', '-i', baseVideo, '-i', finalAudio, '-map', '0:v', '-map', '1:a', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-shortest', out], 'MUX'))
+  if (
+    !sh(
+      'ffmpeg',
+      [
+        '-y',
+        '-i',
+        baseVideo,
+        '-i',
+        finalAudio,
+        '-map',
+        '0:v',
+        '-map',
+        '1:a',
+        '-c:v',
+        'copy',
+        '-c:a',
+        'aac',
+        '-b:a',
+        '192k',
+        '-shortest',
+        out,
+      ],
+      'MUX',
+    )
+  )
     process.exit(6);
 
   // 5) QA.
-  const probe = spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'format=duration:stream=codec_type', '-of', 'json', out], { encoding: 'utf8' });
+  const probe = spawnSync(
+    'ffprobe',
+    ['-v', 'error', '-show_entries', 'format=duration:stream=codec_type', '-of', 'json', out],
+    { encoding: 'utf8' },
+  );
   let outDur = 0;
   let hasAudio = false;
   try {
-    const j = JSON.parse(probe.stdout) as { format?: { duration?: string }; streams?: Array<{ codec_type?: string }> };
+    const j = JSON.parse(probe.stdout) as {
+      format?: { duration?: string };
+      streams?: Array<{ codec_type?: string }>;
+    };
     outDur = Number.parseFloat(j.format?.duration ?? '0');
     hasAudio = (j.streams ?? []).some((s) => s.codec_type === 'audio');
   } catch {
@@ -132,18 +227,52 @@ async function main(): Promise<void> {
   const vocDb = measureDb(vocals);
   const voDb = measureDb(voPath);
   const finDb = measureDb(finalAudio);
+  const voiceAboveAmbientDb = Number((voDb.max - ambDb.max).toFixed(1));
+
+  // Audio report (data contract §4 `audio`) — UI chứng minh policy đã áp.
+  writeFileSync(
+    join(clipDir, 'montage_v2_audio_report.json'),
+    JSON.stringify(
+      {
+        audioMode: 'remove_speech_keep_ambient',
+        demucs: 'htdemucs/ok',
+        ambientLevel: AMBIENT_VOL,
+        ducking: DUCK,
+        bgm: 'none',
+        fallbackUsed: null,
+        output: 'montage_v2_short_ambient.mp4',
+        durationSec: Number(outDur.toFixed(1)),
+        montageTotalSec: montageTotal,
+        hasAudio,
+        loudness: {
+          vocalsRemovedMaxDb: vocDb.max,
+          ambientKeptMaxDb: ambDb.max,
+          voMaxDb: voDb.max,
+          finalMixMaxDb: finDb.max,
+        },
+        voiceAboveAmbientDb,
+        generatedAt: new Date().toISOString(),
+      },
+      null,
+      2,
+    ),
+  );
 
   console.log('======================================================');
   console.log('[15] ✅ A+ ambient FULL — chỉ thay audio bed, caption/VO giữ nguyên.');
   console.log(`   OUTPUT: ${out}`);
-  console.log(`   dur ${outDur.toFixed(1)}s / montage ${montageTotal}s | audio ${hasAudio ? '✅' : '❌'}`);
+  console.log(
+    `   dur ${outDur.toFixed(1)}s / montage ${montageTotal}s | audio ${hasAudio ? '✅' : '❌'}`,
+  );
   console.log(`   ambient level ${AMBIENT_VOL} | ducking ${DUCK} | BGM: none`);
   console.log('   --- loudness (mean/max dB) ---');
   console.log(`   vocals removed (giọng tách): ${vocDb.mean}/${vocDb.max}`);
   console.log(`   no_vocals (ambient giữ)    : ${ambDb.mean}/${ambDb.max}`);
   console.log(`   VO                         : ${voDb.mean}/${voDb.max}`);
   console.log(`   final mix                  : ${finDb.mean}/${finDb.max}`);
-  console.log(`   VO đỉnh > ambient đỉnh?    : ${voDb.max > ambDb.max ? `✅ (+${(voDb.max - ambDb.max).toFixed(1)}dB)` : '⚠️ kiểm tra'}`);
+  console.log(
+    `   VO đỉnh > ambient đỉnh?    : ${voDb.max > ambDb.max ? `✅ (+${(voDb.max - ambDb.max).toFixed(1)}dB)` : '⚠️ kiểm tra'}`,
+  );
   console.log('======================================================');
 }
 

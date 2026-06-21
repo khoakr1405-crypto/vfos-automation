@@ -27,10 +27,13 @@ export type EntJobState =
   | 'ANALYZED'
   | 'MONTAGE_READY'
   | 'SCRIPT_PENDING'
-  | 'SCRIPT_APPROVED';
+  | 'SCRIPT_APPROVED'
+  | 'PREVIEW_PENDING'
+  | 'APPROVED';
 
-/** Logical pipeline steps the UI can trigger (engine 20-pipeline.ts). */
-export type EntStepName = 'analyze' | 'montage' | 'script' | 'produce';
+/** Logical pipeline steps the UI can trigger (engine 20-pipeline.ts).
+ * render = voice/caption (12) + audio policy remove_speech_keep_ambient (15). */
+export type EntStepName = 'analyze' | 'montage' | 'script' | 'produce' | 'render';
 export type EntStepState = 'idle' | 'running' | 'done' | 'failed';
 
 export interface EntSubStatus {
@@ -42,6 +45,7 @@ export interface EntSubStatus {
 export interface EntStepStatus {
   step: EntStepName;
   state: EntStepState;
+  pid?: number;
   startedAt?: string;
   finishedAt?: string;
   subs: EntSubStatus[];
@@ -71,6 +75,37 @@ export interface EntScriptSummary {
   montageTotalSec?: number;
 }
 
+/** Tóm tắt QA của voice-render (12-voice-render → montage_v2_render_report.json). */
+export interface EntRenderSummary {
+  verdict: string;
+  hashMatch: boolean;
+  captionOverlap: number;
+  captionTightButReadable?: number;
+  realVoiceEndSec?: number;
+  montageTotalSec?: number;
+  outputDurationSec?: number;
+  voiceSpillMoneyShot: number;
+  voiceMarginDb?: number;
+  bgmDrownsVoice?: boolean;
+  bgm?: string | null;
+  scrubMaskSegments?: number;
+  previewReady: boolean;
+}
+
+/** Audio policy đã áp (15-audio-ambient-full → montage_v2_audio_report.json). */
+export interface EntAudioSummary {
+  audioMode: string;
+  demucs: string;
+  ambientLevel?: number;
+  ducking?: string;
+  bgm?: string | null;
+  fallbackUsed?: string | null;
+  voiceAboveAmbientDb?: number;
+  ambientKeptMaxDb?: number;
+  vocalsRemovedMaxDb?: number;
+  applied: boolean;
+}
+
 export interface EntJob {
   jobId: string;
   lane: 'entertainment/fishing-vlog';
@@ -81,6 +116,8 @@ export interface EntJob {
   source: EntSource;
   steps?: Partial<Record<EntStepName, EntStepStatus>>;
   script?: EntScriptSummary | null;
+  render?: EntRenderSummary | null;
+  audio?: EntAudioSummary | null;
   reviewGates?: { scriptApproved: boolean; previewApproved: boolean };
   error?: { code: string; message: string } | null;
 }
@@ -233,7 +270,7 @@ export function createJob(input: { url: string; niche: string }): EntJob {
  * hữu) và sở hữu ent_job.json — không cùng ghi 1 file ⇒ không race.
  * ========================================================================== */
 
-const ALL_STEPS: EntStepName[] = ['analyze', 'montage', 'script', 'produce'];
+const ALL_STEPS: EntStepName[] = ['analyze', 'montage', 'script', 'produce', 'render'];
 
 /** Resolve một file con trong work dir của job (an toàn traversal). */
 function entFile(id: string, rel: string): string | null {
@@ -254,15 +291,58 @@ function readJsonSafe<T>(absPath: string | null): T | null {
   }
 }
 
+/** Process còn sống? (kill(pid,0): ESRCH=chết, EPERM=sống nhưng khác quyền). */
+function isPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (e) {
+    return (e as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
 export function readStep(id: string, step: EntStepName): EntStepStatus | null {
   const raw = readJsonSafe<EntStepStatus>(entFile(id, `steps/${step}.json`));
   if (!raw) return null;
-  return { ...raw, error: raw.error ? sanitizeError(raw.error) : undefined };
+  const clean: EntStepStatus = { ...raw, error: raw.error ? sanitizeError(raw.error) : undefined };
+  if (clean.state !== 'running') return clean;
+  // Stale-detection để UI không treo + cho retry sạch khi process render chết:
+  //  (1) có pid mà process không còn sống (kill từ ngoài, OOM…), hoặc
+  //  (2) chưa kịp ghi pid nhưng đã quá 120s (engine không khởi động được).
+  const pidDead = typeof raw.pid === 'number' && !isPidAlive(raw.pid);
+  const ageMs = raw.startedAt ? Date.now() - new Date(raw.startedAt).getTime() : 0;
+  const noPidStale = typeof raw.pid !== 'number' && ageMs > 120_000;
+  if (pidDead || noPidStale) {
+    return {
+      ...clean,
+      state: 'failed',
+      error: clean.error ?? 'Tiến trình render đã dừng bất thường (process không còn chạy).',
+    };
+  }
+  return clean;
 }
 
 function anyStepRunning(id: string): EntStepName | null {
   for (const s of ALL_STEPS) {
     if (readStep(id, s)?.state === 'running') return s;
+  }
+  return null;
+}
+
+/**
+ * Global single-flight: chỉ 1 step được chạy tại 1 thời điểm trên TOÀN bộ job.
+ * Chặn tận gốc việc 2 render/Demucs chạy đồng thời gây cạn RAM → process bị kill.
+ * Dùng readStep (đã có pid stale-detection) ⇒ process đã chết KHÔNG bị tính là
+ * đang chạy (không khoá oan).
+ */
+function findRunningStep(): { jobId: string; step: EntStepName } | null {
+  const base = resolveInsideRepo(ENT_DIR_REL);
+  if (!base || !existsSync(base)) return null;
+  for (const entry of readdirSync(base, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !isValidJobId(entry.name)) continue;
+    for (const s of ALL_STEPS) {
+      if (readStep(entry.name, s)?.state === 'running') return { jobId: entry.name, step: s };
+    }
   }
   return null;
 }
@@ -273,12 +353,19 @@ const analyzeDone = (id: string) =>
   entExists(id, 'asr_zh.json') && entExists(id, 'catch_moments.json');
 const montageDone = (id: string) => entExists(id, 'montage_v2/montage.mp4');
 const scriptDone = (id: string) => entExists(id, 'montage_v2/montage_v2_script.json');
+// 12-voice-render ghi render_report.json (10-montage ghi report.json khác tên) ⇒
+// marker sạch cho "voice-render từ script đã duyệt đã chạy".
+const voiceRenderDone = (id: string) => entExists(id, 'montage_v2/montage_v2_render_report.json');
+const previewFileExists = (id: string) => entExists(id, 'montage_v2_short.mp4');
 
 /** State machine §1: suy ra state từ artifact + gate (chỉ khi intake đã xong). */
 function reconcileState(id: string, job: EntJob): EntJobState {
   if (!intakeDone(id)) return job.state; // INTAKE_RUNNING / FAILED giữ nguyên
-  const approved = job.reviewGates?.scriptApproved === true;
-  if (scriptDone(id)) return approved ? 'SCRIPT_APPROVED' : 'SCRIPT_PENDING';
+  const sApproved = job.reviewGates?.scriptApproved === true;
+  const pApproved = job.reviewGates?.previewApproved === true;
+  // Preview chỉ tính khi script ĐÃ duyệt + voice-render đã chạy.
+  if (sApproved && voiceRenderDone(id)) return pApproved ? 'APPROVED' : 'PREVIEW_PENDING';
+  if (scriptDone(id)) return sApproved ? 'SCRIPT_APPROVED' : 'SCRIPT_PENDING';
   if (montageDone(id)) return 'MONTAGE_READY';
   if (analyzeDone(id)) return 'ANALYZED';
   return 'INTAKE_DONE';
@@ -309,6 +396,65 @@ function readScriptSummary(id: string): EntScriptSummary | null {
   };
 }
 
+function readRenderSummary(id: string): EntRenderSummary | null {
+  const j = readJsonSafe<{
+    verdict?: string;
+    hashMatch?: boolean;
+    captionOverlap?: number;
+    captionTightButReadable?: number;
+    realVoiceEndSec?: number;
+    montageTotalSec?: number;
+    outputDurationSec?: number;
+    voiceSpillMoneyShot?: unknown[];
+    voiceMarginDb?: number;
+    bgmDrownsVoice?: boolean;
+    bgm?: string | null;
+    scrubMaskSegments?: number;
+  }>(entFile(id, 'montage_v2/montage_v2_render_report.json'));
+  if (!j) return null;
+  return {
+    verdict: j.verdict ?? '?',
+    hashMatch: j.hashMatch === true,
+    captionOverlap: j.captionOverlap ?? 0,
+    captionTightButReadable: j.captionTightButReadable,
+    realVoiceEndSec: j.realVoiceEndSec,
+    montageTotalSec: j.montageTotalSec,
+    outputDurationSec: j.outputDurationSec,
+    voiceSpillMoneyShot: Array.isArray(j.voiceSpillMoneyShot) ? j.voiceSpillMoneyShot.length : 0,
+    voiceMarginDb: j.voiceMarginDb,
+    bgmDrownsVoice: j.bgmDrownsVoice,
+    bgm: j.bgm ?? null,
+    scrubMaskSegments: j.scrubMaskSegments,
+    previewReady: previewFileExists(id),
+  };
+}
+
+function readAudioSummary(id: string): EntAudioSummary | null {
+  const j = readJsonSafe<{
+    audioMode?: string;
+    demucs?: string;
+    ambientLevel?: number;
+    ducking?: string;
+    bgm?: string | null;
+    fallbackUsed?: string | null;
+    voiceAboveAmbientDb?: number;
+    loudness?: { ambientKeptMaxDb?: number; vocalsRemovedMaxDb?: number };
+  }>(entFile(id, 'montage_v2/montage_v2_audio_report.json'));
+  if (!j) return null;
+  return {
+    audioMode: j.audioMode ?? 'remove_speech_keep_ambient',
+    demucs: j.demucs ?? '?',
+    ambientLevel: j.ambientLevel,
+    ducking: j.ducking,
+    bgm: j.bgm ?? null,
+    fallbackUsed: j.fallbackUsed ?? null,
+    voiceAboveAmbientDb: j.voiceAboveAmbientDb,
+    ambientKeptMaxDb: j.loudness?.ambientKeptMaxDb,
+    vocalsRemovedMaxDb: j.loudness?.vocalsRemovedMaxDb,
+    applied: entExists(id, 'montage_v2_short_ambient.mp4'),
+  };
+}
+
 /**
  * Job + live step status + script summary + gate. Reconcile state từ artifact và
  * ghi lại manifest (chỉ state/gate/script summary; KHÔNG ghi steps vào manifest
@@ -324,6 +470,8 @@ export function getJobDetail(id: string): EntJob | null {
     if (st) steps[s] = st;
   }
   const script = readScriptSummary(id);
+  const render = readRenderSummary(id);
+  const audio = readAudioSummary(id);
   const reviewGates = base.reviewGates ?? { scriptApproved: false, previewApproved: false };
   const state = reconcileState(id, base);
 
@@ -331,24 +479,35 @@ export function getJobDetail(id: string): EntJob | null {
   if (
     state !== base.state ||
     !base.reviewGates ||
-    JSON.stringify(base.script ?? null) !== JSON.stringify(script)
+    JSON.stringify(base.script ?? null) !== JSON.stringify(script) ||
+    JSON.stringify(base.render ?? null) !== JSON.stringify(render) ||
+    JSON.stringify(base.audio ?? null) !== JSON.stringify(audio)
   ) {
     writeManifest(id, {
       ...base,
       state,
       reviewGates,
       script,
+      render,
+      audio,
       updatedAt: nowIso(),
     });
   }
 
-  return { ...base, state, steps, script, reviewGates };
+  return { ...base, state, steps, script, render, audio, reviewGates };
 }
 
-/** Tiền điều kiện artifact cho mỗi step. */
+/** Tiền điều kiện artifact + gate cho mỗi step. */
 function prereqOk(id: string, step: EntStepName): { ok: true } | { ok: false; need: string } {
   if (step === 'analyze' || step === 'produce') {
     return intakeDone(id) ? { ok: true } : { ok: false, need: 'INTAKE (source.mp4)' };
+  }
+  if (step === 'render') {
+    // GATE 1 BẮT BUỘC: không voice/render khi script chưa được Operator duyệt.
+    if (!montageDone(id)) return { ok: false, need: 'MONTAGE (montage.mp4)' };
+    if (!scriptDone(id)) return { ok: false, need: 'SCRIPT (montage_v2_script.json)' };
+    const approved = readManifest(id)?.reviewGates?.scriptApproved === true;
+    return approved ? { ok: true } : { ok: false, need: 'duyệt script (GATE 1)' };
   }
   // montage / script cần analyze xong (asr + catch_moments).
   return analyzeDone(id) ? { ok: true } : { ok: false, need: 'ANALYZE (asr_zh + catch_moments)' };
@@ -370,9 +529,17 @@ export function startStep(id: string, step: EntStepName): StartStepResult {
   const pre = prereqOk(id, step);
   if (!pre.ok) return { ok: false, code: 'PREREQ', message: `Cần ${pre.need} trước.` };
 
-  const running = anyStepRunning(id);
+  // Global single-flight: 1 render/lúc trên toàn hệ (tránh đè RAM gây kill).
+  const running = findRunningStep();
   if (running) {
-    return { ok: false, code: 'BUSY', message: `Đang chạy "${running}". Chờ xong rồi chạy tiếp.` };
+    return {
+      ok: false,
+      code: 'BUSY',
+      message:
+        running.jobId === id
+          ? `Đang chạy "${running.step}" cho job này. Chờ xong rồi chạy tiếp.`
+          : `Hệ thống đang chạy "${running.step}" cho job ${running.jobId} (chỉ 1 render/lúc). Chờ xong rồi chạy.`,
+    };
   }
 
   const stepsDir = entFile(id, 'steps');
@@ -424,6 +591,64 @@ export function approveScript(
   return detail
     ? { ok: true, job: detail }
     : { ok: false, code: 'BAD_STATE', message: 'Không đọc lại được job.' };
+}
+
+/** GATE 2 — Operator duyệt preview. Yêu cầu voice-render đã chạy. READY ≠ đăng. */
+export function approvePreview(
+  id: string,
+): { ok: true; job: EntJob } | { ok: false; code: string; message: string } {
+  if (!isValidJobId(id)) return { ok: false, code: 'NOT_FOUND', message: 'jobId không hợp lệ.' };
+  const job = readManifest(id);
+  if (!job) return { ok: false, code: 'NOT_FOUND', message: 'Job không tồn tại.' };
+  if (job.reviewGates?.scriptApproved !== true) {
+    return { ok: false, code: 'NO_SCRIPT_GATE', message: 'Chưa qua GATE 1 (duyệt script).' };
+  }
+  if (!voiceRenderDone(id) || !previewFileExists(id)) {
+    return { ok: false, code: 'NO_PREVIEW', message: 'Chưa có preview — chạy voice/render trước.' };
+  }
+  if (anyStepRunning(id)) {
+    return { ok: false, code: 'BUSY', message: 'Đang chạy pipeline — chờ xong rồi duyệt.' };
+  }
+  writeManifest(id, {
+    ...job,
+    reviewGates: { scriptApproved: true, previewApproved: true },
+    state: 'APPROVED',
+    updatedAt: nowIso(),
+  });
+  const detail = getJobDetail(id);
+  return detail
+    ? { ok: true, job: detail }
+    : { ok: false, code: 'BAD_STATE', message: 'Không đọc lại được job.' };
+}
+
+/** GATE 2 reject — bỏ duyệt preview, quay lại PREVIEW_PENDING để sửa/re-render. */
+export function rejectPreview(
+  id: string,
+): { ok: true; job: EntJob } | { ok: false; code: string; message: string } {
+  if (!isValidJobId(id)) return { ok: false, code: 'NOT_FOUND', message: 'jobId không hợp lệ.' };
+  const job = readManifest(id);
+  if (!job) return { ok: false, code: 'NOT_FOUND', message: 'Job không tồn tại.' };
+  writeManifest(id, {
+    ...job,
+    reviewGates: {
+      scriptApproved: job.reviewGates?.scriptApproved ?? false,
+      previewApproved: false,
+    },
+    updatedAt: nowIso(),
+  });
+  const detail = getJobDetail(id);
+  return detail
+    ? { ok: true, job: detail }
+    : { ok: false, code: 'BAD_STATE', message: 'Không đọc lại được job.' };
+}
+
+/** Đường dẫn tuyệt đối file preview (ambient nếu có, không thì bản voice-render). */
+export function previewVideoPath(id: string): string | null {
+  if (!isValidJobId(id)) return null;
+  const ambient = entFile(id, 'montage_v2_short_ambient.mp4');
+  if (ambient && existsSync(ambient)) return ambient;
+  const short = entFile(id, 'montage_v2_short.mp4');
+  return short && existsSync(short) ? short : null;
 }
 
 export interface EntScriptBeat {

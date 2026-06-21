@@ -247,7 +247,31 @@ logic engine vào API.
 > dừng GATE 1), **POST `/jobs/[id]/script`** (chạy lại riêng `13` sau khi sửa text),
 > **GET `/jobs/[id]/script`** (dữ liệu duyệt: beats Việt hóa + lời gốc + review.md),
 > **POST `/jobs/[id]/script/approve`** (GATE 1). GET `/jobs/[id]` reconcile state
-> machine từ artifact + overlay step status. Single-flight: 1 step/job tại 1 thời điểm.
+> machine từ artifact + overlay step status.
+>
+> **Robustness (chống treo/kill — E-UI-4):** (a) **Global single-flight** — chỉ 1
+> step chạy tại 1 thời điểm trên TOÀN bộ job (`findRunningStep`), chặn 2
+> render/Demucs đồng thời gây cạn RAM. (b) **pid stale-detection** — engine ghi
+> `pid` vào `steps/<step>.json`; nếu status treo `running` mà process không còn
+> sống (`process.kill(pid,0)`) → API tự coi `failed` ⇒ UI không treo, cho retry
+> sạch (fallback: no-pid + >120s cũng coi stale). Engine chạy DETACHED nên không
+> chết theo request; nếu vẫn bị kill ngoài (OOM…) thì 2 cơ chế trên xử lý gọn.
+>
+> **Cập nhật (E-UI-4/5) — render (voice + audio policy) + GATE 2:** **POST
+> `/jobs/[id]/voice-render`** chạy `20-pipeline --step render` DETACHED = **chuỗi
+> 12-voice-render → 15-audio-ambient-full**, tức là render đã GỘP **audio policy
+> mặc định `remove_speech_keep_ambient`** (Demucs `no_vocals`: bỏ giọng Trung,
+> GIỮ ambient biển/gió/nước; ambient 0.8 + ducking, BGM none). `startStep('render')`
+> **ÉP GATE 1** (từ chối nếu `scriptApproved !== true`). QA render đọc từ
+> `montage_v2/montage_v2_render_report.json` (marker riêng của 12); audio policy đọc
+> từ `montage_v2/montage_v2_audio_report.json` (15 ghi: audioMode, demucs, ambient
+> level, VO>ambient dB). Preview ưu tiên `montage_v2_short_ambient.mp4` (bản đã áp
+> policy), fallback `montage_v2_short.mp4` nếu 15 chưa/được chạy. **GET
+> `/jobs/[id]/preview`** stream (Range/206). **POST `/jobs/[id]/approve`** = GATE 2
+> (previewApproved, APPROVED); **POST `/jobs/[id]/reject`** quay lại PREVIEW_PENDING.
+> State: …SCRIPT_APPROVED→PREVIEW_PENDING→(GATE2)→APPROVED. **READY ≠ đăng** —
+> đóng gói/đăng tay là E-UI-6, no auto-publish. (E-UI-5 còn lại: SELECTOR đổi
+> audioMode + fallback ladder thủ công; default đã tích hợp ở đây.)
 
 ---
 

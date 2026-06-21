@@ -7,9 +7,13 @@
 //   montage  = 10-montage-v2
 //   script   = 13-source-bound (--model)
 //   produce  = analyze + montage + script (stops BEFORE voice/render — GATE 1)
+//   render   = 12-voice-render -> 15-audio-ambient-full (audio policy đã chốt:
+//              bỏ giọng Trung bằng Demucs no_vocals, GIỮ ambient biển/gió/nước;
+//              POST GATE 1 — API ép scriptApproved trước khi gọi)
 //
-// Isolation: writes only inside data/temp/ent/<id>/. No voice, no publish, no
-// registry. STOPS at the script content gate; Operator approves in the UI.
+// Isolation: writes only inside data/temp/ent/<id>/. No publish, no registry.
+// "produce" STOPS at the script content gate (GATE 1). "render" chỉ chạy sau khi
+// Operator đã duyệt script (gate ép ở tầng API), dừng ở preview (GATE 2).
 //   pnpm tsx scripts/ent-vlog/20-pipeline.ts --id ent_squid_001 --step produce [--model gpt-5.5]
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -17,8 +21,8 @@ import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { findWorkspaceRoot, workDir } from './lib/env.js';
 
-type StepName = 'analyze' | 'montage' | 'script' | 'produce';
-const STEP_NAMES = new Set<StepName>(['analyze', 'montage', 'script', 'produce']);
+type StepName = 'analyze' | 'montage' | 'script' | 'produce' | 'render';
+const STEP_NAMES = new Set<StepName>(['analyze', 'montage', 'script', 'produce', 'render']);
 
 interface SubSpec {
   name: string; // numbered script basename (no .ts)
@@ -35,6 +39,7 @@ interface SubStatus {
 interface StepStatus {
   step: StepName;
   state: 'running' | 'done' | 'failed';
+  pid: number; // để API phát hiện process chết (status treo 'running')
   startedAt: string;
   finishedAt?: string;
   subs: SubStatus[];
@@ -49,9 +54,15 @@ function subsFor(step: StepName, model: string): SubSpec[] {
   ];
   const montage: SubSpec[] = [{ name: '10-montage-v2', args: [] }];
   const script: SubSpec[] = [{ name: '13-source-bound', args: ['--model', model] }];
+  // render = lồng tiếng/caption (12) + áp audio policy remove_speech_keep_ambient (15).
+  const render: SubSpec[] = [
+    { name: '12-voice-render', args: [] },
+    { name: '15-audio-ambient-full', args: [] },
+  ];
   if (step === 'analyze') return analyze;
   if (step === 'montage') return montage;
   if (step === 'script') return script;
+  if (step === 'render') return render;
   return [...analyze, ...montage, ...script]; // produce
 }
 
@@ -86,6 +97,7 @@ async function main(): Promise<void> {
   const status: StepStatus = {
     step,
     state: 'running',
+    pid: process.pid,
     startedAt: new Date().toISOString(),
     subs: [],
   };
@@ -134,6 +146,8 @@ async function main(): Promise<void> {
   console.log(`[20] ✅ step "${step}" xong — ${subs.length} bước con.`);
   if (step === 'produce' || step === 'script') {
     console.log('[20] ⛔ DỪNG ở GATE 1 — chờ Operator duyệt script trong UI.');
+  } else if (step === 'render') {
+    console.log('[20] ⛔ DỪNG ở GATE 2 — chờ Operator duyệt preview trong UI.');
   }
 }
 
