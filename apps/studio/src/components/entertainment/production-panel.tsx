@@ -313,8 +313,8 @@ function ScriptReviewBlock({
         </span>
       </div>
 
-      {/* QA summary */}
-      <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-neutral-400">
+      {/* QA summary (LUÔN hiện — Operator xem tóm tắt trước) */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-neutral-400">
         <span>
           Cụm: <strong className="text-neutral-200">{s.chunkCount ?? '?'}</strong>{' '}
           {chunkOk ? '✅' : '⚠️'} (bound {s.boundChunks ?? '?'}/micro {s.microChunks ?? '?'})
@@ -322,37 +322,58 @@ function ScriptReviewBlock({
         <span>
           Đọc ~{s.estTotalSpeechSec ?? '?'}s / {s.montageTotalSec ?? '?'}s {speechOk ? '✅' : '⚠️'}
         </span>
+        <span>
+          Model: <strong className="text-neutral-200">{s.scriptModel ?? '?'}</strong>
+        </span>
+        <span
+          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+            approved
+              ? 'bg-accent-green/15 text-accent-green'
+              : 'bg-accent-amber/15 text-accent-amber'
+          }`}
+        >
+          {approved ? '✅ Đã duyệt' : '⏳ Chờ duyệt'}
+        </span>
       </div>
 
-      {/* Việt hóa theo timecode */}
-      <div className="max-h-72 overflow-auto rounded-lg border border-hairline/40 bg-panel/30">
-        <table className="w-full text-left text-[11px]">
-          <thead className="sticky top-0 bg-panel/80 text-neutral-500">
-            <tr>
-              <th className="px-2 py-1 font-semibold">#</th>
-              <th className="px-2 py-1 font-semibold">time</th>
-              <th className="px-2 py-1 font-semibold">text (caption = voice)</th>
-              <th className="px-2 py-1 font-semibold">nguồn</th>
-            </tr>
-          </thead>
-          <tbody>
-            {review.beats.map((b, i) => (
-              <tr key={`${b.montageTime}-${i}`} className="border-t border-hairline/20">
-                <td className="px-2 py-1 text-neutral-600">{i + 1}</td>
-                <td className="px-2 py-1 text-neutral-500">{mmss(b.montageTime)}</td>
-                <td className="px-2 py-1 text-neutral-200">{b.text}</td>
-                <td className="px-2 py-1 text-neutral-600">
-                  {b.role === 'micro' ? (
-                    <span className="text-accent-cyan">micro</span>
-                  ) : (
-                    `id${b.srcId ?? '?'}`
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {/* Chi tiết script nâng cao — accordion, MẶC ĐỊNH ĐÓNG */}
+      <details className="group rounded-lg border border-hairline/40 bg-panel/20">
+        <summary className="flex cursor-pointer items-center justify-between px-3 py-2 text-[11px] font-semibold text-neutral-300">
+          <span>Chi tiết script nâng cao ({review.beats.length} cụm) — bấm để xem</span>
+          <span className="text-neutral-600 transition group-open:rotate-90">›</span>
+        </summary>
+        <div className="border-t border-hairline/30 p-2">
+          {/* Việt hóa theo timecode */}
+          <div className="max-h-72 overflow-auto rounded-lg border border-hairline/40 bg-panel/30">
+            <table className="w-full text-left text-[11px]">
+              <thead className="sticky top-0 bg-panel/80 text-neutral-500">
+                <tr>
+                  <th className="px-2 py-1 font-semibold">#</th>
+                  <th className="px-2 py-1 font-semibold">time</th>
+                  <th className="px-2 py-1 font-semibold">text (caption = voice)</th>
+                  <th className="px-2 py-1 font-semibold">nguồn</th>
+                </tr>
+              </thead>
+              <tbody>
+                {review.beats.map((b, i) => (
+                  <tr key={`${b.montageTime}-${i}`} className="border-t border-hairline/20">
+                    <td className="px-2 py-1 text-neutral-600">{i + 1}</td>
+                    <td className="px-2 py-1 text-neutral-500">{mmss(b.montageTime)}</td>
+                    <td className="px-2 py-1 text-neutral-200">{b.text}</td>
+                    <td className="px-2 py-1 text-neutral-600">
+                      {b.role === 'micro' ? (
+                        <span className="text-accent-cyan">micro</span>
+                      ) : (
+                        `id${b.srcId ?? '?'}`
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>
 
       {/* Lời gốc đối chiếu */}
       {review.sourceLines.length > 0 && (
