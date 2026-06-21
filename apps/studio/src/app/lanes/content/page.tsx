@@ -9,9 +9,10 @@
  *
  * 3 nút lớn:  1) Tải link   2) Sản xuất video   3) Đóng gói & hướng dẫn đăng tay
  * 2 gate Operator (duyệt script + duyệt preview) nằm BÊN TRONG bước 2.
- * Wired: nút 1 = IntakePanel (E-UI-2); nút 2 = ProductionPanel chạy chuỗi
- * analyze→montage→script + GATE 1 duyệt script (E-UI-3, DỪNG trước voice). Nút 3
- * (đóng gói/đăng tay) còn skeleton (E-UI-6). KHÔNG auto publish TikTok.
+ * Wired: nút 1 = IntakePanel (E-UI-2); nút 2 = ProductionPanel chạy
+ * analyze→montage→script (GATE 1) → voice/render + audio policy (GATE 2)
+ * (E-UI-3/4); nút 3 = PackagePanel đóng gói + hướng dẫn đăng tay (E-UI-6).
+ * KHÔNG auto publish TikTok.
  *
  * Isolation: page riêng, KHÔNG tái dùng component Product Review, KHÔNG đụng
  * /lanes/product-review, jobs/[jobId], orchestrator, Product Card, nav.ts.
@@ -20,6 +21,7 @@
 import { Badge } from '@/components/badge';
 import { Card, CardBody } from '@/components/card';
 import { IntakePanel } from '@/components/entertainment/intake-panel';
+import { PackagePanel } from '@/components/entertainment/package-panel';
 import { ProductionPanel } from '@/components/entertainment/production-panel';
 import { PageHeader } from '@/components/page-header';
 
@@ -81,22 +83,6 @@ function NicheSelector() {
       <span className="rounded-lg border border-hairline/60 px-3 py-1.5 text-xs text-neutral-600">
         🚗 Vlog Về xe <span className="ml-1 text-[10px] text-neutral-700">(roadmap)</span>
       </span>
-    </div>
-  );
-}
-
-/** Nút lớn disabled — sẽ wire ở phase tương ứng. */
-function BigButton({ label, phase }: { label: string; phase: string }) {
-  return (
-    <div className="flex items-center gap-3 pt-1">
-      <span
-        aria-disabled="true"
-        className="cursor-not-allowed select-none rounded-xl border border-hairline/70 bg-panel/50 px-5 py-2.5 text-sm font-bold text-neutral-500"
-        title={`Sẽ bật ở ${phase}`}
-      >
-        {label}
-      </span>
-      <span className="text-[11px] text-neutral-600">Chưa bật — wire ở {phase}</span>
     </div>
   );
 }
@@ -203,7 +189,7 @@ export default function ContentLanePage() {
             <strong className="text-neutral-300">KHÔNG auto-publish.</strong> Auto-publish TikTok là
             phase riêng sau này (cần TikTok API/token + safety gate).
           </p>
-          <BigButton label="Đóng gói & hướng dẫn đăng" phase="E-UI-6" />
+          <PackagePanel />
         </CardBody>
       </Card>
 

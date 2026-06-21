@@ -61,7 +61,7 @@ REJECT ở bất kỳ gate nào → quay lại bước tương ứng (script/pre
 | 5 | Voice + Caption Sync | `12-voice-render` | `montage_vo.mp3`, `voice_timing_artifact.json`, caption baked → `montage_v2_short.mp4` | — |
 | 6 | Audio Mix Policy | `15-audio-ambient-full` (+`14` A/B proof) | `montage_v2_short_ambient.mp4`, `montage_v2_render_report.json` | — |
 | 7 | Preview + Operator Review | *(thiếu — UI)* | QA verdict + decision | **GATE 2** |
-| 8 | Package Manual Posting | *(thiếu — `16-package.ts`)* | `package` block trong manifest | — |
+| 8 | Package Manual Posting | `16-package.ts` ✅ | `montage_v2/package.json` + `package` block | — |
 
 **Nguyên tắc từng bước (chốt):**
 
@@ -272,6 +272,14 @@ logic engine vào API.
 > State: …SCRIPT_APPROVED→PREVIEW_PENDING→(GATE2)→APPROVED. **READY ≠ đăng** —
 > đóng gói/đăng tay là E-UI-6, no auto-publish. (E-UI-5 còn lại: SELECTOR đổi
 > audioMode + fallback ladder thủ công; default đã tích hợp ở đây.)
+>
+> **Cập nhật (E-UI-6) — package đăng tay:** **POST `/jobs/[id]/package`** chạy
+> `16-package.ts` SYNC (yêu cầu GATE 2 `previewApproved`) → caption gpt-5.5
+> (fallback template nếu lỗi/không key) + hashtag + checklist đăng tay →
+> `montage_v2/package.json` (+`package.md`). State APPROVED→**PACKAGED**. UI nút 3
+> `PackagePanel`: chọn job đã duyệt preview → đóng gói → final mp4 (mở qua
+> `/preview`) + caption/hashtag copy được + checklist. **KHÔNG auto-publish,
+> KHÔNG TikTok API, KHÔNG affiliate** (giai đoạn xây kênh).
 
 ---
 

@@ -16,7 +16,9 @@ import { runRepoScript, runRepoScriptDetached } from '@/lib/studio-data/run-comm
 const ENT_DIR_REL = 'data/temp/ent';
 const FETCH_SCRIPT_REL = 'scripts/ent-vlog/01-fetch-source.ts';
 const PIPELINE_SCRIPT_REL = 'scripts/ent-vlog/20-pipeline.ts';
+const PACKAGE_SCRIPT_REL = 'scripts/ent-vlog/16-package.ts';
 const FETCH_TIMEOUT_MS = 240_000; // download có thể vài chục giây
+const PACKAGE_TIMEOUT_MS = 150_000; // caption gpt-5.5 (reasoning) có thể chậm
 const SCRIPT_MODEL = 'gpt-5.5'; // source-bound transcreation (13-source-bound)
 const NICHES = new Set(['fishing-vlog', 'car-vlog']);
 
@@ -29,7 +31,8 @@ export type EntJobState =
   | 'SCRIPT_PENDING'
   | 'SCRIPT_APPROVED'
   | 'PREVIEW_PENDING'
-  | 'APPROVED';
+  | 'APPROVED'
+  | 'PACKAGED';
 
 /** Logical pipeline steps the UI can trigger (engine 20-pipeline.ts).
  * render = voice/caption (12) + audio policy remove_speech_keep_ambient (15). */
@@ -106,6 +109,18 @@ export interface EntAudioSummary {
   applied: boolean;
 }
 
+/** Gói đăng tay (16-package → montage_v2/package.json). NO auto-publish. */
+export interface EntPackageSummary {
+  finalVideo: string;
+  audioPolicyApplied?: boolean;
+  caption: string;
+  captionSource?: string;
+  hashtags: string[];
+  postingNotes: string[];
+  autoPublish: false;
+  generatedAt?: string;
+}
+
 export interface EntJob {
   jobId: string;
   lane: 'entertainment/fishing-vlog';
@@ -118,6 +133,7 @@ export interface EntJob {
   script?: EntScriptSummary | null;
   render?: EntRenderSummary | null;
   audio?: EntAudioSummary | null;
+  package?: EntPackageSummary | null;
   reviewGates?: { scriptApproved: boolean; previewApproved: boolean };
   error?: { code: string; message: string } | null;
 }
@@ -356,7 +372,9 @@ const scriptDone = (id: string) => entExists(id, 'montage_v2/montage_v2_script.j
 // 12-voice-render ghi render_report.json (10-montage ghi report.json khác tên) ⇒
 // marker sạch cho "voice-render từ script đã duyệt đã chạy".
 const voiceRenderDone = (id: string) => entExists(id, 'montage_v2/montage_v2_render_report.json');
-const previewFileExists = (id: string) => entExists(id, 'montage_v2_short.mp4');
+const previewFileExists = (id: string) =>
+  entExists(id, 'montage_v2_short_ambient.mp4') || entExists(id, 'montage_v2_short.mp4');
+const packageDone = (id: string) => entExists(id, 'montage_v2/package.json');
 
 /** State machine §1: suy ra state từ artifact + gate (chỉ khi intake đã xong). */
 function reconcileState(id: string, job: EntJob): EntJobState {
@@ -364,7 +382,10 @@ function reconcileState(id: string, job: EntJob): EntJobState {
   const sApproved = job.reviewGates?.scriptApproved === true;
   const pApproved = job.reviewGates?.previewApproved === true;
   // Preview chỉ tính khi script ĐÃ duyệt + voice-render đã chạy.
-  if (sApproved && voiceRenderDone(id)) return pApproved ? 'APPROVED' : 'PREVIEW_PENDING';
+  if (sApproved && voiceRenderDone(id)) {
+    if (pApproved) return packageDone(id) ? 'PACKAGED' : 'APPROVED';
+    return 'PREVIEW_PENDING';
+  }
   if (scriptDone(id)) return sApproved ? 'SCRIPT_APPROVED' : 'SCRIPT_PENDING';
   if (montageDone(id)) return 'MONTAGE_READY';
   if (analyzeDone(id)) return 'ANALYZED';
@@ -455,6 +476,29 @@ function readAudioSummary(id: string): EntAudioSummary | null {
   };
 }
 
+function readPackageSummary(id: string): EntPackageSummary | null {
+  const j = readJsonSafe<{
+    finalVideo?: string;
+    audioPolicyApplied?: boolean;
+    caption?: string;
+    captionSource?: string;
+    hashtags?: string[];
+    postingNotes?: string[];
+    generatedAt?: string;
+  }>(entFile(id, 'montage_v2/package.json'));
+  if (!j) return null;
+  return {
+    finalVideo: j.finalVideo ?? '',
+    audioPolicyApplied: j.audioPolicyApplied,
+    caption: j.caption ?? '',
+    captionSource: j.captionSource,
+    hashtags: Array.isArray(j.hashtags) ? j.hashtags : [],
+    postingNotes: Array.isArray(j.postingNotes) ? j.postingNotes : [],
+    autoPublish: false,
+    generatedAt: j.generatedAt,
+  };
+}
+
 /**
  * Job + live step status + script summary + gate. Reconcile state từ artifact và
  * ghi lại manifest (chỉ state/gate/script summary; KHÔNG ghi steps vào manifest
@@ -472,6 +516,7 @@ export function getJobDetail(id: string): EntJob | null {
   const script = readScriptSummary(id);
   const render = readRenderSummary(id);
   const audio = readAudioSummary(id);
+  const pkg = readPackageSummary(id);
   const reviewGates = base.reviewGates ?? { scriptApproved: false, previewApproved: false };
   const state = reconcileState(id, base);
 
@@ -481,7 +526,8 @@ export function getJobDetail(id: string): EntJob | null {
     !base.reviewGates ||
     JSON.stringify(base.script ?? null) !== JSON.stringify(script) ||
     JSON.stringify(base.render ?? null) !== JSON.stringify(render) ||
-    JSON.stringify(base.audio ?? null) !== JSON.stringify(audio)
+    JSON.stringify(base.audio ?? null) !== JSON.stringify(audio) ||
+    JSON.stringify(base.package ?? null) !== JSON.stringify(pkg)
   ) {
     writeManifest(id, {
       ...base,
@@ -490,11 +536,12 @@ export function getJobDetail(id: string): EntJob | null {
       script,
       render,
       audio,
+      package: pkg,
       updatedAt: nowIso(),
     });
   }
 
-  return { ...base, state, steps, script, render, audio, reviewGates };
+  return { ...base, state, steps, script, render, audio, package: pkg, reviewGates };
 }
 
 /** Tiền điều kiện artifact + gate cho mỗi step. */
@@ -649,6 +696,45 @@ export function previewVideoPath(id: string): string | null {
   if (ambient && existsSync(ambient)) return ambient;
   const short = entFile(id, 'montage_v2_short.mp4');
   return short && existsSync(short) ? short : null;
+}
+
+/**
+ * B8 — Đóng gói cho đăng TAY (16-package, SYNC vì chỉ 1 call caption). Yêu cầu
+ * GATE 2 (previewApproved) + có final video. KHÔNG auto-publish. Set PACKAGED.
+ */
+export function runPackage(
+  id: string,
+): { ok: true; job: EntJob } | { ok: false; code: string; message: string } {
+  if (!isValidJobId(id)) return { ok: false, code: 'NOT_FOUND', message: 'jobId không hợp lệ.' };
+  const job = readManifest(id);
+  if (!job) return { ok: false, code: 'NOT_FOUND', message: 'Job không tồn tại.' };
+  if (job.reviewGates?.previewApproved !== true) {
+    return { ok: false, code: 'NO_PREVIEW_GATE', message: 'Chưa qua GATE 2 (duyệt preview).' };
+  }
+  if (!previewFileExists(id)) {
+    return { ok: false, code: 'NO_FINAL', message: 'Chưa có video final — render trước.' };
+  }
+  const running = findRunningStep();
+  if (running) {
+    return { ok: false, code: 'BUSY', message: `Hệ thống đang chạy "${running.step}". Chờ xong.` };
+  }
+
+  const run = runRepoScript(
+    PACKAGE_SCRIPT_REL,
+    ['--id', id, '--model', SCRIPT_MODEL],
+    PACKAGE_TIMEOUT_MS,
+  );
+  if (run.status !== 0 || !packageDone(id)) {
+    return {
+      ok: false,
+      code: 'PACKAGE_FAILED',
+      message: sanitizeError(run.stderr ?? '') || 'Đóng gói thất bại.',
+    };
+  }
+  const detail = getJobDetail(id);
+  return detail
+    ? { ok: true, job: detail }
+    : { ok: false, code: 'BAD_STATE', message: 'Không đọc lại được job.' };
 }
 
 export interface EntScriptBeat {
