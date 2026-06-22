@@ -71,7 +71,7 @@ export function IntakePanel() {
         value={url}
         onChange={(e) => setUrl(e.target.value)}
         disabled={busy}
-        placeholder="Dán URL Douyin/TikTok…"
+        placeholder="Dán URL hoặc cả chuỗi share Douyin/TikTok…"
         className="w-full rounded-lg border border-hairline/60 bg-panel/40 px-3 py-2 text-xs text-neutral-200 placeholder:text-neutral-600 focus:border-accent-cyan/50 focus:outline-none disabled:opacity-60"
       />
       <div className="flex items-center gap-3">

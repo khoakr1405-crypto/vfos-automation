@@ -23,6 +23,19 @@ interface CreateBody {
   niche?: string;
 }
 
+/**
+ * Lấy URL http(s) đầu tiên từ nội dung dán. Hỗ trợ chuỗi "share" Douyin/TikTok
+ * (URL nhúng giữa text/emoji/hashtag tiếng Trung, vd: "… https://v.douyin.com/
+ * NzEVe40cTJs/ 复制此链接…"). URL dừng ở khoảng trắng hoặc ký tự CJK; bỏ dấu câu
+ * dính cuối. URL sạch http(s) vẫn trả về chính nó.
+ */
+function extractUrl(raw: string): string | null {
+  // URL dừng ở khoảng trắng hoặc ký tự CJK (ideographs + symbols + fullwidth).
+  const m = raw.match(/https?:\/\/[^\s　-〿一-鿿＀-￯]+/i);
+  if (!m) return null;
+  return m[0].replace(/[).,!?;:]+$/, ''); // bỏ dấu câu ASCII dính cuối
+}
+
 export async function GET(req: Request) {
   if (!isLocalRequest(req)) {
     return Response.json({ ok: false, code: 'NOT_LOCAL' }, { status: 403 });
@@ -45,12 +58,17 @@ export async function POST(req: Request) {
     body = {};
   }
 
-  const url = body.url?.trim();
+  const url = extractUrl(body.url ?? '');
   const niche = (body.niche ?? 'fishing-vlog').trim();
 
-  if (!url || !/^https?:\/\/\S+$/i.test(url)) {
+  if (!url) {
     return Response.json(
-      { ok: false, code: 'BAD_URL', message: 'URL không hợp lệ (cần http/https).' },
+      {
+        ok: false,
+        code: 'BAD_URL',
+        message:
+          'Không tìm thấy URL http(s) trong nội dung dán (URL sạch hoặc chuỗi share Douyin/TikTok đều được).',
+      },
       { status: 400 },
     );
   }
