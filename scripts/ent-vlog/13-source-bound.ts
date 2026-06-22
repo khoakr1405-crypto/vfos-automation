@@ -1,12 +1,12 @@
-// E1 step 13 — SOURCE-BOUND script (CONTENT GATE).
-// New direction: stop inventing. Bind to the ORIGINAL narration of the cut
-// segments. Slices the EXISTING asr_zh.json into the 5 montage windows (no
-// re-Whisper), then ONE gpt-5.5 call transcreates each Chinese line into SHORT
-// Vietnamese chunks that keep the original meaning + fast rhythm. Chunks are
-// placed at the SAME montage time as the original speech → matches the source
-// rhythm. Micro-commentary is added ONLY in real silent gaps.
-// Output OVERWRITES montage_v2_script.json (so step 12 voices/renders it as-is
-// after approval) + writes source_cut_reference.json + a human review .md.
+// E1 step 13 — SOURCE-BOUND script (CONTENT GATE) — v2 storytelling.
+// Binds to the ORIGINAL narration but writes a COHESIVE, FUNNY Vietnamese VO:
+//   - reads the intro ASR (id0..firstWindow) as STORY CONTEXT (persona/jokes)
+//     even though the montage only shows money-shots (B-light);
+//   - ONE gpt-5.5 call writes FULL SENTENCES (8–14 words, real punctuation) —
+//     no more 2–6 word fragments (C); keeps + localizes Chinese memes/slang (D);
+//   - a hard QA gate fails on choppy/punct-poor/filler-heavy/hook-less output (E).
+// Output OVERWRITES montage_v2_script.json (step 12 voices/renders it as-is after
+// approval) + writes source_cut_reference.json + a human review .md.
 // STOPS — no voice, no render. API: 1 gpt-5.5 text call (no Whisper, no vision).
 //   pnpm tsx scripts/ent-vlog/13-source-bound.ts --id ent_squid_001 --model gpt-5.5
 import { createHash } from 'node:crypto';
@@ -17,8 +17,6 @@ import { readAnchorPlan } from './lib/anchors.js';
 import { requireOpenAIKey, workDir } from './lib/env.js';
 import { type AsrSegment, chatJson } from './lib/openai.js';
 
-const GAP_FOR_MICRO = 2.8; // silence longer than this (s) may get micro-commentary
-
 // Đối tượng (subject) theo niche — KHÔNG hardcode 1 loài cho mọi video. Bám VISION.
 const NICHE_SUBJECT: Record<string, string> = { 'fishing-vlog': 'cá', squid: 'mực' };
 function subjectForNiche(niche: string | undefined, id: string): string {
@@ -27,19 +25,36 @@ function subjectForNiche(niche: string | undefined, id: string): string {
   return 'cá'; // mặc định trung tính cho lane câu cá
 }
 
-// System prompt tham số hóa theo subject + LUẬT object cứng (cấm đổi loài). Object
-// thật lấy từ VISION (catch_moments) ở user-prompt; đây chỉ neo nguyên tắc.
-function buildSourceBindSys(subject: string): string {
-  return `Bạn Việt hóa LỜI GỐC của một vlog đi câu/giải trí ngoài trời (nguồn Trung Quốc) cho người Việt xem TikTok.
-ĐỐI TƯỢNG đang quay: ${subject.toUpperCase()} (theo VISION khung hình). Gọi ĐÚNG con vật đang thấy; TUYỆT ĐỐI KHÔNG đổi loài (vd ${subject} thì KHÔNG được gọi thành loài khác). Lời gốc mơ hồ/lóng → mô tả theo cảnh đang thấy, KHÔNG bịa loài khác.
-NGUYÊN TẮC CỐT LÕI:
-- BÁM SÁT ý từng câu gốc. KHÔNG bịa thêm, KHÔNG lan man, KHÔNG dịch máy từng chữ.
-- Việt hóa tự nhiên như người Việt đang đi câu thật: nhanh, đời thường, hài nhẹ, phản ứng tức thì.
-- Bỏ phần thô tục/khó hiểu văn hóa (chửi tục, meme/ẩn dụ địa phương) → chuyển thành phản ứng vui sạch; KHÔNG dịch chữ máy móc câu lóng/meme.
-- Mỗi câu gốc → CHIA thành 1–N cụm NGẮN: 2–6 từ (tối đa 8). Cụm dễ đọc, dễ nghe.
-- Nếu câu gốc chỉ là tiếng cười/đệm (haha, 拿下拿下) → thành 1 cụm phản ứng ngắn (vd "haha", "kéo lên nào").
-GAPS: ở các đoạn IM (không có lời gốc), chỉ thêm 1 micro-commentary CỰC NGẮN đúng cảnh đang thấy; nếu không chắc cảnh thì BỎ, không bịa.
-Trả JSON: {"lines":[{"id":<number>,"vi":["cụm","cụm"]}],"micro":[{"afterId":<number>,"vi":"cụm ngắn"}]}.`;
+// System prompt v2 — tham số hóa theo subject. Luật C (câu đủ + dấu câu),
+// D (giữ + Việt hóa meme), giọng kể có nhân vật. Object thật từ VISION ở user-prompt.
+function buildScriptSys(subject: string): string {
+  return `Bạn viết LỜI BÌNH (voiceover) tiếng Việt cho một vlog đi câu/giải trí ngoài trời (nguồn Trung Quốc) để đăng TikTok Việt.
+ĐỐI TƯỢNG đang quay: ${subject.toUpperCase()} (theo VISION khung hình). Gọi ĐÚNG con vật đang thấy; TUYỆT ĐỐI KHÔNG đổi loài.
+
+GIỌNG & NHÂN VẬT:
+- Một nhân vật xưng "tôi/anh", tự tin, lầy, hài duyên — KHÔNG nhạt, KHÔNG xàm.
+- Bám PERSONA & câu chuyện gốc (đọc STORY CONTEXT): tay câu tự nhận là nhanh nhất vùng biển, cố tình đi câu giữa trưa cho khác người, rồi cá lên liên tục như trúng số.
+
+LUẬT VIẾT CÂU (BẮT BUỘC):
+- MỖI beat là MỘT CÂU TIẾNG VIỆT HOÀN CHỈNH, tự nhiên, có chủ-vị, dài 8–14 từ, KẾT bằng dấu câu (. ! ?). Có thể dùng dấu phẩy giữa câu.
+- TUYỆT ĐỐI KHÔNG cắt vụn 2–6 từ rời rạc, KHÔNG để câu cụt thiếu nghĩa, KHÔNG word-salad.
+- Được phép TỐI ĐA 3 câu cảm thán NGẮN (3–6 từ, vẫn có dấu "!") cho khoảnh khắc giật cá (vd "Dính rồi nha!", "Lên thêm con nữa!"). Đừng lạm dụng.
+- Gộp nhiều câu gốc gần nhau thành MỘT câu Việt mượt nếu hợp lý; bám ý gốc, KHÔNG bịa tình tiết mới.
+
+MEME/LÓNG TRUNG — GIỮ & VIỆT HÓA (đừng xóa, đừng dịch khô):
+- 这片海最快的男人 → "tay câu nhanh nhất cái vùng biển này".
+- 跟拔萝卜一样 → "câu cá mà cứ như nhổ củ cải".
+- 快到碗里来 → "mau chui vào thùng cho anh nào".
+- 葫芦娃救爷爷 / 七娃八娃九娃 / 大娃 → đếm cá kiểu anh em Hồ Lô cho vui: "đứa thứ bảy", "thứ tám lên luôn", "tới đứa thứ chín", con to nhất = "anh cả".
+- 清补凉 → "đổi lấy bát chè sâm bổ lượng".
+Việt hóa sao cho người Việt hiểu và thấy vui; KHÔNG để lại chữ Hán, KHÔNG lệch cảnh.
+
+CẤU TRÚC:
+- Beat đầu role "hook" tại t≈0.5–3s: câu mở "ăn tiền" giới thiệu nhân vật + chốt kèo, đúng luật câu trên.
+- Các beat sau role "line" (hoặc "react" cho cảm thán ngắn) bám money-shot.
+- Tổng khoảng 18–28 beat cho cả video; KHÔNG nhồi quá dày.
+
+Trả JSON DUY NHẤT: {"beats":[{"t":<giây số>,"role":"hook"|"line"|"react","text":"<câu tiếng Việt>","srcIds":[<id gốc liên quan>]}]}.`;
 }
 
 interface Beat {
@@ -57,6 +72,12 @@ interface SrcLine {
   mStart: number;
   mEnd: number;
 }
+interface GptBeat {
+  t: number;
+  role?: string;
+  text: string;
+  srcIds?: number[];
+}
 
 function tc(sec: number): string {
   return `${String(Math.floor(sec / 60)).padStart(2, '0')}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
@@ -68,12 +89,8 @@ function estRead(text: string): number {
 function wordCount(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
-function spread(n: number, t0: number, t1: number): number[] {
-  if (n <= 0) return [];
-  if (n === 1) return [(t0 + t1) / 2];
-  const out: number[] = [];
-  for (let i = 0; i < n; i += 1) out.push(t0 + (i / (n - 1)) * (t1 - t0));
-  return out;
+function hasEndPunct(text: string): boolean {
+  return /[.!?…]/.test(text);
 }
 
 async function main(): Promise<void> {
@@ -93,8 +110,6 @@ async function main(): Promise<void> {
   const scriptPath = join(clipDir, 'montage_v2_script.json');
 
   // EDIT-LOCK: produce re-run 13 KHÔNG được ghi đè bản Operator đã sửa tay.
-  // reviewStatus=OPERATOR_EDITED → GIỮ nguyên, skip. Bản AUTO/thiếu → sinh lại
-  // bình thường (fix object luôn áp). --force ép sinh lại kể cả khi đã khoá.
   if (!force && existsSync(scriptPath)) {
     try {
       const existing = JSON.parse(readFileSync(scriptPath, 'utf8')) as { reviewStatus?: string };
@@ -125,16 +140,7 @@ async function main(): Promise<void> {
   const asr = JSON.parse(readFileSync(join(dir, 'asr_zh.json'), 'utf8')) as {
     segments: AsrSegment[];
   };
-  const visPath = join(clipDir, '_vis', 'vision_scenes.json');
-  const sceneDesc = new Map<number, string>();
-  if (existsSync(visPath)) {
-    const vis = JSON.parse(readFileSync(visPath, 'utf8')) as {
-      scenes?: Array<{ idx: number; desc: string }>;
-    };
-    for (const s of vis.scenes ?? []) sceneDesc.set(s.idx, s.desc);
-  }
-  // VISION object-truth: mô tả "what" từ catch_moments (đối tượng THẬT đang quay)
-  // → ép script gọi đúng loài, không để GPT tự đổi cá thành mực.
+  // VISION object-truth: "what" từ catch_moments (đối tượng THẬT) → gọi đúng loài.
   const visionWhat: string[] = [];
   try {
     const cm = JSON.parse(readFileSync(join(dir, 'catch_moments.json'), 'utf8')) as {
@@ -168,6 +174,13 @@ async function main(): Promise<void> {
     const s = segs[idx];
     return s ? s.montageStart + (s.tSec - s.srcStart) : 0;
   };
+  // sceneIdx theo montage time (cho span/QA của step 12).
+  const sceneAt = (t: number): number | undefined => {
+    for (const s of segs) {
+      if (t >= s.montageStart && t < s.montageStart + s.dur) return s.idx >= 1 ? s.idx : undefined;
+    }
+    return undefined;
+  };
 
   // 1) SOURCE CUT REFERENCE: slice ASR into each window, map to montage time.
   const srcLines: SrcLine[] = [];
@@ -196,93 +209,57 @@ async function main(): Promise<void> {
     ),
   );
 
-  // Detect silent gaps (for micro-commentary).
-  const gaps: Array<{ afterId: number; at: number; dur: number; sceneIdx: number }> = [];
-  for (let i = 0; i < srcLines.length - 1; i += 1) {
-    const cur = srcLines[i];
-    const next = srcLines[i + 1];
-    if (!cur || !next) continue;
-    const dur = next.mStart - cur.mEnd;
-    if (dur > GAP_FOR_MICRO) {
-      gaps.push({
-        afterId: cur.id,
-        at: Number(((cur.mEnd + next.mStart) / 2).toFixed(2)),
-        dur: Number(dur.toFixed(1)),
-        sceneIdx: next.sceneIdx,
-      });
-    }
-  }
+  // B-light: STORY CONTEXT = lời gốc TRƯỚC cửa sổ money-shot đầu tiên (persona/setup,
+  // KHÔNG lên hình) → cho GPT hiểu nhân vật & mạch chuyện để viết hook + giọng.
+  const firstWindowStart = segs.length > 0 ? Math.min(...segs.map((s) => s.srcStart)) : 0;
+  const introLines = asr.segments
+    .filter((a) => a.end <= firstWindowStart && a.text.trim())
+    .map((a) => a.text.trim());
 
-  // 2) ONE gpt-5.5 call: bind transcreation (split into short chunks) + micro.
-  console.log(`[13] ${scriptModel} Việt hóa BÁM GỐC ${srcLines.length} câu + ${gaps.length} gap…`);
-  const out = await chatJson<{
-    lines?: Array<{ id: number; vi: string[] }>;
-    micro?: Array<{ afterId: number; vi: string }>;
-  }>(apiKey, {
+  // 2) ONE gpt-5.5 call: storytelling VO (full sentences + memes), anchored to money-shots.
+  console.log(
+    `[13] ${scriptModel} viết VO kể chuyện: intro ${introLines.length} câu (context) + ${srcLines.length} câu trong cảnh…`,
+  );
+  const out = await chatJson<{ beats?: GptBeat[] }>(apiKey, {
     model: scriptModel,
-    system: buildSourceBindSys(subject),
+    system: buildScriptSys(subject),
     user: [
-      `Bối cảnh: montage câu ${subject} ngoài biển, ${segs.length - 1} cú ${subject} lên. Mục tiêu TỔNG ~40–55 cụm ngắn cho ${Math.round(montageTotal)}s.`,
+      `Montage câu ${subject} ngoài biển, dài ${Math.round(montageTotal)}s, có ${segs.length - 1} cú ${subject} lên (money-shot).`,
       visionWhat.length > 0
-        ? `ĐỐI TƯỢNG THẬT (vision — GỌI ĐÚNG, KHÔNG đổi loài): ${visionWhat.slice(0, 6).join(' | ')}`
-        : `ĐỐI TƯỢNG THẬT: ${subject} (gọi đúng, KHÔNG đổi loài).`,
-      'LỜI GỐC (Việt hóa bám sát, chia cụm ngắn 2–6 từ):',
-      ...srcLines.map((l) => `[${tc(l.mStart)} | id${l.id}] ${l.zh}`),
-      gaps.length > 0 ? '\nGAPS im (thêm micro-commentary ngắn ĐÚNG cảnh, không chắc thì bỏ):' : '',
-      ...gaps.map(
-        (g) =>
-          `[${tc(g.at)} | sau id${g.afterId} | im ~${g.dur}s | cảnh: ${sceneDesc.get(g.sceneIdx) ?? `${subject}/biển`}]`,
-      ),
+        ? `ĐỐI TƯỢNG THẬT (vision — gọi đúng, KHÔNG đổi loài): ${visionWhat.slice(0, 6).join(' | ')}`
+        : `ĐỐI TƯỢNG THẬT: ${subject}.`,
+      `Money-shot rơi vào các giây (montage time): ${segs
+        .filter((s) => s.idx >= 1)
+        .map((s) => Math.round(msMontage(s.idx)))
+        .join(', ')}.`,
+      '',
+      'STORY CONTEXT — lời gốc phần MỞ ĐẦU (KHÔNG lên hình, chỉ để hiểu nhân vật/chuyện, đừng đọc nguyên văn):',
+      introLines.length > 0 ? introLines.join(' / ') : '(không có)',
+      '',
+      'LỜI GỐC TRONG CẢNH (bám ý, anchor theo t; gộp thành câu đủ, giữ/Việt hóa meme):',
+      ...srcLines.map((l) => `[t=${l.mStart}s | id${l.id}] ${l.zh}`),
+      '',
+      `Yêu cầu: ~18–28 beat, mỗi beat 1 câu đủ 8–14 từ có dấu câu, mở bằng 1 hook ở t≈1s. Trả JSON {"beats":[...]}.`,
     ].join('\n'),
-    temperature: 0.7,
+    temperature: 0.8,
   });
 
-  const viById = new Map((out.lines ?? []).map((l) => [l.id, l.vi.filter((x) => x.trim())]));
-  const microByAfter = new Map<number, string[]>();
-  for (const m of out.micro ?? []) {
-    if (!m.vi.trim()) continue;
-    const arr = microByAfter.get(m.afterId) ?? [];
-    arr.push(m.vi.trim());
-    microByAfter.set(m.afterId, arr);
-  }
-
-  // 3) Place chunks on the montage timeline following the SOURCE timing.
-  const beats: Beat[] = [];
-  let boundCount = 0;
-  let microCount = 0;
-  for (const l of srcLines) {
-    const chunks = viById.get(l.id) ?? [];
-    // spread chunks across the source line's montage span (rhythm match).
-    const span = Math.max(l.mEnd - l.mStart, 0.6 * Math.max(1, chunks.length));
-    for (const [i, t] of spread(chunks.length, l.mStart, l.mStart + span).entries()) {
-      const text = chunks[i];
-      if (!text) continue;
-      beats.push({
-        role: 'bound',
-        sceneIdx: l.sceneIdx >= 1 ? l.sceneIdx : undefined,
-        text,
-        montageTime: Number(t.toFixed(2)),
-        estSec: estRead(text),
-        srcId: l.id,
-      });
-      boundCount += 1;
-    }
-    // micro fillers that follow this line's gap.
-    const micros = microByAfter.get(l.id) ?? [];
-    const gap = gaps.find((g) => g.afterId === l.id);
-    for (const [i, t] of spread(
-      micros.length,
-      gap ? gap.at - 0.6 : l.mEnd + 0.8,
-      gap ? gap.at + 0.6 : l.mEnd + 1.4,
-    ).entries()) {
-      const text = micros[i];
-      if (!text) continue;
-      beats.push({ role: 'micro', text, montageTime: Number(t.toFixed(2)), estSec: estRead(text) });
-      microCount += 1;
-    }
-  }
+  // 3) Build step-12 beats từ GPT output (clamp t, estSec, sceneIdx, srcId).
+  const raw = (out.beats ?? []).filter((b) => b && typeof b.text === 'string' && b.text.trim());
+  const beats: Beat[] = raw.map((b) => {
+    const t = Math.max(0.3, Math.min(montageTotal - 0.5, Number(b.t) || 0.5));
+    const text = b.text.trim();
+    return {
+      role: b.role === 'hook' || b.role === 'react' ? b.role : 'line',
+      sceneIdx: sceneAt(t),
+      text,
+      montageTime: Number(t.toFixed(2)),
+      estSec: estRead(text),
+      srcId: Array.isArray(b.srcIds) && b.srcIds.length > 0 ? b.srcIds[0] : undefined,
+    };
+  });
   beats.sort((a, b) => a.montageTime - b.montageTime);
-  // Enforce min spacing so edge audio chunks don't garble (and densify gaps).
+  // Min spacing nhẹ (dedupe; step 12 mới là nơi anti-overlap theo audio thật).
   const MIN_GAP = 1.0;
   for (let i = 1; i < beats.length; i += 1) {
     const prev = beats[i - 1];
@@ -293,116 +270,111 @@ async function main(): Promise<void> {
     }
   }
 
-  // 4) QA.
+  // 4) QA GATE (E) — fail thật khi script cụt/xàm/lủng củng. Không fake pass.
+  const n = beats.length;
+  const words = beats.map((b) => wordCount(b.text));
+  const avgWords = n > 0 ? Number((words.reduce((s, w) => s + w, 0) / n).toFixed(1)) : 0;
+  const shortBeats = beats.filter((b, i) => (words[i] ?? 0) < 5 && b.role !== 'react');
+  const shortRatio = n > 0 ? Number((shortBeats.length / n).toFixed(2)) : 1;
+  const punctBeats = beats.filter((b) => hasEndPunct(b.text));
+  const punctRatio = n > 0 ? Number((punctBeats.length / n).toFixed(2)) : 0;
+  const longBeats = beats.filter((_, i) => (words[i] ?? 0) > 16);
+  const fillerBeats = beats.filter((b) => b.srcId == null && b.role !== 'hook');
+  const hookBeat = beats.find((b) => b.role === 'hook' && b.montageTime <= 5);
+  // nonsense (cấu trúc): câu KHÔNG phải cảm thán/hook, <4 từ và KHÔNG có dấu câu → nghi cụt.
+  const suspect = beats.filter(
+    (b, i) => b.role === 'line' && (words[i] ?? 0) < 4 && !hasEndPunct(b.text),
+  );
   const totalSpeech = Number(beats.reduce((s, b) => s + b.estSec, 0).toFixed(1));
-  let crowded = 0;
-  let maxOver = 0;
-  let maxGap = 0;
-  for (let i = 0; i < beats.length; i += 1) {
-    const cur = beats[i];
-    if (!cur) continue;
-    const next = beats[i + 1];
-    const nextStart = next ? next.montageTime : montageTotal;
-    const window = nextStart - cur.montageTime;
-    if (cur.estSec > window + 0.05) {
-      crowded += 1;
-      maxOver = Math.max(maxOver, Number((cur.estSec - window).toFixed(2)));
-    }
-    const silence = nextStart - (cur.montageTime + cur.estSec);
-    if (silence > maxGap) maxGap = Number(silence.toFixed(1));
-  }
-  const longChunks = beats.filter((b) => wordCount(b.text) > 8);
+
+  const gates: Array<{ ok: boolean; label: string }> = [
+    { ok: n >= 14 && n <= 34, label: `Số beat ${n} trong [14,34]` },
+    { ok: avgWords >= 7, label: `TB từ/beat ${avgWords} ≥ 7` },
+    { ok: shortRatio <= 0.3, label: `Tỷ lệ câu <5 từ ${shortRatio} ≤ 0.30` },
+    { ok: punctRatio >= 0.65, label: `Tỷ lệ câu có dấu câu ${punctRatio} ≥ 0.65` },
+    { ok: longBeats.length <= 1, label: `Câu >16 từ ${longBeats.length} ≤ 1` },
+    { ok: fillerBeats.length <= 4, label: `Filler không bám gốc ${fillerBeats.length} ≤ 4` },
+    { ok: !!hookBeat, label: `Có hook trong 5s đầu ${hookBeat ? '✓' : '✗'}` },
+    { ok: suspect.length === 0, label: `Câu cụt nghi vô nghĩa ${suspect.length} = 0` },
+    {
+      ok: totalSpeech <= montageTotal,
+      label: `Tổng đọc ${totalSpeech}s ≤ ${montageTotal.toFixed(0)}s`,
+    },
+  ];
+  const failed = gates.filter((g) => !g.ok);
 
   // 5) Write step-12-compatible script JSON (overwrite) + review .md.
-  // anchorsHash để biết script bám đúng montage hiện tại (đổi anchors ⇒ AUTO sinh lại).
   const anchorsHash = createHash('sha256')
     .update(JSON.stringify(plan.anchors))
     .digest('hex')
     .slice(0, 16);
+  const boundCount = beats.filter((b) => b.srcId != null).length;
   const scriptJson = {
     videoId: id,
     montageTotalSec: Number(montageTotal.toFixed(1)),
-    reviewStatus: 'AUTO', // EDIT-LOCK: Operator đổi thành OPERATOR_EDITED để khóa, produce sẽ skip 13
+    reviewStatus: 'AUTO', // EDIT-LOCK: Operator đổi thành OPERATOR_EDITED để khóa
     anchorsHash,
     subject,
     scriptModel,
     sourceBound: true,
+    storyMode: true,
     chunkCount: beats.length,
     boundChunks: boundCount,
-    microChunks: microCount,
+    microChunks: fillerBeats.length,
+    avgWordsPerBeat: avgWords,
+    punctRatio,
     estTotalSpeechSec: totalSpeech,
+    qaPass: failed.length === 0,
     beats,
   };
   writeFileSync(scriptPath, JSON.stringify(scriptJson, null, 2));
 
-  const zhByMontage = new Map(srcLines.map((l) => [l.id, l]));
   const md: string[] = [];
-  md.push('# Script review — SOURCE-BOUND (⛔ CHỜ DUYỆT, chưa voice/render)');
+  md.push('# Script review — SOURCE-BOUND v2 (kể chuyện, ⛔ CHỜ DUYỆT)');
   md.push('');
   md.push(
-    `- Video: ${id} | tổng ${montageTotal.toFixed(1)}s | bám lời gốc (ASR), không sáng tác mới`,
+    `- Video: ${id} | tổng ${montageTotal.toFixed(1)}s | bám ASR + persona gốc, câu đủ + dấu câu`,
   );
   md.push(
-    `- Model: ${scriptModel} | nguồn: ASR tiếng Trung đã cắt (KHÔNG re-Whisper). OCR caption gốc: tool scrub chỉ cho box, CHƯA trích text → bám lời nói gốc.`,
+    `- Model: ${scriptModel} | nguồn: ASR Trung (intro ${introLines.length} câu context + ${srcLines.length} câu trong cảnh). OCR hardsub: chỉ box (scrub), chưa trích text.`,
   );
   md.push(
-    `- Cụm: **${beats.length}** (bound ${boundCount} / micro ${microCount}) | ước tính đọc ~${totalSpeech}s / ${montageTotal.toFixed(1)}s`,
+    `- Beat: **${beats.length}** | TB **${avgWords}** từ/beat | dấu câu **${Math.round(punctRatio * 100)}%** | đọc ~${totalSpeech}s/${montageTotal.toFixed(1)}s`,
   );
   md.push('');
-  md.push('## SOURCE TRANSCRIPT (lời gốc đã nhận diện, theo montage time)');
+  md.push('## SOURCE TRANSCRIPT trong cảnh (theo montage time)');
   for (const l of srcLines) md.push(`- [${tc(l.mStart)}] (id${l.id}, cú ${l.sceneIdx}) ${l.zh}`);
   md.push('');
-  md.push('## VIỆT HÓA theo timecode (caption = ĐÚNG text này)');
-  md.push('| # | time | ~đọc | nguồn | text | từ |');
+  md.push('## VOICEOVER mới (caption = ĐÚNG text này)');
+  md.push('| # | time | role | ~đọc | từ | text |');
   md.push('|---|---|---|---|---|---|');
   for (const [i, b] of beats.entries()) {
-    const src = b.srcId != null ? `id${b.srcId}` : 'micro+';
     md.push(
-      `| ${i + 1} | ${tc(b.montageTime)} | ${b.estSec}s | ${src} | ${b.text.replace(/\|/g, '/')} | ${wordCount(b.text)} |`,
+      `| ${i + 1} | ${tc(b.montageTime)} | ${b.role} | ${b.estSec}s | ${wordCount(b.text)} | ${b.text.replace(/\|/g, '/')} |`,
     );
   }
   md.push('');
-  md.push('## ĐỐI CHIẾU bám gốc (gốc → Việt)');
-  for (const l of srcLines) {
-    const ch = (viById.get(l.id) ?? []).join(' / ');
-    if (ch) md.push(`- id${l.id} [${tc(l.mStart)}] «${l.zh}» → ${ch}`);
-  }
-  if (microCount > 0) {
-    md.push('');
-    md.push('## MICRO-COMMENTARY thêm (đoạn im, đúng cảnh)');
-    for (const m of out.micro ?? []) {
-      const after = zhByMontage.get(m.afterId);
-      md.push(`- sau id${m.afterId}${after ? ` [${tc(after.mEnd)}]` : ''}: “${m.vi}”`);
-    }
-  }
+  md.push('## QA GATE (E)');
+  for (const g of gates) md.push(`- ${g.ok ? '✅' : '🛑'} ${g.label}`);
   md.push('');
-  md.push('## QA / RỦI RO (ước tính, chưa có voice thật)');
+  md.push(`> Kết quả QA: ${failed.length === 0 ? '✅ PASS' : `🛑 FAIL (${failed.length} cổng)`}`);
   md.push(
-    `- Số cụm: ${beats.length} ${beats.length >= 40 && beats.length <= 55 ? '✅ (40–55)' : '⚠️ ngoài 40–55'}.`,
-  );
-  md.push(
-    `- Tổng đọc ~${totalSpeech}s / ${montageTotal.toFixed(1)}s → ${totalSpeech < montageTotal ? '✅ còn dư' : '⚠️ kín'}.`,
-  );
-  md.push(`- Gap lớn nhất giữa 2 cụm: ~${maxGap}s ${maxGap <= 3 ? '✅' : '⚠️ còn quãng chết'}.`);
-  md.push(`- Cụm dài >8 từ: ${longChunks.length === 0 ? '✅ không' : `⚠️ ${longChunks.length}`}.`);
-  md.push(
-    `- Caption chật (ước tính): ${crowded === 0 ? '✅ không' : `⚠️ ${crowded} cụm, tối đa ~${maxOver}s`}.`,
-  );
-  md.push(`- Bám gốc: ${boundCount}/${beats.length} cụm từ lời gốc; ${microCount} cụm micro thêm.`);
-  md.push('');
-  md.push(
-    '> ⛔ Duyệt: sửa `text` trong `montage_v2_script.json` nếu cần, rồi báo "duyệt script" để chạy voice + render (step 12, không đổi).',
+    '> ⛔ Duyệt: sửa `text` trong `montage_v2_script.json` nếu cần, rồi báo "duyệt script" để voice + render.',
   );
   writeFileSync(join(clipDir, 'montage_v2_script_review.md'), md.join('\n'));
 
   console.log('------------------------------------------------------');
   console.log(
-    `[13] ✅ Bám gốc xong — ${beats.length} cụm (bound ${boundCount}/micro ${microCount}), chưa voice/render.`,
+    `[13] VO kể chuyện — ${beats.length} beat | TB ${avgWords} từ | dấu câu ${Math.round(punctRatio * 100)}% | đọc ~${totalSpeech}s`,
   );
-  console.log(
-    `     đọc ~${totalSpeech}s / ${montageTotal.toFixed(1)}s | gap lớn nhất ~${maxGap}s | dài>8từ ${longChunks.length}`,
-  );
-  console.log('     ⛔ DỪNG — chờ Operator duyệt nội dung chữ.');
+  for (const g of gates) console.log(`     ${g.ok ? '✅' : '🛑'} ${g.label}`);
+  if (failed.length > 0) {
+    console.error(
+      `🛑 SCRIPT_QA_FAILED — ${failed.length} cổng QA fail (xem trên). Không báo pass giả.`,
+    );
+    process.exit(5);
+  }
+  console.log('[13] ✅ QA PASS — chờ Operator duyệt nội dung chữ (chưa voice/render).');
   console.log('------------------------------------------------------');
 }
 
