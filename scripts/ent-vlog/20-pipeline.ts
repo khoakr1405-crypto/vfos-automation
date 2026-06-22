@@ -6,14 +6,14 @@
 //   analyze  = 02-asr-zh -> 03b-vision-anchor -> 03-clip-mine
 //   montage  = 10-montage-v2
 //   script   = 13-source-bound (--model)
-//   produce  = analyze + montage + script (stops BEFORE voice/render — GATE 1)
 //   render   = 12-voice-render -> 15-audio-ambient-full (audio policy đã chốt:
-//              bỏ giọng Trung bằng Demucs no_vocals, GIỮ ambient biển/gió/nước;
-//              POST GATE 1 — API ép scriptApproved trước khi gọi)
+//              bỏ giọng Trung bằng Demucs no_vocals, GIỮ ambient biển/gió/nước)
+//   produce  = analyze + montage + script + render (FULL chain → dừng ở GATE 2)
 //
 // Isolation: writes only inside data/temp/ent/<id>/. No publish, no registry.
-// "produce" STOPS at the script content gate (GATE 1). "render" chỉ chạy sau khi
-// Operator đã duyệt script (gate ép ở tầng API), dừng ở preview (GATE 2).
+// CỔNG DUY NHẤT là Duyệt video (GATE 2): "produce" chạy nguyên chuỗi tới preview
+// rồi DỪNG; KHÔNG có gate duyệt script giữa chừng (đã gộp). Video chỉ "xong" khi
+// cả 12+15 hoàn tất nên UI không hiện preview lúc đang render.
 //   pnpm tsx scripts/ent-vlog/20-pipeline.ts --id ent_squid_001 --step produce [--model gpt-5.5]
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -63,7 +63,7 @@ function subsFor(step: StepName, model: string): SubSpec[] {
   if (step === 'montage') return montage;
   if (step === 'script') return script;
   if (step === 'render') return render;
-  return [...analyze, ...montage, ...script]; // produce
+  return [...analyze, ...montage, ...script, ...render]; // produce = FULL chain → GATE 2
 }
 
 async function main(): Promise<void> {
@@ -144,10 +144,10 @@ async function main(): Promise<void> {
   status.finishedAt = new Date().toISOString();
   flush();
   console.log(`[20] ✅ step "${step}" xong — ${subs.length} bước con.`);
-  if (step === 'produce' || step === 'script') {
-    console.log('[20] ⛔ DỪNG ở GATE 1 — chờ Operator duyệt script trong UI.');
-  } else if (step === 'render') {
-    console.log('[20] ⛔ DỪNG ở GATE 2 — chờ Operator duyệt preview trong UI.');
+  if (step === 'produce' || step === 'render') {
+    console.log('[20] ⛔ DỪNG ở GATE 2 — chờ Operator duyệt video trong UI.');
+  } else if (step === 'script') {
+    console.log('[20] (script lẻ — dùng cho debug; flow chính chạy "produce" full chain.)');
   }
 }
 

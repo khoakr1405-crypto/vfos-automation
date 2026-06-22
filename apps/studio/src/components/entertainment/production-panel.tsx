@@ -200,7 +200,9 @@ export function ProductionPanel() {
         const j = (await r.json()) as { ok: boolean; message?: string; code?: string };
         if (j.ok) {
           setMsg(okMsg);
-          if (path.includes('voice-render')) setPreviewTick((t) => t + 1);
+          if (path.includes('produce') || path.includes('voice-render')) {
+            setPreviewTick((t) => t + 1); // cache-bust <video> cho lần render mới
+          }
         } else {
           setMsg(`🛑 ${j.message ?? j.code ?? 'Lỗi.'}`);
         }
@@ -219,41 +221,28 @@ export function ProductionPanel() {
 
   const step = activeStep(detail);
   const running = anyRunning(detail);
-  const approved = detail?.reviewGates?.scriptApproved === true;
   const previewApproved = detail?.reviewGates?.previewApproved === true;
-  const hasScript = !!detail?.script;
   const render = detail?.render ?? null;
   const audio = detail?.audio ?? null;
+  // Video coi là "xong hẳn" khi render KHÔNG còn chạy (cả 12+15 done). Lúc đó mới
+  // hiện player + cổng Duyệt video — KHÔNG hiện preview giữa chừng render.
+  const renderFinished = !!render && !running;
 
-  // Nút chính LUÔN "Sản xuất video" — KHÔNG có khái niệm "render lại". Render là
-  // một phần của sản xuất, tự chạy ngầm sau khi duyệt script. Kết quả chỉ có:
-  // hoàn thành, hoặc lỗi (báo lỗi ở khối tiến trình). Nếu lỡ dừng sau duyệt
-  // script mà chưa render, bấm "Sản xuất video" sẽ tiếp tục phần còn lại.
-  const produceRun =
-    approved && !render
-      ? () => post('/voice-render', '▶ Đang sản xuất ngầm (lồng tiếng + giữ ambient)…')
-      : () => post('/produce', '▶ Đang sản xuất ngầm tới bước duyệt script…');
-
-  const scriptPending = hasScript && !approved && !running;
-  async function onApproveScript() {
-    const ok = await post('/script/approve', '✅ Đã duyệt script — đang tự sản xuất ngầm…');
-    if (ok)
-      await post(
-        '/voice-render',
-        '▶ Đang sản xuất ngầm (lồng tiếng + bỏ giọng Trung/giữ ambient)…',
-      );
-  }
+  // CỔNG DUY NHẤT = Duyệt video. "Sản xuất video" chạy nguyên chuỗi tới preview
+  // (analyze→…→render→audio), KHÔNG dừng duyệt script giữa chừng.
+  const onProduce = () =>
+    post('/produce', '▶ Đang sản xuất ngầm (analyze → montage → script → voice → audio)…');
   function onApprovePreview() {
     return post('/approve', '✅ Đã duyệt video (GATE 2) — sang "Đăng lên TikTok" (đăng tay).');
   }
 
   return (
     <div className="space-y-4">
-      {/* 1 NÚT "Sản xuất video" — render là phần của sản xuất, tự chạy ngầm */}
+      {/* 1 NÚT "Sản xuất video" — chạy nguyên chuỗi tới Duyệt video */}
       <div className="space-y-2">
         <button
           type="button"
-          onClick={produceRun}
+          onClick={onProduce}
           disabled={!selectedId || busy || running}
           className="rounded-xl border border-accent-cyan/40 bg-accent-cyan/15 px-5 py-2.5 text-sm font-bold text-accent-cyan transition hover:bg-accent-cyan/25 disabled:cursor-not-allowed disabled:opacity-50"
         >
@@ -261,8 +250,8 @@ export function ProductionPanel() {
         </button>
         <p className="text-[11px] text-neutral-600">
           {running
-            ? '⏳ Đang chạy ngầm — chờ tự dừng ở cổng duyệt tiếp theo.'
-            : '⚠️ Gọi OpenAI + render (tốn phí, vài phút). Chạy ngầm analyze → montage → script → voice → audio, dừng ở các cổng duyệt.'}
+            ? '⏳ Đang chạy ngầm — video chỉ hiện khi render xong hẳn. Rồi bấm "Duyệt video".'
+            : '⚠️ Gọi OpenAI + render (tốn phí, vài phút). Chạy nguyên chuỗi analyze → montage → script → voice → audio, dừng ở Duyệt video.'}
         </p>
         {msg && <p className="text-[11px] text-neutral-400">{msg}</p>}
       </div>
@@ -289,19 +278,12 @@ export function ProductionPanel() {
         </div>
       )}
 
-      {/* GATE 1 — tóm tắt script + nút "Duyệt script" ở cuối block */}
-      {review && (
-        <ScriptReviewBlock
-          review={review}
-          approved={approved}
-          busy={busy}
-          canApprove={scriptPending}
-          onApprove={onApproveScript}
-        />
-      )}
+      {/* Script đã dịch — CHỈ HIỂN THỊ tham khảo (không còn cổng duyệt script) */}
+      {review && renderFinished && <ScriptReviewBlock review={review} />}
 
-      {/* GATE 2 — QA + audio policy + player + nút "Duyệt video" DƯỚI video */}
-      {approved && render && (
+      {/* CỔNG DUY NHẤT — QA + audio policy + player + nút "Duyệt video".
+          Chỉ hiện khi render XONG HẲN (renderFinished) — không hiện lúc đang render. */}
+      {renderFinished && render && (
         <VoiceRenderView
           jobId={selectedId}
           render={render}
@@ -381,19 +363,19 @@ function VoiceRenderView({
         </span>
       </div>
 
-      {/* Audio policy đã chốt */}
-      {audio?.applied ? (
+      {/* Audio policy: đã áp thật / lỗi (render đã xong nên không còn trạng thái "đang chạy") */}
+      {audioApplied ? (
         <div className="rounded-lg border border-accent-cyan/20 bg-panel/30 px-3 py-2 text-[11px] text-neutral-400">
-          <p className="font-semibold text-neutral-300">🔊 Audio policy: {audio.audioMode} ✅</p>
+          <p className="font-semibold text-neutral-300">🔊 Audio policy: {audio?.audioMode} ✅</p>
           <div className="mt-1 grid grid-cols-2 gap-x-4 gap-y-0.5 sm:grid-cols-3">
-            <span>Demucs: {audio.demucs}</span>
-            <span>ambient level: {audio.ambientLevel ?? '?'}</span>
-            <span>BGM: {audio.bgm ?? 'none'}</span>
-            <span>giọng Trung tách (đỉnh): {audio.vocalsRemovedMaxDb ?? '?'}dB</span>
-            <span>ambient giữ (đỉnh): {audio.ambientKeptMaxDb ?? '?'}dB</span>
+            <span>Demucs: {audio?.demucs}</span>
+            <span>ambient level: {audio?.ambientLevel ?? '?'}</span>
+            <span>BGM: {audio?.bgm ?? 'none'}</span>
+            <span>giọng Trung tách (đỉnh): {audio?.vocalsRemovedMaxDb ?? '?'}dB</span>
+            <span>ambient giữ (đỉnh): {audio?.ambientKeptMaxDb ?? '?'}dB</span>
             <span>
-              VO &gt; ambient: {audio.voiceAboveAmbientDb ?? '?'}dB{' '}
-              {(audio.voiceAboveAmbientDb ?? 0) > 0 ? '✅' : '⚠️'}
+              VO &gt; ambient: {audio?.voiceAboveAmbientDb ?? '?'}dB{' '}
+              {(audio?.voiceAboveAmbientDb ?? 0) > 0 ? '✅' : '⚠️'}
             </span>
           </div>
           <p className="mt-1 text-[10px] text-neutral-600">
@@ -402,13 +384,13 @@ function VoiceRenderView({
         </div>
       ) : (
         <div className="rounded-lg border border-accent-amber/30 bg-accent-amber/5 px-3 py-2 text-[11px] text-accent-amber">
-          ⚠️ Audio policy remove_speech_keep_ambient CHƯA áp (Demucs chưa chạy / lỗi). Bấm "Sản xuất
-          video" để chạy lại phần audio.
+          ⚠️ Render xong nhưng audio policy remove_speech_keep_ambient CHƯA áp (Demucs lỗi). KHÔNG
+          hiện video chưa bỏ giọng Trung. Bấm "Sản xuất video" để chạy lại.
         </div>
       )}
 
-      {/* Player */}
-      {render.previewReady ? (
+      {/* Player — CHỈ hiện bản đã áp audio policy thật (không hiện bản còn giọng Trung) */}
+      {audioApplied && render.previewReady && (
         // biome-ignore lint/a11y/useMediaCaption: caption đã bake vào video (kinetic caption)
         <video
           key={previewTick}
@@ -416,11 +398,9 @@ function VoiceRenderView({
           className="w-full max-w-[280px] rounded-lg border border-hairline/40"
           src={`/api/studio/entertainment/jobs/${jobId}/preview?t=${previewTick}`}
         />
-      ) : (
-        <p className="text-[11px] text-accent-rose">🛑 Chưa có file preview.</p>
       )}
 
-      {/* Nút "Duyệt video" — NẰM DƯỚI VIDEO (cạnh thứ nó duyệt) */}
+      {/* Nút "Duyệt video" — NẰM DƯỚI VIDEO (cổng tay duy nhất) */}
       <div className="flex flex-wrap items-center gap-3 border-t border-accent-cyan/20 pt-3">
         {previewApproved ? (
           <span className="rounded-lg bg-accent-green/15 px-3 py-2 text-xs font-bold text-accent-green">
@@ -439,41 +419,23 @@ function VoiceRenderView({
         <span className="text-[10px] text-neutral-600">
           {audioApplied
             ? 'Xem xong, ưng thì bấm "Duyệt video". READY ≠ được đăng — vẫn đăng tay thủ công.'
-            : '🔒 Khóa duyệt: audio policy chưa áp thật (chưa bỏ giọng Trung). Bấm "Sản xuất video" render lại.'}
+            : '🔒 Audio policy chưa áp thật — bấm "Sản xuất video" chạy lại.'}
         </span>
       </div>
     </div>
   );
 }
 
-function ScriptReviewBlock({
-  review,
-  approved,
-  busy,
-  canApprove,
-  onApprove,
-}: {
-  review: ScriptReview;
-  approved: boolean;
-  busy: boolean;
-  canApprove: boolean;
-  onApprove: () => void;
-}) {
+function ScriptReviewBlock({ review }: { review: ScriptReview }) {
   const s = review.summary;
   const chunkOk = (s.chunkCount ?? 0) >= 40 && (s.chunkCount ?? 0) <= 55;
   const speechOk = (s.estTotalSpeechSec ?? 0) < (s.montageTotalSec ?? 0);
   return (
-    <div className="space-y-3 rounded-xl border border-accent-amber/30 bg-accent-amber/5 p-4">
+    <div className="space-y-3 rounded-xl border border-hairline/50 bg-panel/20 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-bold text-neutral-100">⛔ GATE 1 — Script (bám lời gốc)</h3>
-        <span
-          className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-            approved
-              ? 'bg-accent-green/15 text-accent-green'
-              : 'bg-accent-amber/15 text-accent-amber'
-          }`}
-        >
-          {approved ? '✅ Đã duyệt' : '⏳ Chờ duyệt (bấm "Duyệt script")'}
+        <h3 className="text-sm font-bold text-neutral-100">📝 Script đã dịch (tham khảo)</h3>
+        <span className="rounded-full bg-panel/60 px-2 py-0.5 text-[10px] font-semibold text-neutral-400">
+          {s.scriptModel ?? '?'}
         </span>
       </div>
 
@@ -545,27 +507,10 @@ function ScriptReviewBlock({
         </details>
       )}
 
-      {/* Nút "Duyệt script" — ở cuối block, hệ thống TỰ sản xuất tiếp ngầm */}
-      <div className="flex flex-wrap items-center gap-3 border-t border-accent-amber/20 pt-3">
-        {approved ? (
-          <span className="rounded-lg bg-accent-green/15 px-3 py-2 text-xs font-bold text-accent-green">
-            ✅ Đã duyệt script — đang/đã tự sản xuất ngầm
-          </span>
-        ) : (
-          <button
-            type="button"
-            onClick={onApprove}
-            disabled={busy || !canApprove}
-            className="rounded-xl border border-accent-amber/50 bg-accent-amber/15 px-5 py-2.5 text-sm font-bold text-accent-amber transition hover:bg-accent-amber/25 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            ⛔ Duyệt script
-          </button>
-        )}
-        <span className="text-[10px] text-neutral-600">
-          Ưng thì bấm "Duyệt script" — hệ thống TỰ sản xuất tiếp ngầm. Sửa text? Edit
-          montage_v2_script.json rồi bấm "Sản xuất video".
-        </span>
-      </div>
+      <p className="border-t border-hairline/30 pt-2 text-[10px] text-neutral-600">
+        Bản dịch tiếng Việt (gpt-5.5) bám lời gốc — chỉ để tham khảo, không còn cổng duyệt riêng.
+        Sửa text? Edit montage_v2_script.json rồi bấm "Sản xuất video".
+      </p>
     </div>
   );
 }

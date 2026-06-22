@@ -299,6 +299,17 @@ logic engine vào API.
 > (`AUDIO_NOT_APPLIED`) nếu chưa áp thật; `16-package` từ chối VO-only
 > (`NO_AMBIENT`); UI disable nút "Duyệt video" + báo lý do. Không bao giờ duyệt/
 > đóng gói bản chưa bỏ giọng Trung. `audio.applied` trong manifest = strict check.
+>
+> **Cập nhật (E-UI-8) — GỘP còn 1 cổng + video chỉ hiện khi render xong:** Bỏ GATE
+> 1 (duyệt script). **Cổng tay DUY NHẤT = Duyệt video** (vẫn no auto-publish nên
+> No-Go #3 giữ). Engine `20-pipeline`: **`produce` = FULL chain**
+> `analyze→montage→script→12-voice→15-audio` chạy 1 process tới preview rồi dừng.
+> `startStep('produce')` set `scriptApproved=true` tự động (script auto-duyệt để
+> reconcile/approvePreview chạy). UI: nút chính LUÔN "Sản xuất video" → `/produce`;
+> **bỏ nút "Duyệt script"** (block script còn lại chỉ HIỂN THỊ tham khảo). **Video
+> + nút Duyệt video CHỈ hiện khi `render && !running`** (xong hẳn cả 12+15) —
+> không hiện preview lúc đang render; player chỉ phát bản đã áp audio. Route
+> `/script/approve`·`/voice-render`·`/reject` còn để debug, UI không dùng.
 
 ---
 

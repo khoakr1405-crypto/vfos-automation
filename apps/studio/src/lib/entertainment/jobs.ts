@@ -601,7 +601,8 @@ export type StartStepResult =
 
 /**
  * Khởi chạy 1 step pipeline DETACHED. Single-flight mỗi job (1 step chạy 1 lúc)
- * để 10/13 không cùng ghi montage_v2_script.json. Dừng TRƯỚC voice/render — GATE 1.
+ * để 10/13 không cùng ghi montage_v2_script.json. "produce" chạy FULL chain
+ * (analyze→…→render→audio) tới preview — cổng tay duy nhất là Duyệt video (GATE 2).
  */
 export function startStep(id: string, step: EntStepName): StartStepResult {
   if (!isValidJobId(id)) return { ok: false, code: 'NOT_FOUND', message: 'jobId không hợp lệ.' };
@@ -622,6 +623,17 @@ export function startStep(id: string, step: EntStepName): StartStepResult {
           ? `Đang chạy "${running.step}" cho job này. Chờ xong rồi chạy tiếp.`
           : `Hệ thống đang chạy "${running.step}" cho job ${running.jobId} (chỉ 1 render/lúc). Chờ xong rồi chạy.`,
     };
+  }
+
+  // GATE 1 đã GỘP: produce = full chain tới preview nên script auto-duyệt (cổng
+  // tay duy nhất còn lại = Duyệt video). Set trước để reconcile lên PREVIEW_PENDING
+  // khi render xong, và để approvePreview không vướng NO_SCRIPT_GATE.
+  if (step === 'produce' && job.reviewGates?.scriptApproved !== true) {
+    writeManifest(id, {
+      ...job,
+      reviewGates: { scriptApproved: true, previewApproved: false },
+      updatedAt: nowIso(),
+    });
   }
 
   const stepsDir = entFile(id, 'steps');

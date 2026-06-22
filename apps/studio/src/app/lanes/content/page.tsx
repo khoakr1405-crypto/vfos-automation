@@ -2,17 +2,18 @@
  * VFOS Studio — Entertainment Command Center (Lane 2: Nội dung / Giải trí)
  * -----------------------------------------------------------------------------
  * Giao diện vận hành 3 PHẦN / ĐÚNG 4 NÚT cho Operator dễ dùng, NHƯNG bên trong
- * vẫn là workflow 8 bước + 2 gate theo
+ * vẫn là workflow 8 bước + 1 cổng Duyệt video theo
  * docs/00_DIEU_HANH/VFOS_ENTERTAINMENT_LANE_SPEC.md:
  *   source intake → analyze → montage → transcreation → voice/caption →
  *   audio mix → preview → package.
  *
- * ĐÚNG 4 NÚT (E-UI-7 gom nút):
- *   1) Tải link  2) Sản xuất video  3) Duyệt (1 nút cho cả 2 cổng)  4) Đăng lên TikTok
- * 1 ô chọn job DÙNG CHUNG cho cả 3 phần (EntJobSelector). Mọi sub-step + render
- * chạy NGẦM; nút "Duyệt" lần 1 = duyệt script rồi TỰ render ngầm → dừng GATE 2,
- * lần 2 = duyệt video. Nút 4 hiện = đóng gói đăng TAY (roadmap: nối TikTok API).
- * 2 gate Operator (duyệt script + duyệt video) GIỮ NGUYÊN. KHÔNG auto publish.
+ * ĐÚNG 4 NÚT (E-UI-7 gom nút · E-UI-8 gộp 1 cổng):
+ *   1) Tải link  2) Sản xuất video  3) Duyệt video  4) Đăng lên TikTok
+ * 1 ô chọn job DÙNG CHUNG cho cả 3 phần (EntJobSelector). "Sản xuất video" chạy
+ * NGUYÊN chuỗi analyze→montage→script→voice→audio (1 process) rồi DỪNG ở CỔNG DUY
+ * NHẤT = Duyệt video. KHÔNG còn cổng duyệt script (đã gộp). Video chỉ hiện khi
+ * render XONG HẲN (không hiện giữa chừng). Nút 4 = đóng gói đăng TAY (roadmap:
+ * nối TikTok API). KHÔNG auto publish — Duyệt video + đăng tay vẫn là cổng tay.
  *
  * Isolation: page riêng, KHÔNG tái dùng component Product Review, KHÔNG đụng
  * /lanes/product-review, jobs/[jobId], orchestrator, Product Card, nav.ts.
@@ -27,10 +28,11 @@ import { ProductionPanel } from '@/components/entertainment/production-panel';
 import { PageHeader } from '@/components/page-header';
 
 // 7 sub-step bên trong nút "Sản xuất video" (intake = nút 1, package = nút 3).
+// CỔNG DUY NHẤT = Preview (Duyệt video); script không còn là cổng (đã gộp).
 const PRODUCE_SUBSTEPS: Array<{ label: string; gate?: boolean }> = [
   { label: 'Analyze (vision-anchored)' },
   { label: 'Montage' },
-  { label: 'Script — Transcreation', gate: true },
+  { label: 'Script — Transcreation' },
   { label: 'Voice' },
   { label: 'Caption sync' },
   { label: 'Audio mix' },
@@ -49,8 +51,7 @@ const FULL_WORKFLOW: Array<{ no: number; label: string; note: string; gate?: str
   {
     no: 4,
     label: 'Script — Transcreation',
-    note: 'Bám lời/nhịp gốc, Việt hóa, tag source-bound/micro.',
-    gate: 'GATE 1 — Operator duyệt script',
+    note: 'Bám lời/nhịp gốc, Việt hóa, tag source-bound/micro. Chạy ngầm — không còn cổng duyệt script (gộp).',
   },
   {
     no: 5,
@@ -65,8 +66,8 @@ const FULL_WORKFLOW: Array<{ no: number; label: string; note: string; gate?: str
   {
     no: 7,
     label: 'Preview',
-    note: 'Player + QA checklist.',
-    gate: 'GATE 2 — Operator duyệt preview',
+    note: 'Player + QA checklist (chỉ hiện khi render xong hẳn).',
+    gate: 'CỔNG DUY NHẤT — Operator duyệt video',
   },
   {
     no: 8,
@@ -141,22 +142,22 @@ export default function ContentLanePage() {
           </CardBody>
         </Card>
 
-        {/* BƯỚC 2 — Sản xuất video (chứa 8-bước nội bộ + 2 gate) */}
+        {/* BƯỚC 2 — Sản xuất video (chứa 8-bước nội bộ + 1 cổng Duyệt video) */}
         <Card className="ring-1 ring-accent-amber/20">
           <CardBody className="space-y-3 p-6">
             <div className="flex items-start justify-between gap-3">
               <StepHeader
                 no={2}
                 title="Sản xuất video"
-                sub="2 nút: Sản xuất + Duyệt — mọi sub-step chạy ngầm"
+                sub="1 nút chạy nguyên chuỗi → 1 cổng Duyệt video"
               />
-              <Badge accent="cyan">E-UI-7</Badge>
+              <Badge accent="cyan">E-UI-8</Badge>
             </div>
             <p className="text-xs leading-relaxed text-neutral-400">
-              Bấm <strong>Sản xuất video</strong> → chạy ngầm tới <strong>Duyệt script</strong>. Bấm{' '}
-              <strong>Duyệt</strong> lần 1 = duyệt script rồi TỰ render ngầm → dừng ở{' '}
-              <strong>Duyệt video</strong>. Bấm <strong>Duyệt</strong> lần 2 = duyệt video. 2 cổng
-              duyệt tay giữ nguyên (luật an toàn).
+              Bấm <strong>Sản xuất video</strong> → chạy ngầm NGUYÊN chuỗi analyze → montage →
+              script → voice → audio. <strong>Không còn cổng duyệt script</strong> (đã gộp). Video{' '}
+              <strong>chỉ hiện khi render xong hẳn</strong>; xem rồi bấm{' '}
+              <strong>Duyệt video</strong> — cổng tay duy nhất. KHÔNG auto-publish.
             </p>
             {/* Timeline sub-step thu gọn */}
             <div className="flex flex-wrap items-center gap-1.5">
