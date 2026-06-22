@@ -338,11 +338,28 @@ async function main(): Promise<void> {
   // 4) Scrub: REUSE existing whole-frame mask (montage.mp4 unchanged). Re-run
   //    only if missing.
   const maskPath = join(clipDir, 'source_subtitle_mask.json');
-  let scrubOk = existsSync(maskPath);
+  // Mask STABLE-BAND (v2-band): dải phụ đề LIÊN TỤC phủ từ giây 0 → hết video +
+  // dilate → che hardsub đầu video & chống nhấp nháy giữa video. Re-dò nếu mask
+  // thiếu HOẶC còn bản cũ v1 (box khít, bắt đầu trễ).
+  let maskVer: string | null = null;
+  if (existsSync(maskPath)) {
+    try {
+      maskVer =
+        (JSON.parse(readFileSync(maskPath, 'utf8')) as { maskVersion?: string }).maskVersion ??
+        null;
+    } catch {
+      maskVer = null;
+    }
+  }
+  let scrubOk = maskVer === 'v2-band';
   if (scrubOk) {
-    console.log('[12] Reuse scrub mask (montage.mp4 không đổi).');
+    console.log('[12] Reuse scrub mask v2-band (stable dải, montage không đổi).');
   } else {
-    console.log('[12] Scrub chữ Hán toàn khung…');
+    console.log(
+      maskVer
+        ? `[12] Mask cũ (${maskVer}) → dò lại STABLE-BAND (phủ từ 0, 5fps, chống nhấp nháy)…`
+        : '[12] Scrub chữ Hán STABLE-BAND (5fps)…',
+    );
     scrubOk = sh(
       'npx',
       [
@@ -356,6 +373,9 @@ async function main(): Promise<void> {
         '0.0',
         '--zone-bottom',
         '1.0',
+        '--fps',
+        '5',
+        '--stable-band',
       ],
       'SCRUB',
       true,
@@ -435,9 +455,52 @@ async function main(): Promise<void> {
     shortOut,
   ];
   if (scrubOk && existsSync(maskPath))
-    capArgs.push('--subtitle-mask', maskPath, '--cover-mode', 'delogo');
-  console.log('[12] Caption từ VOICE timing (viral_review_v2 + delogo)…');
+    capArgs.push('--subtitle-mask', maskPath, '--cover-mode', 'auto');
+  console.log('[12] Caption từ VOICE timing (viral_review_v2 + scrub dải)…');
   if (!sh('npx', capArgs, 'CAPTION', true)) process.exit(6);
+
+  // 6b) POST-SCRUB QA: OCR lại OUTPUT — còn ký tự Trung/CJK ở vùng phụ đề thì FAIL
+  //     (no fake PASS). Detector thường (không stable-band) chỉ ĐẾM CJK còn sót.
+  //     Caption Việt là Latin → detector lọc CJK nên KHÔNG tự báo nhầm.
+  const postMaskPath = join(clipDir, '_postscrub_check.json');
+  const postRan = sh(
+    'npx',
+    [
+      'tsx',
+      'scripts/source-subtitle-detector.ts',
+      '--input',
+      shortOut,
+      '--output',
+      postMaskPath,
+      '--zone-top',
+      '0.0',
+      '--zone-bottom',
+      '1.0',
+      '--fps',
+      '3',
+    ],
+    'POSTSCRUB',
+    true,
+  );
+  let residualCjkFrames = 0;
+  let residualCjkText = '';
+  if (postRan) {
+    try {
+      const pm = JSON.parse(readFileSync(postMaskPath, 'utf8')) as {
+        segments?: Array<{ frames?: number }>;
+        sampleText?: string;
+      };
+      residualCjkFrames = (pm.segments ?? []).reduce((n, s) => n + (s.frames ?? 0), 0);
+      residualCjkText = pm.sampleText ?? '';
+    } catch {
+      /* ignore parse */
+    }
+  }
+  // <2 frame CJK = chịu false-positive lẻ; ≥2 frame sustained = hardsub còn sót thật.
+  const postScrubOk = postRan && residualCjkFrames < 2;
+  console.log(
+    `[12] POST-SCRUB QA: ${postRan ? `${residualCjkFrames} frame CJK còn sót${residualCjkText ? ` ("${residualCjkText}")` : ''} → ${postScrubOk ? '✅ sạch' : '🛑 CÒN CHỮ TRUNG'}` : '⚠️ OCR không chạy được (inconclusive)'}`,
+  );
 
   // 7) QA on REAL edge timing.
   const probe = spawnSync(
@@ -543,6 +606,12 @@ async function main(): Promise<void> {
   if (overlapCount > 0) verdictFail.push(`${overlapCount} cụm caption chồng lấn`);
   if (spills.length > 0) verdictFail.push(`${spills.length} voice tràn money-shot`);
   if (bgmDrowns) verdictFail.push(`BGM át voice (margin ${voiceMargin}dB)`);
+  // FAIL chỉ khi XÁC NHẬN còn chữ Trung (≥2 frame); OCR không chạy được = cảnh báo
+  // (inconclusive) — không chặn verdict nhưng báo rõ ở report.
+  if (postRan && residualCjkFrames >= 2)
+    verdictFail.push(
+      `chữ Trung còn sót ${residualCjkFrames} frame${residualCjkText ? ` ("${residualCjkText}")` : ''}`,
+    );
   const verdict = verdictFail.length === 0 ? 'PASS' : `FAIL — ${verdictFail.join('; ')}`;
 
   const report = {
@@ -572,8 +641,13 @@ async function main(): Promise<void> {
     bgmPeakDb: bgmPeak,
     voiceMarginDb: voiceMargin,
     bgmDrownsVoice: bgmDrowns,
-    scrubReusedMask: true,
+    scrubReusedMask: scrubOk && maskVer === 'v2-band',
+    scrubMaskVersion: maskVer === 'v2-band' ? 'v2-band' : 'v2-band-rebuilt',
     scrubMaskSegments: maskSegN,
+    postScrubRan: postRan,
+    postScrubResidualCjkFrames: residualCjkFrames,
+    postScrubResidualText: residualCjkText || null,
+    postScrubOk,
   };
   writeFileSync(join(clipDir, 'montage_v2_render_report.json'), JSON.stringify(report, null, 2));
 

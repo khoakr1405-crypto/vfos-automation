@@ -35,6 +35,7 @@ import {
   type FrameDetection,
   isCjk,
   mergeBoxesToLines,
+  stabilizeBands,
   type PixelBox,
   type SubtitleSegment,
 } from './subtitle-mask/detect-core.js';
@@ -158,6 +159,10 @@ async function main(): Promise<void> {
       'min-score': { type: 'string', default: '0.6' },
       'max-frames': { type: 'string', default: '400' },
       lang: { type: 'string', default: 'chi_sim' },
+      // STABLE BAND (opt-in cho lane reup): gộp mỗi băng-y thành 1 dải LIÊN TỤC
+      // phủ từ giây 0 đến hết video + dilate → chống nhấp nháy & che hardsub đầu
+      // video. Default OFF → Product Review giữ nguyên hành vi box khít.
+      'stable-band': { type: 'boolean', default: false },
       'dry-run': { type: 'boolean', default: false },
     },
     allowPositionals: false,
@@ -354,9 +359,17 @@ async function main(): Promise<void> {
 
   // 4) Gộp các đoạn CÙNG BĂNG thành dải LIÊN TỤC (lấp gap OCR-miss) → coverage
   //    đủ toàn timeline, không chỉ vài frame lẻ. Loại băng nhiễu/outlier.
-  const segments: SubtitleSegment[] = consolidateBands(rawSegments);
+  const consolidated: SubtitleSegment[] = consolidateBands(rawSegments);
+  // 5) STABLE BAND (opt-in): mỗi băng-y → 1 dải phủ [0, duration] + dilate. Chống
+  //    nhấp nháy giữa video + che hardsub đầu video. Default OFF (Product Review).
+  const stableBand = values['stable-band'] === true;
+  const segments: SubtitleSegment[] = stableBand
+    ? stabilizeBands(consolidated, probe.durationSec)
+    : consolidated;
 
-  console.log(`Raw segments: ${rawSegments.length} → bands (liên tục): ${segments.length}`);
+  console.log(
+    `Raw segments: ${rawSegments.length} → bands: ${consolidated.length}${stableBand ? ` → STABLE dải [0-${probe.durationSec.toFixed(0)}s]: ${segments.length}` : ' (liên tục)'}`,
+  );
   for (const s of segments) {
     console.log(
       `  [${s.startSec.toFixed(1)}–${s.endSec.toFixed(1)}s] box x=${s.box.x} w=${s.box.w} y=${s.box.y} h=${s.box.h} frames=${s.frames}`,
@@ -364,7 +377,7 @@ async function main(): Promise<void> {
   }
 
   const mask = {
-    maskVersion: 'v1' as const,
+    maskVersion: stableBand ? ('v2-band' as const) : ('v1' as const),
     jobId,
     sourceVideoPath: inputVideo,
     videoWidth: probe.width,
