@@ -14,9 +14,18 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import { loadDotEnv } from '../../packages/voice/src/load-env.js';
 import { readAnchorPlan } from './lib/anchors.js';
 import { workDir } from './lib/env.js';
-import { EDGE_MALE_VOICE, synthesizeChunk } from './lib/tts-provider.js';
+import {
+  EDGE_MALE_VOICE,
+  type TtsProvider,
+  elevenCacheHas,
+  elevenQuotaRemaining,
+  resolveElevenEnv,
+  synthEleven,
+  synthesizeChunk,
+} from './lib/tts-provider.js';
 
 const BGM_LIBRARY = 'production/_media/bgm_library.json';
 
@@ -194,16 +203,54 @@ async function main(): Promise<void> {
     desired: number;
   }
   const synthed: Synthed[] = [];
-  console.log(`[12] Edge-tts ${beats.length} cụm (giọng Nam)…`);
+
+  // Provider select: edge (default, free) unless ENT_TTS_PROVIDER=elevenlabs, so
+  // ElevenLabs never runs by accident (no surprise credit burn).
+  const provider: TtsProvider =
+    process.env.ENT_TTS_PROVIDER === 'elevenlabs' ? 'elevenlabs' : 'edge';
+  if (provider === 'elevenlabs') {
+    loadDotEnv();
+    const env = resolveElevenEnv();
+    if (!env.apiKey || !env.voiceId) {
+      console.error(
+        '🛑 ELEVENLABS_ENV_MISSING — cần ELEVENLABS_API_KEY + ELEVENLABS_VOICE_ID trong .env',
+      );
+      process.exit(8);
+    }
+    // Pre-flight quota gate: only chars NOT already cached will be billed.
+    const billable = beats.filter((b) => !elevenCacheHas(b.text, env));
+    const billChars = billable.reduce((n, b) => n + b.text.length, 0);
+    const cachedCount = beats.length - billable.length;
+    const remaining = await elevenQuotaRemaining(env.apiKey);
+    console.log(
+      `[12] Provider=ElevenLabs | voice=${env.voiceId.slice(0, 4)}… model=${env.modelId}`,
+    );
+    console.log(
+      `[12] Quota cần (chưa cache): ${billChars} ký tự | cache sẵn: ${cachedCount}/${beats.length} cụm | còn lại: ${remaining ?? '??'}`,
+    );
+    if (remaining !== null && billChars > remaining) {
+      console.error(
+        `🛑 ELEVEN_QUOTA_INSUFFICIENT — cần ${billChars} ký tự nhưng chỉ còn ${remaining}. Không synth (tránh đốt credit nửa chừng).`,
+      );
+      process.exit(9);
+    }
+  }
+
+  console.log(
+    `[12] ${provider === 'elevenlabs' ? 'ElevenLabs' : 'Edge-tts'} ${beats.length} cụm (giọng Nam)…`,
+  );
   for (const [i, b] of beats.entries()) {
     const outAudio = join(tmp, `vo_${String(i).padStart(2, '0')}.mp3`);
     const outWords = join(tmp, `vo_${String(i).padStart(2, '0')}.words.json`);
-    const words = synthesizeChunk('edge', {
-      text: b.text,
-      voice: EDGE_MALE_VOICE,
-      outAudio,
-      outWords,
-    });
+    const words =
+      provider === 'elevenlabs'
+        ? await synthEleven({ text: b.text, outAudio, outWords })
+        : synthesizeChunk('edge', {
+            text: b.text,
+            voice: EDGE_MALE_VOICE,
+            outAudio,
+            outWords,
+          });
     if (!existsSync(outAudio)) {
       failed.push(`#${i + 1} "${b.text}"`);
       continue;

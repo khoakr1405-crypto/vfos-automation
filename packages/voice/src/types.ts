@@ -10,6 +10,22 @@ export interface TTSResult {
   character_count: number;
 }
 
+/** Character-level alignment as returned by ElevenLabs `/with-timestamps`. */
+export interface CharAlignment {
+  characters: string[];
+  character_start_times_seconds: number[];
+  character_end_times_seconds: number[];
+}
+
+/** Result of `/with-timestamps`: audio written to disk + char-level timing. */
+export interface TTSTimestampsResult {
+  audio_path: string;
+  character_count: number;
+  model_used: string;
+  alignment: CharAlignment;
+  normalized_alignment: CharAlignment;
+}
+
 export interface DurationProbeResult {
   duration_s: number;
   format: string;
