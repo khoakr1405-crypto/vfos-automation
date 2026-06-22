@@ -251,6 +251,7 @@ Báo cáo cuối của mọi task sidebar phải có:
 11. Có commit không, commit hash nếu có
 12. Xác nhận không commit runtime/secrets/media/logs
 13. Rủi ro còn lại
+14. **Step Inventory (chỉ khi task là gom/hợp nhất workflow)** — bảng kiểm kê bước đối chiếu đủ 6 cột (`spec · scripts · API routes · UI panels · artifacts · test evidence`) theo **Workflow Integrity Standard — Luật H** / **CLAUDE.md No-Go #9**. Thiếu cột nào báo MISSING/CONFLICT; không gom mỗi bước gần nhất rồi quên bước đầu lane.
 
 ---
 

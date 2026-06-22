@@ -54,6 +54,27 @@ Mọi hành động phê duyệt, từ chối, chạy sản xuất nền của O
 * `action` (Ví dụ: `OPERATOR_APPROVE_CLEANLINESS`, `RUN_PRODUCTION`)
 * `notes` (Bắt buộc nhập lý do/ghi chú vận hành)
 
+### Luật H: Step Inventory & Consolidation Coverage (Kiểm kê bước khi hợp nhất workflow)
+
+> Đồng bộ với **CLAUDE.md No-Go #9**. Mục tiêu: chống lỗi "gom 5–6 bước gần nhất, quên 1–2 bước đầu lane" khi một lane đã xây qua nhiều vòng nhỏ rồi được hợp nhất thành một workflow/chuỗi sản xuất duy nhất.
+
+* **Bắt buộc lập Step Inventory trước khi báo hoàn chỉnh.** Khi Operator yêu cầu "tích hợp/gom lane thành một workflow", Agent phải dựng **bảng kiểm kê bước** *trước*, không được vừa gom vừa báo DONE.
+* **Đối chiếu đủ 6 cột cho từng bước** — một bước chỉ tính là *bao phủ đủ* khi cả 6 cột đều hiện diện và khớp nhau:
+
+  | Cột | Câu hỏi đối chiếu |
+  |---|---|
+  | `spec` | Bước này có trong spec lane / state machine không? |
+  | `scripts` | Có script/engine CLI thực thi bước không? |
+  | `API routes` | Có route gọi được bước (hoặc nằm trong chuỗi gọi) không? |
+  | `UI panels` | Có panel/nút (hoặc được gộp ngầm vào nút lớn) không? |
+  | `artifacts` | Bước sinh ra artifact thật và được bước sau đọc không? |
+  | `test evidence` | Có bằng chứng chạy thật (log/output) cho bước không? |
+
+* **Thiếu/lệch → MISSING/CONFLICT, không DONE.** Nếu bất kỳ cột nào trống hoặc mâu thuẫn (vd artifact được tạo nhưng không bước nào đọc; script tồn tại nhưng không nằm trong chuỗi hợp nhất), phải báo trạng thái **MISSING** hoặc **CONFLICT** cho bước đó, **không** được báo workflow hoàn chỉnh.
+* **Ẩn UI ≠ bỏ bước.** Một bước bị ẩn khỏi UI (gộp ngầm vào nút lớn) **vẫn phải chạy ngầm** trong chuỗi hợp nhất. Không được lấy việc "ẩn nút" làm cớ để loại bước khỏi workflow thật.
+* **Chuỗi hợp nhất phải chứa MỌI bước trong inventory.** Chuỗi viết tay (vd `produce = analyze + coverage + montage + script + render`) không được trôi khỏi tập bước thật: mỗi lần thêm/sửa bước phải cập nhật lại inventory và chuỗi hợp nhất, đối chiếu lại 6 cột.
+* **Báo cáo cuối phải đính kèm bảng Step Inventory 6 cột** khi task là hợp nhất/gom workflow.
+
 ---
 
 ## 3. Cấu trúc Thư mục & Đường dẫn An toàn

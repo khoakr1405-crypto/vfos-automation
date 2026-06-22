@@ -37,6 +37,8 @@ Nâng VFOS thành hệ thống **UI/workflow** để Operator sản xuất **nhi
 - Core Action 1 đang chạy tốt thì **không đổi** nếu không có bằng chứng cần đổi.
 - CAPTCHA/OTP/login do Operator xử lý; hệ thống chỉ **WAITING_FOR_OPERATOR** và tự resume an toàn.
 - **PASS phải có evidence thật**, không báo PASS chỉ vì xong code/plumbing.
+- **Operator Approval Rule** (CLAUDE.md No-Go #8): Agent tự review + tự PASS/FAIL các bước kỹ thuật/nội bộ; Operator **không** duyệt từng bước giữa pipeline, chỉ duyệt **kết quả cuối** + quyết định publish/đăng. Gate kỹ thuật tự report, **không** thành nút duyệt tay trừ khi workflow đặc biệt yêu cầu.
+- **Step Inventory Rule** (CLAUDE.md No-Go #9): gom lane thành 1 workflow phải lập **Step Inventory** trước, đối chiếu đủ 6 cột (spec · scripts · API routes · UI panels · artifacts · test evidence); thiếu → **MISSING/CONFLICT**, không báo DONE; bước ẩn UI vẫn chạy ngầm; không gom mỗi bước gần nhất rồi quên bước đầu lane.
 
 ## 4. Cách làm (round audit lớn)
 

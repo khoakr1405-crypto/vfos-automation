@@ -35,20 +35,27 @@ người Trung. **Không** bắt đầu từ Product Card, **không** gắn affi
 
 ### State machine
 
+> **CHỐT lại (E-UI-8 — đồng bộ CLAUDE.md No-Go #8 Operator Approval Rule):** GATE 1
+> "Operator duyệt script" **đã bỏ**. Script là **bước kỹ thuật → Agent tự QA và
+> tự PASS/FAIL** (bám lời gốc, source-bound/micro, cảnh báo confidence thấp), chạy
+> ngầm trong `produce`. **Cổng tay DUY NHẤT của lane là GATE 2 — Duyệt video cuối.**
+> `SCRIPT_APPROVED` vẫn là state nội bộ nhưng do `produce` **auto-set** sau khi
+> Agent QA script PASS, không phải nút duyệt tay.
+
 ```
 INTAKE → ANALYZED → MONTAGE_READY → SCRIPT_PENDING
-   ──(GATE 1: Operator duyệt script)──→ SCRIPT_APPROVED
+   ──(Agent tự QA script — auto, no manual gate)──→ SCRIPT_APPROVED
    → VOICED → AUDIO_MIXED → PREVIEW_PENDING
-   ──(GATE 2: Operator duyệt preview)──→ APPROVED → PACKAGED → (đăng tay)
+   ──(GATE 2: Operator duyệt video)──→ APPROVED → PACKAGED → (đăng tay)
 
-REJECT ở bất kỳ gate nào → quay lại bước tương ứng (script/preview).
+REJECT ở GATE 2 → quay lại bước preview/render.
 ```
 
-- **GATE 1 — Duyệt script** (sau B4, trước B5): không chạy voice/render khi script
-  chưa được Operator duyệt.
-- **GATE 2 — Duyệt preview** (sau B7, trước B8): không package khi preview chưa
-  được duyệt. **READY ≠ được phép đăng.**
-- **Không auto qua gate.** Không auto-publish ở B8.
+- **Script QA (auto, sau B4, trước B5):** Agent tự kiểm chất lượng script + tự
+  PASS/FAIL; PASS thì tự chạy tiếp voice/render. **Không** còn nút "Duyệt script".
+- **GATE 2 — Duyệt video** (sau B7, trước B8): cổng tay duy nhất; không package khi
+  video chưa được Operator duyệt. **READY ≠ được phép đăng.**
+- **Không auto qua GATE 2.** Không auto-publish ở B8.
 
 ### 8 bước (map với engine CLI đã có)
 
@@ -57,7 +64,7 @@ REJECT ở bất kỳ gate nào → quay lại bước tương ứng (script/pre
 | 1 | Source Intake | `01-fetch-source.ts` | `source.mp4`, `source_meta.json` | — |
 | 2 | Source Analyze + Clip Mining (**vision-anchored**) | `02-asr-zh` + `03-clip-mine` + `03b-vision-anchor` | `asr_zh.json`, `catch_moments.json`, `clip_candidates.json` | — |
 | 3 | Montage Build | `10-montage-v2` | `montage_v2/montage.mp4`, `source_subtitle_mask.json` | — |
-| 4 | **Source-Anchored Transcreation** | `13-source-bound` (+`11b-bridge`) | `source_cut_reference.json`, `montage_v2_script.json`, `montage_v2_script_review.md` | **GATE 1** |
+| 4 | **Source-Anchored Transcreation** | `13-source-bound` (+`11b-bridge`) | `source_cut_reference.json`, `montage_v2_script.json`, `montage_v2_script_review.md` | auto-QA (Agent tự PASS/FAIL — E-UI-8) |
 | 5 | Voice + Caption Sync | `12-voice-render` | `montage_vo.mp3`, `voice_timing_artifact.json`, caption baked → `montage_v2_short.mp4` | — |
 | 6 | Audio Mix Policy | `15-audio-ambient-full` (+`14` A/B proof) | `montage_v2_short_ambient.mp4`, `montage_v2_render_report.json` | — |
 | 7 | Preview + Operator Review | *(thiếu — UI)* | QA verdict + decision | **GATE 2** |
@@ -204,7 +211,7 @@ Product Review.** Back-to-lane, orchestrate inline, không lộ route kỹ thu�
 | 1 | Job Intake | tạo job, dán URL Douyin/TikTok hoặc file local, trạng thái source |
 | 2 | Source Analyze | nút analyze, danh sách money-shot/segments, trạng thái ASR/OCR/vision |
 | 3 | Montage | segment list, preview montage, rebuild nếu cần |
-| 4 | **Script (GATE 1)** | source transcript theo timecode \| Việt hóa theo timecode \| tag `source-bound`/`micro` \| cảnh báo confidence thấp \| **nút Approve script** |
+| 4 | **Script (auto-QA, no gate)** | source transcript theo timecode \| Việt hóa theo timecode \| tag `source-bound`/`micro` \| cảnh báo confidence thấp \| **Agent tự QA + PASS/FAIL** (E-UI-8: bỏ nút Approve script, chỉ HIỂN THỊ tham khảo) |
 | 5 | Voice/Caption | voice profile (provider), caption chunks, hash audit, overlap check, voice-end check |
 | 6 | Audio | `audioMode` selector (3 mode §3), Demucs status, ambient level, ducking setting, A/B proof preview |
 | 7 | **Preview (GATE 2)** | video player, QA checklist (§7), Approve/Reject |
@@ -215,6 +222,10 @@ Product Review.** Back-to-lane, orchestrate inline, không lộ route kỹ thu�
 > video** gộp panel 2–7: bấm 1 lần chạy chuỗi **analyze→montage→script** rồi DỪNG ở
 > **GATE 1** (bảng duyệt script bám lời gốc) — chưa voice/render (E-UI-4+). Nút 3 =
 > Đóng gói/đăng tay (panel 8, E-UI-6). 2 gate Operator giữ nguyên, không auto qua.
+>
+> **⚠️ SUPERSEDED bởi E-UI-8 (xem §6):** GATE 1 đã bỏ — "Sản xuất video" chạy FULL
+> chain tới preview (không dừng giữa chừng), script là auto-QA của Agent. Lane giờ
+> còn **1 cổng tay duy nhất = GATE 2 Duyệt video**. Note trên giữ làm lịch sử phase.
 
 ---
 
@@ -231,8 +242,8 @@ logic engine vào API.
 | GET `/entertainment/jobs`, `/jobs/[id]` | manifest | list / detail (đọc `ent_job.json`) |
 | POST `/jobs/[id]/analyze` | `02`+`03`+`03b` | clip mining vision-anchored |
 | POST `/jobs/[id]/montage` | `10` | build montage visual |
-| POST `/jobs/[id]/script` | `13`(+`11b`) | transcreation → review (CONTENT GATE) |
-| POST `/jobs/[id]/script/approve` | manifest | set `reviewGates.scriptApproved` |
+| POST `/jobs/[id]/script` | `13`(+`11b`) | transcreation → Agent self-QA (E-UI-8: không còn manual gate; route giữ cho debug) |
+| POST `/jobs/[id]/script/approve` | manifest | set `reviewGates.scriptApproved` (E-UI-8: auto-set trong `produce`; route debug, UI không dùng) |
 | POST `/jobs/[id]/voice-render` | `12` | voice+caption (hash audit ép) |
 | POST `/jobs/[id]/audio?mode=` | `15` / `14` | audioMode + Demucs/ambient |
 | POST `/jobs/[id]/approve` · `/reject` | manifest | GATE 2 |
