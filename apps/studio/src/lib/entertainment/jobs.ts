@@ -8,7 +8,7 @@
  * Chỉ import từ route handlers dưới app/api/studio/entertainment/*.
  * ========================================================================== */
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { resolveInsideRepo } from '@/lib/studio-data/paths';
 import { runRepoScript, runRepoScriptDetached } from '@/lib/studio-data/run-command';
@@ -376,6 +376,41 @@ const previewFileExists = (id: string) =>
   entExists(id, 'montage_v2_short_ambient.mp4') || entExists(id, 'montage_v2_short.mp4');
 const packageDone = (id: string) => entExists(id, 'montage_v2/package.json');
 
+/** mtime (ms) của file ent, 0 nếu không có/không đọc được. */
+function entMtimeMs(id: string, rel: string): number {
+  const p = entFile(id, rel);
+  if (!p || !existsSync(p)) return 0;
+  try {
+    return statSync(p).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * E-UI-5 LOCK — audio policy `remove_speech_keep_ambient` ĐÃ áp THẬT, không
+ * fake-success. TRUE chỉ khi TẤT CẢ:
+ *  - có file `montage_v2_short_ambient.mp4`
+ *  - audio_report tồn tại, `demucs === 'htdemucs/ok'`, KHÔNG `fallbackUsed`,
+ *    `hasAudio === true` (15 all-or-nothing: report chỉ ghi khi Demucs THẬT chạy)
+ *  - bản ambient KHÔNG stale: mtime ≥ base `montage_v2_short.mp4` (tức ambient
+ *    được làm từ bản render hiện tại, không phải ambient cũ của montage trước)
+ * Bất kỳ điều kiện nào sai → coi như CHƯA áp → chặn GATE 2 / đóng gói.
+ */
+function audioPolicyApplied(id: string): boolean {
+  if (!entExists(id, 'montage_v2_short_ambient.mp4')) return false;
+  const rep = readJsonSafe<{ demucs?: string; fallbackUsed?: string | null; hasAudio?: boolean }>(
+    entFile(id, 'montage_v2/montage_v2_audio_report.json'),
+  );
+  if (!rep || rep.fallbackUsed != null || rep.demucs !== 'htdemucs/ok' || rep.hasAudio !== true) {
+    return false;
+  }
+  const ambientMs = entMtimeMs(id, 'montage_v2_short_ambient.mp4');
+  const baseMs = entMtimeMs(id, 'montage_v2_short.mp4');
+  if (baseMs > 0 && ambientMs < baseMs) return false; // ambient cũ hơn base → stale
+  return true;
+}
+
 /** State machine §1: suy ra state từ artifact + gate (chỉ khi intake đã xong). */
 function reconcileState(id: string, job: EntJob): EntJobState {
   if (!intakeDone(id)) return job.state; // INTAKE_RUNNING / FAILED giữ nguyên
@@ -472,7 +507,7 @@ function readAudioSummary(id: string): EntAudioSummary | null {
     voiceAboveAmbientDb: j.voiceAboveAmbientDb,
     ambientKeptMaxDb: j.loudness?.ambientKeptMaxDb,
     vocalsRemovedMaxDb: j.loudness?.vocalsRemovedMaxDb,
-    applied: entExists(id, 'montage_v2_short_ambient.mp4'),
+    applied: audioPolicyApplied(id), // E-UI-5: áp THẬT (no stale/fallback), không chỉ file-exists
   };
 }
 
@@ -656,6 +691,16 @@ export function approvePreview(
   if (anyStepRunning(id)) {
     return { ok: false, code: 'BUSY', message: 'Đang chạy pipeline — chờ xong rồi duyệt.' };
   }
+  // E-UI-5 LOCK: KHÔNG cho duyệt bản chưa áp audio policy thật (chưa bỏ giọng
+  // Trung / bản ambient cũ). Không fake-success — bắt render lại.
+  if (!audioPolicyApplied(id)) {
+    return {
+      ok: false,
+      code: 'AUDIO_NOT_APPLIED',
+      message:
+        'Audio policy remove_speech_keep_ambient CHƯA áp thật (Demucs chưa chạy / bản ambient cũ). Bấm "Sản xuất video" để render lại — không duyệt bản chưa bỏ giọng Trung.',
+    };
+  }
   writeManifest(id, {
     ...job,
     reviewGates: { scriptApproved: true, previewApproved: true },
@@ -713,6 +758,15 @@ export function runPackage(
   }
   if (!previewFileExists(id)) {
     return { ok: false, code: 'NO_FINAL', message: 'Chưa có video final — render trước.' };
+  }
+  // E-UI-5 LOCK (phòng thủ 2 lớp): chỉ đóng gói bản đã áp audio policy thật.
+  if (!audioPolicyApplied(id)) {
+    return {
+      ok: false,
+      code: 'AUDIO_NOT_APPLIED',
+      message:
+        'Audio policy chưa áp thật — không đóng gói bản chưa bỏ giọng Trung. Render lại trước.',
+    };
   }
   const running = findRunningStep();
   if (running) {

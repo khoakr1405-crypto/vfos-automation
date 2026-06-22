@@ -89,18 +89,18 @@ async function main(): Promise<void> {
   const dir = workDir(id);
   const clipDir = join(dir, 'montage_v2');
 
-  // Final video: ưu tiên bản ambient (audio policy đã áp), fallback bản voice+BGM.
+  // E-UI-5 LOCK: CHỈ đóng gói bản ambient (audio policy đã áp THẬT). KHÔNG fallback
+  // bản VO-only/short — không bao giờ gói bản chưa bỏ giọng Trung.
   const ambient = join(dir, 'montage_v2_short_ambient.mp4');
-  const short = join(dir, 'montage_v2_short.mp4');
-  const finalAbs = existsSync(ambient) ? ambient : existsSync(short) ? short : null;
-  if (!finalAbs) {
+  if (!existsSync(ambient)) {
     console.error(
-      '🛑 NO_FINAL_VIDEO — chưa có montage_v2_short[_ambient].mp4 (chạy render trước).',
+      '🛑 NO_AMBIENT — chưa có montage_v2_short_ambient.mp4 (audio policy chưa áp). Render lại trước khi đóng gói.',
     );
     process.exit(2);
   }
-  const finalRel = `data/temp/ent/${id}/${finalAbs === ambient ? 'montage_v2_short_ambient.mp4' : 'montage_v2_short.mp4'}`;
-  const audioApplied = finalAbs === ambient;
+  const finalAbs = ambient;
+  const finalRel = `data/temp/ent/${id}/montage_v2_short_ambient.mp4`;
+  const audioApplied = true;
 
   const scriptJson = existsSync(join(clipDir, 'montage_v2_script.json'))
     ? (JSON.parse(readFileSync(join(clipDir, 'montage_v2_script.json'), 'utf8')) as {
@@ -120,12 +120,6 @@ async function main(): Promise<void> {
     'Kiểm tra lại nội dung/bản quyền trước khi đăng.',
     'Affiliate link: CHƯA gắn (giai đoạn xây kênh) — thêm ở bước sau khi có view.',
   ];
-  if (!audioApplied) {
-    postingNotes.unshift(
-      '⚠️ Bản này CHƯA áp audio policy ambient (đang VO+BGM) — cân nhắc render lại.',
-    );
-  }
-
   const pkg = {
     finalVideo: finalRel,
     audioPolicyApplied: audioApplied,

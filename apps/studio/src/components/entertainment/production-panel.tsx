@@ -334,6 +334,7 @@ function VoiceRenderView({
   onApprove: () => void;
 }) {
   const pass = render.verdict === 'PASS';
+  const audioApplied = audio?.applied === true; // E-UI-5: phải áp THẬT mới cho duyệt
   return (
     <div className="space-y-3 rounded-xl border border-accent-cyan/25 bg-accent-cyan/5 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -429,14 +430,16 @@ function VoiceRenderView({
           <button
             type="button"
             onClick={onApprove}
-            disabled={busy}
+            disabled={busy || !audioApplied}
             className="rounded-xl border border-accent-green/50 bg-accent-green/15 px-5 py-2.5 text-sm font-bold text-accent-green transition hover:bg-accent-green/25 disabled:cursor-not-allowed disabled:opacity-50"
           >
             ⛔ Duyệt video
           </button>
         )}
         <span className="text-[10px] text-neutral-600">
-          Xem xong, ưng thì bấm "Duyệt video". READY ≠ được đăng — vẫn đăng tay thủ công.
+          {audioApplied
+            ? 'Xem xong, ưng thì bấm "Duyệt video". READY ≠ được đăng — vẫn đăng tay thủ công.'
+            : '🔒 Khóa duyệt: audio policy chưa áp thật (chưa bỏ giọng Trung). Bấm "Sản xuất video" render lại.'}
         </span>
       </div>
     </div>

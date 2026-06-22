@@ -20,6 +20,7 @@ const HTTP_FOR: Record<string, number> = {
   NOT_FOUND: 404,
   NO_SCRIPT_GATE: 409,
   NO_PREVIEW: 409,
+  AUDIO_NOT_APPLIED: 409,
   BUSY: 409,
   BAD_STATE: 500,
 };

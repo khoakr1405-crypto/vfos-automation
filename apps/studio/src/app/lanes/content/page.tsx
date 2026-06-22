@@ -60,7 +60,7 @@ const FULL_WORKFLOW: Array<{ no: number; label: string; note: string; gate?: str
   {
     no: 6,
     label: 'Audio Mix',
-    note: 'remove_speech_keep_ambient (Demucs no_vocals + ducking); fallback stock/mute.',
+    note: 'remove_speech_keep_ambient (Demucs no_vocals + ducking). KHÔNG fallback — khóa cứng: chưa áp thật thì chặn duyệt/đóng gói.',
   },
   {
     no: 7,

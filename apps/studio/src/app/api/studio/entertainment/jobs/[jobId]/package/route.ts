@@ -21,6 +21,7 @@ const HTTP_FOR: Record<string, number> = {
   NOT_FOUND: 404,
   NO_PREVIEW_GATE: 409,
   NO_FINAL: 409,
+  AUDIO_NOT_APPLIED: 409,
   BUSY: 409,
   PACKAGE_FAILED: 500,
   BAD_STATE: 500,

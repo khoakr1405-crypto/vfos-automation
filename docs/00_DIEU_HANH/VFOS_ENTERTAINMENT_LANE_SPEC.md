@@ -270,8 +270,7 @@ logic engine vào API.
 > `/jobs/[id]/preview`** stream (Range/206). **POST `/jobs/[id]/approve`** = GATE 2
 > (previewApproved, APPROVED); **POST `/jobs/[id]/reject`** quay lại PREVIEW_PENDING.
 > State: …SCRIPT_APPROVED→PREVIEW_PENDING→(GATE2)→APPROVED. **READY ≠ đăng** —
-> đóng gói/đăng tay là E-UI-6, no auto-publish. (E-UI-5 còn lại: SELECTOR đổi
-> audioMode + fallback ladder thủ công; default đã tích hợp ở đây.)
+> đóng gói/đăng tay là E-UI-6, no auto-publish.
 >
 > **Cập nhật (E-UI-6) — package đăng tay:** **POST `/jobs/[id]/package`** chạy
 > `16-package.ts` SYNC (yêu cầu GATE 2 `previewApproved`) → caption gpt-5.5
@@ -280,6 +279,26 @@ logic engine vào API.
 > `PackagePanel`: chọn job đã duyệt preview → đóng gói → final mp4 (mở qua
 > `/preview`) + caption/hashtag copy được + checklist. **KHÔNG auto-publish,
 > KHÔNG TikTok API, KHÔNG affiliate** (giai đoạn xây kênh).
+>
+> **Cập nhật (E-UI-7) — gom UI còn ĐÚNG 4 nút / 3 phần:** Tải link · Sản xuất
+> video · Duyệt (1 nút đổi ngữ cảnh cho 2 cổng: script ở cuối khối, **video DƯỚI
+> player**) · Đăng lên TikTok. 1 ô chọn job DÙNG CHUNG (`EntLaneProvider`/
+> `EntJobSelector`). **Bỏ khái niệm "Render lại"** — nút chính luôn "Sản xuất
+> video", render là phần của sản xuất, tự chạy ngầm sau duyệt script; kết quả chỉ
+> *hoàn thành* hoặc *lỗi→báo lỗi*. Duyệt script → tự `/voice-render`. Chỉ UI,
+> không đụng API/engine/artifact. Nút "Đăng lên TikTok" roadmap: nối TikTok API
+> tự đăng + caption như lane Review.
+>
+> **Cập nhật (E-UI-5) — KHÓA audio integration thật (no fake-success):** Engine
+> `15-audio-ambient-full` là **all-or-nothing** — Demucs fail → exit, KHÔNG ghi
+> report, KHÔNG fallback ladder (note "fallback stock/mute" cũ đã bỏ). Lock ở
+> `lib/entertainment/jobs.ts::audioPolicyApplied(id)` = TRUE chỉ khi: có
+> `montage_v2_short_ambient.mp4` **+** audio_report `demucs==='htdemucs/ok'` &
+> `fallbackUsed==null` & `hasAudio===true` **+** ambient KHÔNG stale (mtime ≥ base
+> `montage_v2_short.mp4`). **GATE 2 `approvePreview` và `runPackage` đều CHẶN**
+> (`AUDIO_NOT_APPLIED`) nếu chưa áp thật; `16-package` từ chối VO-only
+> (`NO_AMBIENT`); UI disable nút "Duyệt video" + báo lý do. Không bao giờ duyệt/
+> đóng gói bản chưa bỏ giọng Trung. `audio.applied` trong manifest = strict check.
 
 ---
 
@@ -305,7 +324,7 @@ logic engine vào API.
 | **E-UI-2** | Job intake + status | `api/studio/entertainment/jobs/route.ts`, `scripts/ent-vlog/ent-job-manifest.ts`, panel 1 | TB (chạy CLI từ API) | tạo job từ UI → source tải + manifest | revert routes/page | Job tạo, manifest trong `data/temp/ent`, 0 chạm Review |
 | **E-UI-3** | Script review panel (GATE 1) | `.../analyze\|montage\|script\|script/approve`, panel 2–4 | TB (vision/gpt cost) | analyze→montage→script→duyệt | revert | Review render từ artifact thật; gate chặn voice trước duyệt |
 | **E-UI-4** | Render/preview wiring | `.../voice-render\|preview`, panel 5+7 | TB | render→preview→QA PASS | revert | Preview + QA hiện; hash audit ép |
-| **E-UI-5** | audioMode Demucs/ambient | `.../audio`, panel 6 | TB (venv/fallback) | đổi mode, A+ từ UI | revert | audioMode áp đúng; fallback chạy; no fake pass |
+| **E-UI-5** | KHÓA audio integration thật | `jobs.ts::audioPolicyApplied`, `approve`/`package`, `16-package`, panel 6 | Thấp | chặn duyệt/gói khi chưa áp thật | revert | no fake-success: GATE2/package chặn `AUDIO_NOT_APPLIED`; 15 all-or-nothing; no stale/fallback |
 | **E-UI-6** | Package panel | `.../package`, `scripts/ent-vlog/16-package.ts`, panel 8 | Thấp | package→manifest | revert | Gói + hướng dẫn đăng tay; no publish |
 
 **Thứ tự khuyến nghị:** E-UI-1 → 2 → 3 → 4 → 5 → 6 (đúng dòng workflow). Mỗi phase
