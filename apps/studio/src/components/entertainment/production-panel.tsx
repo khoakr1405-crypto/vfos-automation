@@ -112,23 +112,79 @@ function mmss(sec: number): string {
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
-function subIcon(state: string): string {
-  if (state === 'done') return '✅';
-  if (state === 'running') return '⏳';
-  if (state === 'failed') return '🛑';
-  return '·';
-}
-
 function anyRunning(detail: JobDetail | null): boolean {
   if (!detail?.steps) return false;
   return Object.values(detail.steps).some((s) => s.state === 'running');
 }
 
-/** Step đang/đã chạy gần nhất để hiển thị tiến trình (render mới nhất → produce). */
-function activeStep(detail: JobDetail | null): StepStatus | null {
-  const steps = detail?.steps;
-  if (!steps) return null;
-  return steps.render ?? steps.produce ?? steps.script ?? steps.montage ?? steps.analyze ?? null;
+// Chuỗi sub-step CANONICAL của nút "Sản xuất video" — khớp đúng thứ tự
+// subsFor('produce') trong scripts/ent-vlog/20-pipeline.ts. Progress line bám
+// chuỗi này để 1 job luôn thấy đủ 8 bước (bước chưa chạy = mờ).
+const PRODUCE_CHAIN = [
+  '02-asr-zh',
+  '03b-vision-anchor',
+  '03-clip-mine',
+  '03c-moneyshot-coverage',
+  '10-montage-v2',
+  '13-source-bound',
+  '12-voice-render',
+  '15-audio-ambient-full',
+] as const;
+
+type StepVis = 'done' | 'running' | 'failed' | 'pending' | 'awaiting';
+interface StepRow {
+  key: string;
+  label: string;
+  vis: StepVis;
+  ms?: number;
+  gate?: boolean;
+}
+
+function rank(state: string): number {
+  return state === 'running' ? 3 : state === 'failed' ? 2 : 1; // running > failed > done
+}
+
+/** Gom trạng thái sub-step THẬT từ MỌI step file (produce/render/script/…). Khi 1
+ *  sub xuất hiện ở nhiều step, ưu tiên running > failed > done. */
+function mergeSubs(detail: JobDetail | null): Map<string, SubStatus> {
+  const m = new Map<string, SubStatus>();
+  for (const st of Object.values(detail?.steps ?? {})) {
+    for (const sub of st.subs) {
+      const prev = m.get(sub.name);
+      if (!prev || rank(sub.state) >= rank(prev.state)) m.set(sub.name, sub);
+    }
+  }
+  return m;
+}
+
+/** Dựng progress line per-step: bám chuỗi canonical, gắn trạng thái runtime thật;
+ *  sub chưa chạy = pending (mờ). Thêm node cổng tay "Duyệt video" ở cuối. */
+function buildStepRows(
+  detail: JobDetail | null,
+  renderFinished: boolean,
+  previewApproved: boolean,
+): StepRow[] {
+  const merged = mergeSubs(detail);
+  const rows: StepRow[] = PRODUCE_CHAIN.map((name) => {
+    const e = merged.get(name);
+    return {
+      key: name,
+      label: SUB_LABEL[name] ?? name,
+      vis: (e?.state ?? 'pending') as StepVis,
+      ms: e?.ms,
+    };
+  });
+  const gateVis: StepVis = previewApproved ? 'done' : renderFinished ? 'awaiting' : 'pending';
+  rows.push({ key: 'preview', label: 'Duyệt video (cổng tay)', vis: gateVis, gate: true });
+  return rows;
+}
+
+/** Lỗi step đầu tiên (failed) để hiện đỏ dưới progress line. */
+function firstStepError(detail: JobDetail | null): string | null {
+  for (const st of Object.values(detail?.steps ?? {})) {
+    if (st.state === 'failed' && st.error) return st.error;
+  }
+  return null;
 }
 
 export function ProductionPanel() {
@@ -228,7 +284,6 @@ export function ProductionPanel() {
     [selectedId, busy, loadDetail, refreshJobs],
   );
 
-  const step = activeStep(detail);
   const running = anyRunning(detail);
   const previewApproved = detail?.reviewGates?.previewApproved === true;
   const coverage = detail?.coverage ?? null;
@@ -237,6 +292,8 @@ export function ProductionPanel() {
   // Video coi là "xong hẳn" khi render KHÔNG còn chạy (cả 12+15 done). Lúc đó mới
   // hiện player + cổng Duyệt video — KHÔNG hiện preview giữa chừng render.
   const renderFinished = !!render && !running;
+  const stepRows = buildStepRows(detail, renderFinished, previewApproved);
+  const stepError = firstStepError(detail);
 
   // CỔNG DUY NHẤT = Duyệt video. "Sản xuất video" chạy nguyên chuỗi tới preview
   // (analyze→…→render→audio), KHÔNG dừng duyệt script giữa chừng.
@@ -266,27 +323,9 @@ export function ProductionPanel() {
         {msg && <p className="text-[11px] text-neutral-400">{msg}</p>}
       </div>
 
-      {/* Tiến trình step (hiển thị) */}
-      {step && (
-        <div className="space-y-1.5 rounded-lg border border-hairline/50 bg-panel/30 px-3 py-2.5">
-          <p className="text-[11px] font-semibold text-neutral-400">
-            Tiến trình: {step.step} · {step.state}
-          </p>
-          {step.subs.length === 0 && step.state === 'running' && (
-            <p className="text-[10px] text-neutral-500">Đang khởi động…</p>
-          )}
-          {step.subs.map((s) => (
-            <div key={s.name} className="flex items-center gap-2 text-[10px] text-neutral-400">
-              <span>{subIcon(s.state)}</span>
-              <span>{SUB_LABEL[s.name] ?? s.name}</span>
-              {s.ms != null && (
-                <span className="text-neutral-600">{(s.ms / 1000).toFixed(0)}s</span>
-              )}
-            </div>
-          ))}
-          {step.error && <p className="text-[10px] text-accent-rose">🛑 {step.error}</p>}
-        </div>
-      )}
+      {/* Progress line per-step — phản ánh runtime THẬT của job:
+          đèn pulse = đang chạy · ✓ xanh = xong · mờ = chưa chạy · ✕ đỏ = lỗi. */}
+      {detail && <StepProgress rows={stepRows} running={running} error={stepError} />}
 
       {/* Coverage cảnh ăn tiền (money-shot) — summary nhỏ, chạy ngầm trong sản xuất */}
       {coverage && (
@@ -326,6 +365,81 @@ export function ProductionPanel() {
           onApprove={onApprovePreview}
         />
       )}
+    </div>
+  );
+}
+
+/** Đèn trạng thái 1 bước: ✓ xanh (done) · pulse cyan (running) · pulse amber
+ *  (awaiting = chờ duyệt) · ✕ đỏ (failed) · viền mờ (pending). */
+function StepDot({ vis }: { vis: StepVis }) {
+  const base =
+    'flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold leading-none';
+  if (vis === 'done') return <span className={`${base} bg-accent-green/90 text-black`}>✓</span>;
+  if (vis === 'failed') return <span className={`${base} bg-accent-rose text-white`}>✕</span>;
+  if (vis === 'running')
+    return (
+      <span
+        className={`${base} animate-pulse bg-accent-cyan text-black ring-2 ring-accent-cyan/30`}
+      />
+    );
+  if (vis === 'awaiting')
+    return (
+      <span
+        className={`${base} animate-pulse bg-accent-amber text-black ring-2 ring-accent-amber/30`}
+      />
+    );
+  return <span className={`${base} border border-neutral-700 bg-transparent`} />;
+}
+
+function stepLabelClass(vis: StepVis): string {
+  if (vis === 'done') return 'text-neutral-300';
+  if (vis === 'running') return 'font-semibold text-accent-cyan';
+  if (vis === 'failed') return 'font-semibold text-accent-rose';
+  if (vis === 'awaiting') return 'font-semibold text-accent-amber';
+  return 'text-neutral-600'; // pending = mờ
+}
+
+/** Progress line per-step real-time: mỗi bước 1 dòng đèn trạng thái, bám runtime
+ *  thật của job (không còn "đang chạy chung chung"). */
+function StepProgress({
+  rows,
+  running,
+  error,
+}: {
+  rows: StepRow[];
+  running: boolean;
+  error?: string | null;
+}) {
+  const done = rows.filter((r) => r.vis === 'done' && !r.gate).length;
+  const total = rows.filter((r) => !r.gate).length;
+  return (
+    <div className="space-y-2 rounded-lg border border-hairline/50 bg-panel/30 px-3 py-3">
+      <div className="flex items-center justify-between">
+        <p className="text-[11px] font-semibold text-neutral-400">
+          Tiến trình theo bước (real-time)
+        </p>
+        <span className="text-[10px] text-neutral-600">
+          {running ? '⏳ đang chạy ngầm' : `${done}/${total} bước`}
+        </span>
+      </div>
+      <ol className="space-y-1.5">
+        {rows.map((r) => (
+          <li key={r.key} className="flex items-center gap-2.5 text-[11px]">
+            <StepDot vis={r.vis} />
+            <span className={stepLabelClass(r.vis)}>{r.label}</span>
+            {r.ms != null && (r.vis === 'done' || r.vis === 'running') && (
+              <span className="text-[10px] text-neutral-600">{(r.ms / 1000).toFixed(0)}s</span>
+            )}
+            {r.vis === 'running' && !r.gate && (
+              <span className="text-[10px] text-accent-cyan">đang chạy…</span>
+            )}
+            {r.vis === 'awaiting' && (
+              <span className="text-[10px] text-accent-amber">chờ Operator duyệt</span>
+            )}
+          </li>
+        ))}
+      </ol>
+      {error && <p className="text-[10px] text-accent-rose">🛑 {error}</p>}
     </div>
   );
 }

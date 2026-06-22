@@ -27,18 +27,6 @@ import { PackagePanel } from '@/components/entertainment/package-panel';
 import { ProductionPanel } from '@/components/entertainment/production-panel';
 import { PageHeader } from '@/components/page-header';
 
-// 7 sub-step bên trong nút "Sản xuất video" (intake = nút 1, package = nút 3).
-// CỔNG DUY NHẤT = Preview (Duyệt video); script không còn là cổng (đã gộp).
-const PRODUCE_SUBSTEPS: Array<{ label: string; gate?: boolean }> = [
-  { label: 'Analyze (vision-anchored)' },
-  { label: 'Montage' },
-  { label: 'Script — Transcreation' },
-  { label: 'Voice' },
-  { label: 'Caption sync' },
-  { label: 'Audio mix' },
-  { label: 'Preview', gate: true },
-];
-
 // Workflow 8 bước đầy đủ (mục expandable cho dev/operator xem sâu).
 const FULL_WORKFLOW: Array<{ no: number; label: string; note: string; gate?: string }> = [
   { no: 1, label: 'Source Intake', note: 'Tải source no-watermark + metadata (nút "Tải link").' },
@@ -159,24 +147,8 @@ export default function ContentLanePage() {
               <strong>chỉ hiện khi render xong hẳn</strong>; xem rồi bấm{' '}
               <strong>Duyệt video</strong> — cổng tay duy nhất. KHÔNG auto-publish.
             </p>
-            {/* Timeline sub-step thu gọn */}
-            <div className="flex flex-wrap items-center gap-1.5">
-              {PRODUCE_SUBSTEPS.map((s, i) => (
-                <span key={s.label} className="flex items-center gap-1.5">
-                  <span
-                    className={`rounded-md px-2 py-1 text-[10px] font-medium ${
-                      s.gate
-                        ? 'border border-accent-amber/40 bg-accent-amber/10 text-accent-amber'
-                        : 'border border-hairline/50 bg-panel/40 text-neutral-400'
-                    }`}
-                  >
-                    {s.gate ? '⛔ ' : ''}
-                    {s.label}
-                  </span>
-                  {i < PRODUCE_SUBSTEPS.length - 1 && <span className="text-neutral-700">›</span>}
-                </span>
-              ))}
-            </div>
+            {/* Progress line per-step (đèn trạng thái runtime thật) nằm trong
+                ProductionPanel — thay cho timeline tĩnh trước đây. */}
             <ProductionPanel />
           </CardBody>
         </Card>
