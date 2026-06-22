@@ -12,12 +12,10 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
+import { readAnchorPlan } from './lib/anchors.js';
 import { requireOpenAIKey, workDir } from './lib/env.js';
 import { type AsrSegment, chatJson } from './lib/openai.js';
 
-const DEFAULT_ANCHORS = [3.5, 136.5, 227.5, 290.5, 346.5];
-const LEAD = 14;
-const REACTION = 9;
 const GAP_FOR_MICRO = 2.8; // silence longer than this (s) may get micro-commentary
 
 const SOURCE_BIND_SYS = `Bạn Việt hóa LỜI GỐC của một vlog câu mực Trung Quốc cho người Việt xem TikTok.
@@ -93,16 +91,20 @@ async function main(): Promise<void> {
   }
   const apiKey = requireOpenAIKey();
 
-  // Rebuild montage segments.
+  // Rebuild montage segments — ĐÚNG anchors money-shot (anchors.json, dùng chung
+  // 10/12/15) để script bám đúng timeline. KHÔNG hardcode.
+  const plan = readAnchorPlan(dir);
   let running = 0;
-  const segs = [...DEFAULT_ANCHORS].sort((a, b) => a - b).map((tSec, idx) => {
-    const srcStart = Math.max(0, tSec - LEAD);
-    const srcEnd = Math.min(meta.durationSec, tSec + REACTION);
-    const dur = srcEnd - srcStart;
-    const montageStart = running;
-    running += dur;
-    return { idx, tSec, srcStart, srcEnd, dur, montageStart };
-  });
+  const segs = [...plan.anchors]
+    .sort((a, b) => a - b)
+    .map((tSec, idx) => {
+      const srcStart = Math.max(0, tSec - plan.lead);
+      const srcEnd = Math.min(meta.durationSec, tSec + plan.reaction);
+      const dur = srcEnd - srcStart;
+      const montageStart = running;
+      running += dur;
+      return { idx, tSec, srcStart, srcEnd, dur, montageStart };
+    });
   const montageTotal = running;
   const msMontage = (idx: number): number => {
     const s = segs[idx];
@@ -129,7 +131,11 @@ async function main(): Promise<void> {
   srcLines.sort((a, b) => a.mStart - b.mStart);
   writeFileSync(
     join(clipDir, 'source_cut_reference.json'),
-    JSON.stringify({ videoId: id, montageTotalSec: Number(montageTotal.toFixed(1)), lines: srcLines }, null, 2),
+    JSON.stringify(
+      { videoId: id, montageTotalSec: Number(montageTotal.toFixed(1)), lines: srcLines },
+      null,
+      2,
+    ),
   );
 
   // Detect silent gaps (for micro-commentary).
@@ -140,7 +146,12 @@ async function main(): Promise<void> {
     if (!cur || !next) continue;
     const dur = next.mStart - cur.mEnd;
     if (dur > GAP_FOR_MICRO) {
-      gaps.push({ afterId: cur.id, at: Number(((cur.mEnd + next.mStart) / 2).toFixed(2)), dur: Number(dur.toFixed(1)), sceneIdx: next.sceneIdx });
+      gaps.push({
+        afterId: cur.id,
+        at: Number(((cur.mEnd + next.mStart) / 2).toFixed(2)),
+        dur: Number(dur.toFixed(1)),
+        sceneIdx: next.sceneIdx,
+      });
     }
   }
 
@@ -158,7 +169,8 @@ async function main(): Promise<void> {
       ...srcLines.map((l) => `[${tc(l.mStart)} | id${l.id}] ${l.zh}`),
       gaps.length > 0 ? '\nGAPS im (thêm micro-commentary ngắn ĐÚNG cảnh, không chắc thì bỏ):' : '',
       ...gaps.map(
-        (g) => `[${tc(g.at)} | sau id${g.afterId} | im ~${g.dur}s | cảnh: ${sceneDesc.get(g.sceneIdx) ?? 'mực/biển'}]`,
+        (g) =>
+          `[${tc(g.at)} | sau id${g.afterId} | im ~${g.dur}s | cảnh: ${sceneDesc.get(g.sceneIdx) ?? 'mực/biển'}]`,
       ),
     ].join('\n'),
     temperature: 0.7,
@@ -197,7 +209,11 @@ async function main(): Promise<void> {
     // micro fillers that follow this line's gap.
     const micros = microByAfter.get(l.id) ?? [];
     const gap = gaps.find((g) => g.afterId === l.id);
-    for (const [i, t] of spread(micros.length, gap ? gap.at - 0.6 : l.mEnd + 0.8, gap ? gap.at + 0.6 : l.mEnd + 1.4).entries()) {
+    for (const [i, t] of spread(
+      micros.length,
+      gap ? gap.at - 0.6 : l.mEnd + 0.8,
+      gap ? gap.at + 0.6 : l.mEnd + 1.4,
+    ).entries()) {
       const text = micros[i];
       if (!text) continue;
       beats.push({ role: 'micro', text, montageTime: Number(t.toFixed(2)), estSec: estRead(text) });
@@ -255,9 +271,15 @@ async function main(): Promise<void> {
   const md: string[] = [];
   md.push('# Script review — SOURCE-BOUND (⛔ CHỜ DUYỆT, chưa voice/render)');
   md.push('');
-  md.push(`- Video: ${id} | tổng ${montageTotal.toFixed(1)}s | bám lời gốc (ASR), không sáng tác mới`);
-  md.push(`- Model: ${scriptModel} | nguồn: ASR tiếng Trung đã cắt (KHÔNG re-Whisper). OCR caption gốc: tool scrub chỉ cho box, CHƯA trích text → bám lời nói gốc.`);
-  md.push(`- Cụm: **${beats.length}** (bound ${boundCount} / micro ${microCount}) | ước tính đọc ~${totalSpeech}s / ${montageTotal.toFixed(1)}s`);
+  md.push(
+    `- Video: ${id} | tổng ${montageTotal.toFixed(1)}s | bám lời gốc (ASR), không sáng tác mới`,
+  );
+  md.push(
+    `- Model: ${scriptModel} | nguồn: ASR tiếng Trung đã cắt (KHÔNG re-Whisper). OCR caption gốc: tool scrub chỉ cho box, CHƯA trích text → bám lời nói gốc.`,
+  );
+  md.push(
+    `- Cụm: **${beats.length}** (bound ${boundCount} / micro ${microCount}) | ước tính đọc ~${totalSpeech}s / ${montageTotal.toFixed(1)}s`,
+  );
   md.push('');
   md.push('## SOURCE TRANSCRIPT (lời gốc đã nhận diện, theo montage time)');
   for (const l of srcLines) md.push(`- [${tc(l.mStart)}] (id${l.id}, cú ${l.sceneIdx}) ${l.zh}`);
@@ -267,7 +289,9 @@ async function main(): Promise<void> {
   md.push('|---|---|---|---|---|---|');
   for (const [i, b] of beats.entries()) {
     const src = b.srcId != null ? `id${b.srcId}` : 'micro+';
-    md.push(`| ${i + 1} | ${tc(b.montageTime)} | ${b.estSec}s | ${src} | ${b.text.replace(/\|/g, '/')} | ${wordCount(b.text)} |`);
+    md.push(
+      `| ${i + 1} | ${tc(b.montageTime)} | ${b.estSec}s | ${src} | ${b.text.replace(/\|/g, '/')} | ${wordCount(b.text)} |`,
+    );
   }
   md.push('');
   md.push('## ĐỐI CHIẾU bám gốc (gốc → Việt)');
@@ -285,19 +309,31 @@ async function main(): Promise<void> {
   }
   md.push('');
   md.push('## QA / RỦI RO (ước tính, chưa có voice thật)');
-  md.push(`- Số cụm: ${beats.length} ${beats.length >= 40 && beats.length <= 55 ? '✅ (40–55)' : '⚠️ ngoài 40–55'}.`);
-  md.push(`- Tổng đọc ~${totalSpeech}s / ${montageTotal.toFixed(1)}s → ${totalSpeech < montageTotal ? '✅ còn dư' : '⚠️ kín'}.`);
+  md.push(
+    `- Số cụm: ${beats.length} ${beats.length >= 40 && beats.length <= 55 ? '✅ (40–55)' : '⚠️ ngoài 40–55'}.`,
+  );
+  md.push(
+    `- Tổng đọc ~${totalSpeech}s / ${montageTotal.toFixed(1)}s → ${totalSpeech < montageTotal ? '✅ còn dư' : '⚠️ kín'}.`,
+  );
   md.push(`- Gap lớn nhất giữa 2 cụm: ~${maxGap}s ${maxGap <= 3 ? '✅' : '⚠️ còn quãng chết'}.`);
   md.push(`- Cụm dài >8 từ: ${longChunks.length === 0 ? '✅ không' : `⚠️ ${longChunks.length}`}.`);
-  md.push(`- Caption chật (ước tính): ${crowded === 0 ? '✅ không' : `⚠️ ${crowded} cụm, tối đa ~${maxOver}s`}.`);
+  md.push(
+    `- Caption chật (ước tính): ${crowded === 0 ? '✅ không' : `⚠️ ${crowded} cụm, tối đa ~${maxOver}s`}.`,
+  );
   md.push(`- Bám gốc: ${boundCount}/${beats.length} cụm từ lời gốc; ${microCount} cụm micro thêm.`);
   md.push('');
-  md.push('> ⛔ Duyệt: sửa `text` trong `montage_v2_script.json` nếu cần, rồi báo "duyệt script" để chạy voice + render (step 12, không đổi).');
+  md.push(
+    '> ⛔ Duyệt: sửa `text` trong `montage_v2_script.json` nếu cần, rồi báo "duyệt script" để chạy voice + render (step 12, không đổi).',
+  );
   writeFileSync(join(clipDir, 'montage_v2_script_review.md'), md.join('\n'));
 
   console.log('------------------------------------------------------');
-  console.log(`[13] ✅ Bám gốc xong — ${beats.length} cụm (bound ${boundCount}/micro ${microCount}), chưa voice/render.`);
-  console.log(`     đọc ~${totalSpeech}s / ${montageTotal.toFixed(1)}s | gap lớn nhất ~${maxGap}s | dài>8từ ${longChunks.length}`);
+  console.log(
+    `[13] ✅ Bám gốc xong — ${beats.length} cụm (bound ${boundCount}/micro ${microCount}), chưa voice/render.`,
+  );
+  console.log(
+    `     đọc ~${totalSpeech}s / ${montageTotal.toFixed(1)}s | gap lớn nhất ~${maxGap}s | dài>8từ ${longChunks.length}`,
+  );
   console.log('     ⛔ DỪNG — chờ Operator duyệt nội dung chữ.');
   console.log('------------------------------------------------------');
 }

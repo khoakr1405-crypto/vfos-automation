@@ -51,6 +51,13 @@ interface RenderSummary {
   scrubMaskSegments?: number;
   previewReady: boolean;
 }
+interface CoverageSummary {
+  detectedMoments: number;
+  strongMoments: number;
+  usedAnchors: number;
+  minRequired: number;
+  pass: boolean;
+}
 interface AudioSummary {
   audioMode: string;
   demucs: string;
@@ -68,6 +75,7 @@ interface JobDetail {
   source: { url: string; durationSec?: number };
   steps?: Record<string, StepStatus>;
   script?: ScriptSummary | null;
+  coverage?: CoverageSummary | null;
   render?: RenderSummary | null;
   audio?: AudioSummary | null;
   reviewGates?: { scriptApproved: boolean; previewApproved: boolean };
@@ -91,6 +99,7 @@ const SUB_LABEL: Record<string, string> = {
   '02-asr-zh': 'Bóc lời gốc (ASR Trung)',
   '03b-vision-anchor': 'Vision tìm "cá/mực lên"',
   '03-clip-mine': 'Chọn clip hay',
+  '03c-moneyshot-coverage': 'Kiểm cảnh ăn tiền (coverage)',
   '10-montage-v2': 'Dựng montage + render base',
   '13-source-bound': 'Việt hóa bám gốc (gpt-5.5)',
   '12-voice-render': 'Lồng tiếng + caption + render',
@@ -222,6 +231,7 @@ export function ProductionPanel() {
   const step = activeStep(detail);
   const running = anyRunning(detail);
   const previewApproved = detail?.reviewGates?.previewApproved === true;
+  const coverage = detail?.coverage ?? null;
   const render = detail?.render ?? null;
   const audio = detail?.audio ?? null;
   // Video coi là "xong hẳn" khi render KHÔNG còn chạy (cả 12+15 done). Lúc đó mới
@@ -275,6 +285,28 @@ export function ProductionPanel() {
             </div>
           ))}
           {step.error && <p className="text-[10px] text-accent-rose">🛑 {step.error}</p>}
+        </div>
+      )}
+
+      {/* Coverage cảnh ăn tiền (money-shot) — summary nhỏ, chạy ngầm trong sản xuất */}
+      {coverage && (
+        <div
+          className={`rounded-lg border px-3 py-2 text-[11px] ${
+            coverage.pass
+              ? 'border-accent-green/30 bg-accent-green/5 text-neutral-300'
+              : 'border-accent-rose/40 bg-accent-rose/5 text-accent-rose'
+          }`}
+        >
+          🎣 Đã phát hiện <strong>{coverage.detectedMoments}</strong> cảnh ăn tiền (rõ{' '}
+          {coverage.strongMoments}), dùng <strong>{coverage.usedAnchors}</strong> cảnh.{' '}
+          {coverage.pass ? (
+            '✅ Coverage đạt.'
+          ) : (
+            <strong>
+              🛑 Coverage FAIL (&lt; {coverage.minRequired}) — video nghèo cảnh ăn tiền, DỪNG sản
+              xuất. Thử nguồn khác.
+            </strong>
+          )}
         </div>
       )}
 

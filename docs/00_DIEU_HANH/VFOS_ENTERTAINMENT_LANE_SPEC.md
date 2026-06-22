@@ -310,6 +310,18 @@ logic engine vào API.
 > + nút Duyệt video CHỈ hiện khi `render && !running`** (xong hẳn cả 12+15) —
 > không hiện preview lúc đang render; player chỉ phát bản đã áp audio. Route
 > `/script/approve`·`/voice-render`·`/reject` còn để debug, UI không dùng.
+>
+> **Cập nhật (E-UI-9) — money-shot anchors THẬT + coverage gate:** Trước đây 10/12/
+> 13/15 **hardcode** anchors của riêng video squid `[3.5,136.5,227.5,290.5,346.5]`
+> nên mọi video khác chỉ trúng ~1 cảnh ăn tiền. Fix: `scripts/ent-vlog/lib/
+> anchors.ts` (`deriveAnchors` cụm catch_moments theo lead+reaction, giữ peak,
+> cap max; `readAnchorPlan` đọc anchors.json→catch_moments→fallback). Step mới
+> **`03c-moneyshot-coverage`** (chèn NGẦM vào produce giữa vision và montage):
+> chọn anchors từ `catch_moments.json` → ghi **`anchors.json`** (10/12/13/15 đọc
+> CHUNG, sync video↔audio) + **`moneyshot_coverage_report.json`**; **GATE** exit≠0
+> nếu < min (mặc định 3) cảnh ăn tiền → produce DỪNG, KHÔNG render/preview giả
+> PASS. UI hiện summary nhỏ "Đã phát hiện X, dùng Y" (đỏ khi FAIL). Không thêm
+> nút, không thao tác mới. `EntJob.coverage` overlay từ report.
 
 ---
 

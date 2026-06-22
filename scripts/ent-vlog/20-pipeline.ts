@@ -8,7 +8,8 @@
 //   script   = 13-source-bound (--model)
 //   render   = 12-voice-render -> 15-audio-ambient-full (audio policy đã chốt:
 //              bỏ giọng Trung bằng Demucs no_vocals, GIỮ ambient biển/gió/nước)
-//   produce  = analyze + montage + script + render (FULL chain → dừng ở GATE 2)
+//   produce  = analyze + 03c-coverage + montage + script + render (FULL → GATE 2)
+//              (03c = chọn anchors từ catch_moments + GATE chặn thiếu cảnh ăn tiền)
 //
 // Isolation: writes only inside data/temp/ent/<id>/. No publish, no registry.
 // CỔNG DUY NHẤT là Duyệt video (GATE 2): "produce" chạy nguyên chuỗi tới preview
@@ -52,6 +53,8 @@ function subsFor(step: StepName, model: string): SubSpec[] {
     { name: '03b-vision-anchor', args: [] },
     { name: '03-clip-mine', args: [] },
   ];
+  // coverage = chọn anchors từ catch_moments + GATE chặn khi thiếu cảnh ăn tiền.
+  const coverage: SubSpec[] = [{ name: '03c-moneyshot-coverage', args: [] }];
   const montage: SubSpec[] = [{ name: '10-montage-v2', args: [] }];
   const script: SubSpec[] = [{ name: '13-source-bound', args: ['--model', model] }];
   // render = lồng tiếng/caption (12) + áp audio policy remove_speech_keep_ambient (15).
@@ -63,7 +66,8 @@ function subsFor(step: StepName, model: string): SubSpec[] {
   if (step === 'montage') return montage;
   if (step === 'script') return script;
   if (step === 'render') return render;
-  return [...analyze, ...montage, ...script, ...render]; // produce = FULL chain → GATE 2
+  // produce = FULL chain → GATE 2. Coverage chèn NGẦM giữa vision và montage.
+  return [...analyze, ...coverage, ...montage, ...script, ...render];
 }
 
 async function main(): Promise<void> {

@@ -12,11 +12,9 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import { readAnchorPlan } from './lib/anchors.js';
 import { workDir } from './lib/env.js';
 
-const DEFAULT_ANCHORS = [3.5, 136.5, 227.5, 290.5, 346.5];
-const LEAD = 14;
-const REACTION = 9;
 const AMBIENT_VOL = 0.8;
 const DUCK = 'threshold=0.06:ratio=6:attack=15:release=350';
 const DEMUCS_PY = resolve('tools/demucs-sep/.venv/Scripts/python.exe');
@@ -75,13 +73,16 @@ async function main(): Promise<void> {
   const ad = join(dir, 'audio_proof');
   mkdirSync(ad, { recursive: true });
 
-  // 1) Source windows (same montage segments) → extract + concat original audio.
+  // 1) Source windows = ĐÚNG anchors của montage (anchors.json, dùng chung với 10)
+  // → trích + nối audio gốc. KHÔNG hardcode để audio không lệch video.
+  const plan = readAnchorPlan(dir);
+  console.log(`[15] Anchors (${plan.source}): ${plan.anchors.map((a) => a.toFixed(1)).join(', ')}`);
   let running = 0;
-  const segs = [...DEFAULT_ANCHORS]
+  const segs = [...plan.anchors]
     .sort((a, b) => a - b)
     .map((tSec) => {
-      const s = Math.max(0, tSec - LEAD);
-      const e = Math.min(meta.durationSec, tSec + REACTION);
+      const s = Math.max(0, tSec - plan.lead);
+      const e = Math.min(meta.durationSec, tSec + plan.reaction);
       running += e - s;
       return { s, dur: Number((e - s).toFixed(3)) };
     });

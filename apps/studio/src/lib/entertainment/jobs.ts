@@ -109,6 +109,16 @@ export interface EntAudioSummary {
   applied: boolean;
 }
 
+/** Coverage cảnh ăn tiền (03c-moneyshot-coverage → moneyshot_coverage_report.json). */
+export interface EntCoverageSummary {
+  detectedMoments: number;
+  strongMoments: number;
+  usedAnchors: number;
+  minRequired: number;
+  pass: boolean;
+  anchors?: Array<{ tSec: number; tc: string; score: number; what: string }>;
+}
+
 /** Gói đăng tay (16-package → montage_v2/package.json). NO auto-publish. */
 export interface EntPackageSummary {
   finalVideo: string;
@@ -131,6 +141,7 @@ export interface EntJob {
   source: EntSource;
   steps?: Partial<Record<EntStepName, EntStepStatus>>;
   script?: EntScriptSummary | null;
+  coverage?: EntCoverageSummary | null;
   render?: EntRenderSummary | null;
   audio?: EntAudioSummary | null;
   package?: EntPackageSummary | null;
@@ -511,6 +522,31 @@ function readAudioSummary(id: string): EntAudioSummary | null {
   };
 }
 
+function readCoverageSummary(id: string): EntCoverageSummary | null {
+  const j = readJsonSafe<{
+    detectedMoments?: number;
+    strongMoments?: number;
+    usedAnchors?: number;
+    minRequired?: number;
+    pass?: boolean;
+    anchors?: Array<{ tSec?: number; tc?: string; score?: number; what?: string }>;
+  }>(entFile(id, 'moneyshot_coverage_report.json'));
+  if (!j) return null;
+  return {
+    detectedMoments: j.detectedMoments ?? 0,
+    strongMoments: j.strongMoments ?? 0,
+    usedAnchors: j.usedAnchors ?? 0,
+    minRequired: j.minRequired ?? 0,
+    pass: j.pass === true,
+    anchors: (j.anchors ?? []).map((a) => ({
+      tSec: a.tSec ?? 0,
+      tc: a.tc ?? '',
+      score: a.score ?? 0,
+      what: a.what ?? '',
+    })),
+  };
+}
+
 function readPackageSummary(id: string): EntPackageSummary | null {
   const j = readJsonSafe<{
     finalVideo?: string;
@@ -549,6 +585,7 @@ export function getJobDetail(id: string): EntJob | null {
     if (st) steps[s] = st;
   }
   const script = readScriptSummary(id);
+  const coverage = readCoverageSummary(id);
   const render = readRenderSummary(id);
   const audio = readAudioSummary(id);
   const pkg = readPackageSummary(id);
@@ -560,6 +597,7 @@ export function getJobDetail(id: string): EntJob | null {
     state !== base.state ||
     !base.reviewGates ||
     JSON.stringify(base.script ?? null) !== JSON.stringify(script) ||
+    JSON.stringify(base.coverage ?? null) !== JSON.stringify(coverage) ||
     JSON.stringify(base.render ?? null) !== JSON.stringify(render) ||
     JSON.stringify(base.audio ?? null) !== JSON.stringify(audio) ||
     JSON.stringify(base.package ?? null) !== JSON.stringify(pkg)
@@ -569,6 +607,7 @@ export function getJobDetail(id: string): EntJob | null {
       state,
       reviewGates,
       script,
+      coverage,
       render,
       audio,
       package: pkg,
@@ -576,7 +615,7 @@ export function getJobDetail(id: string): EntJob | null {
     });
   }
 
-  return { ...base, state, steps, script, render, audio, package: pkg, reviewGates };
+  return { ...base, state, steps, script, coverage, render, audio, package: pkg, reviewGates };
 }
 
 /** Tiền điều kiện artifact + gate cho mỗi step. */

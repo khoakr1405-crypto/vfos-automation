@@ -10,12 +10,12 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import { readAnchorPlan } from './lib/anchors.js';
 import { requireOpenAIKey, workDir } from './lib/env.js';
 import { type AsrSegment, chatJson, chatVisionJson } from './lib/openai.js';
 import { EDGE_MALE_VOICE, synthesizeChunk } from './lib/tts-provider.js';
 
 const BGM_LIBRARY = 'production/_media/bgm_library.json';
-const DEFAULT_ANCHORS = [3.5, 136.5, 227.5, 290.5, 346.5]; // drop weak 04:15 (255.5)
 
 const VISION_SYS = `Bạn xem các khung hình MONEY-SHOT của 1 video săn mực/câu cá trên biển.
 Viết: (1) 1 HOOK 0–3s cực cuốn, ngắn (≤9 từ), ĐÚNG cảnh đang thấy (mực/cá lên, kéo căng…), KHÔNG bịa.
@@ -136,22 +136,23 @@ async function main(): Promise<void> {
     console.error('Usage: --id <slug>');
     process.exit(1);
   }
-  const lead = values.lead ? Number(values.lead) : 14;
-  const reaction = values.reaction ? Number(values.reaction) : 9;
+  const dir = workDir(id);
+  // Anchors TỪ cảnh ăn tiền thật: anchors.json (03c) → catch_moments → fallback.
+  // --anchors/--lead/--reaction để override tay (debug).
+  const plan = readAnchorPlan(dir);
+  const lead = values.lead ? Number(values.lead) : plan.lead;
+  const reaction = values.reaction ? Number(values.reaction) : plan.reaction;
   const anchorsIn = values.anchors
     ? values.anchors.split(',').map((x) => Number(x.trim()))
-    : DEFAULT_ANCHORS;
+    : plan.anchors;
+  console.log(`[10] Anchors (${plan.source}): ${anchorsIn.map((a) => a.toFixed(1)).join(', ')}`);
 
-  const dir = workDir(id);
   const meta = JSON.parse(readFileSync(join(dir, 'source_meta.json'), 'utf8')) as {
     path: string;
     durationSec: number;
   };
   const asr = JSON.parse(readFileSync(join(dir, 'asr_zh.json'), 'utf8')) as {
     segments: AsrSegment[];
-  };
-  const catchData = JSON.parse(readFileSync(join(dir, 'catch_moments.json'), 'utf8')) as {
-    moments: Array<{ tSec: number; what: string }>;
   };
   const apiKey = requireOpenAIKey();
 
@@ -175,7 +176,7 @@ async function main(): Promise<void> {
   mkdirSync(segDir, { recursive: true });
 
   // 1) Cut + concat (video only).
-  console.log(`[10] Cắt ${segs.length} đoạn (bỏ cú yếu 04:15)…`);
+  console.log(`[10] Cắt ${segs.length} đoạn money-shot…`);
   const segFiles: string[] = [];
   for (const s of segs) {
     const fp = join(segDir, `seg_${s.idx}.mp4`);

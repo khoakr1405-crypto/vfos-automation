@@ -14,13 +14,11 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import { readAnchorPlan } from './lib/anchors.js';
 import { workDir } from './lib/env.js';
 import { EDGE_MALE_VOICE, synthesizeChunk } from './lib/tts-provider.js';
 
 const BGM_LIBRARY = 'production/_media/bgm_library.json';
-const DEFAULT_ANCHORS = [3.5, 136.5, 227.5, 290.5, 346.5];
-const LEAD = 14;
-const REACTION = 9;
 
 interface Beat {
   role: string;
@@ -161,16 +159,21 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
-  // Money-shot montage times (catch segments idx 1..4) for spill QA.
+  // Money-shot montage times for spill QA — ĐÚNG anchors của montage (anchors.json,
+  // dùng chung 10/15) để VO/QA không lệch với video. KHÔNG hardcode.
+  const plan = readAnchorPlan(dir);
+  console.log(`[12] Anchors (${plan.source}): ${plan.anchors.map((a) => a.toFixed(1)).join(', ')}`);
   let running = 0;
-  const segs = [...DEFAULT_ANCHORS].sort((a, b) => a - b).map((tSec, idx) => {
-    const srcStart = Math.max(0, tSec - LEAD);
-    const srcEnd = Math.min(meta.durationSec, tSec + REACTION);
-    const dur = srcEnd - srcStart;
-    const montageStart = running;
-    running += dur;
-    return { idx, tSec, srcStart, srcEnd, dur, montageStart };
-  });
+  const segs = [...plan.anchors]
+    .sort((a, b) => a - b)
+    .map((tSec, idx) => {
+      const srcStart = Math.max(0, tSec - plan.lead);
+      const srcEnd = Math.min(meta.durationSec, tSec + plan.reaction);
+      const dur = srcEnd - srcStart;
+      const montageStart = running;
+      running += dur;
+      return { idx, tSec, srcStart, srcEnd, dur, montageStart };
+    });
   const msMontage = (idx: number): number | null => {
     const s = segs[idx];
     return s ? s.montageStart + (s.tSec - s.srcStart) : null;
@@ -212,7 +215,9 @@ async function main(): Promise<void> {
     synthed.push({ beat: b, words, audio: outAudio, audioDur, desired: b.montageTime });
   }
   if (failed.length > 0) {
-    console.error(`🛑 VOICE_SYNTH_FAILED — ${failed.length} cụm không tạo được giọng (không báo success giả):`);
+    console.error(
+      `🛑 VOICE_SYNTH_FAILED — ${failed.length} cụm không tạo được giọng (không báo success giả):`,
+    );
     for (const f of failed) console.error(`   ${f}`);
     process.exit(4);
   }
@@ -243,7 +248,11 @@ async function main(): Promise<void> {
   }
 
   // Build caption timing + VO delays at the adjusted starts (caption == voice).
-  const align: Align = { characters: [], characterStartTimesSeconds: [], characterEndTimesSeconds: [] };
+  const align: Align = {
+    characters: [],
+    characterStartTimesSeconds: [],
+    characterEndTimesSeconds: [],
+  };
   const voMp3: string[] = [];
   const delays: number[] = [];
   const spans: LineSpan[] = [];
@@ -255,7 +264,13 @@ async function main(): Promise<void> {
     align.characters.push(...la.characters);
     align.characterStartTimesSeconds.push(...la.characterStartTimesSeconds);
     align.characterEndTimesSeconds.push(...la.characterEndTimesSeconds);
-    spans.push({ role: s.beat.role, sceneIdx: s.beat.sceneIdx, text: s.beat.text, start: a0, end: a1 });
+    spans.push({
+      role: s.beat.role,
+      sceneIdx: s.beat.sceneIdx,
+      text: s.beat.text,
+      start: a0,
+      end: a1,
+    });
   }
 
   // 2) VO mix: adelay per chunk + amix + apad (so -shortest in render keeps the
@@ -294,7 +309,12 @@ async function main(): Promise<void> {
   writeFileSync(
     timingPath,
     JSON.stringify(
-      { timingVersion: 'ent-v2-24', runId: `ent_${id}_montage_v2`, alignment: align, captionReady: true },
+      {
+        timingVersion: 'ent-v2-24',
+        runId: `ent_${id}_montage_v2`,
+        alignment: align,
+        captionReady: true,
+      },
       null,
       2,
     ),
@@ -325,7 +345,18 @@ async function main(): Promise<void> {
     console.log('[12] Scrub chữ Hán toàn khung…');
     scrubOk = sh(
       'npx',
-      ['tsx', 'scripts/source-subtitle-detector.ts', '--input', montageMp4, '--output', maskPath, '--zone-top', '0.0', '--zone-bottom', '1.0'],
+      [
+        'tsx',
+        'scripts/source-subtitle-detector.ts',
+        '--input',
+        montageMp4,
+        '--output',
+        maskPath,
+        '--zone-top',
+        '0.0',
+        '--zone-bottom',
+        '1.0',
+      ],
       'SCRUB',
       true,
     );
@@ -344,7 +375,11 @@ async function main(): Promise<void> {
         jobId: `ent_${id}_montage_v2`,
         runId: `ent_${id}_montage_v2`,
         output: { expectedPreviewPath: join(renderDir, 'preview.mp4') },
-        renderOptions: { estimatedDurationSec: Math.round(montageTotal), resolution: '720x1280', aspectRatio: '9:16' },
+        renderOptions: {
+          estimatedDurationSec: Math.round(montageTotal),
+          resolution: '720x1280',
+          aspectRatio: '9:16',
+        },
         assets: { bgm },
         generatedAt: new Date().toISOString(),
       },
@@ -356,7 +391,20 @@ async function main(): Promise<void> {
   if (
     !sh(
       'npx',
-      ['tsx', 'scripts/offline-render-video-demo.ts', '--render', rmPath, '--output', join(renderDir, 'preview_artifact.json'), '--mode', 'local-preview', '--input-video', montageMp4, '--input-audio', voOut],
+      [
+        'tsx',
+        'scripts/offline-render-video-demo.ts',
+        '--render',
+        rmPath,
+        '--output',
+        join(renderDir, 'preview_artifact.json'),
+        '--mode',
+        'local-preview',
+        '--input-video',
+        montageMp4,
+        '--input-audio',
+        voOut,
+      ],
       'RENDER',
       true,
     )
@@ -372,8 +420,22 @@ async function main(): Promise<void> {
   const runId = `ent_${id}_montage_v2`;
   mkdirSync(resolve('data/temp/pipeline-p9-demo', runId), { recursive: true });
   const shortOut = join(dir, 'montage_v2_short.mp4');
-  const capArgs = ['tsx', 'scripts/kinetic-caption-renderer.ts', '--run', runId, '--preset', 'viral_review_v2', '--timing', timingPath, '--input', previewMp4, '--output', shortOut];
-  if (scrubOk && existsSync(maskPath)) capArgs.push('--subtitle-mask', maskPath, '--cover-mode', 'delogo');
+  const capArgs = [
+    'tsx',
+    'scripts/kinetic-caption-renderer.ts',
+    '--run',
+    runId,
+    '--preset',
+    'viral_review_v2',
+    '--timing',
+    timingPath,
+    '--input',
+    previewMp4,
+    '--output',
+    shortOut,
+  ];
+  if (scrubOk && existsSync(maskPath))
+    capArgs.push('--subtitle-mask', maskPath, '--cover-mode', 'delogo');
   console.log('[12] Caption từ VOICE timing (viral_review_v2 + delogo)…');
   if (!sh('npx', capArgs, 'CAPTION', true)) process.exit(6);
 
@@ -386,7 +448,10 @@ async function main(): Promise<void> {
   let outDur = 0;
   let hasAudio = false;
   try {
-    const j = JSON.parse(probe.stdout) as { format?: { duration?: string }; streams?: Array<{ codec_type?: string }> };
+    const j = JSON.parse(probe.stdout) as {
+      format?: { duration?: string };
+      streams?: Array<{ codec_type?: string }>;
+    };
     outDur = Number.parseFloat(j.format?.duration ?? '0');
     hasAudio = (j.streams ?? []).some((s) => s.codec_type === 'audio');
   } catch {
@@ -394,7 +459,9 @@ async function main(): Promise<void> {
   }
   let maskSegN = 0;
   try {
-    maskSegN = (JSON.parse(readFileSync(maskPath, 'utf8')) as { segments?: unknown[] }).segments?.length ?? 0;
+    maskSegN =
+      (JSON.parse(readFileSync(maskPath, 'utf8')) as { segments?: unknown[] }).segments?.length ??
+      0;
   } catch {
     /* ignore */
   }
@@ -439,7 +506,9 @@ async function main(): Promise<void> {
   const bgmRaw = bgm ? measureDb(bgm.localAudioPath) : { mean: Number.NaN, max: Number.NaN };
   const voicePeak = Number(voiceVol.max.toFixed(1));
   const bgmPeak = Number((bgmRaw.max + gainDb).toFixed(1));
-  const voiceMargin = Number.isFinite(bgmPeak) ? Number((voicePeak - bgmPeak).toFixed(1)) : Number.NaN;
+  const voiceMargin = Number.isFinite(bgmPeak)
+    ? Number((voicePeak - bgmPeak).toFixed(1))
+    : Number.NaN;
   const bgmDrowns = Number.isFinite(voiceMargin) && voiceMargin < 0;
   // voice spill over the NEXT catch money-shot: last VO of catch k must end
   // before catch k+1's money-shot.
@@ -450,13 +519,20 @@ async function main(): Promise<void> {
     const lastB = mine[mine.length - 1];
     const nextMs = msMontage(k + 1);
     if (!lastB || nextMs == null) continue;
-    if (lastB.end > nextMs) spills.push(`cú ${tc(msMontage(k) ?? 0)} (kết ${lastB.end.toFixed(1)}s) → đè money-shot ${tc(nextMs)}`);
+    if (lastB.end > nextMs)
+      spills.push(
+        `cú ${tc(msMontage(k) ?? 0)} (kết ${lastB.end.toFixed(1)}s) → đè money-shot ${tc(nextMs)}`,
+      );
   }
   // money-shot coverage: which voice is active at each money-shot.
   const msCoverage = catchIdx.map((k) => {
     const ms = msMontage(k) ?? 0;
     const active = spans.find((s) => s.start <= ms + 0.3 && s.end >= ms - 0.3);
-    return { ms: tc(ms), by: active ? `${active.role}${active.sceneIdx === k ? '' : '⚠'}` : 'im (BGM)', text: active?.text ?? '—' };
+    return {
+      ms: tc(ms),
+      by: active ? `${active.role}${active.sceneIdx === k ? '' : '⚠'}` : 'im (BGM)',
+      text: active?.text ?? '—',
+    };
   });
   const realVoiceEnd = Math.max(...spans.map((s) => s.end));
 
@@ -504,10 +580,19 @@ async function main(): Promise<void> {
   console.log('======================================================');
   console.log(`[12] RENDER xong — VERDICT: ${verdict}`);
   console.log(`   OUTPUT: ${shortOut}`);
-  console.log(`   dur ${report.outputDurationSec}s / montage ${report.montageTotalSec}s | audio ${hasAudio ? '✅' : '❌'} | cụm caption ${spans.length}`);
-  console.log(`   hash ${hashMatch ? '✅' : '❌'} | chồng lấn ${overlapCount} (max ${maxOverlap}s) | chật-đọc-được ${tightCount} | gap lớn nhất ${maxGap}s`);
-  console.log(`   voice tràn money-shot ${spills.length} | scrub ${maskSegN} vùng | voice đỉnh ${voicePeak}dB vs BGM đỉnh ${bgmPeak}dB (margin ${voiceMargin}dB ${bgmDrowns ? '⚠️ át' : '✅'})`);
-  if (worst) console.log(`   chật nhất @${worst.at}: "${worst.text}" chồng ${worst.over}s lên "${worst.next}"`);
+  console.log(
+    `   dur ${report.outputDurationSec}s / montage ${report.montageTotalSec}s | audio ${hasAudio ? '✅' : '❌'} | cụm caption ${spans.length}`,
+  );
+  console.log(
+    `   hash ${hashMatch ? '✅' : '❌'} | chồng lấn ${overlapCount} (max ${maxOverlap}s) | chật-đọc-được ${tightCount} | gap lớn nhất ${maxGap}s`,
+  );
+  console.log(
+    `   voice tràn money-shot ${spills.length} | scrub ${maskSegN} vùng | voice đỉnh ${voicePeak}dB vs BGM đỉnh ${bgmPeak}dB (margin ${voiceMargin}dB ${bgmDrowns ? '⚠️ át' : '✅'})`,
+  );
+  if (worst)
+    console.log(
+      `   chật nhất @${worst.at}: "${worst.text}" chồng ${worst.over}s lên "${worst.next}"`,
+    );
   console.log('======================================================');
 }
 
