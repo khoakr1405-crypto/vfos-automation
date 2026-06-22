@@ -17,13 +17,13 @@ import { EDGE_MALE_VOICE, synthesizeChunk } from './lib/tts-provider.js';
 
 const BGM_LIBRARY = 'production/_media/bgm_library.json';
 
-const VISION_SYS = `Bạn xem các khung hình MONEY-SHOT của 1 video săn mực/câu cá trên biển.
-Viết: (1) 1 HOOK 0–3s cực cuốn, ngắn (≤9 từ), ĐÚNG cảnh đang thấy (mực/cá lên, kéo căng…), KHÔNG bịa.
-(2) Mô tả CỰC NGẮN mỗi khung (cá/mực gì, đang làm gì).
+const VISION_SYS = `Bạn xem các khung hình MONEY-SHOT của 1 video đi câu trên biển.
+Viết: (1) 1 HOOK 0–3s cực cuốn, ngắn (≤9 từ), ĐÚNG cảnh đang thấy (con vật vừa câu lên, kéo căng…), KHÔNG bịa.
+(2) Mô tả CỰC NGẮN mỗi khung (con gì đang thấy, đang làm gì) — GỌI ĐÚNG con vật, KHÔNG đoán loài khác.
 Trả JSON {"hook":"...","scenes":[{"idx":<number>,"desc":"..."}]}.`;
 
-const NARRATE_SYS = `Bạn viết LỜI THUYẾT MINH tiếng Việt cho montage săn mực, dùng CHUNG cho cả giọng đọc lẫn phụ đề.
-Quy tắc: mỗi cú = 1 CÂU NGẮN, đời thường, đúng cảnh đang thấy, năng lượng. KHÔNG lảm nhảm, KHÔNG dịch máy, KHÔNG bịa quá cảnh.
+const NARRATE_SYS = `Bạn viết LỜI THUYẾT MINH tiếng Việt cho montage đi câu trên biển, dùng CHUNG cho cả giọng đọc lẫn phụ đề.
+Quy tắc: mỗi cú = 1 CÂU NGẮN, đời thường, đúng cảnh đang thấy, năng lượng. GỌI ĐÚNG con vật đang thấy, KHÔNG đổi loài. KHÔNG lảm nhảm, KHÔNG dịch máy, KHÔNG bịa quá cảnh.
 Mỗi câu kết thúc bằng dấu (. ! ?). Trả JSON {"lines":[{"idx":<number>,"vi":"<1 câu>"}]}.`;
 
 interface ReportSeg {
@@ -298,10 +298,10 @@ async function main(): Promise<void> {
     const nar = await chatJson<{ lines?: Array<{ idx: number; vi: string }> }>(apiKey, {
       system: NARRATE_SYS,
       user: [
-        'Bối cảnh: montage săn mực Biển Đông.',
+        'Bối cảnh: montage đi câu trên biển — gọi ĐÚNG con vật đang thấy, KHÔNG đổi loài.',
         ...catchSegs.map(
           (s) =>
-            `idx=${s.idx} | cảnh(vision): ${sceneDesc.get(s.idx) ?? 'mực/cá lên'} | lời gốc(ASR): ${asrFor(s) || '(ít/không lời)'}`,
+            `idx=${s.idx} | cảnh(vision): ${sceneDesc.get(s.idx) ?? 'con vật vừa lên'} | lời gốc(ASR): ${asrFor(s) || '(ít/không lời)'}`,
         ),
       ].join('\n'),
       temperature: 0.6,

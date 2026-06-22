@@ -655,7 +655,10 @@ function ScriptReviewBlock({ review }: { review: ScriptReview }) {
 
       <p className="border-t border-hairline/30 pt-2 text-[10px] text-neutral-600">
         Bản dịch tiếng Việt (gpt-5.5) bám lời gốc — chỉ để tham khảo, không còn cổng duyệt riêng.
-        Sửa text? Edit montage_v2_script.json rồi bấm "Sản xuất video".
+        Muốn GIỮ bản sửa tay? Edit <code>montage_v2_script.json</code> rồi đặt{' '}
+        <code>reviewStatus: "OPERATOR_EDITED"</code> — bấm "Sản xuất video" sẽ giữ nguyên script đã
+        sửa (chỉ render lại). Bấm "Sản xuất video" khi script còn <code>"AUTO"</code> sẽ sinh lại từ
+        đầu (ghi đè).
       </p>
     </div>
   );

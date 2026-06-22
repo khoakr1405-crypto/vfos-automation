@@ -9,6 +9,7 @@
 // after approval) + writes source_cut_reference.json + a human review .md.
 // STOPS — no voice, no render. API: 1 gpt-5.5 text call (no Whisper, no vision).
 //   pnpm tsx scripts/ent-vlog/13-source-bound.ts --id ent_squid_001 --model gpt-5.5
+import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
@@ -18,15 +19,28 @@ import { type AsrSegment, chatJson } from './lib/openai.js';
 
 const GAP_FOR_MICRO = 2.8; // silence longer than this (s) may get micro-commentary
 
-const SOURCE_BIND_SYS = `Bạn Việt hóa LỜI GỐC của một vlog câu mực Trung Quốc cho người Việt xem TikTok.
+// Đối tượng (subject) theo niche — KHÔNG hardcode 1 loài cho mọi video. Bám VISION.
+const NICHE_SUBJECT: Record<string, string> = { 'fishing-vlog': 'cá', squid: 'mực' };
+function subjectForNiche(niche: string | undefined, id: string): string {
+  if (niche && NICHE_SUBJECT[niche]) return NICHE_SUBJECT[niche];
+  if (/squid|muc/i.test(id)) return 'mực';
+  return 'cá'; // mặc định trung tính cho lane câu cá
+}
+
+// System prompt tham số hóa theo subject + LUẬT object cứng (cấm đổi loài). Object
+// thật lấy từ VISION (catch_moments) ở user-prompt; đây chỉ neo nguyên tắc.
+function buildSourceBindSys(subject: string): string {
+  return `Bạn Việt hóa LỜI GỐC của một vlog đi câu/giải trí ngoài trời (nguồn Trung Quốc) cho người Việt xem TikTok.
+ĐỐI TƯỢNG đang quay: ${subject.toUpperCase()} (theo VISION khung hình). Gọi ĐÚNG con vật đang thấy; TUYỆT ĐỐI KHÔNG đổi loài (vd ${subject} thì KHÔNG được gọi thành loài khác). Lời gốc mơ hồ/lóng → mô tả theo cảnh đang thấy, KHÔNG bịa loài khác.
 NGUYÊN TẮC CỐT LÕI:
 - BÁM SÁT ý từng câu gốc. KHÔNG bịa thêm, KHÔNG lan man, KHÔNG dịch máy từng chữ.
-- Việt hóa tự nhiên như người Việt đang đi câu mực thật: nhanh, đời thường, hài nhẹ, phản ứng tức thì.
-- Bỏ phần thô tục/khó hiểu văn hóa (chửi tục, ẩn dụ địa phương) → chuyển thành phản ứng vui sạch.
+- Việt hóa tự nhiên như người Việt đang đi câu thật: nhanh, đời thường, hài nhẹ, phản ứng tức thì.
+- Bỏ phần thô tục/khó hiểu văn hóa (chửi tục, meme/ẩn dụ địa phương) → chuyển thành phản ứng vui sạch; KHÔNG dịch chữ máy móc câu lóng/meme.
 - Mỗi câu gốc → CHIA thành 1–N cụm NGẮN: 2–6 từ (tối đa 8). Cụm dễ đọc, dễ nghe.
 - Nếu câu gốc chỉ là tiếng cười/đệm (haha, 拿下拿下) → thành 1 cụm phản ứng ngắn (vd "haha", "kéo lên nào").
 GAPS: ở các đoạn IM (không có lời gốc), chỉ thêm 1 micro-commentary CỰC NGẮN đúng cảnh đang thấy; nếu không chắc cảnh thì BỎ, không bịa.
 Trả JSON: {"lines":[{"id":<number>,"vi":["cụm","cụm"]}],"micro":[{"afterId":<number>,"vi":"cụm ngắn"}]}.`;
+}
 
 interface Beat {
   role: string;
@@ -64,17 +78,47 @@ function spread(n: number, t0: number, t1: number): number[] {
 
 async function main(): Promise<void> {
   const { values } = parseArgs({
-    options: { id: { type: 'string' }, model: { type: 'string' } },
+    options: { id: { type: 'string' }, model: { type: 'string' }, force: { type: 'boolean' } },
     strict: true,
   });
   const id = values.id;
   if (!id) {
-    console.error('Usage: --id <slug> [--model gpt-5.5]');
+    console.error('Usage: --id <slug> [--model gpt-5.5] [--force]');
     process.exit(1);
   }
   const scriptModel = values.model ?? 'gpt-5.5';
+  const force = values.force === true;
   const dir = workDir(id);
   const clipDir = join(dir, 'montage_v2');
+  const scriptPath = join(clipDir, 'montage_v2_script.json');
+
+  // EDIT-LOCK: produce re-run 13 KHÔNG được ghi đè bản Operator đã sửa tay.
+  // reviewStatus=OPERATOR_EDITED → GIỮ nguyên, skip. Bản AUTO/thiếu → sinh lại
+  // bình thường (fix object luôn áp). --force ép sinh lại kể cả khi đã khoá.
+  if (!force && existsSync(scriptPath)) {
+    try {
+      const existing = JSON.parse(readFileSync(scriptPath, 'utf8')) as { reviewStatus?: string };
+      if (existing.reviewStatus === 'OPERATOR_EDITED') {
+        console.log(
+          '[13] reviewStatus=OPERATOR_EDITED → GIỮ script Operator sửa tay (skip regeneration). Dùng --force để ép sinh lại.',
+        );
+        return;
+      }
+    } catch {
+      /* parse lỗi → coi như chưa có, sinh lại */
+    }
+  }
+
+  // niche → subject (đối tượng câu) để KHÔNG hardcode 1 loài. Manifest thiếu → suy từ id.
+  let niche: string | undefined;
+  try {
+    niche = (JSON.parse(readFileSync(join(dir, 'ent_job.json'), 'utf8')) as { niche?: string })
+      .niche;
+  } catch {
+    /* manifest optional */
+  }
+  const subject = subjectForNiche(niche, id);
+
   const meta = JSON.parse(readFileSync(join(dir, 'source_meta.json'), 'utf8')) as {
     durationSec: number;
   };
@@ -88,6 +132,20 @@ async function main(): Promise<void> {
       scenes?: Array<{ idx: number; desc: string }>;
     };
     for (const s of vis.scenes ?? []) sceneDesc.set(s.idx, s.desc);
+  }
+  // VISION object-truth: mô tả "what" từ catch_moments (đối tượng THẬT đang quay)
+  // → ép script gọi đúng loài, không để GPT tự đổi cá thành mực.
+  const visionWhat: string[] = [];
+  try {
+    const cm = JSON.parse(readFileSync(join(dir, 'catch_moments.json'), 'utf8')) as {
+      moments?: Array<{ what?: string }>;
+    };
+    for (const m of cm.moments ?? []) {
+      const w = (m.what ?? '').trim();
+      if (w && !visionWhat.includes(w)) visionWhat.push(w);
+    }
+  } catch {
+    /* catch_moments optional */
   }
   const apiKey = requireOpenAIKey();
 
@@ -162,15 +220,18 @@ async function main(): Promise<void> {
     micro?: Array<{ afterId: number; vi: string }>;
   }>(apiKey, {
     model: scriptModel,
-    system: SOURCE_BIND_SYS,
+    system: buildSourceBindSys(subject),
     user: [
-      `Bối cảnh: montage săn mực Biển Đông, ${segs.length - 1} cú mực lên. Mục tiêu TỔNG ~40–55 cụm ngắn cho ${Math.round(montageTotal)}s.`,
+      `Bối cảnh: montage câu ${subject} ngoài biển, ${segs.length - 1} cú ${subject} lên. Mục tiêu TỔNG ~40–55 cụm ngắn cho ${Math.round(montageTotal)}s.`,
+      visionWhat.length > 0
+        ? `ĐỐI TƯỢNG THẬT (vision — GỌI ĐÚNG, KHÔNG đổi loài): ${visionWhat.slice(0, 6).join(' | ')}`
+        : `ĐỐI TƯỢNG THẬT: ${subject} (gọi đúng, KHÔNG đổi loài).`,
       'LỜI GỐC (Việt hóa bám sát, chia cụm ngắn 2–6 từ):',
       ...srcLines.map((l) => `[${tc(l.mStart)} | id${l.id}] ${l.zh}`),
       gaps.length > 0 ? '\nGAPS im (thêm micro-commentary ngắn ĐÚNG cảnh, không chắc thì bỏ):' : '',
       ...gaps.map(
         (g) =>
-          `[${tc(g.at)} | sau id${g.afterId} | im ~${g.dur}s | cảnh: ${sceneDesc.get(g.sceneIdx) ?? 'mực/biển'}]`,
+          `[${tc(g.at)} | sau id${g.afterId} | im ~${g.dur}s | cảnh: ${sceneDesc.get(g.sceneIdx) ?? `${subject}/biển`}]`,
       ),
     ].join('\n'),
     temperature: 0.7,
@@ -253,10 +314,17 @@ async function main(): Promise<void> {
   const longChunks = beats.filter((b) => wordCount(b.text) > 8);
 
   // 5) Write step-12-compatible script JSON (overwrite) + review .md.
+  // anchorsHash để biết script bám đúng montage hiện tại (đổi anchors ⇒ AUTO sinh lại).
+  const anchorsHash = createHash('sha256')
+    .update(JSON.stringify(plan.anchors))
+    .digest('hex')
+    .slice(0, 16);
   const scriptJson = {
     videoId: id,
     montageTotalSec: Number(montageTotal.toFixed(1)),
-    reviewStatus: 'PENDING_OPERATOR_REVIEW',
+    reviewStatus: 'AUTO', // EDIT-LOCK: Operator đổi thành OPERATOR_EDITED để khóa, produce sẽ skip 13
+    anchorsHash,
+    subject,
     scriptModel,
     sourceBound: true,
     chunkCount: beats.length,
@@ -265,7 +333,7 @@ async function main(): Promise<void> {
     estTotalSpeechSec: totalSpeech,
     beats,
   };
-  writeFileSync(join(clipDir, 'montage_v2_script.json'), JSON.stringify(scriptJson, null, 2));
+  writeFileSync(scriptPath, JSON.stringify(scriptJson, null, 2));
 
   const zhByMontage = new Map(srcLines.map((l) => [l.id, l]));
   const md: string[] = [];
