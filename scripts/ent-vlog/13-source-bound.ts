@@ -38,8 +38,12 @@ GIỌNG & NHÂN VẬT:
 LUẬT VIẾT CÂU (BẮT BUỘC):
 - MỖI beat là MỘT CÂU TIẾNG VIỆT HOÀN CHỈNH, tự nhiên, có chủ-vị, dài 8–14 từ, KẾT bằng dấu câu (. ! ?). Có thể dùng dấu phẩy giữa câu.
 - TUYỆT ĐỐI KHÔNG cắt vụn 2–6 từ rời rạc, KHÔNG để câu cụt thiếu nghĩa, KHÔNG word-salad.
-- Được phép TỐI ĐA 3 câu cảm thán NGẮN (3–6 từ, vẫn có dấu "!") cho khoảnh khắc giật cá (vd "Dính rồi nha!", "Lên thêm con nữa!"). Đừng lạm dụng.
 - Gộp nhiều câu gốc gần nhau thành MỘT câu Việt mượt nếu hợp lý; bám ý gốc, KHÔNG bịa tình tiết mới.
+
+HUMOR REACTION LAYER (BẮT BUỘC, vừa phải):
+- Thêm 3–5 phản ứng vui bằng cách GHÉP cụm cảm thán vào ĐẦU câu money-shot (ưu tiên), CHỈ dùng whitelist: "Ha ha," / "He he," / "Ơ kìa," / "Trời ơi," / "Đúng bài rồi,".
+- CHỈ đặt ở money-shot/cao trào THẬT: cá dính câu, cần kéo mạnh, một phát hai con, cá thứ bảy–tám–chín, con to cuối. Reaction phải gắn vào câu CÓ NỘI DUNG (kèm srcIds), KHÔNG đứng một mình vô nghĩa.
+- KHÔNG thêm vào mọi beat; KHÔNG lặp một kiểu quá 2 lần; KHÔNG làm câu >16 từ; KHÔNG mất nghĩa gốc/meme; KHÔNG lố/kịch.
 
 MEME/LÓNG TRUNG — GIỮ & VIỆT HÓA (đừng xóa, đừng dịch khô):
 - 这片海最快的男人 → "tay câu nhanh nhất cái vùng biển này".
@@ -76,7 +80,15 @@ interface GptBeat {
   t: number;
   role?: string;
   text: string;
-  srcIds?: number[];
+  srcIds?: Array<number | string>; // gpt đôi khi trả "id72" thay vì 72 → coerce
+}
+
+/** Chuẩn hóa srcId về SỐ (gpt có thể trả "id72"/"72"/72). null nếu không có. */
+function parseSrcId(srcIds: Array<number | string> | undefined): number | undefined {
+  if (!Array.isArray(srcIds) || srcIds.length === 0) return undefined;
+  const raw = srcIds[0];
+  const num = typeof raw === 'number' ? raw : Number(String(raw).replace(/[^0-9]/g, ''));
+  return Number.isFinite(num) && num >= 0 ? num : undefined;
 }
 
 function tc(sec: number): string {
@@ -91,6 +103,15 @@ function wordCount(text: string): number {
 }
 function hasEndPunct(text: string): boolean {
   return /[.!?…]/.test(text);
+}
+
+// Humor Reaction Layer (Caption Style V1 §3) — whitelist cụm phản ứng vui.
+const REACTIONS = ['Ha ha,', 'He he,', 'Ơ kìa,', 'Trời ơi,', 'Đúng bài rồi,'] as const;
+/** Cụm reaction whitelist mà câu MỞ ĐẦU bằng (case-insensitive), hoặc null. */
+function reactionPrefix(text: string): string | null {
+  const low = text.trimStart().toLowerCase();
+  for (const r of REACTIONS) if (low.startsWith(r.toLowerCase())) return r;
+  return null;
 }
 
 async function main(): Promise<void> {
@@ -239,7 +260,7 @@ async function main(): Promise<void> {
       'LỜI GỐC TRONG CẢNH (bám ý, anchor theo t; gộp thành câu đủ, giữ/Việt hóa meme):',
       ...srcLines.map((l) => `[t=${l.mStart}s | id${l.id}] ${l.zh}`),
       '',
-      `Yêu cầu: ~18–28 beat, mỗi beat 1 câu đủ 8–14 từ có dấu câu, mở bằng 1 hook ở t≈1s. Trả JSON {"beats":[...]}.`,
+      `Yêu cầu: ~18–28 beat, mỗi beat 1 câu 8–14 từ có dấu câu, mở bằng hook persona ở t≈1s, THÊM 3–5 reaction whitelist ("Ha ha,"/"He he,"/"Ơ kìa,"/"Trời ơi,"/"Đúng bài rồi,") ghép đầu câu ở money-shot. Trả JSON {"beats":[...]}.`,
     ].join('\n'),
     temperature: 0.8,
   });
@@ -255,7 +276,7 @@ async function main(): Promise<void> {
       text,
       montageTime: Number(t.toFixed(2)),
       estSec: estRead(text),
-      srcId: Array.isArray(b.srcIds) && b.srcIds.length > 0 ? b.srcIds[0] : undefined,
+      srcId: parseSrcId(b.srcIds),
     };
   });
   beats.sort((a, b) => a.montageTime - b.montageTime);
@@ -287,6 +308,24 @@ async function main(): Promise<void> {
   );
   const totalSpeech = Number(beats.reduce((s, b) => s + b.estSec, 0).toFixed(1));
 
+  // Humor Reaction Layer QA: beat (không phải hook) mở đầu bằng cụm whitelist.
+  const moneyShotTimes = segs.filter((s) => s.idx >= 1).map((s) => msMontage(s.idx));
+  const reactionBeats = beats.filter((b) => b.role !== 'hook' && reactionPrefix(b.text) != null);
+  const reactionCount = reactionBeats.length;
+  const REACT_NEAR = 7; // s — reaction phải gần 1 money-shot (cao trào thật)
+  const reactMisplaced = reactionBeats.filter(
+    (b) =>
+      b.srcId == null || !moneyShotTimes.some((mt) => Math.abs(b.montageTime - mt) <= REACT_NEAR),
+  );
+  const prefixCounts = new Map<string, number>();
+  for (const b of reactionBeats) {
+    const p = reactionPrefix(b.text) ?? '';
+    prefixCounts.set(p, (prefixCounts.get(p) ?? 0) + 1);
+  }
+  const maxSamePrefix = prefixCounts.size > 0 ? Math.max(...prefixCounts.values()) : 0;
+  const minReact = Math.min(3, moneyShotTimes.length);
+  const hookWords = hookBeat ? wordCount(hookBeat.text) : 0;
+
   const gates: Array<{ ok: boolean; label: string }> = [
     { ok: n >= 14 && n <= 34, label: `Số beat ${n} trong [14,34]` },
     { ok: avgWords >= 7, label: `TB từ/beat ${avgWords} ≥ 7` },
@@ -294,8 +333,18 @@ async function main(): Promise<void> {
     { ok: punctRatio >= 0.65, label: `Tỷ lệ câu có dấu câu ${punctRatio} ≥ 0.65` },
     { ok: longBeats.length <= 1, label: `Câu >16 từ ${longBeats.length} ≤ 1` },
     { ok: fillerBeats.length <= 4, label: `Filler không bám gốc ${fillerBeats.length} ≤ 4` },
-    { ok: !!hookBeat, label: `Có hook trong 5s đầu ${hookBeat ? '✓' : '✗'}` },
+    { ok: !!hookBeat && hookWords >= 8, label: `Hook persona ${hookWords} từ (≥8)` },
     { ok: suspect.length === 0, label: `Câu cụt nghi vô nghĩa ${suspect.length} = 0` },
+    { ok: reactionCount <= 5, label: `Reaction ${reactionCount} ≤ 5 (không lạm dụng)` },
+    {
+      ok: reactionCount >= minReact,
+      label: `Reaction ${reactionCount} ≥ ${minReact} (đủ Humor Layer)`,
+    },
+    {
+      ok: reactMisplaced.length === 0,
+      label: `Reaction đúng money-shot+có nội dung ${reactionCount - reactMisplaced.length}/${reactionCount}`,
+    },
+    { ok: maxSamePrefix <= 2, label: `Lặp 1 kiểu reaction ≤ 2 (max ${maxSamePrefix})` },
     {
       ok: totalSpeech <= montageTotal,
       label: `Tổng đọc ${totalSpeech}s ≤ ${montageTotal.toFixed(0)}s`,
@@ -321,6 +370,7 @@ async function main(): Promise<void> {
     chunkCount: beats.length,
     boundChunks: boundCount,
     microChunks: fillerBeats.length,
+    reactionCount,
     avgWordsPerBeat: avgWords,
     punctRatio,
     estTotalSpeechSec: totalSpeech,
