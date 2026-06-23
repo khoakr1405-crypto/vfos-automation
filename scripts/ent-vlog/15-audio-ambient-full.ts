@@ -16,6 +16,9 @@ import { readAnchorPlan } from './lib/anchors.js';
 import { workDir } from './lib/env.js';
 
 const AMBIENT_VOL = 0.8;
+// -20% âm lượng tiếng nói (operator: "tiếng nói to quá"). Chỉ giảm VO ở nhánh
+// được MIX (vom); sidechain key (vok) giữ mức gốc nên độ ducking ambient không đổi.
+const VO_VOL = 0.8;
 const DUCK = 'threshold=0.06:ratio=6:attack=15:release=350';
 const DEMUCS_PY = resolve('tools/demucs-sep/.venv/Scripts/python.exe');
 
@@ -148,7 +151,7 @@ async function main(): Promise<void> {
 
   // 3) Mix ambient(0.8, sidechain-ducked by VO) + VO. No BGM.
   const finalAudio = join(ad, 'montage_v2_ambient_audio.wav');
-  const mixFilter = `[1:a]aformat=sample_rates=44100:channel_layouts=stereo,asplit=2[vok][vom];[0:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=${AMBIENT_VOL}[amb];[amb][vok]sidechaincompress=${DUCK}[ambd];[ambd][vom]amix=inputs=2:normalize=0:dropout_transition=0[out]`;
+  const mixFilter = `[1:a]aformat=sample_rates=44100:channel_layouts=stereo,asplit=2[vok][vom];[0:a]aformat=sample_rates=44100:channel_layouts=stereo,volume=${AMBIENT_VOL}[amb];[amb][vok]sidechaincompress=${DUCK}[ambd];[vom]volume=${VO_VOL}[vomq];[ambd][vomq]amix=inputs=2:normalize=0:dropout_transition=0[out]`;
   console.log('[15] Mix ambient(ducked) + VO (no BGM)…');
   if (
     !sh(
@@ -265,7 +268,9 @@ async function main(): Promise<void> {
   console.log(
     `   dur ${outDur.toFixed(1)}s / montage ${montageTotal}s | audio ${hasAudio ? '✅' : '❌'}`,
   );
-  console.log(`   ambient level ${AMBIENT_VOL} | ducking ${DUCK} | BGM: none`);
+  console.log(
+    `   ambient level ${AMBIENT_VOL} | VO level ${VO_VOL} (-20%) | ducking ${DUCK} | BGM: none`,
+  );
   console.log('   --- loudness (mean/max dB) ---');
   console.log(`   vocals removed (giọng tách): ${vocDb.mean}/${vocDb.max}`);
   console.log(`   no_vocals (ambient giữ)    : ${ambDb.mean}/${ambDb.max}`);
