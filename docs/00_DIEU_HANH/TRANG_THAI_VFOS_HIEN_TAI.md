@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-06-16 (**Subtitle Scrub — NÂNG ENGINE detect sang PaddleOCR text-detection (paddle 2.6 + mkldnn)**: dò VÙNG chữ (polygon ôm trọn dòng) thay word-box → hết lòi ký tự mép 就/夹, tự thích nghi mọi video, KHÔNG chỉnh tay; nhanh ~7× (60s video ≈ 40s); fallback tesseract — xem **Phần 36**, commit `43ab827` (đã push). Nền tảng Subtitle Scrub (detect→xóa delogo→phụ đề Việt canh giữa dải, default-ON) — Phần 35, commit `74fc0c2`. Bỏ human gate "Duyệt nguồn sạch" — Phần 34 (vẫn CHƯA commit).)
-> **Branch**: `fix/shopee-modal-read` | **Commit mốc**: `43ab827` (`feat(captions): PaddleOCR text-detection engine for subtitle scrub (auto width)`) — **ĐÃ push** (origin/fix/shopee-modal-read, sync 0/0). Chuỗi: `74fc0c2` (scrub core) → `ca39051` (docs) → `43ab827` (PaddleOCR engine).
+> **Cập nhật lần cuối**: 2026-06-23 (**Lane Giải trí (Entertainment / Fishing-Vlog) — TÁCH BRANCH CLEAN riêng để mở PR gọn**: nhánh dev `feat/entertainment-lane` (`db967b7`) đi 102 commit + lẫn churn ngoài scope → COPY-BY-PATH sang `feat/entertainment-lane-clean` (base master `bb683a1`, 6 commit, **62 file +11011/-58**, blob byte-identical feature). ĐÃ push origin `a4991f5`, **CHƯA merge**, chờ Operator mở PR web. nav sửa surgical item 3 → `/lanes/content`. Loại sạch Product Review/Shopee/FB; 0 secret/runtime/binary; tsc 0/0, test 16/16 — xem **Phần 37**. Trước đó: Subtitle Scrub PaddleOCR — Phần 36, commit `43ab827`.)
+> **Branch**: `feat/entertainment-lane` (dev, `db967b7`, đã push) + **`feat/entertainment-lane-clean`** (`a4991f5`, đã push origin, **CHƯA merge — chờ mở PR**) | **Commit mốc**: `a4991f5` (`fix(ent-lane): repoint sidebar item 3 to /lanes/content`). Worktree branch clean: `../vfos-ent-clean`. ⚠️ 5 file dirty NGOÀI SCOPE vẫn treo trên dev branch (`source-intake/route.ts`, `source-url/`, `package.json`, `bgm_library.json`, `implementation_plan.md`) — **KHÔNG** đưa vào branch clean.
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task → luôn chạy `pnpm vfos:daily` để có chỉ dẫn trạng thái mới nhất
 
 > ⚠️ **ĐƯỜNG VẬN HÀNH CHÍNH THỨC**: dùng `docs/00_DIEU_HANH/HUONG_DAN_VAN_HANH_CHINH_THUC_VFOS.md` (operator guide chuẩn, flow A-Z `commerce:intake` → `job:run-review` → `job:publish-facebook`).
@@ -2363,6 +2363,31 @@ DOM card img
 **Commit `43ab827`** (5 file, +315/-31): `source-subtitle-detector.ts` + `.gitignore` + `tools/subtitle-detect-paddle/{detect.py,requirements.txt,README.md}`. **KHÔNG commit**: `.venv/`, model cache, `_install*.log`, runtime mask/frame; và (ngoài scope) `source-intake/route.ts`, `source-url/`, `bgm_library.json`, `implementation_plan.md`. Self-review: tsc 0 lỗi · biome chỉ baseline · test 16/16 · preview vẫn là cổng duyệt.
 
 **Bước tiếp theo**: (a) test thêm video mới (giờ ~15–40s/video), hoặc (b) nếu cần nhanh hơn cho scale lớn: cache model thường trú / giảm fps-zone, hoặc cân nhắc ONNX (B2) bỏ Python. Operator quyết.
+
+---
+
+### ✅ Phần 37 — Lane Giải trí (Entertainment / Fishing-Vlog) + TÁCH BRANCH CLEAN `feat/entertainment-lane-clean`: ĐÃ PUSH, CHƯA MERGE (2026-06-23)
+
+> **Vì sao mục này tồn tại**: toàn bộ lane Giải trí được phát triển trên nhánh `feat/entertainment-lane` SAU Phần 36 nhưng **chưa từng ghi vào file trạng thái trung tâm** (chỉ nằm ở memory `project_vfos_entertainment_lane_e1.md` + `VFOS_ENTERTAINMENT_LANE_SPEC.md`). Vòng này lấp lỗ hổng đó + chốt việc tách branch clean để các vòng sau KHÔNG quên.
+
+**Lane Giải trí là gì** (North Star: reup vlog câu cá Trung Quốc → bản địa hóa tiếng Việt → đóng gói sẵn đăng TikTok VN):
+- Engine `scripts/ent-vlog/` — pipeline `produce` (orchestrator `20-pipeline`) = **full chain**: `01-fetch-source → 02-asr-zh → 03-clip-mine → 03b-vision-anchor → 03c-moneyshot-coverage (GATE) → 10-montage-v2 → 12-voice-render → 13-source-bound (script v2 + Humor Layer) → 15-audio-ambient-full → 16-package`. (Legacy 04/05/07/08/09/11/11b/14 KHÔNG nằm trong produce chain.)
+- UI Studio `/lanes/content` (E-UI-7/8/9): **đúng 4 nút** (Tải link · Sản xuất · Duyệt · Đăng), **1 cổng duyệt duy nhất** = Duyệt video (gộp cổng script), video chỉ hiện khi render XONG. Audio policy strict (bỏ giọng Trung/giữ ambient, `audioPolicyApplied` chặn GATE2+package nếu chưa apply). Anchors money-shot THẬT từ `catch_moments` + coverage gate.
+- ElevenLabs `/with-timestamps` (caption sync): **opt-in qua env `ENT_TTS_PROVIDER`, default edge**; quota gate + per-chunk content-hash cache; FAIL honest (không fallback edge khi đã chọn elevenlabs). Script v2 (câu đủ ý 8–14 từ, giữ+localize meme Trung) + **auto Humor Reaction Layer** (whitelist, 3–5 reaction/video, chỉ ở money-shot) → QA gate 13/13 PASS. VO giảm −20% (`VO_VOL=0.8`).
+
+**Việc vòng này — TÁCH BRANCH CLEAN** (nhánh dev `feat/entertainment-lane` đi **102 commit ahead master** + lẫn churn ngoài scope → không gọn để review/merge):
+- Tạo `feat/entertainment-lane-clean` từ **master `bb683a1`** bằng **git worktree** (`../vfos-ent-clean`, không đụng working tree dev).
+- **COPY-BY-PATH** (`git checkout feat/entertainment-lane -- <paths>`) → blob **byte-identical** feature (verify bằng SHA, KHÔNG cherry-pick).
+- **6 commit**: `6dfa643` engine ent-vlog+caption/subtitle · `d921883` ElevenLabs client · `646d067` Studio UI/API/lib+nav · `48c621d` docs · `faa348f` chore (tests+niche config+tesseract.js dep) · `a4991f5` **fix nav** (repoint sidebar item 3 `/lanes/fishing-vlog`→`/lanes/content`, label "Nội dung / Giải trí" — khôi phục surgical repoint bị mất khi `reset --hard` ở vòng xử lý CRLF; KHÔNG lấy restructure channels/history của feature vì ngoài scope).
+- **62 file, +11011/-58** vs master. Push origin → `a4991f5`. **CHƯA merge.**
+
+**Tách sạch (verify diff + SHA)**: 0 file Product Review / Shopee / Facebook / job-manager / publish / growth / commerce / cn-search. 0 secret / runtime / media / binary. `pnpm-workspace.yaml` có `tesseract.js: false`.
+
+**Validation (state đã commit)**: tsc `packages/voice` exit 0 · tsc `@vfos/studio` 0 error · node:test `source-subtitle` **16/16 PASS** · biome: lane code sạch, còn 3 format pre-existing ở legacy `11/11b/14` (non-produce, mang từ source). Lưu ý: repo norm là **CRLF** (master cũng CRLF, biome PASS trên CRLF) — `grep -cU $'\r'` trên Git Bash Windows KHÔNG đáng tin, dùng SHA blob để so byte-identity.
+
+**Defect đã sửa trước khi push**: nav.ts trong worktree ban đầu bị trả về bản master (item 3 → stub `/lanes/fishing-vlog`) → lane thật `/lanes/content` mất link sidebar; commit `a4991f5` khôi phục.
+
+**Bước tiếp theo (Operator)**: `gh` CHƯA cài → mở PR bằng web: `https://github.com/khoakr1405-crypto/vfos-automation/compare/master...feat/entertainment-lane-clean?expand=1` → review → quyết merge. Dọn worktree khi xong: `git worktree remove ../vfos-ent-clean` (branch ref vẫn ở repo+origin). 5 file dirty ngoài scope vẫn treo trên dev branch — xử lý riêng nếu cần.
 
 ---
 
