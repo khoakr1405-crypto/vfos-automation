@@ -24,6 +24,7 @@ interface SubStatus {
 interface StepStatus {
   step: string;
   state: 'idle' | 'running' | 'done' | 'failed';
+  startedAt?: string; // dùng cho merge "freshest-wins" (B) — chống run cũ đè run mới
   subs: SubStatus[];
   error?: string;
 }
@@ -145,16 +146,23 @@ function rank(state: string): number {
 }
 
 /** Gom trạng thái sub-step THẬT từ MỌI step file (produce/render/script/…). Khi 1
- *  sub xuất hiện ở nhiều step, ưu tiên running > failed > done. */
+ *  sub xuất hiện ở nhiều step file, ưu tiên **file mới nhất theo startedAt (B)** —
+ *  để run cũ không đè run mới (vd render.json cũ rò "done" sang produce đang chạy).
+ *  Cùng độ mới (hoặc thiếu startedAt) thì tie-break theo rank running>failed>done. */
 function mergeSubs(detail: JobDetail | null): Map<string, SubStatus> {
-  const m = new Map<string, SubStatus>();
+  const m = new Map<string, { sub: SubStatus; at: number }>();
   for (const st of Object.values(detail?.steps ?? {})) {
+    const at = st.startedAt ? Date.parse(st.startedAt) : 0;
     for (const sub of st.subs) {
       const prev = m.get(sub.name);
-      if (!prev || rank(sub.state) >= rank(prev.state)) m.set(sub.name, sub);
+      const fresher =
+        !prev || at > prev.at || (at === prev.at && rank(sub.state) >= rank(prev.sub.state));
+      if (fresher) m.set(sub.name, { sub, at });
     }
   }
-  return m;
+  const out = new Map<string, SubStatus>();
+  for (const [name, v] of m) out.set(name, v.sub);
+  return out;
 }
 
 /** Dựng progress line per-step: bám chuỗi canonical, gắn trạng thái runtime thật;
@@ -165,8 +173,13 @@ function buildStepRows(
   previewApproved: boolean,
 ): StepRow[] {
   const merged = mergeSubs(detail);
+  // A: khi CÓ produce.json (chuỗi đầy đủ), progress line bám ĐÚNG run đó — sub nào
+  // produce chưa chạy tới = pending (mờ), KHÔNG mượn "done" từ step file khác
+  // (render.json đứng riêng). Không có produce.json thì fallback merged (freshest).
+  const produce = detail?.steps?.produce;
+  const fromProduce = produce ? new Map(produce.subs.map((s) => [s.name, s])) : null;
   const rows: StepRow[] = PRODUCE_CHAIN.map((name) => {
-    const e = merged.get(name);
+    const e = fromProduce ? fromProduce.get(name) : merged.get(name);
     return {
       key: name,
       label: SUB_LABEL[name] ?? name,
