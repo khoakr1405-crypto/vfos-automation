@@ -1,0 +1,4 @@
+# VFOS edge-tts voiceover — Microsoft Edge online neural TTS (free, no API key).
+# Cài trong venv riêng: tools/edge-tts-voice/.venv (KHÔNG commit venv).
+# Gọi bởi scripts/elevenlabs-voiceover-bridge.ts khi --provider edge (mặc định).
+edge-tts==7.2.8
