@@ -20,7 +20,9 @@
     "voice:generate": "tsx packages/voice/scripts/generate.ts",
     "voice:sync": "tsx packages/voice/scripts/sync.ts",
     "voice:elevenlabs": "tsx scripts/elevenlabs-voiceover-bridge.ts",
+    "voice:edge": "tsx scripts/elevenlabs-voiceover-bridge.ts --provider edge",
     "caption:kinetic": "tsx scripts/kinetic-caption-renderer.ts",
+    "subtitle:detect": "tsx scripts/source-subtitle-detector.ts",
     "bgm:mix": "tsx packages/voice/scripts/bgm-mix.ts",
     "bgm:check": "tsx scripts/job-bgm-selector.ts --check",
     "bgm:gen": "tsx scripts/bgm-generate-candidates.ts",
@@ -82,5 +84,8 @@
     "playwright": "^1.60.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3"
+  },
+  "dependencies": {
+    "tesseract.js": "^7.0.0"
   }
 }

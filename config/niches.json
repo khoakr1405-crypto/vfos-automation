@@ -1,0 +1,10 @@
+[
+  {
+    "nicheId": "review-nha-ban",
+    "displayName": "Review Nhà bạn",
+    "lane": "product-review",
+    "platforms": ["facebook"],
+    "status": "active",
+    "note": "Ngách đầu tiên — review sản phẩm gia dụng/đời sống. 'Review Nhà bạn' chỉ là channel khởi đầu của ngách này."
+  }
+]
