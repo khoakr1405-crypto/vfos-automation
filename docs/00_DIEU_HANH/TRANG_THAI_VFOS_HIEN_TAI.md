@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-06-23 (**Lane Giải trí (Entertainment / Fishing-Vlog) — TÁCH BRANCH CLEAN riêng để mở PR gọn**: nhánh dev `feat/entertainment-lane` (`db967b7`) đi 102 commit + lẫn churn ngoài scope → COPY-BY-PATH sang `feat/entertainment-lane-clean` (base master `bb683a1`, 6 commit, **62 file +11011/-58**, blob byte-identical feature). ĐÃ push origin `a4991f5`, **CHƯA merge**, chờ Operator mở PR web. nav sửa surgical item 3 → `/lanes/content`. Loại sạch Product Review/Shopee/FB; 0 secret/runtime/binary; tsc 0/0, test 16/16 — xem **Phần 37**. Trước đó: Subtitle Scrub PaddleOCR — Phần 36, commit `43ab827`.)
-> **Branch**: `feat/entertainment-lane` (dev, `db967b7`, đã push) + **`feat/entertainment-lane-clean`** (`a4991f5`, đã push origin, **CHƯA merge — chờ mở PR**) | **Commit mốc**: `a4991f5` (`fix(ent-lane): repoint sidebar item 3 to /lanes/content`). Worktree branch clean: `../vfos-ent-clean`. ⚠️ 5 file dirty NGOÀI SCOPE vẫn treo trên dev branch (`source-intake/route.ts`, `source-url/`, `package.json`, `bgm_library.json`, `implementation_plan.md`) — **KHÔNG** đưa vào branch clean.
+> **Cập nhật lần cuối**: 2026-06-23 (**Lane Giải trí (Entertainment / Fishing-Vlog) — ĐÃ MERGE VÀO MASTER qua branch clean (PR #1)**: nhánh dev `feat/entertainment-lane` (`db967b7`) đa-lane → tách `feat/entertainment-lane-clean` (base master `bb683a1`, 6 commit, **62 file +11011/-58**, blob byte-identical feature, COPY-BY-PATH) → PR #1 **squash-merge → master `e2d0a55`** (no conflict; review MERGE_OK: 0 file ngoài scope, 0 secret/runtime/binary, tsc 0/0, test 16/16). nav sửa surgical item 3 → `/lanes/content`. Worktree clean đã gỡ. Trước đó: Subtitle Scrub PaddleOCR — Phần 36, commit `43ab827`. Xem **Phần 37**.)
+> **Branch**: master nhận lane Giải trí @ **`e2d0a55`** (squash PR #1). Nhánh dev `feat/entertainment-lane` (`0dfb4da`) vẫn còn (đa-lane, sau merge master nên rebase/đối chiếu trước khi dùng tiếp); `feat/entertainment-lane-clean` đã merged (xoá được trên GitHub + local). | **Commit mốc**: `e2d0a55` (`Merge pull request #1 … entertainment-lane-clean`). ⚠️ 5 file dirty NGOÀI SCOPE vẫn treo trên dev branch (`source-intake/route.ts`, `source-url/`, `package.json`, `bgm_library.json`, `implementation_plan.md`) — CHƯA xử lý.
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task → luôn chạy `pnpm vfos:daily` để có chỉ dẫn trạng thái mới nhất
 
 > ⚠️ **ĐƯỜNG VẬN HÀNH CHÍNH THỨC**: dùng `docs/00_DIEU_HANH/HUONG_DAN_VAN_HANH_CHINH_THUC_VFOS.md` (operator guide chuẩn, flow A-Z `commerce:intake` → `job:run-review` → `job:publish-facebook`).
@@ -2366,7 +2366,7 @@ DOM card img
 
 ---
 
-### ✅ Phần 37 — Lane Giải trí (Entertainment / Fishing-Vlog) + TÁCH BRANCH CLEAN `feat/entertainment-lane-clean`: ĐÃ PUSH, CHƯA MERGE (2026-06-23)
+### ✅ Phần 37 — Lane Giải trí (Entertainment / Fishing-Vlog) + TÁCH BRANCH CLEAN `feat/entertainment-lane-clean`: ĐÃ MERGE VÀO MASTER (PR #1, squash `e2d0a55`) (2026-06-23)
 
 > **Vì sao mục này tồn tại**: toàn bộ lane Giải trí được phát triển trên nhánh `feat/entertainment-lane` SAU Phần 36 nhưng **chưa từng ghi vào file trạng thái trung tâm** (chỉ nằm ở memory `project_vfos_entertainment_lane_e1.md` + `VFOS_ENTERTAINMENT_LANE_SPEC.md`). Vòng này lấp lỗ hổng đó + chốt việc tách branch clean để các vòng sau KHÔNG quên.
 
@@ -2379,7 +2379,7 @@ DOM card img
 - Tạo `feat/entertainment-lane-clean` từ **master `bb683a1`** bằng **git worktree** (`../vfos-ent-clean`, không đụng working tree dev).
 - **COPY-BY-PATH** (`git checkout feat/entertainment-lane -- <paths>`) → blob **byte-identical** feature (verify bằng SHA, KHÔNG cherry-pick).
 - **6 commit**: `6dfa643` engine ent-vlog+caption/subtitle · `d921883` ElevenLabs client · `646d067` Studio UI/API/lib+nav · `48c621d` docs · `faa348f` chore (tests+niche config+tesseract.js dep) · `a4991f5` **fix nav** (repoint sidebar item 3 `/lanes/fishing-vlog`→`/lanes/content`, label "Nội dung / Giải trí" — khôi phục surgical repoint bị mất khi `reset --hard` ở vòng xử lý CRLF; KHÔNG lấy restructure channels/history của feature vì ngoài scope).
-- **62 file, +11011/-58** vs master. Push origin → `a4991f5`. **CHƯA merge.**
+- **62 file, +11011/-58** vs master. Push origin → `a4991f5` → **PR #1 squash-merge vào master `e2d0a55`** (no conflict; review reviewer MERGE_OK).
 
 **Tách sạch (verify diff + SHA)**: 0 file Product Review / Shopee / Facebook / job-manager / publish / growth / commerce / cn-search. 0 secret / runtime / media / binary. `pnpm-workspace.yaml` có `tesseract.js: false`.
 
@@ -2387,7 +2387,9 @@ DOM card img
 
 **Defect đã sửa trước khi push**: nav.ts trong worktree ban đầu bị trả về bản master (item 3 → stub `/lanes/fishing-vlog`) → lane thật `/lanes/content` mất link sidebar; commit `a4991f5` khôi phục.
 
-**Bước tiếp theo (Operator)**: `gh` CHƯA cài → mở PR bằng web: `https://github.com/khoakr1405-crypto/vfos-automation/compare/master...feat/entertainment-lane-clean?expand=1` → review → quyết merge. Dọn worktree khi xong: `git worktree remove ../vfos-ent-clean` (branch ref vẫn ở repo+origin). 5 file dirty ngoài scope vẫn treo trên dev branch — xử lý riêng nếu cần.
+**ĐÃ XONG (2026-06-23)**: PR #1 mở tay trên web (`gh` chưa cài) → squash-merge → master `e2d0a55`. Worktree `../vfos-ent-clean` đã `git worktree remove`. Branch clean merged (xoá được trên GitHub + local `git branch -D` vì squash).
+
+**Còn lại (CHƯA xử lý)**: (1) 5 file dirty NGOÀI SCOPE trên dev branch (`source-intake/route.ts`, `source-url/`, `package.json`, `bgm_library.json`, `implementation_plan.md`) — quyết giữ/commit riêng/bỏ. (2) Nhánh dev `feat/entertainment-lane` (đa-lane) đã sau master — nếu dùng tiếp phải rebase/đối chiếu (lane Giải trí giờ đã ở master, tránh đưa lại). (3) Local master còn ở baseline cũ — `git fetch` đã cập nhật `origin/master`; sync local master khi cần checkout.
 
 ---
 
