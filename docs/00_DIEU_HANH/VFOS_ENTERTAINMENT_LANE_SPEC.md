@@ -255,7 +255,8 @@ logic engine vào API.
 > (`--step analyze|montage|script|produce`), ghi status `data/temp/ent/<id>/steps/
 > <step>.json` (engine sở hữu; API chỉ đọc → không race với `ent_job.json`).
 > Route thật đã làm: **POST `/jobs/[id]/produce`** (chuỗi analyze→montage→script,
-> dừng GATE 1), **POST `/jobs/[id]/script`** (chạy lại riêng `13` sau khi sửa text),
+> dừng GATE 1 — ⚠️ **SUPERSEDED E-UI-8**: produce nay chạy FULL chain tới preview,
+> KHÔNG dừng GATE 1), **POST `/jobs/[id]/script`** (chạy lại riêng `13` sau khi sửa text),
 > **GET `/jobs/[id]/script`** (dữ liệu duyệt: beats Việt hóa + lời gốc + review.md),
 > **POST `/jobs/[id]/script/approve`** (GATE 1). GET `/jobs/[id]` reconcile state
 > machine từ artifact + overlay step status.
@@ -273,7 +274,8 @@ logic engine vào API.
 > 12-voice-render → 15-audio-ambient-full**, tức là render đã GỘP **audio policy
 > mặc định `remove_speech_keep_ambient`** (Demucs `no_vocals`: bỏ giọng Trung,
 > GIỮ ambient biển/gió/nước; ambient 0.8 + ducking, BGM none). `startStep('render')`
-> **ÉP GATE 1** (từ chối nếu `scriptApproved !== true`). QA render đọc từ
+> **ÉP GATE 1** (từ chối nếu `scriptApproved !== true`; ⚠️ E-UI-8: produce tự set
+> `scriptApproved=true` → KHÔNG còn cổng tay duyệt script, route này chỉ còn cho debug). QA render đọc từ
 > `montage_v2/montage_v2_render_report.json` (marker riêng của 12); audio policy đọc
 > từ `montage_v2/montage_v2_audio_report.json` (15 ghi: audioMode, demucs, ambient
 > level, VO>ambient dB). Preview ưu tiên `montage_v2_short_ambient.mp4` (bản đã áp
