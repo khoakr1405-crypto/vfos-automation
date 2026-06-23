@@ -47,8 +47,8 @@ export const NAV_GROUPS: NavGroup[] = [
       },
       {
         no: 3,
-        href: '/lanes/fishing-vlog',
-        label: 'Vlog Về Câu cá',
+        href: '/lanes/content',
+        label: 'Nội dung / Giải trí',
         icon: 'rawvisual',
         accent: 'cyan',
       },
