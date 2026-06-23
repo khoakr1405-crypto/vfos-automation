@@ -12,6 +12,20 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSy
 import { join } from 'node:path';
 import { resolveInsideRepo } from '@/lib/studio-data/paths';
 import { runRepoScript, runRepoScriptDetached } from '@/lib/studio-data/run-command';
+import {
+  createMockTikTokPublishClient,
+  createTikTokPublishClient,
+} from '@/lib/tiktok/tiktok-publish-client';
+import { computeReadiness } from './publish';
+import type {
+  EntTikTokPublishSummary,
+  EntTikTokReadiness,
+  PublishDeps,
+  PublishJobView,
+  ResolveClientResult,
+} from './publish';
+
+export type { EntTikTokPublishSummary, EntTikTokReadiness } from './publish';
 
 const ENT_DIR_REL = 'data/temp/ent';
 const FETCH_SCRIPT_REL = 'scripts/ent-vlog/01-fetch-source.ts';
@@ -32,7 +46,10 @@ export type EntJobState =
   | 'SCRIPT_APPROVED'
   | 'PREVIEW_PENDING'
   | 'APPROVED'
-  | 'PACKAGED';
+  | 'PACKAGED'
+  | 'TIKTOK_POSTING'
+  | 'TIKTOK_POSTED'
+  | 'TIKTOK_FAILED';
 
 /** Logical pipeline steps the UI can trigger (engine 20-pipeline.ts).
  * render = voice/caption (12) + audio policy remove_speech_keep_ambient (15). */
@@ -145,6 +162,7 @@ export interface EntJob {
   render?: EntRenderSummary | null;
   audio?: EntAudioSummary | null;
   package?: EntPackageSummary | null;
+  tiktok?: EntTikTokPublishSummary | null;
   reviewGates?: { scriptApproved: boolean; previewApproved: boolean };
   error?: { code: string; message: string } | null;
 }
@@ -422,9 +440,23 @@ function audioPolicyApplied(id: string): boolean {
   return true;
 }
 
+/** POSTING cũ hơn ngưỡng này coi là treo → reconcile rớt về state artifact. */
+const POSTING_STALE_MS = 5 * 60 * 1000;
+
 /** State machine §1: suy ra state từ artifact + gate (chỉ khi intake đã xong). */
 function reconcileState(id: string, job: EntJob): EntJobState {
   if (!intakeDone(id)) return job.state; // INTAKE_RUNNING / FAILED giữ nguyên
+  // Phase 3 — trạng thái TikTok bám manifest.tiktok (không suy từ artifact).
+  const tk = job.tiktok;
+  if (tk?.status === 'POSTED') return 'TIKTOK_POSTED';
+  if (tk?.status === 'POSTING') {
+    const ageMs = tk.startedAt
+      ? Date.now() - new Date(tk.startedAt).getTime()
+      : Number.POSITIVE_INFINITY;
+    if (ageMs <= POSTING_STALE_MS) return 'TIKTOK_POSTING';
+    // POSTING treo → rớt xuống reconcile artifact (giữ tiktok.error cho UI).
+  }
+  // FAILED: state theo artifact (PACKAGED) để cho retry; tiktok.status=FAILED vẫn hiện.
   const sApproved = job.reviewGates?.scriptApproved === true;
   const pApproved = job.reviewGates?.previewApproved === true;
   // Preview chỉ tính khi script ĐÃ duyệt + voice-render đã chạy.
@@ -884,5 +916,166 @@ export function getScriptReview(id: string): EntScriptReview | null {
     sourceLines: cutRef?.lines ?? [],
     reviewMd,
     approved: job?.reviewGates?.scriptApproved === true,
+  };
+}
+
+/* ── Phase 3 — TikTok publish wiring (đăng tự động + caption tự động) ─────────
+ * Real deps cho publish.ts (pure/DI). Đọc env server-side, KHÔNG log/return
+ * token. Live publish phải bật TIKTOK_PUBLISH_LIVE=true (No-Go #2) — round 1
+ * mặc định mock, chưa bật live.
+ * ========================================================================== */
+
+type TikTokConfig =
+  | { ok: true; mode: 'mock'; isMock: true }
+  | { ok: true; mode: 'display' | 'business'; isMock: false; accessToken: string }
+  | {
+      ok: false;
+      code: 'TIKTOK_DISABLED' | 'TIKTOK_NOT_CONFIGURED' | 'LIVE_NOT_ENABLED';
+      message: string;
+    };
+
+function parseTikTokMode(): 'disabled' | 'mock' | 'display' | 'business' {
+  const m = (process.env.TIKTOK_MODE || '').trim().toLowerCase();
+  if (m === 'mock') return 'mock';
+  if (m === 'display') return 'display';
+  if (m === 'business') return 'business';
+  return 'disabled';
+}
+
+/** Resolve cấu hình TikTok từ env. token CHỈ dùng nội bộ build client, KHÔNG ra ngoài. */
+function resolveTikTokConfig(): TikTokConfig {
+  const mode = parseTikTokMode();
+  if (mode === 'disabled') {
+    return {
+      ok: false,
+      code: 'TIKTOK_DISABLED',
+      message: 'TikTok đang tắt (TIKTOK_MODE=disabled).',
+    };
+  }
+  if (mode === 'mock') return { ok: true, mode: 'mock', isMock: true };
+
+  const clientKey = (process.env.TIKTOK_CLIENT_KEY || '').trim();
+  const clientSecret = (process.env.TIKTOK_CLIENT_SECRET || '').trim();
+  const token =
+    mode === 'display'
+      ? (process.env.TIKTOK_ACCESS_TOKEN || '').trim()
+      : (process.env.TIKTOK_BUSINESS_ACCESS_TOKEN || '').trim();
+  const missing: string[] = [];
+  if (!clientKey) missing.push('TIKTOK_CLIENT_KEY');
+  if (!clientSecret) missing.push('TIKTOK_CLIENT_SECRET');
+  if (!token) {
+    missing.push(mode === 'display' ? 'TIKTOK_ACCESS_TOKEN' : 'TIKTOK_BUSINESS_ACCESS_TOKEN');
+  }
+  if (mode === 'display' && !(process.env.TIKTOK_OPEN_ID || '').trim())
+    missing.push('TIKTOK_OPEN_ID');
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      code: 'TIKTOK_NOT_CONFIGURED',
+      message: `Thiếu cấu hình TikTok: ${missing.join(', ')}.`,
+    };
+  }
+  if ((process.env.TIKTOK_PUBLISH_LIVE || '').trim().toLowerCase() !== 'true') {
+    return {
+      ok: false,
+      code: 'LIVE_NOT_ENABLED',
+      message:
+        'Đăng TikTok thật chưa được bật (đặt TIKTOK_PUBLISH_LIVE=true khi Operator cho lệnh).',
+    };
+  }
+  return { ok: true, mode, isMock: false, accessToken: token };
+}
+
+function resolveTikTokClient(): ResolveClientResult {
+  const cfg = resolveTikTokConfig();
+  if (!cfg.ok) return { ok: false, code: cfg.code, message: cfg.message };
+  if (cfg.isMock) return { ok: true, client: createMockTikTokPublishClient(), mode: 'mock' };
+  return {
+    ok: true,
+    client: createTikTokPublishClient({ accessToken: cfg.accessToken, mode: cfg.mode }),
+    mode: cfg.mode,
+  };
+}
+
+/** Env TikTok đã sẵn sàng để đăng (mock OK; live cần keys + bật live). Booleans only. */
+export function tiktokEnvReady(): boolean {
+  return resolveTikTokConfig().ok;
+}
+
+/** View tối giản cho publish (từ manifest + artifact thật). */
+function buildPublishView(id: string): PublishJobView | null {
+  const detail = getJobDetail(id);
+  if (!detail) return null;
+  const pkg = detail.package;
+  const runningStep = anyStepRunning(id);
+  return {
+    jobId: id,
+    state: detail.state,
+    previewApproved: detail.reviewGates?.previewApproved === true,
+    finalVideoAbsPath: previewVideoPath(id),
+    caption: pkg?.caption ?? '',
+    hashtags: pkg?.hashtags ?? [],
+    tiktokStatus: detail.tiktok?.status ?? null,
+    tiktokStartedAt: detail.tiktok?.startedAt ?? null,
+    pipelineBusyReason: runningStep ? `Đang chạy "${runningStep}" — chờ xong rồi đăng.` : null,
+  };
+}
+
+/** 5 đèn readiness cho UI (không token/secret). */
+export function getTikTokReadiness(id: string): EntTikTokReadiness | null {
+  const view = buildPublishView(id);
+  if (!view) return null;
+  return computeReadiness(view, tiktokEnvReady());
+}
+
+/** Ghi tiktok summary + state vào manifest + trace file runtime (no token). */
+export function setTikTokStatus(id: string, summary: EntTikTokPublishSummary): EntJob | null {
+  const job = readManifest(id);
+  if (!job) return null;
+  const state: EntJobState =
+    summary.status === 'POSTED'
+      ? 'TIKTOK_POSTED'
+      : summary.status === 'POSTING'
+        ? 'TIKTOK_POSTING'
+        : 'TIKTOK_FAILED';
+  writeManifest(id, { ...job, tiktok: summary, state, updatedAt: nowIso() });
+  const tracePath = entFile(id, 'montage_v2/tiktok_publish.json');
+  if (tracePath) {
+    try {
+      mkdirSync(join(tracePath, '..'), { recursive: true });
+      writeFileSync(tracePath, JSON.stringify(summary, null, 2));
+    } catch {
+      /* trace là phụ — không chặn flow */
+    }
+  }
+  return getJobDetail(id);
+}
+
+/** Ghi caption (đã sửa) + hashtag vào package.json trước khi đăng — proof caption cuối. */
+export function saveCaptionToPackage(id: string, caption: string, hashtags: string[]): void {
+  const p = entFile(id, 'montage_v2/package.json');
+  if (!p || !existsSync(p)) return;
+  try {
+    const pkg = JSON.parse(readFileSync(p, 'utf8')) as Record<string, unknown>;
+    const prev = typeof pkg.caption === 'string' ? pkg.caption : '';
+    pkg.caption = caption;
+    pkg.hashtags = hashtags;
+    if (caption !== prev) pkg.captionSource = 'operator-edited';
+    writeFileSync(p, JSON.stringify(pkg, null, 2));
+  } catch {
+    /* giữ nguyên nếu lỗi đọc/ghi */
+  }
+}
+
+/** Deps thật cho publishToTikTok (publish.ts là pure/DI). */
+export function buildPublishDeps(): PublishDeps {
+  return {
+    loadJob: (id) => buildPublishView(id),
+    saveCaption: (id, caption, hashtags) => saveCaptionToPackage(id, caption, hashtags),
+    setStatus: (id, summary) => {
+      setTikTokStatus(id, summary);
+    },
+    resolveClient: resolveTikTokClient,
+    now: () => nowIso(),
   };
 }

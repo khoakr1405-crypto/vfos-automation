@@ -419,5 +419,54 @@ logic engine vào API.
 
 ---
 
-*Spec version: E-UI-0 · chốt 2026-06-20. Sửa thiết kế phải cập nhật file này trước
-khi code phase tương ứng.*
+## 13. Phase 3 — Đăng TikTok tự động + caption tự động (round 1: nền + mock)
+
+> **Mục tiêu Phase 3**: card 3 "Đăng lên TikTok" tự lấy video đã duyệt + caption +
+> hashtag → gọi **TikTok Content Posting API** đăng thật, ghi proof/status vào job.
+> **Round 1** xây nền + chạy **mock** an toàn; **đăng thật** (DoD) là round 2, cần
+> Operator ra lệnh riêng + bật `TIKTOK_PUBLISH_LIVE=true`. KHÔNG Shopee/affiliate/
+> productBinding/owner/Facebook. KHÔNG auto-publish (Operator bấm nút).
+
+### Kiến trúc (3 lớp, isolation)
+- `lib/tiktok/tiktok-publish-client.ts` (ADDITIVE — không sửa `tiktok-client.ts`
+  Display read-only): Content Posting (init → upload FILE_UPLOAD → poll status) +
+  `createMockTikTokPublishClient` cho test. Pure, không alias `@/`.
+- `lib/entertainment/publish.ts` (PURE / dependency-injection): toàn bộ guard +
+  `publishToTikTok(deps,id,input)` + `computeReadiness`. Test nạp trực tiếp bằng
+  mock deps/client (không gọi live, không cần env).
+- `lib/entertainment/jobs.ts`: states `TIKTOK_POSTING|POSTED|FAILED`, field
+  `tiktok`, `getTikTokReadiness`, `setTikTokStatus`, `saveCaptionToPackage`,
+  `buildPublishDeps` (đọc env server-side, **không log/return token**).
+- API: `POST /jobs/[id]/tiktok-publish` (đăng) · `GET /jobs/[id]/tiktok-readiness`
+  (5 đèn + caption + tiktok summary, no token). UI: `package-panel.tsx`.
+
+### Caption
+- Nguồn = `montage_v2/package.json.caption`+`.hashtags` (đã sinh bởi `16-package`).
+- "Tạo caption" = POST route `package` hiện có (gpt-5.5/fallback). Operator
+  xem/sửa trong card; caption cuối ghi `package.json` (`captionSource:operator-edited`)
+  + `tiktok.captionUsed` TRƯỚC khi đăng (proof). Không nhắc Shopee/sản phẩm/affiliate.
+
+### Guard (chặn thật, không fake success)
+`NO_PREVIEW_GATE` (chưa duyệt GATE 2) · `NO_FINAL` · `NO_CAPTION` ·
+`TIKTOK_DISABLED`/`TIKTOK_NOT_CONFIGURED`/`LIVE_NOT_ENABLED` (env) · `ALREADY_POSTED`
+(cần `confirmRepost`) · `PUBLISH_BUSY`/`BUSY` · `TIKTOK_API_ERROR`/`TIKTOK_AUTH_EXPIRED`.
+
+### Manifest (`ent_job.json.tiktok`, runtime gitignored, no token)
+`status · mode · publishId · postId? · shareUrl? · captionUsed · hashtagsUsed ·
+startedAt · postedAt · error?` + trace `montage_v2/tiktok_publish.json`.
+
+### Env (đọc server-side, KHÔNG commit/log)
+`TIKTOK_MODE` (disabled|mock|display|business) · `TIKTOK_CLIENT_KEY/SECRET` ·
+`TIKTOK_ACCESS_TOKEN`+`TIKTOK_OPEN_ID` (display) | `TIKTOK_BUSINESS_ACCESS_TOKEN`
+(business) · **`TIKTOK_PUBLISH_LIVE=true`** (cổng cứng cho đăng thật — round 2).
+
+### Round 2 (đăng thật 1 video — DoD)
+Operator ra lệnh riêng → set live env + `TIKTOK_PUBLISH_LIVE=true` → bấm "Đăng
+TikTok" → API thật → `TIKTOK_POSTED` + proof. Rủi ro: app chưa audit có thể chỉ
+đăng `SELF_ONLY`/đẩy draft inbox; token user hết hạn → `TIKTOK_AUTH_EXPIRED` (dừng,
+không bypass).
+
+---
+
+*Spec version: E-UI-0 · chốt 2026-06-20; Phase 3 round 1 thêm 2026-06-23. Sửa thiết
+kế phải cập nhật file này trước khi code phase tương ứng.*
