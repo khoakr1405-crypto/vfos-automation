@@ -1,0 +1,9 @@
+# VFOS subtitle-detect — PaddleOCR text-detection (CPU + mkldnn). Pin đã verify.
+# Cài trong venv riêng: tools/subtitle-detect-paddle/.venv (KHÔNG commit venv/model).
+#
+# Dùng paddle 2.6.x (KHÔNG dùng 3.x): paddle 3.x trên CPU bắt buộc tắt mkldnn
+# (lỗi onednn×PIR) → ~3s/frame. paddle 2.6 + mkldnn ~0.3s/frame (nhanh ~7-10×).
+# numpy phải < 2 (paddle 2.6.2 wheel compile theo numpy 1.x ABI).
+paddlepaddle==2.6.2
+paddleocr==2.7.3
+numpy==1.26.4

@@ -37,6 +37,8 @@ import { spawnSync } from 'node:child_process';
 import { basename, dirname, extname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { extractCombinedVoiceText, calculateNormalizedHash } from './job-artifact-freshness.js';
+import { buildCoverChain, type CoverMode } from './subtitle-mask/cover-filter.js';
+import type { SubtitleSegment } from './subtitle-mask/detect-core.js';
 
 interface TimingAlignment {
   characters: string[];
@@ -116,17 +118,7 @@ interface Preset {
 }
 
 const HOOK_KEYWORDS = ['ê', 'khoan', 'đừng lướt', 'lướt qua', 'siêu phẩm', 'hot'];
-const CTA_KEYWORDS = [
-  'link',
-  'bên dưới',
-  'giỏ hàng',
-  'mua',
-  'đặt',
-  'săn',
-  'chốt',
-  'bấm',
-  'click',
-];
+const CTA_KEYWORDS = ['link', 'bên dưới', 'giỏ hàng', 'mua', 'đặt', 'săn', 'chốt', 'bấm', 'click'];
 
 // v2 emphasis keyword set — Vietnamese review/marketing power words.
 const EMPHASIS_KEYWORDS = new Set([
@@ -274,9 +266,48 @@ const PRESET_V2: Preset = {
   keywordEmphasisColorInline: '&H0080FF&', // orange (BGR for #FF8000)
 };
 
+// Clean/compact subtitle — kiểu phụ đề dịch chuẩn (giống tool dịch): chữ trắng
+// gọn, outline mỏng, đáy khung, KHÔNG chữ nhảy/pop-in/uppercase/emphasis. Option
+// riêng (default pipeline vẫn viral_review_v2). active color = trắng → tĩnh.
+const CLEAN_STYLE = {
+  fontname: 'Arial',
+  fontsize: 54,
+  primaryColour: '&H00FFFFFF',
+  secondaryColour: '&H00FFFFFF',
+  outlineColour: '&H00000000',
+  bold: 1,
+  outline: 2,
+  shadow: 1,
+  alignment: 2,
+  marginV: 120,
+} as const;
+
+const PRESET_CLEAN: Preset = {
+  name: 'clean_sub',
+  outputSuffix: '_clean',
+  hookWindowSec: 0,
+  chunkingHook: { maxWords: 7, maxChars: 38, maxDurationSec: 2.6 },
+  chunkingBody: { maxWords: 7, maxChars: 38, maxDurationSec: 2.6 },
+  softFlushMinWords: 4,
+  styles: {
+    hook: { name: 'CleanHook', ...CLEAN_STYLE },
+    body: { name: 'CleanBody', ...CLEAN_STYLE },
+    cta: { name: 'CleanCTA', ...CLEAN_STYLE },
+  },
+  activeColorInline: { hook: '&HFFFFFF&', body: '&HFFFFFF&', cta: '&HFFFFFF&' },
+  effects: {
+    hookPopIn: false,
+    uppercaseHook: false,
+    uppercaseCTA: false,
+    keywordEmphasis: false,
+  },
+  keywordEmphasisColorInline: '&HFFFFFF&',
+};
+
 const PRESETS: Record<string, Preset> = {
   viral_review_v1: PRESET_V1,
   viral_review_v2: PRESET_V2,
+  clean_sub: PRESET_CLEAN,
 };
 
 function resolvePreset(name: string): Preset | null {
@@ -539,9 +570,7 @@ function buildAssContent(chunks: Chunk[], preset: Preset): string {
           ? chunk.words[i + 1]!.startSec
           : Math.max(chunk.endSec, word.endSec);
       if (end <= start) continue;
-      const parts = chunk.words.map((w, j) =>
-        renderWordForEvent(w, j === i, chunk.intent, preset),
-      );
+      const parts = chunk.words.map((w, j) => renderWordForEvent(w, j === i, chunk.intent, preset));
       const text = popInPrefix + parts.join(' ');
       events.push(
         `Dialogue: 0,${formatAssTime(start)},${formatAssTime(end)},${style.name},,0,0,0,,${text}`,
@@ -575,6 +604,37 @@ function withSuffix(path: string, suffix: string): string {
   return join(dir, base + suffix + ext);
 }
 
+// PlayResY của ASS (khớp header buildAssContent). marginV tính trong hệ này.
+const PLAY_RES_Y = 1920;
+
+/**
+ * Đặt phụ đề Việt vào CHÍNH GIỮA dải nền đã che: lấy tâm-y (median) các đoạn cover
+ * (pixel video) → quy về hệ ASS → override marginV mỗi style (alignment 2, bottom-
+ * anchored) để chữ canh giữa đúng dải. Chỉ dùng khi cover bật; cover off → preset gốc.
+ */
+function centerPresetOnBand(
+  preset: Preset,
+  perSegment: ReadonlyArray<{ rect: { py: number; ph: number } }>,
+  videoH: number,
+): Preset {
+  if (perSegment.length === 0 || videoH <= 0) return preset;
+  const centers = perSegment.map((s) => (s.rect.py + s.rect.ph / 2) / videoH).sort((a, b) => a - b);
+  const bandYNorm = centers[Math.floor(centers.length / 2)] ?? 0.75;
+  const bandY = bandYNorm * PLAY_RES_Y;
+  const mk = (s: StyleDef): StyleDef => ({
+    ...s,
+    marginV: Math.max(40, Math.round(PLAY_RES_Y - bandY - s.fontsize / 2)),
+  });
+  return {
+    ...preset,
+    styles: {
+      hook: mk(preset.styles.hook),
+      body: mk(preset.styles.body),
+      cta: mk(preset.styles.cta),
+    },
+  };
+}
+
 async function main(): Promise<void> {
   const parsed = parseArgs({
     options: {
@@ -587,6 +647,18 @@ async function main(): Promise<void> {
       'ass-output': { type: 'string' },
       preset: { type: 'string', default: 'viral_review_v1' },
       'dry-run': { type: 'boolean', default: false },
+      // Che/xóa phụ đề Trung gốc (opt-in; default 'off' → workflow KHÔNG đổi).
+      'subtitle-mask': { type: 'string' },
+      'cover-mode': { type: 'string', default: 'off' },
+      'cover-max-h': { type: 'string', default: '0.16' },
+      'cover-min-aspect': { type: 'string', default: '2.5' },
+      'cover-band-mode': { type: 'string', default: 'unified' },
+      'cover-band-maxw': { type: 'string', default: '0.88' },
+      'cover-band-pad': { type: 'string', default: '0.02' },
+      'cover-pad-x': { type: 'string', default: '0.07' },
+      'cover-pad-y': { type: 'string', default: '0.006' },
+      'cover-delogo-maxh': { type: 'string', default: '0.1' },
+      'cover-blur': { type: 'string', default: '18' },
     },
     allowPositionals: false,
     strict: true,
@@ -594,7 +666,7 @@ async function main(): Promise<void> {
   const values = parsed.values;
 
   const jobId = (values.job as string | undefined) ?? null;
-  const runId = jobId ? null : (values.run as string | undefined) ?? null;
+  const runId = jobId ? null : ((values.run as string | undefined) ?? null);
 
   if (!jobId && !runId) {
     console.error('Error: --run <runId> or --job <jobId> is required');
@@ -603,7 +675,9 @@ async function main(): Promise<void> {
 
   const preset = resolvePreset(values.preset ?? 'viral_review_v1');
   if (!preset) {
-    console.error(`Error: unknown preset "${values.preset}". Available: ${Object.keys(PRESETS).join(', ')}`);
+    console.error(
+      `Error: unknown preset "${values.preset}". Available: ${Object.keys(PRESETS).join(', ')}`,
+    );
     process.exit(1);
   }
 
@@ -611,7 +685,9 @@ async function main(): Promise<void> {
   const effectiveRunId = jobId ? `run_${jobId}` : runId!;
   const runDir = jobId ? resolve(JOBS_ROOT, jobId) : resolve('data/temp/pipeline-p9-demo', runId!);
 
-  const timingPath = values.timing ? resolve(values.timing as string) : join(runDir, 'voice_timing_artifact.json');
+  const timingPath = values.timing
+    ? resolve(values.timing as string)
+    : join(runDir, 'voice_timing_artifact.json');
   const inputVideo = values.input ? resolve(values.input as string) : join(runDir, 'preview.mp4');
   const outputVideo = values.output
     ? resolve(values.output as string)
@@ -652,7 +728,9 @@ async function main(): Promise<void> {
             const timingArt = JSON.parse(readFileSync(timingPath, 'utf8'));
             if (!timingArt.scriptTextHash || timingArt.scriptTextHash !== currentScriptHash) {
               console.error('🛑 STALE_JOB_TIMING_ARTIFACT');
-              console.error('The voice timing artifact is stale or missing hash compared to the current script.');
+              console.error(
+                'The voice timing artifact is stale or missing hash compared to the current script.',
+              );
               console.error('Please regenerate using:');
               console.error(`  pnpm voice:elevenlabs --job ${jobId} --confirm-api-call`);
               process.exit(14);
@@ -669,10 +747,14 @@ async function main(): Promise<void> {
     if (jobId) {
       console.error('🛑 MISSING_JOB_TIMING_ARTIFACT');
       console.error(`  Timing artifact not found in job folder: ${timingPath}`);
-      console.error(`  Generate first via: pnpm voice:elevenlabs --job ${jobId} --confirm-api-call`);
+      console.error(
+        `  Generate first via: pnpm voice:elevenlabs --job ${jobId} --confirm-api-call`,
+      );
     } else {
       console.error('MISSING_TIMING_ARTIFACT — no timing artifact found.');
-      console.error(`  Suggested: pnpm voice:elevenlabs --run ${runId} --confirm-api-call --sync-fixture`);
+      console.error(
+        `  Suggested: pnpm voice:elevenlabs --run ${runId} --confirm-api-call --sync-fixture`,
+      );
     }
     const artifact = {
       captionPlanVersion: 'v1',
@@ -707,7 +789,9 @@ async function main(): Promise<void> {
   );
   if (chunks.length > 0) {
     const lastChunk = chunks[chunks.length - 1]!;
-    console.log(`Caption span:   ${chunks[0]!.startSec.toFixed(2)}s → ${lastChunk.endSec.toFixed(2)}s`);
+    console.log(
+      `Caption span:   ${chunks[0]!.startSec.toFixed(2)}s → ${lastChunk.endSec.toFixed(2)}s`,
+    );
   }
   if (preset.effects.keywordEmphasis) {
     const emphasized = words.filter((w) => isEmphasisKeyword(w.text)).length;
@@ -777,7 +861,73 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  const assContent = buildAssContent(chunks, preset);
+  // Opt-in: che/xóa phụ đề Trung gốc từ mask. Default 'off' → workflow KHÔNG đổi.
+  // Build TRƯỚC buildAssContent để biết dải nền → đặt phụ đề Việt vào giữa dải.
+  const coverMode = values['cover-mode'] as string as CoverMode;
+  let coverChain: ReturnType<typeof buildCoverChain> = null;
+  let coverVideoH = 0;
+  if (coverMode !== 'off') {
+    const maskPath = values['subtitle-mask']
+      ? resolve(values['subtitle-mask'] as string)
+      : join(runDir, 'source_subtitle_mask.json');
+    if (existsSync(maskPath)) {
+      try {
+        const mask = JSON.parse(readFileSync(maskPath, 'utf8')) as { segments?: SubtitleSegment[] };
+        const pr = spawnSync(
+          'ffprobe',
+          [
+            '-v',
+            'error',
+            '-select_streams',
+            'v:0',
+            '-show_entries',
+            'stream=width,height',
+            '-of',
+            'default=noprint_wrappers=1',
+            inputVideo,
+          ],
+          { encoding: 'utf-8' },
+        );
+        const prOut = `${pr.stdout ?? ''}`;
+        const vW = Number(prOut.match(/width=(\d+)/)?.[1] ?? 0);
+        const vH = Number(prOut.match(/height=(\d+)/)?.[1] ?? 0);
+        coverVideoH = vH;
+        coverChain = buildCoverChain(Array.isArray(mask.segments) ? mask.segments : [], vW, vH, {
+          mode: coverMode,
+          maxLineHeight: Number(values['cover-max-h']),
+          minAspectRatio: Number(values['cover-min-aspect']),
+          unifyBandWidth: values['cover-band-mode'] !== 'box',
+          maxBandWidth: Number(values['cover-band-maxw']),
+          bandSidePad: Number(values['cover-band-pad']),
+          padXPct: Number(values['cover-pad-x']),
+          padYPct: Number(values['cover-pad-y']),
+          delogoMaxHeight: Number(values['cover-delogo-maxh']),
+          blurStrength: Number(values['cover-blur']),
+        });
+        if (coverChain) {
+          console.log(
+            `🈲 Cover phụ đề Trung: ${coverChain.perSegment.length} đoạn → [${coverChain.perSegment
+              .map((s) => s.mode)
+              .join(', ')}]`,
+          );
+        } else {
+          console.log('🈲 Cover: mask không có đoạn → bỏ qua che.');
+        }
+      } catch {
+        console.warn('⚠️ Cover: đọc mask lỗi → bỏ qua che.');
+      }
+    } else {
+      console.warn(`⚠️ Cover: không thấy mask (${maskPath}) → bỏ qua che.`);
+    }
+  }
+
+  // Đặt phụ đề Việt vào CHÍNH GIỮA dải nền che (nếu có cover). Cover off → preset gốc.
+  const effectivePreset =
+    coverChain && coverVideoH > 0
+      ? centerPresetOnBand(preset, coverChain.perSegment, coverVideoH)
+      : preset;
+
+  const assContent = buildAssContent(chunks, effectivePreset);
   mkdirSync(dirname(assPath), { recursive: true });
   // UTF-8 BOM for libass non-ASCII robustness.
   writeFileSync(assPath, '﻿' + assContent, 'utf8');
@@ -793,28 +943,51 @@ async function main(): Promise<void> {
     : outputVideo.replace(/\\/g, '/');
   const assRel = basename(assPath);
 
-  const ffmpegArgs = [
-    '-y',
-    '-i',
-    inputRel,
-    '-map',
-    '0:v:0',
-    '-map',
-    '0:a?',
-    '-vf',
-    `subtitles=${assRel}`,
-    '-c:v',
-    'libx264',
-    '-pix_fmt',
-    'yuv420p',
-    '-preset',
-    'medium',
-    '-crf',
-    '20',
-    '-c:a',
-    'copy',
-    outputRel,
-  ];
+  const ffmpegArgs = coverChain
+    ? [
+        '-y',
+        '-i',
+        inputRel,
+        '-filter_complex',
+        `${coverChain.chain};${coverChain.lastLabel}subtitles=${assRel}[vout]`,
+        '-map',
+        '[vout]',
+        '-map',
+        '0:a?',
+        '-c:v',
+        'libx264',
+        '-pix_fmt',
+        'yuv420p',
+        '-preset',
+        'medium',
+        '-crf',
+        '20',
+        '-c:a',
+        'copy',
+        outputRel,
+      ]
+    : [
+        '-y',
+        '-i',
+        inputRel,
+        '-map',
+        '0:v:0',
+        '-map',
+        '0:a?',
+        '-vf',
+        `subtitles=${assRel}`,
+        '-c:v',
+        'libx264',
+        '-pix_fmt',
+        'yuv420p',
+        '-preset',
+        'medium',
+        '-crf',
+        '20',
+        '-c:a',
+        'copy',
+        outputRel,
+      ];
 
   console.log(`FFmpeg cwd:     ${runDir}`);
   console.log(`FFmpeg cmd:     ffmpeg ${ffmpegArgs.join(' ')}`);
