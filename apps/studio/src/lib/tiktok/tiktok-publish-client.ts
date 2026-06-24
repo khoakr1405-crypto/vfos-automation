@@ -14,8 +14,8 @@
 import { readFileSync, statSync } from 'node:fs';
 
 const TIKTOK_API_BASE = 'https://open.tiktokapis.com/v2';
-/** Single-chunk upload cap (TikTok cho phép tới ~64MB/chunk). Lớn hơn → lỗi rõ. */
-const MAX_SINGLE_CHUNK_BYTES = 60 * 1024 * 1024;
+/** Kích thước mỗi chunk khi upload nhiều phần (TikTok: 5MB–64MB/chunk; chunk cuối ôm dư). */
+const CHUNK_SIZE_BYTES = 10 * 1024 * 1024;
 const INIT_TIMEOUT_MS = 15_000;
 const UPLOAD_TIMEOUT_MS = 120_000;
 const STATUS_TIMEOUT_MS = 10_000;
@@ -112,22 +112,33 @@ export function createTikTokPublishClient(config: {
         if (size <= 0) {
           return { ok: false, mode, error: { code: 'empty_video', message: 'File video rỗng.' } };
         }
-        if (size > MAX_SINGLE_CHUNK_BYTES) {
-          return {
-            ok: false,
-            mode,
-            error: {
-              code: 'chunk_too_large',
-              message: `Video ${Math.round(size / 1048576)}MB vượt giới hạn single-chunk (round 1).`,
-            },
-          };
+        // Chunk plan: nhỏ → 1 chunk; lớn → 10MB/chunk, chunk CUỐI ôm phần dư.
+        const totalChunkCount = Math.max(1, Math.floor(size / CHUNK_SIZE_BYTES));
+        const chunkSize = totalChunkCount === 1 ? size : CHUNK_SIZE_BYTES;
+
+        // 0) CREATOR INFO — bắt buộc trước Direct Post: lấy privacy_level_options
+        const ci = await fetchJson(
+          `${TIKTOK_API_BASE}/post/publish/creator_info/query/`,
+          { method: 'POST', headers: authHeaders, body: '{}' },
+          INIT_TIMEOUT_MS,
+        );
+        const ciData = (ci.json.data ?? {}) as { privacy_level_options?: string[] };
+        const privacyOptions = ciData.privacy_level_options ?? [];
+        if (ci.status >= 400 || privacyOptions.length === 0) {
+          return { ok: false, mode, error: parseTikTokError(ci.json, ci.status) };
         }
+        const wantedPrivacy = input.privacyLevel ?? 'SELF_ONLY';
+        const privacyLevel = privacyOptions.includes(wantedPrivacy)
+          ? wantedPrivacy
+          : privacyOptions.includes('SELF_ONLY')
+            ? 'SELF_ONLY'
+            : privacyOptions[0];
 
         // 1) INIT
         const initBody = {
           post_info: {
             title: buildTitle(input.caption, input.hashtags),
-            privacy_level: input.privacyLevel ?? 'SELF_ONLY',
+            privacy_level: privacyLevel,
             disable_comment: false,
             disable_duet: false,
             disable_stitch: false,
@@ -135,8 +146,8 @@ export function createTikTokPublishClient(config: {
           source_info: {
             source: 'FILE_UPLOAD',
             video_size: size,
-            chunk_size: size,
-            total_chunk_count: 1,
+            chunk_size: chunkSize,
+            total_chunk_count: totalChunkCount,
           },
         };
         const init = await fetchJson(
@@ -150,25 +161,31 @@ export function createTikTokPublishClient(config: {
         }
         const publishId = initData.publish_id;
 
-        // 2) UPLOAD (single chunk)
+        // 2) UPLOAD — PUT từng chunk (Content-Range theo từng phần; chunk cuối tới hết file)
         const bytes = readFileSync(input.videoPath);
-        const upController = new AbortController();
-        const upTimer = setTimeout(() => upController.abort(), UPLOAD_TIMEOUT_MS);
         let uploadStatus = 0;
-        try {
-          const up = await fetch(initData.upload_url, {
-            method: 'PUT',
-            headers: {
-              'Content-Type': 'video/mp4',
-              'Content-Length': String(size),
-              'Content-Range': `bytes 0-${size - 1}/${size}`,
-            },
-            body: bytes,
-            signal: upController.signal,
-          });
-          uploadStatus = up.status;
-        } finally {
-          clearTimeout(upTimer);
+        for (let i = 0; i < totalChunkCount; i++) {
+          const start = i * chunkSize;
+          const end = i === totalChunkCount - 1 ? size - 1 : start + chunkSize - 1;
+          const part = bytes.subarray(start, end + 1);
+          const upController = new AbortController();
+          const upTimer = setTimeout(() => upController.abort(), UPLOAD_TIMEOUT_MS);
+          try {
+            const up = await fetch(initData.upload_url, {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'video/mp4',
+                'Content-Length': String(part.length),
+                'Content-Range': `bytes ${start}-${end}/${size}`,
+              },
+              body: part,
+              signal: upController.signal,
+            });
+            uploadStatus = up.status;
+          } finally {
+            clearTimeout(upTimer);
+          }
+          if (uploadStatus >= 400) break;
         }
         if (uploadStatus >= 400) {
           return {
