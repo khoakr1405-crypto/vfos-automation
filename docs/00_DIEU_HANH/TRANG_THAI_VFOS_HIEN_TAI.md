@@ -1,7 +1,7 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-06-23 (**Phase 3 lane Giải trí — ĐĂNG TIKTOK TỰ ĐỘNG + CAPTION TỰ ĐỘNG — ROUND 1 (nền + mock) HOÀN TẤT**: branch mới `feat/entertainment-tiktok-publish` (base master `e2d0a55`, worktree `../vfos-ent-tiktok`). TikTok **Content Posting** client (init/upload/poll, ADDITIVE) + mock; `publish.ts` PURE/DI + 11 guard (no fake success); `jobs.ts` states TIKTOK_POSTING/POSTED/FAILED + field `tiktok` + readiness 5 đèn; 2 route (publish/readiness, local-only, **no token**); UI card "Đăng lên TikTok" (5 đèn + caption edit + 2 nút). **Validation: test 23/23 · tsc 0 · biome lint 0 · isolation+secret sạch**. ĐĂNG THẬT chặn bằng env `TIKTOK_PUBLISH_LIVE` (No-Go #2) — chờ Round 2. Commit `f9a2fa6` ĐÃ push origin. Xem **Phần 38**. Trước đó: lane Giải trí MERGED master `e2d0a55` — Phần 37.)
+> **Cập nhật lần cuối**: 2026-06-24 (**Phase 3 lane Giải trí — ĐĂNG TIKTOK TỰ ĐỘNG — ROUND 2 (ĐĂNG THẬT) HOÀN TẤT, DoD ĐẠT**: job `ent_squid_001` đăng thật 1 video qua TikTok Content Posting API → state `TIKTOK_POSTED`, `publishId=v_pub_file~v2-1.7654841036543494165`, đăng **SELF_ONLY** vì app chưa audit. Giải blocker `unaudited_client_can_only_post_to_private_accounts` = bật **Private account** (không phải lỗi code). Thêm `creator_info/query` + **multi-chunk upload** (70MB→6 chunk) + CLI runner `tiktok-publish-run.ts`; commit `3eb6788` worktree (CHƯA push, no merge/PR). Validation: biome 0 · node:test 30/30. access_token 24h, refresh_token 365 ngày (`pnpm tiktok:oauth refresh`). Xem **Phần 38**. Round 1 (nền+mock) commit `f9a2fa6`. Trước đó: lane Giải trí MERGED master `e2d0a55` — Phần 37.)
 > **Branch**: master `e2d0a55` (lane Giải trí end-to-end). **Phase 3 round 1**: `feat/entertainment-tiktok-publish` (`f9a2fa6`, base master, **đã push origin, CHƯA merge/PR** — DoD cần đăng thật Round 2). Nhánh dev `feat/entertainment-lane` (`5fde46e`, đa-lane archive). | **Commit mốc**: `f9a2fa6` (`feat(ent-lane): add guarded TikTok publish flow (Phase 3 round 1)`). ⚠️ 5 file dirty NGOÀI SCOPE vẫn treo trên dev branch (`source-intake/route.ts`, `source-url/`, `package.json`, `bgm_library.json`, `implementation_plan.md`) — CHƯA xử lý.
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task → luôn chạy `pnpm vfos:daily` để có chỉ dẫn trạng thái mới nhất
 
@@ -2393,9 +2393,9 @@ DOM card img
 
 ---
 
-### ✅ Phần 38 — Phase 3 lane Giải trí: Đăng TikTok tự động + caption tự động — ROUND 1 (nền + mock, CHƯA live) (2026-06-23)
+### ✅ Phần 38 — Phase 3 lane Giải trí: Đăng TikTok tự động — ROUND 1 (nền+mock) + ROUND 2 (ĐĂNG THẬT) HOÀN TẤT (2026-06-23 → 2026-06-24)
 
-> **Mục tiêu Phase 3**: card 3 "Đăng lên TikTok" tự lấy video đã duyệt + caption + hashtag → gọi **TikTok Content Posting API** đăng thật, ghi proof/status vào job. **DoD** = đăng thật thành công 1 video qua API + proof + UI báo thành công. **Round 1 này** xây xong NỀN kỹ thuật + chạy **mock/test an toàn** (CHƯA live); đăng thật là **Round 2**, cần Operator ra lệnh riêng + bật `TIKTOK_PUBLISH_LIVE=true`.
+> **Mục tiêu Phase 3**: card 3 "Đăng lên TikTok" tự lấy video đã duyệt + caption + hashtag → gọi **TikTok Content Posting API** đăng thật, ghi proof/status vào job. **DoD** = đăng thật thành công 1 video qua API + proof + UI báo thành công. ✅ **DoD ĐÃ ĐẠT (Round 2, 2026-06-24)** — job `ent_squid_001` đăng thật 1 video, state `TIKTOK_POSTED`. Round 1 (dưới) là nền kỹ thuật + mock; Round 2 (cuối mục) là đăng thật.
 
 **Branch / discipline**: nhánh MỚI `feat/entertainment-tiktok-publish` từ **`origin/master`** qua **git worktree** `../vfos-ent-tiktok` (không đụng dev branch + 5 file dirty + master). Commit `f9a2fa6` (8 file, +1274/−94) **đã push origin**, CHƯA merge/PR. KHÔNG `git add .`, không commit `.env`/runtime, không render/ElevenLabs/live TikTok.
 
@@ -2412,7 +2412,15 @@ DOM card img
 
 **Validation**: node:test **23/23 PASS** (guards/success/fail/isolation) · tsc `@vfos/studio` **0** · biome **lint 0** (line-ending là noise repo-wide: `core.autocrlf=true`, blob commit là LF — biome `check` sau `--write` cũng 0) · isolation: **0 import** Product Review/Shopee/Facebook/commerce/growth/job-manager/review-orchestrator · secret: **không log/commit token**, chỉ đọc `process.env`, message chỉ chứa TÊN biến · **KHÔNG gọi TikTok thật** (mock 100%, live chặn 2 lớp env).
 
-**Bước tiếp theo (Round 2 — DoD đăng thật)**: Operator ra lệnh riêng → set env live (`TIKTOK_MODE=display|business` + token + scope `video.publish` + **`TIKTOK_PUBLISH_LIVE=true`**) → `pnpm dev` → `/lanes/content` → job APPROVED → "Tạo caption" → bấm "Đăng lên TikTok" (cổng tay) → real API → `TIKTOK_POSTED` + proof. Chốt ở Round 2: **privacy_level** (app chưa audit có thể buộc `SELF_ONLY`/đẩy draft inbox), token hết hạn (re-auth, không bypass), chunked upload nếu video >60MB.
+**✅ ROUND 2 — ĐĂNG THẬT (DoD ĐẠT, 2026-06-24)**: job `ent_squid_001` đăng thật thành công 1 video lên TikTok qua Content Posting API.
+- **Proof**: `ent_job.json` state=**TIKTOK_POSTED**, `tiktok.status=POSTED`, `publishId=v_pub_file~v2-1.7654841036543494165`, postedAt `2026-06-24T06:14:46Z`; trace `montage_v2/tiktok_publish.json` status POSTED, error null. Caption + 10 hashtag tự sinh. Video 70MB → 6 chunk × 10MB.
+- **Privacy**: đăng **SELF_ONLY (chỉ mình xem)** vì app TikTok **chưa audit** → `postId`/`shareUrl` trống (bài private không có link công khai). Đúng kết quả mong đợi. Đăng **công khai** cần submit app cho TikTok audit (việc riêng, sau).
+- **Setup TikTok thật**: App **Sandbox** (chưa audit), Login Kit + Content Posting API (**Direct Post ON**), scope `video.publish`, redirect_uri `https://khoakr1405-crypto.github.io/tiktok/callback`, Target User `chuyenvuidoday10`. OAuth do Operator tự login+consent (No-Go #4); helper `scripts/tiktok-oauth-helper.ts` (`pnpm tiktok:oauth url|exchange --code|refresh`) chỉ dựng URL + đổi code → ghi token vào `.env` (gitignored, KHÔNG log/commit token).
+- **BLOCKER đã giải**: init trả `403 unaudited_client_can_only_post_to_private_accounts` DÙ đã ép `privacy_level=SELF_ONLY`. Nguyên nhân THẬT (không phải lỗi code): app chưa audit chỉ đăng được lên **tài khoản đang để Private**. Fix = Operator bật **Private account** trên app TikTok → đăng OK.
+- **Code Round 2** (commit `3eb6788` worktree, +207/−31, CHƯA push/merge): `tiktok-publish-client.ts` thêm (0) `creator_info/query` lấy `privacy_level_options` trước init + **multi-chunk upload** (`CHUNK_SIZE_BYTES=10MB`, Content-Range mỗi chunk); runner `scripts/ent-vlog/tiktok-publish-run.ts` (MỚI) wire FS deps → `publishToTikTok` thật + client thật, không cần Next/`@/`, chạy bằng plain `node`. Validation: biome lint **0**, node:test **30/30**.
+- **Token**: access_token = **24h** (TikTok không cho tự đặt 30/60/90 ngày); refresh_token = **365 ngày** → `pnpm tiktok:oauth refresh` lấy access mới, không cần login lại ~1 năm.
+
+**Bước tiếp theo**: (1) Operator duyệt **push** commit `3eb6788` lên origin (branch `feat/entertainment-tiktok-publish`) — hiện CHƯA push, no merge/force/PR. (2) Khi muốn đăng **công khai** → submit app TikTok audit. (3) Cân nhắc nối nút "Đăng TikTok" trên UI Studio thật (hiện đăng qua CLI runner).
 
 ---
 
