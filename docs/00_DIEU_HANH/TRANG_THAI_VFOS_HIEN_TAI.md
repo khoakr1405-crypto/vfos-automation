@@ -1,7 +1,7 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-06-24 (**Phase 3 lane Giải trí — ĐĂNG TIKTOK TỰ ĐỘNG — ROUND 2 (ĐĂNG THẬT) HOÀN TẤT, DoD ĐẠT**: job `ent_squid_001` đăng thật 1 video qua TikTok Content Posting API → state `TIKTOK_POSTED`, `publishId=v_pub_file~v2-1.7654841036543494165`, đăng **SELF_ONLY** vì app chưa audit. Giải blocker `unaudited_client_can_only_post_to_private_accounts` = bật **Private account** (không phải lỗi code). Thêm `creator_info/query` + **multi-chunk upload** (70MB→6 chunk) + CLI runner `tiktok-publish-run.ts`; commit `3eb6788` worktree (CHƯA push, no merge/PR). Validation: biome 0 · node:test 30/30. access_token 24h, refresh_token 365 ngày (`pnpm tiktok:oauth refresh`). Xem **Phần 38**. Round 1 (nền+mock) commit `f9a2fa6`. Trước đó: lane Giải trí MERGED master `e2d0a55` — Phần 37.)
+> **Cập nhật lần cuối**: 2026-06-24 (**Phase 3 lane Giải trí — NỐI NÚT "ĐĂNG TIKTOK" TRÊN UI STUDIO THẬT (Phần 39)**: đưa 11 file Phase 3 vào `feat/entertainment-lane` (nhánh chạy Studio có .env+data) → UI→route→`publishToTikTok`→client thật; commit `9322f9f` (+1714/−92, KHÔNG đụng 5 dirty WIP). FIX bug `node:fs` edge: bỏ `instrumentation.ts`, nạp `.env` gốc qua `next.config.ts` (Node, không webpack) — **phải restart Studio 3002**. Xác minh Next dev: readiness 200 `tiktokApiReady:true`, publish guard 409 ALREADY_POSTED (không đăng trùng), 404 control; biome/tsc/test sạch. Trước đó: **ROUND 2 (ĐĂNG THẬT) HOÀN TẤT, DoD ĐẠT**: job `ent_squid_001` đăng thật 1 video qua TikTok Content Posting API → state `TIKTOK_POSTED`, `publishId=v_pub_file~v2-1.7654841036543494165`, đăng **SELF_ONLY** vì app chưa audit. Giải blocker `unaudited_client_can_only_post_to_private_accounts` = bật **Private account** (không phải lỗi code). Thêm `creator_info/query` + **multi-chunk upload** (70MB→6 chunk) + CLI runner `tiktok-publish-run.ts`; commit `3eb6788` worktree (CHƯA push, no merge/PR). Validation: biome 0 · node:test 30/30. access_token 24h, refresh_token 365 ngày (`pnpm tiktok:oauth refresh`). Xem **Phần 38**. Round 1 (nền+mock) commit `f9a2fa6`. Trước đó: lane Giải trí MERGED master `e2d0a55` — Phần 37.)
 > **Branch**: master `e2d0a55` (lane Giải trí end-to-end). **Phase 3 round 1**: `feat/entertainment-tiktok-publish` (`f9a2fa6`, base master, **đã push origin, CHƯA merge/PR** — DoD cần đăng thật Round 2). Nhánh dev `feat/entertainment-lane` (`5fde46e`, đa-lane archive). | **Commit mốc**: `f9a2fa6` (`feat(ent-lane): add guarded TikTok publish flow (Phase 3 round 1)`). ⚠️ 5 file dirty NGOÀI SCOPE vẫn treo trên dev branch (`source-intake/route.ts`, `source-url/`, `package.json`, `bgm_library.json`, `implementation_plan.md`) — CHƯA xử lý.
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task → luôn chạy `pnpm vfos:daily` để có chỉ dẫn trạng thái mới nhất
 
@@ -2420,7 +2420,30 @@ DOM card img
 - **Code Round 2** (commit `3eb6788` worktree, +207/−31, CHƯA push/merge): `tiktok-publish-client.ts` thêm (0) `creator_info/query` lấy `privacy_level_options` trước init + **multi-chunk upload** (`CHUNK_SIZE_BYTES=10MB`, Content-Range mỗi chunk); runner `scripts/ent-vlog/tiktok-publish-run.ts` (MỚI) wire FS deps → `publishToTikTok` thật + client thật, không cần Next/`@/`, chạy bằng plain `node`. Validation: biome lint **0**, node:test **30/30**.
 - **Token**: access_token = **24h** (TikTok không cho tự đặt 30/60/90 ngày); refresh_token = **365 ngày** → `pnpm tiktok:oauth refresh` lấy access mới, không cần login lại ~1 năm.
 
-**Bước tiếp theo**: (1) Operator duyệt **push** commit `3eb6788` lên origin (branch `feat/entertainment-tiktok-publish`) — hiện CHƯA push, no merge/force/PR. (2) Khi muốn đăng **công khai** → submit app TikTok audit. (3) Cân nhắc nối nút "Đăng TikTok" trên UI Studio thật (hiện đăng qua CLI runner).
+**Bước tiếp theo**: Commit `3eb6788` ĐÃ push origin. Nối nút UI thật → **Phần 39**. Đăng công khai cần submit app TikTok audit (việc riêng, sau).
+
+---
+
+### ✅ Phần 39 — Phase 3 lane Giải trí: NỐI NÚT "ĐĂNG TIKTOK" TRÊN UI STUDIO THẬT (2026-06-24)
+
+> **Mục tiêu**: nút "Đăng lên TikTok" trên UI Studio đăng THẬT (UI → route → `publishToTikTok` → TikTok client thật), thay vì chỉ đăng được qua CLI runner. **DONE** — commit `9322f9f` trên `feat/entertainment-lane`.
+
+**Vì sao cần round này**: Round 2 đăng thật qua **CLI runner** (chạy từ main repo lấy `.env`+data, *import* code worktree). Nút UI chưa đăng thật được vì **2 nhánh diverge, mỗi nhánh thiếu một nửa**: worktree `feat/entertainment-tiktok-publish` có code Phase 3 nhưng thiếu `.env`+data; main repo `feat/entertainment-lane` (nhánh chạy Studio, có `.env`+data+14 cải tiến lane) lại **thiếu code Phase 3**. → Operator chọn **đưa code Phase 3 về `feat/entertainment-lane`**.
+
+**Đã làm (commit `9322f9f`, +1714/−92, KHÔNG đụng 5 file dirty WIP / package.json / spec)**:
+- Mang **11 file** từ `3eb6788`: `publish.ts`, `tiktok-publish-client.ts`, 2 route (`tiktok-publish`/`tiktok-readiness`), `jobs.ts` + `package-panel.tsx` (áp SẠCH — giống hệt clean-master), oauth helper + CLI runner + 2 test. `jobs.ts`/`package-panel.tsx` parity với `e2d0a55` = no-conflict.
+- **BUG phát hiện khi route chạy qua Next/webpack lần đầu** (trước chỉ test node:test + CLI runner): `instrumentation.ts` đọc `node:fs` → Next bundle instrumentation cho **edge runtime** → `UnhandledSchemeError "node:fs"` → mọi route **500**. **FIX**: bỏ `instrumentation.ts`, chuyển nạp `.env` gốc monorepo (`../../.env`) sang **`apps/studio/next.config.ts`** (chạy ở Node, KHÔNG qua webpack; additive, no-overwrite, không in giá trị).
+- ⚠️ next.config đổi → Next **KHÔNG hot-reload** → **phải restart `next dev`** (Studio cổng 3002) thì env mới nạp.
+
+**Xác minh qua Next dev THẬT** (port phụ 3009, KHÔNG đụng server 3002 của Operator):
+- `GET tiktok-readiness` → **200**, `tiktokApiReady:true` (env nạp OK qua next.config) + data thật (`TIKTOK_POSTED`, publishId).
+- `POST tiktok-publish` (không `confirmRepost`) → **409 ALREADY_POSTED** (guard chặn đăng trùng trên data thật) — **KHÔNG đăng video thứ 2**.
+- Job không tồn tại → **404 NOT_FOUND**.
+- biome lint **0** · tsc `@vfos/studio` **0** · node:test **30/30**.
+
+**Để đăng video MỚI qua nút UI**: restart Studio 3002 → `/lanes/content` → chọn job **APPROVED mới** (ent_squid_001 đã POSTED nên guard chặn, phải `confirmRepost`) → "Tạo caption" → đèn "TikTok API sẵn sàng" sáng → "Đăng lên TikTok".
+
+**Bước tiếp theo**: (1) Đăng **công khai** (hiện SELF_ONLY) → submit app TikTok audit (việc riêng, sau). (2) **Consolidation lớn về master**: gộp 14 cải tiến lane (`feat/entertainment-lane`) + Phase 3 vào master clean — cần **Step Inventory** (No-Go #9), để vòng riêng. (3) Worktree `feat/entertainment-tiktok-publish` vẫn còn `instrumentation.ts` lỗi — đồng bộ fix next.config nếu còn dùng.
 
 ---
 
