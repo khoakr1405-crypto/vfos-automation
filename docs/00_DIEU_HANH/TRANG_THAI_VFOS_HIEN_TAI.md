@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-06-23 (**Lane Giải trí (Entertainment / Fishing-Vlog) — ĐÃ MERGE VÀO MASTER qua branch clean (PR #1)**: nhánh dev `feat/entertainment-lane` (`db967b7`) đa-lane → tách `feat/entertainment-lane-clean` (base master `bb683a1`, 6 commit, **62 file +11011/-58**, blob byte-identical feature, COPY-BY-PATH) → PR #1 **squash-merge → master `e2d0a55`** (no conflict; review MERGE_OK: 0 file ngoài scope, 0 secret/runtime/binary, tsc 0/0, test 16/16). nav sửa surgical item 3 → `/lanes/content`. Worktree clean đã gỡ. Trước đó: Subtitle Scrub PaddleOCR — Phần 36, commit `43ab827`. Xem **Phần 37**.)
-> **Branch**: master nhận lane Giải trí @ **`e2d0a55`** (squash PR #1). Nhánh dev `feat/entertainment-lane` (`0dfb4da`) vẫn còn (đa-lane, sau merge master nên rebase/đối chiếu trước khi dùng tiếp); `feat/entertainment-lane-clean` đã merged (xoá được trên GitHub + local). | **Commit mốc**: `e2d0a55` (`Merge pull request #1 … entertainment-lane-clean`). ⚠️ 5 file dirty NGOÀI SCOPE vẫn treo trên dev branch (`source-intake/route.ts`, `source-url/`, `package.json`, `bgm_library.json`, `implementation_plan.md`) — CHƯA xử lý.
+> **Cập nhật lần cuối**: 2026-06-23 (**Phase 3 lane Giải trí — ĐĂNG TIKTOK TỰ ĐỘNG + CAPTION TỰ ĐỘNG — ROUND 1 (nền + mock) HOÀN TẤT**: branch mới `feat/entertainment-tiktok-publish` (base master `e2d0a55`, worktree `../vfos-ent-tiktok`). TikTok **Content Posting** client (init/upload/poll, ADDITIVE) + mock; `publish.ts` PURE/DI + 11 guard (no fake success); `jobs.ts` states TIKTOK_POSTING/POSTED/FAILED + field `tiktok` + readiness 5 đèn; 2 route (publish/readiness, local-only, **no token**); UI card "Đăng lên TikTok" (5 đèn + caption edit + 2 nút). **Validation: test 23/23 · tsc 0 · biome lint 0 · isolation+secret sạch**. ĐĂNG THẬT chặn bằng env `TIKTOK_PUBLISH_LIVE` (No-Go #2) — chờ Round 2. Commit `f9a2fa6` ĐÃ push origin. Xem **Phần 38**. Trước đó: lane Giải trí MERGED master `e2d0a55` — Phần 37.)
+> **Branch**: master `e2d0a55` (lane Giải trí end-to-end). **Phase 3 round 1**: `feat/entertainment-tiktok-publish` (`f9a2fa6`, base master, **đã push origin, CHƯA merge/PR** — DoD cần đăng thật Round 2). Nhánh dev `feat/entertainment-lane` (`5fde46e`, đa-lane archive). | **Commit mốc**: `f9a2fa6` (`feat(ent-lane): add guarded TikTok publish flow (Phase 3 round 1)`). ⚠️ 5 file dirty NGOÀI SCOPE vẫn treo trên dev branch (`source-intake/route.ts`, `source-url/`, `package.json`, `bgm_library.json`, `implementation_plan.md`) — CHƯA xử lý.
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task → luôn chạy `pnpm vfos:daily` để có chỉ dẫn trạng thái mới nhất
 
 > ⚠️ **ĐƯỜNG VẬN HÀNH CHÍNH THỨC**: dùng `docs/00_DIEU_HANH/HUONG_DAN_VAN_HANH_CHINH_THUC_VFOS.md` (operator guide chuẩn, flow A-Z `commerce:intake` → `job:run-review` → `job:publish-facebook`).
@@ -2390,6 +2390,29 @@ DOM card img
 **ĐÃ XONG (2026-06-23)**: PR #1 mở tay trên web (`gh` chưa cài) → squash-merge → master `e2d0a55`. Worktree `../vfos-ent-clean` đã `git worktree remove`. Branch clean merged (xoá được trên GitHub + local `git branch -D` vì squash).
 
 **Còn lại (CHƯA xử lý)**: (1) 5 file dirty NGOÀI SCOPE trên dev branch (`source-intake/route.ts`, `source-url/`, `package.json`, `bgm_library.json`, `implementation_plan.md`) — quyết giữ/commit riêng/bỏ. (2) Nhánh dev `feat/entertainment-lane` (đa-lane) đã sau master — nếu dùng tiếp phải rebase/đối chiếu (lane Giải trí giờ đã ở master, tránh đưa lại). (3) Local master còn ở baseline cũ — `git fetch` đã cập nhật `origin/master`; sync local master khi cần checkout.
+
+---
+
+### ✅ Phần 38 — Phase 3 lane Giải trí: Đăng TikTok tự động + caption tự động — ROUND 1 (nền + mock, CHƯA live) (2026-06-23)
+
+> **Mục tiêu Phase 3**: card 3 "Đăng lên TikTok" tự lấy video đã duyệt + caption + hashtag → gọi **TikTok Content Posting API** đăng thật, ghi proof/status vào job. **DoD** = đăng thật thành công 1 video qua API + proof + UI báo thành công. **Round 1 này** xây xong NỀN kỹ thuật + chạy **mock/test an toàn** (CHƯA live); đăng thật là **Round 2**, cần Operator ra lệnh riêng + bật `TIKTOK_PUBLISH_LIVE=true`.
+
+**Branch / discipline**: nhánh MỚI `feat/entertainment-tiktok-publish` từ **`origin/master`** qua **git worktree** `../vfos-ent-tiktok` (không đụng dev branch + 5 file dirty + master). Commit `f9a2fa6` (8 file, +1274/−94) **đã push origin**, CHƯA merge/PR. KHÔNG `git add .`, không commit `.env`/runtime, không render/ElevenLabs/live TikTok.
+
+**Kiến trúc (3 lớp, isolation)** — phát hiện nền: caption+hashtag ĐÃ tự sinh sẵn ở `16-package` → Phase 3 tái dùng; client cũ chỉ là Display read-only → cần Content Posting mới:
+- `apps/studio/src/lib/tiktok/tiktok-publish-client.ts` (MỚI, additive — không sửa `tiktok-client.ts`/analytics/growth): Content Posting `init → upload(FILE_UPLOAD) → poll status` + `createMockTikTokPublishClient`. Pure (no alias `@/`).
+- `apps/studio/src/lib/entertainment/publish.ts` (MỚI, PURE/dependency-injection): `publishToTikTok(deps,id,input)` + `computeReadiness` + toàn bộ guard — test nạp trực tiếp bằng mock deps/client, KHÔNG gọi live/không cần env.
+- `apps/studio/src/lib/entertainment/jobs.ts` (sửa): states `TIKTOK_POSTING/POSTED/FAILED` + field `tiktok` + `getTikTokReadiness`/`setTikTokStatus`/`saveCaptionToPackage`/`buildPublishDeps` (đọc env server-side, **KHÔNG log/return token**) + reconcile bám `manifest.tiktok`.
+- Routes (MỚI): `POST /jobs/[id]/tiktok-publish` · `GET /jobs/[id]/tiktok-readiness` (local-only, response **không token**).
+- UI (sửa): `package-panel.tsx` → card "Đăng lên TikTok": readiness 5 đèn + caption preview/edit + nút **"Tạo caption"** (POST package hiện có) + **"Đăng lên TikTok"** + hiện `TIKTOK_POSTED`/thời gian/postId/shareUrl, lỗi sanitize. **Operator duyệt UI mock 2026-06-23.**
+
+**Guard (11, chặn thật, no fake success)**: `NO_PREVIEW_GATE` (chưa duyệt GATE 2) · `NO_FINAL` · `NO_CAPTION` · `TIKTOK_DISABLED`/`TIKTOK_NOT_CONFIGURED`/`LIVE_NOT_ENABLED` · `ALREADY_POSTED` (cần `confirmRepost`) · `PUBLISH_BUSY` · `BUSY` (pipeline chạy) · `TIKTOK_API_ERROR` · `TIKTOK_AUTH_EXPIRED`. Client lỗi → ghi `TIKTOK_FAILED`, KHÔNG ghi POSTED.
+
+**Manifest** (`ent_job.json.tiktok`, runtime gitignored, no token): `status·mode·publishId·postId?·shareUrl?·captionUsed·hashtagsUsed·startedAt·postedAt·error?` + trace `montage_v2/tiktok_publish.json`.
+
+**Validation**: node:test **23/23 PASS** (guards/success/fail/isolation) · tsc `@vfos/studio` **0** · biome **lint 0** (line-ending là noise repo-wide: `core.autocrlf=true`, blob commit là LF — biome `check` sau `--write` cũng 0) · isolation: **0 import** Product Review/Shopee/Facebook/commerce/growth/job-manager/review-orchestrator · secret: **không log/commit token**, chỉ đọc `process.env`, message chỉ chứa TÊN biến · **KHÔNG gọi TikTok thật** (mock 100%, live chặn 2 lớp env).
+
+**Bước tiếp theo (Round 2 — DoD đăng thật)**: Operator ra lệnh riêng → set env live (`TIKTOK_MODE=display|business` + token + scope `video.publish` + **`TIKTOK_PUBLISH_LIVE=true`**) → `pnpm dev` → `/lanes/content` → job APPROVED → "Tạo caption" → bấm "Đăng lên TikTok" (cổng tay) → real API → `TIKTOK_POSTED` + proof. Chốt ở Round 2: **privacy_level** (app chưa audit có thể buộc `SELF_ONLY`/đẩy draft inbox), token hết hạn (re-auth, không bypass), chunked upload nếu video >60MB.
 
 ---
 
