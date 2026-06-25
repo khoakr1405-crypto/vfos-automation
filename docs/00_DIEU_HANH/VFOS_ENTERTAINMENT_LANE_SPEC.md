@@ -412,10 +412,61 @@ logic engine vào API.
 
 - Affiliate theo ngữ cảnh (1 link chủ đạo + 2 link comment) — chỉ bật sau khi kênh
   có view; không gắn ở phase xây kênh.
-- Multi-channel/multi-niche (Vlog Xe…) — manifest đã có field `niche`; mở rộng sau
-  khi 1 niche chạy mượt.
 - Voice ElevenLabs — đổi `provider` khi hết kẹt billing; schema không đổi.
 - `stock_ambient` file thu thật (thay synthetic) cho production.
+
+---
+
+## 13. Multi-channel (R1) — quản nhiều tài khoản TikTok, CHỐNG ĐĂNG NHẦM KÊNH
+
+> Mục tiêu: lane Giải trí quản 5→10 tài khoản TikTok trên `/lanes/content`. **Yêu cầu
+> số 1: video sản xuất cho kênh A CHỈ đăng đúng account A** — chặn tuyệt đối đăng nhầm
+> A→B. Giai đoạn đầu: **1 kênh = 1 account (1:1)**; chưa 1-kênh-nhiều-account, chưa lịch đăng.
+
+**Xương sống (cấu trúc, không chỉ guard UI):** account đích là thuộc tính **BẤT BIẾN**
+của job (ghi lúc tạo). Khi đăng, client resolve token **server-side theo `job.accountId`**
+(G4), KHÔNG theo "kênh đang chọn" trên UI → UI sai vẫn không đổi được đích.
+
+**Registry** `config/entertainment_channels.json` (committed, CHỈ metadata, KHÔNG token):
+`channelId · channelName · niche · accountId · tiktokUsername · tiktokDisplayName ·
+postingMode(direct|inbox) · allowedContentTypes[] · status(active|inactive) · avatar ·
+guardPolicy{topicMismatch:block|warn, crossPost:deny|allow}`. Tách HẲN khỏi
+`config/channels.json` của lane growth (KHÔNG tái dùng).
+
+**Token store** `data/secure/tiktok_accounts.json` (**gitignored** qua `data/`, KHÔNG
+commit/log) keyed theo `accountId`: `{openId, accessToken, refreshToken?, expiresAt?,
+username?}`. App-level `client_key/secret` ở `.env`. Account legacy `tt_fishing_main`
+đọc từ `.env` (backward-compat) tới khi R3 dời vào store. `account-store.ts` chỉ trả
+token cho NỘI BỘ build client; UI dùng `getAccountHealth`/`getJobChannelInfo` (no token).
+
+**Manifest thêm** (`ent_job.json`): `channelId · accountId · channelNiche · channelBoundAt`
+(immutable, bind lúc `createJob`). Job CŨ chưa bind → `buildPublishView`/`getJobChannelInfo`
+suy kênh từ `niche` (legacy fallback). `lane` mở từ literal → `'entertainment'`.
+
+**Guard chuỗi (default-deny) trong `publish.ts` (pure/DI):**
+`G1 NO_CHANNEL_BINDING` (job thiếu channelId) · `G2 CHANNEL_UNKNOWN` (channelId không
+trong registry) · `CROSS_POST_DENIED` (job.accountId ≠ account của kênh) · `G3
+CHANNEL_MISMATCH` (selectedChannelId ≠ job.channelId) · gate nội dung (preview/final/
+caption) · posting-state (already/busy) · `G5 ACCOUNT_INACTIVE` · `G8 TOPIC_NOT_ALLOWED`
+(niche ∉ allowedContentTypes khi policy=block; warn → cho qua) · **`G4` resolve client
+theo `job.accountId`** · **`G7 ACCOUNT_IDENTITY_MISMATCH`** (`creator_info/query` →
+`creator_username` so với `channel.tiktokUsername` — bắt dán nhầm token account khác).
+Cross-post mặc định CẤM; muốn dùng nội dung kênh khác phải **clone job sang channel X**
+(tạo job mới có chủ đích), KHÔNG redirect post, KHÔNG auto-suggest.
+
+**Readiness route** trả thêm `channel` (channelId/accountId/channelName/tiktokUsername/
+status/accountConfigured — KHÔNG token). `tiktokApiReady` tính theo account bind.
+
+**File R1:** `config/entertainment_channels.json` · `lib/entertainment/channels.ts` ·
+`lib/tiktok/account-store.ts` · `lib/tiktok/tiktok-publish-client.ts` (+`queryCreatorUsername`)
+· `lib/entertainment/publish.ts` (guards) · `lib/entertainment/jobs.ts` (bind+deps) ·
+3 route (intake/publish/readiness) · `tests/entertainment-multichannel.test.ts`. Validation
+R1: node:test 39/39 · biome 0 · tsc 0; **chưa live publish, chưa OAuth account mới** (R3).
+
+**Roadmap:** R1 nền (xong) → R2 UI (Channel Switcher/Overview/badge/nút "@username"/
+banner mismatch) → R3 token ops (oauth `--account` + onboard 4 account + token health/refresh)
+→ R4 scale (search/group/dashboard). **Trần thật:** app TikTok chưa audit → SELF_ONLY +
+~10 Target User; đăng công khai/>10 account cần submit audit.
 
 ---
 

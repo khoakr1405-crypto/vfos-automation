@@ -5,7 +5,12 @@
  * summary (status/postId/shareUrl — KHÔNG token). Local-only, read-only.
  * ========================================================================== */
 
-import { getJobDetail, getTikTokReadiness, isValidJobId } from '@/lib/entertainment/jobs';
+import {
+  getJobChannelInfo,
+  getJobDetail,
+  getTikTokReadiness,
+  isValidJobId,
+} from '@/lib/entertainment/jobs';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,5 +41,6 @@ export async function GET(req: Request, ctx: { params: Promise<{ jobId: string }
     caption: job?.package?.caption ?? '',
     hashtags: job?.package?.hashtags ?? [],
     tiktok: job?.tiktok ?? null,
+    channel: getJobChannelInfo(jobId),
   });
 }

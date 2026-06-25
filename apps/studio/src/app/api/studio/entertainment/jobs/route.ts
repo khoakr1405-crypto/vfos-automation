@@ -21,6 +21,8 @@ function isLocalRequest(req: Request): boolean {
 interface CreateBody {
   url?: string;
   niche?: string;
+  /** Kênh đích (multi-channel) — bind cứng vào job lúc tạo. */
+  channelId?: string;
 }
 
 /**
@@ -60,6 +62,8 @@ export async function POST(req: Request) {
 
   const url = extractUrl(body.url ?? '');
   const niche = (body.niche ?? 'fishing-vlog').trim();
+  const channelId =
+    typeof body.channelId === 'string' && body.channelId.trim() ? body.channelId.trim() : undefined;
 
   if (!url) {
     return Response.json(
@@ -80,7 +84,7 @@ export async function POST(req: Request) {
   }
 
   try {
-    const job = createJob({ url, niche });
+    const job = createJob({ url, niche, channelId });
     const ok = job.state === 'INTAKE_DONE';
     return Response.json({ ok, job }, { status: ok ? 200 : 502 });
   } catch (e) {

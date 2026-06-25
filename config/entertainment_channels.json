@@ -1,0 +1,18 @@
+{
+  "_doc": "VFOS lane Giải trí — registry kênh (multi-channel). CHỈ metadata, KHÔNG secret/token. Token để ở data/secure/tiktok_accounts.json (gitignored). 1 kênh = 1 tài khoản (1:1). channelId/accountId là khoá bind bất biến của job.",
+  "channels": [
+    {
+      "channelId": "ch_fishing",
+      "channelName": "Vlog Câu cá",
+      "niche": "fishing-vlog",
+      "accountId": "tt_fishing_main",
+      "tiktokUsername": "chuyenvuidoday10",
+      "tiktokDisplayName": "Chuyện Vui Đó Đây",
+      "postingMode": "direct",
+      "allowedContentTypes": ["fishing-vlog"],
+      "status": "active",
+      "avatar": "",
+      "guardPolicy": { "topicMismatch": "warn", "crossPost": "deny" }
+    }
+  ]
+}

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   type EntTikTokPublishSummary,
+  type PublishChannelView,
   type PublishDeps,
   type PublishJobView,
   type ResolveClientResult,
@@ -19,6 +20,9 @@ function baseView(over: Partial<PublishJobView> = {}): PublishJobView {
   return {
     jobId: 'ent_fishing_test',
     state: 'APPROVED',
+    channelId: 'ch_test',
+    accountId: 'tt_test',
+    niche: 'fishing-vlog',
     previewApproved: true,
     finalVideoAbsPath: '/abs/data/temp/ent/ent_fishing_test/montage_v2_short_ambient.mp4',
     caption: 'Ra biển câu mực, lên hàng là mê luôn 🎣',
@@ -30,10 +34,26 @@ function baseView(over: Partial<PublishJobView> = {}): PublishJobView {
   };
 }
 
+function baseChannel(over: Partial<PublishChannelView> = {}): PublishChannelView {
+  return {
+    channelId: 'ch_test',
+    accountId: 'tt_test',
+    niche: 'fishing-vlog',
+    tiktokUsername: 'tester',
+    status: 'active',
+    allowedContentTypes: ['fishing-vlog'],
+    topicMismatchPolicy: 'warn',
+    ...over,
+  };
+}
+
 interface DepsOpts {
   view?: Partial<PublishJobView>;
   loadJobNull?: boolean;
-  resolveClient?: () => ResolveClientResult;
+  channel?: Partial<PublishChannelView>;
+  loadChannelNull?: boolean;
+  resolveClientForAccount?: (accountId: string) => ResolveClientResult;
+  verifyIdentity?: (accountId: string, expectedUsername: string) => Promise<{ ok: boolean; reason?: string }>;
   mockFail?: { code: string; message: string };
 }
 
@@ -41,26 +61,33 @@ function makeDeps(opts: DepsOpts = {}) {
   const calls = {
     setStatus: [] as EntTikTokPublishSummary[],
     saveCaption: [] as Array<{ caption: string; hashtags: string[] }>,
+    resolvedAccounts: [] as string[],
   };
   const view = baseView(opts.view);
+  const channel = baseChannel(opts.channel);
   const deps: PublishDeps = {
     loadJob: () => (opts.loadJobNull ? null : view),
+    loadChannel: () => (opts.loadChannelNull ? null : channel),
     saveCaption: (_id, caption, hashtags) => {
       calls.saveCaption.push({ caption, hashtags });
     },
     setStatus: (_id, summary) => {
       calls.setStatus.push(summary);
     },
-    resolveClient:
-      opts.resolveClient ??
-      (() => ({
-        ok: true,
-        client: createMockTikTokPublishClient(opts.mockFail ? { fail: opts.mockFail } : undefined),
-        mode: 'mock',
-      })),
+    resolveClientForAccount:
+      opts.resolveClientForAccount ??
+      ((accountId) => {
+        calls.resolvedAccounts.push(accountId);
+        return {
+          ok: true,
+          client: createMockTikTokPublishClient(opts.mockFail ? { fail: opts.mockFail } : undefined),
+          mode: 'mock',
+        };
+      }),
+    verifyAccountIdentity: opts.verifyIdentity ?? (async () => ({ ok: true })),
     now: () => NOW,
   };
-  return { deps, calls, view };
+  return { deps, calls, view, channel };
 }
 
 describe('computeReadiness — 5 đèn', () => {
@@ -124,7 +151,7 @@ describe('publishToTikTok — guard chặn (không gọi client, không POSTED)'
 
   test('thiếu env/token → TIKTOK_NOT_CONFIGURED, không gọi client', async () => {
     const { deps, calls } = makeDeps({
-      resolveClient: () => ({
+      resolveClientForAccount: () => ({
         ok: false,
         code: 'TIKTOK_NOT_CONFIGURED',
         message: 'Thiếu cấu hình TikTok: TIKTOK_ACCESS_TOKEN.',
@@ -137,7 +164,11 @@ describe('publishToTikTok — guard chặn (không gọi client, không POSTED)'
 
   test('live chưa bật → LIVE_NOT_ENABLED', async () => {
     const { deps } = makeDeps({
-      resolveClient: () => ({ ok: false, code: 'LIVE_NOT_ENABLED', message: 'Chưa bật live.' }),
+      resolveClientForAccount: () => ({
+        ok: false,
+        code: 'LIVE_NOT_ENABLED',
+        message: 'Chưa bật live.',
+      }),
     });
     const r = await publishToTikTok(deps, 'ent_x');
     assert.equal(r.ok === false && r.code, 'LIVE_NOT_ENABLED');

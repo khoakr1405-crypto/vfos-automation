@@ -13,9 +13,16 @@ import { join } from 'node:path';
 import { resolveInsideRepo } from '@/lib/studio-data/paths';
 import { runRepoScript, runRepoScriptDetached } from '@/lib/studio-data/run-command';
 import {
+  accountConfigured,
+  getAccountTokens,
+  isAccountTokenExpired,
+} from '@/lib/tiktok/account-store';
+import {
   createMockTikTokPublishClient,
   createTikTokPublishClient,
+  queryCreatorUsername,
 } from '@/lib/tiktok/tiktok-publish-client';
+import { getChannel, resolveChannelForJob } from './channels';
 import { computeReadiness } from './publish';
 import type {
   EntTikTokPublishSummary,
@@ -150,8 +157,14 @@ export interface EntPackageSummary {
 
 export interface EntJob {
   jobId: string;
-  lane: 'entertainment/fishing-vlog';
+  lane: string;
   niche: string;
+  /** Kênh bind (multi-channel) — immutable từ lúc tạo. Job cũ chưa có → suy từ niche. */
+  channelId?: string;
+  /** Account TikTok đích bind — immutable. Chống đăng nhầm kênh. */
+  accountId?: string;
+  channelNiche?: string;
+  channelBoundAt?: string;
   state: EntJobState;
   createdAt: string;
   updatedAt: string;
@@ -239,13 +252,23 @@ export function listJobs(): EntJob[] {
  * INTAKE_RUNNING trước, rồi cập nhật INTAKE_DONE/FAILED sau khi tải xong.
  * KHÔNG ghi bất kỳ registry nào của Product Review/Shopee.
  */
-export function createJob(input: { url: string; niche: string }): EntJob {
+export function createJob(input: { url: string; niche: string; channelId?: string }): EntJob {
   const id = genJobId(input.niche);
   const now = nowIso();
+  // Bind kênh NGAY lúc tạo (immutable): ưu tiên channelId tường minh, fallback niche.
+  const channel = resolveChannelForJob({ channelId: input.channelId, niche: input.niche });
   let job: EntJob = {
     jobId: id,
-    lane: 'entertainment/fishing-vlog',
+    lane: 'entertainment',
     niche: input.niche,
+    ...(channel
+      ? {
+          channelId: channel.channelId,
+          accountId: channel.accountId,
+          channelNiche: channel.niche,
+          channelBoundAt: now,
+        }
+      : {}),
     state: 'INTAKE_RUNNING',
     createdAt: now,
     updatedAt: now,
@@ -986,18 +1009,79 @@ function resolveTikTokConfig(): TikTokConfig {
   return { ok: true, mode, isMock: false, accessToken: token };
 }
 
-function resolveTikTokClient(): ResolveClientResult {
-  const cfg = resolveTikTokConfig();
-  if (!cfg.ok) return { ok: false, code: cfg.code, message: cfg.message };
-  if (cfg.isMock) return { ok: true, client: createMockTikTokPublishClient(), mode: 'mock' };
+/**
+ * G4 — Resolve client THEO accountId (multi-channel). Token từ account-store
+ * (data/secure store, fallback .env legacy). KHÔNG theo "kênh đang chọn" UI.
+ */
+function resolveTikTokClientForAccount(accountId: string): ResolveClientResult {
+  const mode = parseTikTokMode();
+  if (mode === 'disabled') {
+    return { ok: false, code: 'TIKTOK_DISABLED', message: 'TikTok đang tắt (TIKTOK_MODE=disabled).' };
+  }
+  if (mode === 'mock') {
+    return { ok: true, client: createMockTikTokPublishClient(), mode: 'mock' };
+  }
+  const clientKey = (process.env.TIKTOK_CLIENT_KEY || '').trim();
+  const tokens = getAccountTokens(accountId);
+  if (!clientKey || !tokens?.accessToken) {
+    const missing = [
+      !clientKey ? 'TIKTOK_CLIENT_KEY' : null,
+      !tokens?.accessToken ? `token account ${accountId}` : null,
+    ].filter(Boolean);
+    return {
+      ok: false,
+      code: 'TIKTOK_NOT_CONFIGURED',
+      message: `Thiếu cấu hình TikTok: ${missing.join(', ')}.`,
+    };
+  }
+  if (isAccountTokenExpired(accountId)) {
+    return {
+      ok: false,
+      code: 'TIKTOK_AUTH_EXPIRED',
+      message: `Token account ${accountId} đã hết hạn — refresh trước khi đăng.`,
+    };
+  }
+  if ((process.env.TIKTOK_PUBLISH_LIVE || '').trim().toLowerCase() !== 'true') {
+    return {
+      ok: false,
+      code: 'LIVE_NOT_ENABLED',
+      message: 'Đăng TikTok thật chưa được bật (đặt TIKTOK_PUBLISH_LIVE=true).',
+    };
+  }
   return {
     ok: true,
-    client: createTikTokPublishClient({ accessToken: cfg.accessToken, mode: cfg.mode }),
-    mode: cfg.mode,
+    client: createTikTokPublishClient({ accessToken: tokens.accessToken, mode }),
+    mode,
   };
 }
 
-/** Env TikTok đã sẵn sàng để đăng (mock OK; live cần keys + bật live). Booleans only. */
+/** tiktokApiReady cho 1 account (mock OK; live cần token account + bật live). Booleans only. */
+function accountApiReady(accountId: string | null): boolean {
+  if (!accountId) return false;
+  return resolveTikTokClientForAccount(accountId).ok;
+}
+
+/**
+ * G7 — token account có ĐÚNG là của @username kênh không (creator_info/query).
+ * mock → bỏ qua; kênh chưa pin username → không chặn. KHÔNG log token.
+ */
+async function verifyTikTokIdentity(
+  accountId: string,
+  expectedUsername: string,
+): Promise<{ ok: boolean; reason?: string }> {
+  if (parseTikTokMode() === 'mock') return { ok: true };
+  const tokens = getAccountTokens(accountId);
+  if (!tokens?.accessToken) return { ok: false, reason: 'no-token' };
+  if (!expectedUsername) return { ok: true };
+  const live = await queryCreatorUsername(tokens.accessToken);
+  if (!live.ok) return { ok: false, reason: 'creator_info_failed' };
+  if (!live.username) return { ok: false, reason: 'no_username' };
+  return live.username.toLowerCase() === expectedUsername.toLowerCase()
+    ? { ok: true }
+    : { ok: false, reason: `@${live.username} != @${expectedUsername}` };
+}
+
+/** Env TikTok legacy đã sẵn sàng (giữ cho tương thích — multi-channel dùng accountApiReady). */
 export function tiktokEnvReady(): boolean {
   return resolveTikTokConfig().ok;
 }
@@ -1008,9 +1092,14 @@ function buildPublishView(id: string): PublishJobView | null {
   if (!detail) return null;
   const pkg = detail.package;
   const runningStep = anyStepRunning(id);
+  // Bind kênh: ưu tiên manifest; job cũ chưa bind → suy từ niche (migration nhẹ).
+  const channel = resolveChannelForJob({ channelId: detail.channelId, niche: detail.niche });
   return {
     jobId: id,
     state: detail.state,
+    channelId: detail.channelId ?? channel?.channelId ?? null,
+    accountId: detail.accountId ?? channel?.accountId ?? null,
+    niche: detail.niche ?? null,
     previewApproved: detail.reviewGates?.previewApproved === true,
     finalVideoAbsPath: previewVideoPath(id),
     caption: pkg?.caption ?? '',
@@ -1021,11 +1110,35 @@ function buildPublishView(id: string): PublishJobView | null {
   };
 }
 
-/** 5 đèn readiness cho UI (không token/secret). */
+/** 5 đèn readiness cho UI (không token/secret). tiktokApiReady theo account bind. */
 export function getTikTokReadiness(id: string): EntTikTokReadiness | null {
   const view = buildPublishView(id);
   if (!view) return null;
-  return computeReadiness(view, tiktokEnvReady());
+  return computeReadiness(view, accountApiReady(view.accountId));
+}
+
+export interface EntJobChannelInfo {
+  channelId: string | null;
+  accountId: string | null;
+  channelName: string | null;
+  tiktokUsername: string | null;
+  status: 'active' | 'inactive' | null;
+  accountConfigured: boolean;
+}
+
+/** Thông tin kênh/account đích của job cho UI card "Đăng lên TikTok" — KHÔNG token. */
+export function getJobChannelInfo(id: string): EntJobChannelInfo | null {
+  const detail = getJobDetail(id);
+  if (!detail) return null;
+  const ch = resolveChannelForJob({ channelId: detail.channelId, niche: detail.niche });
+  return {
+    channelId: detail.channelId ?? ch?.channelId ?? null,
+    accountId: detail.accountId ?? ch?.accountId ?? null,
+    channelName: ch?.channelName ?? null,
+    tiktokUsername: ch?.tiktokUsername ?? null,
+    status: ch?.status ?? null,
+    accountConfigured: ch ? accountConfigured(ch.accountId) : false,
+  };
 }
 
 /** Ghi tiktok summary + state vào manifest + trace file runtime (no token). */
@@ -1071,11 +1184,26 @@ export function saveCaptionToPackage(id: string, caption: string, hashtags: stri
 export function buildPublishDeps(): PublishDeps {
   return {
     loadJob: (id) => buildPublishView(id),
+    loadChannel: (channelId) => {
+      const ch = getChannel(channelId);
+      if (!ch) return null;
+      return {
+        channelId: ch.channelId,
+        accountId: ch.accountId,
+        niche: ch.niche,
+        tiktokUsername: ch.tiktokUsername,
+        status: ch.status,
+        allowedContentTypes: ch.allowedContentTypes,
+        topicMismatchPolicy: ch.guardPolicy.topicMismatch,
+      };
+    },
     saveCaption: (id, caption, hashtags) => saveCaptionToPackage(id, caption, hashtags),
     setStatus: (id, summary) => {
       setTikTokStatus(id, summary);
     },
-    resolveClient: resolveTikTokClient,
+    resolveClientForAccount: (accountId) => resolveTikTokClientForAccount(accountId),
+    verifyAccountIdentity: (accountId, expectedUsername) =>
+      verifyTikTokIdentity(accountId, expectedUsername),
     now: () => nowIso(),
   };
 }

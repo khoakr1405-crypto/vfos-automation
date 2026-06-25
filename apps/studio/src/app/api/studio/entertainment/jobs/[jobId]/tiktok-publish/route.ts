@@ -21,6 +21,13 @@ function isLocalRequest(req: Request): boolean {
 
 const HTTP_FOR: Record<PublishErrorCode, number> = {
   NOT_FOUND: 404,
+  NO_CHANNEL_BINDING: 409,
+  CHANNEL_UNKNOWN: 409,
+  CHANNEL_MISMATCH: 409,
+  CROSS_POST_DENIED: 409,
+  ACCOUNT_INACTIVE: 409,
+  ACCOUNT_IDENTITY_MISMATCH: 409,
+  TOPIC_NOT_ALLOWED: 409,
   NO_PREVIEW_GATE: 409,
   NO_FINAL: 409,
   NO_CAPTION: 409,
@@ -46,11 +53,18 @@ export async function POST(req: Request, ctx: { params: Promise<{ jobId: string 
   const body = (await req.json().catch(() => ({}))) as {
     caption?: unknown;
     confirmRepost?: unknown;
+    selectedChannelId?: unknown;
   };
   const caption = typeof body.caption === 'string' ? body.caption : undefined;
   const confirmRepost = body.confirmRepost === true;
+  const selectedChannelId =
+    typeof body.selectedChannelId === 'string' ? body.selectedChannelId : undefined;
 
-  const res = await publishToTikTok(buildPublishDeps(), jobId, { caption, confirmRepost });
+  const res = await publishToTikTok(buildPublishDeps(), jobId, {
+    caption,
+    confirmRepost,
+    selectedChannelId,
+  });
   if (!res.ok) {
     return Response.json(res, { status: HTTP_FOR[res.code] ?? 400 });
   }

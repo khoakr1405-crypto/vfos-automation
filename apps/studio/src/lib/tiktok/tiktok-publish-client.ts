@@ -282,3 +282,33 @@ export function createMockTikTokPublishClient(opts?: {
     },
   };
 }
+
+/**
+ * G7 (identity) — query `creator_username` của token đang cầm (creator_info/query,
+ * có sẵn với scope video.publish) để đối chiếu username kỳ vọng của kênh (registry).
+ * Dùng trong verifyAccountIdentity (jobs.ts) chống dán nhầm token account khác.
+ * KHÔNG log/echo token; lỗi mạng/HTTP → { ok:false }.
+ */
+export async function queryCreatorUsername(
+  accessToken: string,
+): Promise<{ ok: boolean; username?: string }> {
+  try {
+    const r = await fetchJson(
+      `${TIKTOK_API_BASE}/post/publish/creator_info/query/`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json; charset=UTF-8',
+        },
+        body: '{}',
+      },
+      INIT_TIMEOUT_MS,
+    );
+    if (r.status >= 400) return { ok: false };
+    const data = (r.json.data ?? {}) as { creator_username?: string };
+    return { ok: true, username: data.creator_username ? String(data.creator_username) : undefined };
+  } catch {
+    return { ok: false };
+  }
+}
