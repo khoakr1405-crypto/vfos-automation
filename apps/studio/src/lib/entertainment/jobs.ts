@@ -22,7 +22,7 @@ import {
   createTikTokPublishClient,
   queryCreatorUsername,
 } from '@/lib/tiktok/tiktok-publish-client';
-import { getChannel, resolveChannelForJob } from './channels';
+import { getChannel, listChannels, resolveChannelForJob } from './channels';
 import { computeReadiness } from './publish';
 import type {
   EntTikTokPublishSummary,
@@ -1139,6 +1139,72 @@ export function getJobChannelInfo(id: string): EntJobChannelInfo | null {
     status: ch?.status ?? null,
     accountConfigured: ch ? accountConfigured(ch.accountId) : false,
   };
+}
+
+/** Resolve channelId của 1 job (manifest → fallback niche). Dùng cho filter/badge UI. */
+function jobChannelId(job: EntJob): string | null {
+  return job.channelId ?? resolveChannelForJob({ niche: job.niche })?.channelId ?? null;
+}
+
+export interface EntJobUi {
+  jobId: string;
+  state: string;
+  source?: { url?: string; durationSec?: number };
+  channelId: string | null;
+  channelName: string | null;
+  tiktokUsername: string | null;
+}
+
+/** Job list cho UI — kèm kênh đã resolve (badge + filter theo kênh). KHÔNG token. */
+export function listJobsForUi(): EntJobUi[] {
+  return listJobs().map((j) => {
+    const ch = resolveChannelForJob({ channelId: j.channelId, niche: j.niche });
+    return {
+      jobId: j.jobId,
+      state: j.state,
+      source: j.source ? { url: j.source.url, durationSec: j.source.durationSec } : undefined,
+      channelId: j.channelId ?? ch?.channelId ?? null,
+      channelName: ch?.channelName ?? null,
+      tiktokUsername: ch?.tiktokUsername ?? null,
+    };
+  });
+}
+
+export interface EntChannelUi {
+  channelId: string;
+  channelName: string;
+  niche: string;
+  tiktokUsername: string;
+  tiktokDisplayName: string | null;
+  status: 'active' | 'inactive';
+  avatar: string | null;
+  accountConfigured: boolean;
+  jobCount: number;
+  postedToday: number;
+}
+
+/** Channels cho UI Switcher/Overview — kèm jobCount + postedToday + accountConfigured. KHÔNG token. */
+export function listChannelsForUi(): EntChannelUi[] {
+  const jobs = listJobs();
+  const today = nowIso().slice(0, 10);
+  return listChannels().map((c) => {
+    const chJobs = jobs.filter((j) => jobChannelId(j) === c.channelId);
+    const postedToday = chJobs.filter(
+      (j) => j.tiktok?.status === 'POSTED' && (j.tiktok.postedAt ?? '').slice(0, 10) === today,
+    ).length;
+    return {
+      channelId: c.channelId,
+      channelName: c.channelName,
+      niche: c.niche,
+      tiktokUsername: c.tiktokUsername,
+      tiktokDisplayName: c.tiktokDisplayName ?? null,
+      status: c.status,
+      avatar: c.avatar ?? null,
+      accountConfigured: accountConfigured(c.accountId),
+      jobCount: chJobs.length,
+      postedToday,
+    };
+  });
 }
 
 /** Ghi tiktok summary + state vào manifest + trace file runtime (no token). */

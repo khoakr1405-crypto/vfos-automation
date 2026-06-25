@@ -30,6 +30,14 @@ interface TikTokSummary {
   postedAt?: string;
   error?: { code: string; message: string } | null;
 }
+interface JobChannel {
+  channelId: string | null;
+  accountId: string | null;
+  channelName: string | null;
+  tiktokUsername: string | null;
+  status: 'active' | 'inactive' | null;
+  accountConfigured: boolean;
+}
 interface ReadinessResp {
   ok: boolean;
   readiness?: Readiness;
@@ -37,6 +45,7 @@ interface ReadinessResp {
   caption?: string;
   hashtags?: string[];
   tiktok?: TikTokSummary | null;
+  channel?: JobChannel | null;
 }
 
 function Light({ on, label }: { on: boolean; label: string }) {
@@ -76,7 +85,7 @@ function CopyBox({ label, value }: { label: string; value: string }) {
 }
 
 export function PackagePanel() {
-  const { selectedId, refreshJobs } = useEntLane();
+  const { selectedId, refreshJobs, selectedChannelId } = useEntLane();
   const [data, setData] = useState<ReadinessResp | null>(null);
   const [caption, setCaption] = useState('');
   const [busy, setBusy] = useState(false);
@@ -108,6 +117,10 @@ export function PackagePanel() {
 
   const rd = data?.readiness ?? null;
   const tk = data?.tiktok ?? null;
+  const ch = data?.channel ?? null;
+  // Mismatch: job thuộc kênh khác kênh đang chọn → CHẶN đăng (đỏ).
+  const mismatch = !!ch?.channelId && !!selectedChannelId && ch.channelId !== selectedChannelId;
+  const username = ch?.tiktokUsername ?? null;
 
   async function onGenCaption() {
     if (!selectedId || busy) return;
@@ -132,15 +145,23 @@ export function PackagePanel() {
 
   async function onPublish() {
     if (!selectedId || busy) return;
+    if (mismatch) {
+      setMsg('🛑 Job thuộc kênh khác kênh đang chọn — không đăng (chống nhầm kênh).');
+      return;
+    }
     const reposting = rd ? !rd.notPosted : false;
-    if (reposting && !window.confirm('Job đã đăng TikTok. Đăng LẠI lần nữa?')) return;
+    if (
+      reposting &&
+      !window.confirm(`Job đã đăng TikTok${username ? ` (@${username})` : ''}. Đăng LẠI lần nữa?`)
+    )
+      return;
     setBusy(true);
-    setMsg('Đang đăng lên TikTok…');
+    setMsg(`Đang đăng lên TikTok${username ? ` (@${username})` : ''}…`);
     try {
       const r = await fetch(`/api/studio/entertainment/jobs/${selectedId}/tiktok-publish`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ caption, confirmRepost: reposting }),
+        body: JSON.stringify({ caption, confirmRepost: reposting, selectedChannelId }),
       });
       const j = (await r.json()) as {
         ok: boolean;
@@ -165,7 +186,13 @@ export function PackagePanel() {
   }
 
   const canPublish =
-    !!rd && rd.videoApproved && rd.hasFinalVideo && rd.hasCaption && rd.tiktokApiReady && !busy;
+    !!rd &&
+    rd.videoApproved &&
+    rd.hasFinalVideo &&
+    rd.hasCaption &&
+    rd.tiktokApiReady &&
+    !mismatch &&
+    !busy;
 
   if (!selectedId) {
     return <p className="text-[11px] text-neutral-600">Chọn job (Tải link / Sản xuất trước).</p>;
@@ -178,6 +205,40 @@ export function PackagePanel() {
 
   return (
     <div className="space-y-3">
+      {/* Kênh / tài khoản đích — rõ ràng, chống đăng nhầm kênh */}
+      {ch?.channelId ? (
+        <div
+          className={`flex flex-wrap items-center gap-2 rounded-xl border p-3 ${
+            mismatch ? 'border-accent-rose/40 bg-accent-rose/5' : 'border-hairline/40 bg-panel/30'
+          }`}
+        >
+          <span className="text-[11px] text-neutral-500">Đăng tới:</span>
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-cyan/10 px-2 py-0.5 text-[11px] font-bold text-accent-cyan">
+            @{ch.tiktokUsername ?? '—'}
+          </span>
+          {ch.channelName && <span className="text-[11px] text-neutral-400">{ch.channelName}</span>}
+          <span
+            className={`rounded px-1.5 py-0.5 text-[10px] ${
+              ch.accountConfigured
+                ? 'bg-accent-green/15 text-accent-green'
+                : 'bg-accent-amber/15 text-accent-amber'
+            }`}
+          >
+            {ch.accountConfigured ? '🔑 token sẵn sàng' : '⚠ chưa có token'}
+          </span>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-accent-rose/40 bg-accent-rose/10 px-3 py-2 text-[11px] font-semibold text-accent-rose">
+          ⛔ Job chưa gắn kênh — không xác định được tài khoản đích, không đăng được.
+        </div>
+      )}
+      {mismatch && (
+        <div className="rounded-xl border border-accent-rose/40 bg-accent-rose/10 px-3 py-2 text-[11px] font-semibold text-accent-rose">
+          ⛔ Job này thuộc kênh <strong>{ch?.channelName ?? ch?.channelId}</strong> — KHÔNG khớp
+          kênh đang chọn. Đổi kênh ở trên cho khớp rồi mới đăng (chống đăng nhầm kênh).
+        </div>
+      )}
+
       {/* Readiness 5 đèn */}
       <div className="grid grid-cols-2 gap-1.5 rounded-xl border border-hairline/40 bg-panel/30 p-3 sm:grid-cols-3">
         <Light on={!!rd?.videoApproved} label="Video đã duyệt" />
@@ -220,19 +281,25 @@ export function PackagePanel() {
           disabled={!canPublish}
           className="rounded-xl border border-accent-cyan/40 bg-accent-cyan/15 px-5 py-2.5 text-sm font-bold text-accent-cyan transition hover:bg-accent-cyan/25 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {busy ? 'Đang đăng…' : 'Đăng lên TikTok'}
+          {busy
+            ? 'Đang đăng…'
+            : username
+              ? `Đăng lên TikTok: @${username}`
+              : 'Đăng lên TikTok'}
         </button>
         {!canPublish && rd && (
           <span className="text-[11px] text-neutral-600">
-            {!rd.videoApproved
-              ? '⛔ Cần duyệt video (GATE 2).'
-              : !rd.hasCaption
-                ? '⛔ Tạo caption trước.'
-                : !rd.tiktokApiReady
-                  ? '⛔ TikTok API chưa sẵn sàng (env/live).'
-                  : !rd.notPosted
-                    ? 'Đã đăng — bấm để đăng lại (xác nhận).'
-                    : ''}
+            {mismatch
+              ? '⛔ Sai kênh — đổi kênh đang chọn cho khớp job.'
+              : !rd.videoApproved
+                ? '⛔ Cần duyệt video (GATE 2).'
+                : !rd.hasCaption
+                  ? '⛔ Tạo caption trước.'
+                  : !rd.tiktokApiReady
+                    ? '⛔ TikTok API chưa sẵn sàng (env/live).'
+                    : !rd.notPosted
+                      ? 'Đã đăng — bấm để đăng lại (xác nhận).'
+                      : ''}
           </span>
         )}
       </div>

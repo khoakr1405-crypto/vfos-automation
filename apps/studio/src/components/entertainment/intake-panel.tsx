@@ -27,7 +27,8 @@ function StatePill({ state }: { state: string }) {
 }
 
 export function IntakePanel() {
-  const { jobs, selectedId, selectJob, refreshJobs } = useEntLane();
+  const { jobs, selectedId, selectJob, refreshJobs, selectedChannel, refreshChannels } =
+    useEntLane();
   const [url, setUrl] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -35,13 +36,21 @@ export function IntakePanel() {
   async function onSubmit() {
     const u = url.trim();
     if (!u || busy) return;
+    if (!selectedChannel) {
+      setMsg('🛑 Chọn 1 kênh ở trên trước khi tạo job (job bị khoá theo kênh).');
+      return;
+    }
     setBusy(true);
-    setMsg('Đang tạo job + tải source (có thể vài chục giây)…');
+    setMsg(`Đang tạo job cho kênh ${selectedChannel.channelName} + tải source…`);
     try {
       const r = await fetch('/api/studio/entertainment/jobs', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ url: u, niche: 'fishing-vlog' }),
+        body: JSON.stringify({
+          url: u,
+          niche: selectedChannel.niche,
+          channelId: selectedChannel.channelId,
+        }),
       });
       const j = (await r.json()) as {
         ok: boolean;
@@ -62,11 +71,25 @@ export function IntakePanel() {
     } finally {
       setBusy(false);
       void refreshJobs();
+      void refreshChannels();
     }
   }
 
   return (
     <div className="space-y-3">
+      {selectedChannel ? (
+        <p className="text-[11px] text-neutral-500">
+          Job mới sẽ thuộc kênh{' '}
+          <span className="font-semibold text-accent-cyan">
+            {selectedChannel.channelName} (@{selectedChannel.tiktokUsername})
+          </span>{' '}
+          — khoá cứng, không đổi sau khi tạo.
+        </p>
+      ) : (
+        <p className="rounded-lg border border-accent-amber/30 bg-accent-amber/5 px-3 py-2 text-[11px] text-accent-amber">
+          ⛔ Đang ở "Tất cả kênh" — chọn 1 kênh cụ thể ở trên để tạo job (job khoá theo kênh).
+        </p>
+      )}
       <input
         value={url}
         onChange={(e) => setUrl(e.target.value)}
@@ -78,7 +101,7 @@ export function IntakePanel() {
         <button
           type="button"
           onClick={onSubmit}
-          disabled={busy || !url.trim()}
+          disabled={busy || !url.trim() || !selectedChannel}
           className="rounded-xl border border-accent-cyan/40 bg-accent-cyan/15 px-5 py-2.5 text-sm font-bold text-accent-cyan transition hover:bg-accent-cyan/25 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {busy ? 'Đang tải…' : 'Tải link'}
@@ -112,6 +135,11 @@ export function IntakePanel() {
                   <p className="truncate text-[10px] text-neutral-600">{job.source?.url}</p>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
+                  {job.tiktokUsername && (
+                    <span className="rounded-full border border-accent-cyan/30 bg-accent-cyan/10 px-1.5 py-0.5 text-[9px] font-semibold text-accent-cyan">
+                      @{job.tiktokUsername}
+                    </span>
+                  )}
                   {job.source?.durationSec != null && (
                     <span className="text-[10px] text-neutral-500">{job.source.durationSec}s</span>
                   )}

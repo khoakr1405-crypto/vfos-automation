@@ -21,6 +21,10 @@
 
 import { Badge } from '@/components/badge';
 import { Card, CardBody } from '@/components/card';
+import {
+  ChannelOverview,
+  ChannelSwitcher,
+} from '@/components/entertainment/channel-switcher';
 import { EntJobSelector, EntLaneProvider } from '@/components/entertainment/ent-lane-context';
 import { IntakePanel } from '@/components/entertainment/intake-panel';
 import { PackagePanel } from '@/components/entertainment/package-panel';
@@ -64,19 +68,6 @@ const FULL_WORKFLOW: Array<{ no: number; label: string; note: string; gate?: str
   },
 ];
 
-function NicheSelector() {
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="rounded-lg border border-accent-cyan/40 bg-accent-cyan/10 px-3 py-1.5 text-xs font-semibold text-accent-cyan">
-        🎣 Vlog Câu cá
-      </span>
-      <span className="rounded-lg border border-hairline/60 px-3 py-1.5 text-xs text-neutral-600">
-        🚗 Vlog Về xe <span className="ml-1 text-[10px] text-neutral-700">(roadmap)</span>
-      </span>
-    </div>
-  );
-}
-
 function StepHeader({ no, title, sub }: { no: number; title: string; sub: string }) {
   return (
     <div className="flex items-center gap-3.5">
@@ -101,9 +92,26 @@ export default function ContentLanePage() {
           icon="rawvisual"
           accent="cyan"
           title="Nội dung / Giải trí — Command Center"
-          description="Lane reup biến đổi → Việt hóa. Đúng 4 nút (Tải link · Sản xuất · Duyệt · Đăng), mọi thứ còn lại chạy ngầm."
-          actions={<NicheSelector />}
+          description="Lane reup biến đổi → Việt hóa, quản nhiều kênh/tài khoản TikTok. Chọn kênh trước — job khoá theo kênh, không đăng nhầm."
+          actions={<ChannelSwitcher />}
         />
+
+        {/* Kênh / Tài khoản — chọn kênh active, lọc lane theo kênh (chống nhầm account) */}
+        <Card>
+          <CardBody className="space-y-3 p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-bold text-neutral-100">Kênh / Tài khoản TikTok</h2>
+                <p className="text-[11px] text-neutral-500">
+                  Bấm 1 kênh để lọc lane theo kênh đó · "Tất cả kênh" để xem chung. Mỗi job khoá
+                  theo kênh — chỉ đăng đúng tài khoản của kênh.
+                </p>
+              </div>
+              <Badge accent="cyan">R2</Badge>
+            </div>
+            <ChannelOverview />
+          </CardBody>
+        </Card>
 
         <Card>
           <CardBody className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 px-5 py-3 text-[11px] text-neutral-500">

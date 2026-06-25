@@ -7,7 +7,7 @@
  * jobs/[jobId] (Product Review), không ghi registry Review/Shopee/publish.
  * ========================================================================== */
 
-import { createJob, isValidNiche, listJobs } from '@/lib/entertainment/jobs';
+import { createJob, isValidNiche, listJobsForUi } from '@/lib/entertainment/jobs';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,7 +42,7 @@ export async function GET(req: Request) {
   if (!isLocalRequest(req)) {
     return Response.json({ ok: false, code: 'NOT_LOCAL' }, { status: 403 });
   }
-  return Response.json({ ok: true, jobs: listJobs() });
+  return Response.json({ ok: true, jobs: listJobsForUi() });
 }
 
 export async function POST(req: Request) {
