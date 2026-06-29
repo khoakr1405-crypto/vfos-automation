@@ -97,6 +97,22 @@ safe-runner, **không fork** logic. Cần bổ sung: `16-package.ts` (B8) và
 CLI phải chạy standalone được (debug + harness). Cache vision (`_vis/
 vision_scenes.json`) để vòng tinh chỉnh không gọi lại Vision.
 
+### 2.1. Story Engine — debug/audit tools (KHÔNG nằm trong produce, chạy TAY)
+
+Hai CLI standalone hỗ trợ chẩn đoán Story Engine — **KHÔNG có trong chuỗi
+`20-pipeline produce`, UI không gọi**, chỉ Operator chạy tay khi cần soi:
+
+- `pnpm ent:classify --id <job>` → [`03d-source-classify.ts`](../../scripts/ent-vlog/03d-source-classify.ts):
+  đọc asr/catch/meta → `buildStoryArc` → ghi `story_arc.json` + in metrics
+  (`story_confidence` · `source_type` · acts · split). Read-only, deterministic, KHÔNG LLM/render.
+  `story_arc.json` chỉ là **artifact audit** — pipeline tự recompute trong RAM (không đọc file đó).
+- `pnpm ent:story-cut --id <job>` → [`10s-story-cut.ts`](../../scripts/ent-vlog/10s-story-cut.ts):
+  cắt source theo story segs → `montage_story_preview.mp4` (video-only, audio gốc
+  passthrough) để soi cấu trúc TRƯỚC khi render full. KHÔNG VO/caption/Demucs/ambient.
+
+Ràng buộc: **KHÔNG auto-publish · KHÔNG đụng Product Review · KHÔNG đụng BGM / visual
+hook / blur che sub Trung.** Cả hai chỉ đọc artifact đã có; an toàn chạy lại nhiều lần.
+
 ---
 
 ## 3. Audio Mix Policy (chốt)
