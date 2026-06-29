@@ -618,8 +618,13 @@ function centerPresetOnBand(
   videoH: number,
 ): Preset {
   if (perSegment.length === 0 || videoH <= 0) return preset;
-  const centers = perSegment.map((s) => (s.rect.py + s.rect.ph / 2) / videoH).sort((a, b) => a - b);
-  const bandYNorm = centers[Math.floor(centers.length / 2)] ?? 0.75;
+  // Caption Việt LUÔN nằm lower-third (vùng phụ đề gốc), KHÔNG bay lên dải title
+  // trên: lấy dải THẤP NHẤT ở nửa dưới khung (không median mọi dải — sẽ dính band
+  // title trên), rồi KẸP 0.74–0.86 để luôn rơi đúng panel caption phía dưới.
+  const centers = perSegment.map((s) => (s.rect.py + s.rect.ph / 2) / videoH);
+  const lowerBands = centers.filter((c) => c >= 0.55);
+  const bottomBand = lowerBands.length > 0 ? Math.max(...lowerBands) : 0.8;
+  const bandYNorm = Math.min(0.86, Math.max(0.74, bottomBand));
   const bandY = bandYNorm * PLAY_RES_Y;
   const mk = (s: StyleDef): StyleDef => ({
     ...s,
