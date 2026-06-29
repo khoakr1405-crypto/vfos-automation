@@ -12,7 +12,12 @@
       "allowedContentTypes": ["fishing-vlog"],
       "status": "active",
       "avatar": "",
-      "guardPolicy": { "topicMismatch": "warn", "crossPost": "deny" }
+      "guardPolicy": { "topicMismatch": "warn", "crossPost": "deny" },
+      "sourceChannel": {
+        "platform": "douyin",
+        "url": "https://www.douyin.com/user/MS4wLjABAAAAIaxl8QfBDEg6mEKha4dKNXM8JxtQQXADYHBmTYSvgNk",
+        "label": "Kênh câu cá nguồn"
+      }
     }
   ]
 }

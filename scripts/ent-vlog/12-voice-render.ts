@@ -17,6 +17,7 @@ import { parseArgs } from 'node:util';
 import { loadDotEnv } from '../../packages/voice/src/load-env.js';
 import { readAnchorPlan } from './lib/anchors.js';
 import { workDir } from './lib/env.js';
+import { buildStorySegments, isStoryEngine } from './lib/story-arc.js';
 import {
   EDGE_MALE_VOICE,
   type TtsProvider,
@@ -168,26 +169,59 @@ async function main(): Promise<void> {
     process.exit(2);
   }
 
-  // Money-shot montage times for spill QA — ĐÚNG anchors của montage (anchors.json,
-  // dùng chung 10/15) để VO/QA không lệch với video. KHÔNG hardcode.
+  // Money-shot montage times for spill QA. STORY engine (opt-in) → story segs;
+  // mặc định anchors cũ. Phải khớp video (10) để QA không lệch.
   const plan = readAnchorPlan(dir);
-  console.log(`[12] Anchors (${plan.source}): ${plan.anchors.map((a) => a.toFixed(1)).join(', ')}`);
-  let running = 0;
-  const segs = [...plan.anchors]
-    .sort((a, b) => a - b)
-    .map((tSec, idx) => {
-      const srcStart = Math.max(0, tSec - plan.lead);
-      const srcEnd = Math.min(meta.durationSec, tSec + plan.reaction);
-      const dur = srcEnd - srcStart;
-      const montageStart = running;
-      running += dur;
-      return { idx, tSec, srcStart, srcEnd, dur, montageStart };
-    });
+  const story = isStoryEngine(dir, id);
+  const roleByIdx = new Map<number, string>();
+  let segs: Array<{
+    idx: number;
+    tSec: number;
+    srcStart: number;
+    srcEnd: number;
+    dur: number;
+    montageStart: number;
+  }>;
+  if (story) {
+    const b = buildStorySegments(dir, id);
+    console.log(`[12] STORY segs ${b.segs.length} (type ${b.source_type})`);
+    for (const s of b.segs) roleByIdx.set(s.idx, s.role);
+    segs = b.segs.map((s) => ({
+      idx: s.idx,
+      tSec: s.tSec,
+      srcStart: s.srcStart,
+      srcEnd: s.srcEnd,
+      dur: s.dur,
+      montageStart: s.montageStart,
+    }));
+  } else {
+    console.log(
+      `[12] Anchors (${plan.source}): ${plan.anchors.map((a) => a.toFixed(1)).join(', ')}`,
+    );
+    let running = 0;
+    segs = [...plan.anchors]
+      .sort((a, b) => a - b)
+      .map((tSec, idx) => {
+        const srcStart = Math.max(0, tSec - plan.lead);
+        const srcEnd = Math.min(meta.durationSec, tSec + plan.reaction);
+        const dur = srcEnd - srcStart;
+        const montageStart = running;
+        running += dur;
+        return { idx, tSec, srcStart, srcEnd, dur, montageStart };
+      });
+  }
   const msMontage = (idx: number): number | null => {
     const s = segs[idx];
     return s ? s.montageStart + (s.tSec - s.srcStart) : null;
   };
-  const catchIdx = segs.filter((s) => s.idx >= 1).map((s) => s.idx);
+  // money-shot (cú cá lên) cho spill QA — story: mọi seg TRỪ teaser & setup;
+  // anchor: idx>=1 (như cũ). Teaser (lát climax cold-open) KHÔNG tính money-shot.
+  const isMS = (s: { idx: number }): boolean => {
+    if (!story) return s.idx >= 1;
+    const r = roleByIdx.get(s.idx);
+    return r !== 'teaser' && r !== 'setup';
+  };
+  const catchIdx = segs.filter((s) => isMS(s)).map((s) => s.idx);
 
   // 1) Synthesize VO per chunk (edge male). Collect real audio durations first;
   //    final placement (anti-overlap + tail-fit) is applied AFTER, using real

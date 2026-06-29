@@ -5,6 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
+import { fetchDouyinSource, isDouyinUrl } from './lib/douyin-fetch.js';
 import { workDir } from './lib/env.js';
 
 function run(cmd: string, args: string[]): { status: number; stdout: string; stderr: string } {
@@ -26,28 +27,53 @@ async function main(): Promise<void> {
 
   const dir = workDir(id);
   mkdirSync(dir, { recursive: true });
-  const outTmpl = join(dir, 'source.%(ext)s');
 
-  console.log(`[01] Downloading source (no-watermark) → ${dir}`);
-  const dl = run('yt-dlp', [
-    '--no-playlist',
-    '--no-warnings',
-    '-f',
-    'bv*+ba/b',
-    '--merge-output-format',
-    'mp4',
-    '-o',
-    outTmpl,
-    url,
-  ]);
-  if (dl.status !== 0) {
-    console.error('🛑 DOWNLOAD_FAILED');
-    console.error(dl.stderr.slice(-1500));
-    process.exit(2);
+  let srcPath = join(dir, 'source.mp4');
+
+  if (isDouyinUrl(url)) {
+    // Douyin's yt-dlp extractor is broken by anti-bot ("Fresh cookies needed").
+    // Drive a real persistent browser, capture the DASH streams, mux to source.mp4.
+    console.log('[01] Fetching Douyin source via persistent browser (capture + mux)…');
+    const res = await fetchDouyinSource({
+      url,
+      outPath: srcPath,
+      workDir: dir,
+      headful: process.env.DOUYIN_HEADFUL === '1',
+    });
+    if (!res.ok) {
+      if (res.code === 'CAPTCHA') {
+        console.error('🛑 DOUYIN_SETUP_REQUIRED');
+        console.error(res.message);
+        process.exit(7);
+      }
+      console.error('🛑 DOWNLOAD_FAILED');
+      console.error(`Douyin fetch thất bại (${res.code}): ${res.message}`);
+      process.exit(2);
+    }
+    console.log(`[01] Source captured: ${(res.bytes / 1e6).toFixed(1)}MB → ${srcPath}`);
+  } else {
+    // TikTok / generic URLs: yt-dlp still works fine.
+    const outTmpl = join(dir, 'source.%(ext)s');
+    console.log(`[01] Downloading source (no-watermark) → ${dir}`);
+    const dl = run('yt-dlp', [
+      '--no-playlist',
+      '--no-warnings',
+      '-f',
+      'bv*+ba/b',
+      '--merge-output-format',
+      'mp4',
+      '-o',
+      outTmpl,
+      url,
+    ]);
+    if (dl.status !== 0) {
+      console.error('🛑 DOWNLOAD_FAILED');
+      console.error(dl.stderr.slice(-1500));
+      process.exit(2);
+    }
   }
 
   // Resolve produced file (prefer source.mp4, else first source.*).
-  let srcPath = join(dir, 'source.mp4');
   if (!existsSync(srcPath)) {
     const found = readdirSync(dir).find((f) => f.startsWith('source.'));
     if (!found) {

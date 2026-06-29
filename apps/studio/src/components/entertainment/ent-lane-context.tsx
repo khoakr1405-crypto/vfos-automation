@@ -39,6 +39,10 @@ export interface EntChannelLite {
   accountConfigured: boolean;
   jobCount: number;
   postedToday: number;
+  /** Kênh nguồn TQ đã gắn? (badge + bật flow auto-list khi "Tải link"). */
+  hasSourceChannel: boolean;
+  sourcePlatform: 'douyin' | 'tiktok' | null;
+  sourceLabel: string | null;
 }
 
 interface EntLaneCtx {
@@ -155,7 +159,9 @@ export function EntJobSelector() {
       >
         {jobs.length === 0 && (
           <option value="">
-            {selectedChannel ? `— chưa có job ở ${selectedChannel.channelName} —` : '— chưa có job —'}
+            {selectedChannel
+              ? `— chưa có job ở ${selectedChannel.channelName} —`
+              : '— chưa có job —'}
           </option>
         )}
         {jobs.map((j) => (

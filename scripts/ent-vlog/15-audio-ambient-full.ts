@@ -14,6 +14,7 @@ import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { readAnchorPlan } from './lib/anchors.js';
 import { workDir } from './lib/env.js';
+import { buildStorySegments, isStoryEngine } from './lib/story-arc.js';
 
 const AMBIENT_VOL = 0.8;
 // -20% âm lượng tiếng nói (operator: "tiếng nói to quá"). Chỉ giảm VO ở nhánh
@@ -78,18 +79,31 @@ async function main(): Promise<void> {
 
   // 1) Source windows = ĐÚNG anchors của montage (anchors.json, dùng chung với 10)
   // → trích + nối audio gốc. KHÔNG hardcode để audio không lệch video.
+  // STORY engine (opt-in) → cửa sổ audio = story segs; mặc định giữ anchors cũ.
+  // Audio LUÔN cắt cùng cửa sổ/thứ tự video (10) nên không lệch. Demucs/ambient/mix giữ nguyên.
   const plan = readAnchorPlan(dir);
-  console.log(`[15] Anchors (${plan.source}): ${plan.anchors.map((a) => a.toFixed(1)).join(', ')}`);
-  let running = 0;
-  const segs = [...plan.anchors]
-    .sort((a, b) => a - b)
-    .map((tSec) => {
-      const s = Math.max(0, tSec - plan.lead);
-      const e = Math.min(meta.durationSec, tSec + plan.reaction);
-      running += e - s;
-      return { s, dur: Number((e - s).toFixed(3)) };
-    });
-  const montageTotal = Number(running.toFixed(2));
+  let segs: Array<{ s: number; dur: number }>;
+  let montageTotal: number;
+  if (isStoryEngine(dir, id)) {
+    const b = buildStorySegments(dir, id);
+    console.log(`[15] STORY segs ${b.segs.length} (type ${b.source_type})`);
+    segs = b.segs.map((sg) => ({ s: sg.srcStart, dur: sg.dur }));
+    montageTotal = b.montageTotalSec;
+  } else {
+    console.log(
+      `[15] Anchors (${plan.source}): ${plan.anchors.map((a) => a.toFixed(1)).join(', ')}`,
+    );
+    let running = 0;
+    segs = [...plan.anchors]
+      .sort((a, b) => a - b)
+      .map((tSec) => {
+        const s = Math.max(0, tSec - plan.lead);
+        const e = Math.min(meta.durationSec, tSec + plan.reaction);
+        running += e - s;
+        return { s, dur: Number((e - s).toFixed(3)) };
+      });
+    montageTotal = Number(running.toFixed(2));
+  }
   const ambientRaw = join(ad, 'montage_ambient_raw.wav');
   const inputs: string[] = [];
   const labels: string[] = [];

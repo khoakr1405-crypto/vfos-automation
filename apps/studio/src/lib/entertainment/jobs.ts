@@ -248,6 +248,108 @@ export function listJobs(): EntJob[] {
 }
 
 /**
+ * Khoá chuẩn hoá 1 video nguồn để chống reup trùng. Douyin/TikTok `/video/<id>`
+ * → id; còn lại (vd share link v.douyin.com chưa resolve) → origin+path lowercase.
+ */
+export function canonicalVideoKey(url: string): string {
+  const u = (url ?? '').trim();
+  const m = u.match(/\/video\/(\d+)/);
+  if (m) return m[1];
+  try {
+    const parsed = new URL(u);
+    return `${parsed.origin}${parsed.pathname}`.toLowerCase().replace(/\/+$/, '');
+  } catch {
+    return u.toLowerCase().replace(/\/+$/, '');
+  }
+}
+
+/** Share link rút gọn (v.douyin.com / v.iesdouyin.com) — cần resolve để lấy aweme_id. */
+const SHORT_LINK_RE = /^https?:\/\/v\.(?:douyin|iesdouyin)\.com\//i;
+const ID_CACHE_REL = `${ENT_DIR_REL}/.source_id_cache.json`;
+const DESKTOP_UA =
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36';
+
+function readIdCache(): Record<string, string> {
+  const p = resolveInsideRepo(ID_CACHE_REL);
+  if (!p || !existsSync(p)) return {};
+  try {
+    return JSON.parse(readFileSync(p, 'utf8')) as Record<string, string>;
+  } catch {
+    return {};
+  }
+}
+function writeIdCache(c: Record<string, string>): void {
+  const p = resolveInsideRepo(ID_CACHE_REL);
+  if (!p) return;
+  try {
+    writeFileSync(p, JSON.stringify(c, null, 2));
+  } catch {
+    /* cache phụ — lỗi ghi không chặn dedup */
+  }
+}
+
+/** Resolve share link rút gọn → aweme_id canonical (lần theo redirect `share/video/<id>`). */
+async function resolveShortLinkId(url: string): Promise<string | null> {
+  try {
+    let cur = url;
+    for (let i = 0; i < 5; i += 1) {
+      const res = await fetch(cur, {
+        method: 'GET',
+        redirect: 'manual',
+        headers: { 'user-agent': DESKTOP_UA },
+      });
+      const loc = res.headers.get('location');
+      const probe = loc ?? res.url;
+      const m = probe.match(/\/(?:share\/)?video\/(\d+)/);
+      if (m) return m[1];
+      if (!loc) return null;
+      cur = new URL(loc, cur).toString();
+    }
+  } catch {
+    /* mạng lỗi → fallback normalized url ở caller */
+  }
+  return null;
+}
+
+/**
+ * Tập khoá video nguồn ĐÃ reup (từ source.url của mọi job) — để gắn cờ alreadyReused.
+ * Job lưu canonical `/video/<id>` → khớp ngay; job lưu SHARE LINK rút gọn → resolve
+ * sang aweme_id (cache lại) để vẫn khớp candidate canonical, chống reup video đã đăng.
+ */
+export async function reusedSourceKeys(): Promise<Set<string>> {
+  const out = new Set<string>();
+  const cache = readIdCache();
+  let cacheDirty = false;
+  for (const j of listJobs()) {
+    const url = j.source?.url;
+    if (!url) continue;
+    const sync = canonicalVideoKey(url);
+    if (/^\d+$/.test(sync)) {
+      out.add(sync);
+      continue;
+    }
+    if (SHORT_LINK_RE.test(url)) {
+      let id = cache[url];
+      if (!id) {
+        const resolved = await resolveShortLinkId(url);
+        if (resolved) {
+          id = resolved;
+          cache[url] = resolved;
+          cacheDirty = true;
+        }
+      }
+      if (id) {
+        out.add(id);
+        continue;
+      }
+    }
+    out.add(sync);
+  }
+  if (cacheDirty) writeIdCache(cache);
+  return out;
+}
+
+/**
  * Tạo job giải trí + chạy intake (01-fetch-source) đồng bộ. Ghi manifest
  * INTAKE_RUNNING trước, rồi cập nhật INTAKE_DONE/FAILED sau khi tải xong.
  * KHÔNG ghi bất kỳ registry nào của Product Review/Shopee.
@@ -741,10 +843,14 @@ export function startStep(id: string, step: EntStepName): StartStepResult {
   const initial: EntStepStatus = { step, state: 'running', startedAt: nowIso(), subs: [] };
   writeFileSync(statusPath, JSON.stringify(initial, null, 2));
 
+  // Lane Giải trí dùng STORY engine (hook teaser 0–5s, cold-open Hook Style Bank,
+  // seg-floor chống title intro, cấu trúc kể chuyện). Bật lane-scoped ngay tại spawn
+  // — KHÔNG set .env global. Thiếu cờ này pipeline rơi về engine "anchors" cũ.
   const { pid } = runRepoScriptDetached(
     PIPELINE_SCRIPT_REL,
     ['--id', id, '--step', step, '--model', SCRIPT_MODEL],
     logPath,
+    { ENT_MONTAGE_ENGINE: 'story' },
   );
   return { ok: true, step, pid };
 }
@@ -1016,7 +1122,11 @@ function resolveTikTokConfig(): TikTokConfig {
 function resolveTikTokClientForAccount(accountId: string): ResolveClientResult {
   const mode = parseTikTokMode();
   if (mode === 'disabled') {
-    return { ok: false, code: 'TIKTOK_DISABLED', message: 'TikTok đang tắt (TIKTOK_MODE=disabled).' };
+    return {
+      ok: false,
+      code: 'TIKTOK_DISABLED',
+      message: 'TikTok đang tắt (TIKTOK_MODE=disabled).',
+    };
   }
   if (mode === 'mock') {
     return { ok: true, client: createMockTikTokPublishClient(), mode: 'mock' };
@@ -1181,6 +1291,10 @@ export interface EntChannelUi {
   accountConfigured: boolean;
   jobCount: number;
   postedToday: number;
+  /** Kênh nguồn TQ đã gắn? (URL không lộ ra client — chỉ platform/label cho badge). */
+  hasSourceChannel: boolean;
+  sourcePlatform: 'douyin' | 'tiktok' | null;
+  sourceLabel: string | null;
 }
 
 /** Channels cho UI Switcher/Overview — kèm jobCount + postedToday + accountConfigured. KHÔNG token. */
@@ -1203,6 +1317,9 @@ export function listChannelsForUi(): EntChannelUi[] {
       accountConfigured: accountConfigured(c.accountId),
       jobCount: chJobs.length,
       postedToday,
+      hasSourceChannel: !!c.sourceChannel,
+      sourcePlatform: c.sourceChannel?.platform ?? null,
+      sourceLabel: c.sourceChannel?.label ?? null,
     };
   });
 }

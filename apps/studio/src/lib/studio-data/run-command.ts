@@ -49,18 +49,22 @@ export function runRepoScript(
  * stdio ghi vào 1 file log (runtime gitignored). shell:false + argv mảng ⇒ an toàn
  * injection như runRepoScript.
  * @param logAbsPath đường dẫn tuyệt đối file log (đã resolveInsideRepo ở route)
+ * @param envOverlay env BỔ SUNG cho riêng lần spawn này (vd lane Giải trí bật
+ *   ENT_MONTAGE_ENGINE=story) — lane-scoped, KHÔNG đụng .env global; caller khác
+ *   không truyền ⇒ giữ nguyên process.env như cũ.
  */
 export function runRepoScriptDetached(
   scriptRelPath: string,
   args: string[],
   logAbsPath: string,
+  envOverlay?: Record<string, string>,
 ): { pid: number | undefined } {
   const tsxCli = resolveInsideRepo(TSX_CLI_REL) ?? TSX_CLI_REL;
   const logFd = openSync(logAbsPath, 'a');
   try {
     const child = spawn(process.execPath, [tsxCli, scriptRelPath, ...args], {
       cwd: repoRoot(),
-      env: { ...process.env },
+      env: { ...process.env, ...envOverlay },
       shell: false,
       detached: true,
       stdio: ['ignore', logFd, logFd],

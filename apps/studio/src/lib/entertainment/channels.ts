@@ -12,6 +12,14 @@ import { resolveInsideRepo } from '@/lib/studio-data/paths';
 
 const REGISTRY_REL = 'config/entertainment_channels.json';
 
+/** Kênh NGUỒN (creator Douyin/TikTok TQ) gắn cứng cho ngách — nơi kéo video reup
+ * về. KHÁC kênh đích (accountId = nơi đăng VN). URL profile là công khai, KHÔNG secret. */
+export interface EntSourceChannel {
+  platform: 'douyin' | 'tiktok';
+  url: string;
+  label?: string;
+}
+
 export interface EntChannel {
   channelId: string;
   channelName: string;
@@ -24,6 +32,25 @@ export interface EntChannel {
   status: 'active' | 'inactive';
   avatar?: string;
   guardPolicy: { topicMismatch: 'block' | 'warn'; crossPost: 'deny' | 'allow' };
+  /** Kênh nguồn TQ gắn cứng (optional). Thiếu → "Tải link" rơi về dán URL tay. */
+  sourceChannel?: EntSourceChannel;
+}
+
+/** Parse + validate block sourceChannel (optional). Sai/thiếu → undefined. */
+function coerceSourceChannel(raw: unknown): EntSourceChannel | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const r = raw as Record<string, unknown>;
+  const platform = String(r.platform ?? '')
+    .trim()
+    .toLowerCase();
+  const url = String(r.url ?? '').trim();
+  if (platform !== 'douyin' && platform !== 'tiktok') return undefined;
+  if (!/^https?:\/\//i.test(url)) return undefined;
+  return {
+    platform,
+    url,
+    label: r.label ? String(r.label).trim() : undefined,
+  };
 }
 
 function coerceChannel(raw: Record<string, unknown>): EntChannel | null {
@@ -49,6 +76,7 @@ function coerceChannel(raw: Record<string, unknown>): EntChannel | null {
       topicMismatch: gp.topicMismatch === 'block' ? 'block' : 'warn',
       crossPost: gp.crossPost === 'allow' ? 'allow' : 'deny',
     },
+    sourceChannel: coerceSourceChannel(raw.sourceChannel),
   };
 }
 
@@ -57,7 +85,9 @@ export function listChannels(): EntChannel[] {
   const p = resolveInsideRepo(REGISTRY_REL);
   if (!p || !existsSync(p)) return [];
   try {
-    const raw = JSON.parse(readFileSync(p, 'utf8')) as { channels?: Array<Record<string, unknown>> };
+    const raw = JSON.parse(readFileSync(p, 'utf8')) as {
+      channels?: Array<Record<string, unknown>>;
+    };
     const out: EntChannel[] = [];
     for (const c of raw.channels ?? []) {
       const ch = coerceChannel(c);

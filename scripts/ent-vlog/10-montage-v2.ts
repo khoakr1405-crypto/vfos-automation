@@ -13,6 +13,7 @@ import { parseArgs } from 'node:util';
 import { readAnchorPlan } from './lib/anchors.js';
 import { requireOpenAIKey, workDir } from './lib/env.js';
 import { type AsrSegment, chatJson, chatVisionJson } from './lib/openai.js';
+import { buildStorySegments, isStoryEngine } from './lib/story-arc.js';
 import { EDGE_MALE_VOICE, synthesizeChunk } from './lib/tts-provider.js';
 
 const BGM_LIBRARY = 'production/_media/bgm_library.json';
@@ -145,7 +146,7 @@ async function main(): Promise<void> {
   const anchorsIn = values.anchors
     ? values.anchors.split(',').map((x) => Number(x.trim()))
     : plan.anchors;
-  console.log(`[10] Anchors (${plan.source}): ${anchorsIn.map((a) => a.toFixed(1)).join(', ')}`);
+  const story = isStoryEngine(dir, id);
 
   const meta = JSON.parse(readFileSync(join(dir, 'source_meta.json'), 'utf8')) as {
     path: string;
@@ -156,19 +157,38 @@ async function main(): Promise<void> {
   };
   const apiKey = requireOpenAIKey();
 
-  // Segments anchored on money-shots.
-  let running = 0;
-  const segs: ReportSeg[] = anchorsIn
-    .sort((a, b) => a - b)
-    .map((tSec, idx) => {
-      const srcStart = Math.max(0, tSec - lead);
-      const srcEnd = Math.min(meta.durationSec, tSec + reaction);
-      const dur = srcEnd - srcStart;
-      const montageStart = running;
-      running += dur;
-      return { idx, tSec, srcStart, srcEnd, dur, montageStart };
-    });
-  const montageTotal = running;
+  // STORY engine (opt-in) → cắt theo act (setup→…→resolution); mặc định giữ anchors.
+  let segs: ReportSeg[];
+  let montageTotal: number;
+  if (story) {
+    const b = buildStorySegments(dir, id);
+    console.log(
+      `[10] STORY engine — ${b.segs.length} segs (type ${b.source_type}, conf ${b.story_confidence}) → ${b.montageTotalSec}s`,
+    );
+    segs = b.segs.map((s) => ({
+      idx: s.idx,
+      tSec: s.tSec,
+      srcStart: s.srcStart,
+      srcEnd: s.srcEnd,
+      dur: s.dur,
+      montageStart: s.montageStart,
+    }));
+    montageTotal = b.montageTotalSec;
+  } else {
+    console.log(`[10] Anchors (${plan.source}): ${anchorsIn.map((a) => a.toFixed(1)).join(', ')}`);
+    let running = 0;
+    segs = anchorsIn
+      .sort((a, b) => a - b)
+      .map((tSec, idx) => {
+        const srcStart = Math.max(0, tSec - lead);
+        const srcEnd = Math.min(meta.durationSec, tSec + reaction);
+        const dur = srcEnd - srcStart;
+        const montageStart = running;
+        running += dur;
+        return { idx, tSec, srcStart, srcEnd, dur, montageStart };
+      });
+    montageTotal = running;
+  }
   const moneyShotMontage = (s: ReportSeg) => s.montageStart + (s.tSec - s.srcStart);
 
   const clipDir = join(dir, 'montage_v2');
