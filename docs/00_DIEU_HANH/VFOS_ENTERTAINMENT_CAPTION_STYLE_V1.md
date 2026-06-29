@@ -4,6 +4,10 @@
 > round **script v2** đã PASS + Operator duyệt (commit `34b83e4`). Đây là **hướng
 > caption nền** cho mọi video lane này, không còn là fix tạm cho 1 video.
 >
+> **▶ Khung nội dung 3 lớp (umbrella):** [VFOS_ENTERTAINMENT_STORYTELLING_CONTENT_LAYER_V1.md](VFOS_ENTERTAINMENT_STORYTELLING_CONTENT_LAYER_V1.md)
+> — file NÀY là chi tiết **lớp ① voice/script**. Lớp ② (caption trong video) + lớp ③
+> (caption đăng bài) theo spec umbrella. Story-based: KHÔNG dùng style highlight/clickbait cũ.
+>
 > Lane: `entertainment/fishing-vlog` · Bước sinh script: [`scripts/ent-vlog/13-source-bound.ts`](../../scripts/ent-vlog/13-source-bound.ts)
 > · Nguồn nghĩa: `asr_zh.json` (ASR Trung) + `catch_moments.json` (vision).
 > Bám spec lane: [VFOS_ENTERTAINMENT_LANE_SPEC.md](VFOS_ENTERTAINMENT_LANE_SPEC.md).
