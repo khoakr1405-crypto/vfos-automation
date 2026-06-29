@@ -451,6 +451,12 @@ async function main(): Promise<void> {
       '0.0',
       '--zone-bottom',
       '1.0',
+      // Recall tune (POC): fps 2→3 + min-score 0.6→0.5 bắt thêm frame phụ đề
+      // chữ mờ → giảm sót chữ (clip mẫu 12.5%→5.4%) mà không tăng FP/smear.
+      '--fps',
+      '3',
+      '--min-score',
+      '0.5',
     ],
     'SCRUB',
     true,

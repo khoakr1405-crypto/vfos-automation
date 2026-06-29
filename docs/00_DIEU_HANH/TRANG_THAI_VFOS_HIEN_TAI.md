@@ -1,7 +1,7 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-06-24 (**Phase 3 lane Giải trí — NỐI NÚT "ĐĂNG TIKTOK" TRÊN UI STUDIO THẬT (Phần 39)**: đưa 11 file Phase 3 vào `feat/entertainment-lane` (nhánh chạy Studio có .env+data) → UI→route→`publishToTikTok`→client thật; commit `9322f9f` (+1714/−92, KHÔNG đụng 5 dirty WIP). FIX bug `node:fs` edge: bỏ `instrumentation.ts`, nạp `.env` gốc qua `next.config.ts` (Node, không webpack) — **phải restart Studio 3002**. Xác minh Next dev: readiness 200 `tiktokApiReady:true`, publish guard 409 ALREADY_POSTED (không đăng trùng), 404 control; biome/tsc/test sạch. Trước đó: **ROUND 2 (ĐĂNG THẬT) HOÀN TẤT, DoD ĐẠT**: job `ent_squid_001` đăng thật 1 video qua TikTok Content Posting API → state `TIKTOK_POSTED`, `publishId=v_pub_file~v2-1.7654841036543494165`, đăng **SELF_ONLY** vì app chưa audit. Giải blocker `unaudited_client_can_only_post_to_private_accounts` = bật **Private account** (không phải lỗi code). Thêm `creator_info/query` + **multi-chunk upload** (70MB→6 chunk) + CLI runner `tiktok-publish-run.ts`; commit `3eb6788` worktree (CHƯA push, no merge/PR). Validation: biome 0 · node:test 30/30. access_token 24h, refresh_token 365 ngày (`pnpm tiktok:oauth refresh`). Xem **Phần 38**. Round 1 (nền+mock) commit `f9a2fa6`. Trước đó: lane Giải trí MERGED master `e2d0a55` — Phần 37.)
+> **Cập nhật lần cuối**: 2026-06-29 (**POC scrub chữ Trung (Evidence Gate, 6 clip thật) → giữ `delogo`; recall tune `--fps 3 --min-score 0.5` ĐÃ ÁP vào `10-montage-v2.ts` lane câu cá (222949 sót 12.5%→5.4%, không FP), CHƯA commit; inpaint Option D defer — xem Phần 40**. Trước đó 2026-06-24: **Phase 3 lane Giải trí — NỐI NÚT "ĐĂNG TIKTOK" TRÊN UI STUDIO THẬT (Phần 39)**: đưa 11 file Phase 3 vào `feat/entertainment-lane` (nhánh chạy Studio có .env+data) → UI→route→`publishToTikTok`→client thật; commit `9322f9f` (+1714/−92, KHÔNG đụng 5 dirty WIP). FIX bug `node:fs` edge: bỏ `instrumentation.ts`, nạp `.env` gốc qua `next.config.ts` (Node, không webpack) — **phải restart Studio 3002**. Xác minh Next dev: readiness 200 `tiktokApiReady:true`, publish guard 409 ALREADY_POSTED (không đăng trùng), 404 control; biome/tsc/test sạch. Trước đó: **ROUND 2 (ĐĂNG THẬT) HOÀN TẤT, DoD ĐẠT**: job `ent_squid_001` đăng thật 1 video qua TikTok Content Posting API → state `TIKTOK_POSTED`, `publishId=v_pub_file~v2-1.7654841036543494165`, đăng **SELF_ONLY** vì app chưa audit. Giải blocker `unaudited_client_can_only_post_to_private_accounts` = bật **Private account** (không phải lỗi code). Thêm `creator_info/query` + **multi-chunk upload** (70MB→6 chunk) + CLI runner `tiktok-publish-run.ts`; commit `3eb6788` worktree (CHƯA push, no merge/PR). Validation: biome 0 · node:test 30/30. access_token 24h, refresh_token 365 ngày (`pnpm tiktok:oauth refresh`). Xem **Phần 38**. Round 1 (nền+mock) commit `f9a2fa6`. Trước đó: lane Giải trí MERGED master `e2d0a55` — Phần 37.)
 > **Branch**: master `e2d0a55` (lane Giải trí end-to-end). **Phase 3 round 1**: `feat/entertainment-tiktok-publish` (`f9a2fa6`, base master, **đã push origin, CHƯA merge/PR** — DoD cần đăng thật Round 2). Nhánh dev `feat/entertainment-lane` (`5fde46e`, đa-lane archive). | **Commit mốc**: `f9a2fa6` (`feat(ent-lane): add guarded TikTok publish flow (Phase 3 round 1)`). ⚠️ 5 file dirty NGOÀI SCOPE vẫn treo trên dev branch (`source-intake/route.ts`, `source-url/`, `package.json`, `bgm_library.json`, `implementation_plan.md`) — CHƯA xử lý.
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task → luôn chạy `pnpm vfos:daily` để có chỉ dẫn trạng thái mới nhất
 
@@ -2444,6 +2444,25 @@ DOM card img
 **Để đăng video MỚI qua nút UI**: restart Studio 3002 → `/lanes/content` → chọn job **APPROVED mới** (ent_squid_001 đã POSTED nên guard chặn, phải `confirmRepost`) → "Tạo caption" → đèn "TikTok API sẵn sàng" sáng → "Đăng lên TikTok".
 
 **Bước tiếp theo**: (1) Đăng **công khai** (hiện SELF_ONLY) → submit app TikTok audit (việc riêng, sau). (2) **Consolidation lớn về master**: gộp 14 cải tiến lane (`feat/entertainment-lane`) + Phase 3 vào master clean — cần **Step Inventory** (No-Go #9), để vòng riêng. (3) Worktree `feat/entertainment-tiktok-publish` vẫn còn `instrumentation.ts` lỗi — đồng bộ fix next.config nếu còn dùng.
+
+---
+
+### ✅ Phần 40 — POC scrub chữ Trung (Evidence Gate) → giữ delogo + recall tune ĐÃ ÁP (2026-06-29)
+
+> **Mục tiêu**: trả lời bằng SỐ THẬT "scrub chữ Trung lane câu cá đã đủ tốt chưa, có cần nâng cấp (inpaint AI) không" — KHÔNG xây mới khi pipeline đã có. Operator duyệt chạy POC; quyết theo bằng chứng (Evidence Gate).
+
+**Bối cảnh đã verify**: detect (PaddleOCR DBNet venv `tools/subtitle-detect-paddle/.venv` + tesseract fallback) + cover (`delogo`/blur/solid/auto) ĐÃ CÓ SẴN production (Phần 35/36), wire trong `10-montage-v2.ts` step 7. Lỗ hổng: CHƯA từng ĐO chất lượng output trên footage thật (`scrubApplied` chỉ đếm số vùng mask, không xác minh chữ đã sạch/không lem).
+
+**Đã làm (POC cô lập `data/temp`, không publish/commit; harness throwaway đã xóa sau khi xong)**:
+- **POC-SCRUB-QUALITY** (6 clip câu cá/mực thật): residual sót chữ TB **3.1%**, 5/6 clip ≤5% (giảm chữ 87-99%). Smear: giả định "delogo lem mặt nước" → **SAI**; nền trời sạch tuyệt đối, chỉ băng phụ đề dưới trên nền texture có vệt mờ nhẹ (panel 24 vision-rater TB 2.83/5 trên ảnh TĨNH — khắt khe; motion đỡ lộ).
+- **TUNE mode**: `delogo` vs `delogo-tight` vs `solid` (blur render lỗi filtergraph nhiều đoạn) → tight ≈ delogo, solid để thanh đen xấu → **giữ `delogo`**.
+- **RECALL tune** (clip vấn đề 222949 sót 12.5%): `--fps 3 --min-score 0.5` kéo **12.5% → 5.4%** (sót giảm 57%), cover đoạn giữ **36** (KHÔNG tăng FP), clip sạch 0621 0.8%→0% (không regress), không phạt thời gian.
+
+**ĐÃ ÁP production (scoped, Operator chọn "áp ngay")**: thêm `--fps 3 --min-score 0.5` vào lời gọi detector trong `10-montage-v2.ts` step 7 — **CHỈ lane câu cá**; Product Review giữ default 2fps/0.6. Mode vẫn delogo. **CHƯA commit** (working tree `feat/ent-multichannel`).
+
+**Quyết định**: Option C (delogo hiện tại) = đủ tốt. **Inpaint AI (video-subtitle-remover, Option D, ~2-4 ngày) DEFER** — chỉ mở nếu Operator xem motion thật và thấy smear băng dưới không chấp nhận được. Chi tiết memory `project_vfos_chinese_subtitle_scrub`.
+
+**Bước tiếp theo**: (1) Khi render thật 1 clip montage end-to-end → xác nhận recall tune không hồi quy. (2) Có thể đẩy `fps4/min-score0.45` nếu muốn ép 222949 <5%. (3) Commit edit `10-montage-v2.ts` khi Operator cho phép (đang lẫn với round multichannel/story-flag CHƯA commit).
 
 ---
 
