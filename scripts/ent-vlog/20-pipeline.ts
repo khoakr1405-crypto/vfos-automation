@@ -8,6 +8,7 @@
 //   script   = 13-source-bound (--model)
 //   render   = 12-voice-render -> 15-audio-ambient-full (audio policy đã chốt:
 //              bỏ giọng Trung bằng Demucs no_vocals, GIỮ ambient biển/gió/nước)
+//              -> 17-hook-verify (GATE: OCR full-rate hook, FAIL nếu lọt title Trung)
 //   produce  = analyze + 03c-coverage + montage + script + render (FULL → GATE 2)
 //              (03c = chọn anchors từ catch_moments + GATE chặn thiếu cảnh ăn tiền)
 //
@@ -55,12 +56,18 @@ function subsFor(step: StepName, model: string): SubSpec[] {
   ];
   // coverage = chọn anchors từ catch_moments + GATE chặn khi thiếu cảnh ăn tiền.
   const coverage: SubSpec[] = [{ name: '03c-moneyshot-coverage', args: [] }];
-  const montage: SubSpec[] = [{ name: '10-montage-v2', args: [] }];
+  // hook-clean = OCR title-gate chọn hook 0–5s sạch (chạy TRƯỚC montage để 10/13/12/15
+  // dùng chung hook_clean.json qua buildStorySegments — giữ sync contract).
+  const hookclean: SubSpec[] = [{ name: '03e-hook-clean', args: [] }];
+  const montage: SubSpec[] = [...hookclean, { name: '10-montage-v2', args: [] }];
   const script: SubSpec[] = [{ name: '13-source-bound', args: ['--model', model] }];
-  // render = lồng tiếng/caption (12) + áp audio policy remove_speech_keep_ambient (15).
+  // render = lồng tiếng/caption (12) + áp audio policy remove_speech_keep_ambient (15)
+  // + GATE verify title-card Trung trong hook full-rate (17). 17 exit≠0 → chuỗi DỪNG
+  // (gate tự PASS/FAIL, chống tái lặp lỗi "verify thưa" làm lọt flash title 0.1s).
   const render: SubSpec[] = [
     { name: '12-voice-render', args: [] },
     { name: '15-audio-ambient-full', args: [] },
+    { name: '17-hook-verify', args: [] },
   ];
   if (step === 'analyze') return analyze;
   if (step === 'montage') return montage;

@@ -15,7 +15,16 @@ import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { readAnchorPlan } from './lib/anchors.js';
 import { requireOpenAIKey, workDir } from './lib/env.js';
+import {
+  type HookStyle,
+  appendHookHistory,
+  buildHookStyleBlock,
+  isHookRepeat,
+  pickHookStyle,
+  readHookHistory,
+} from './lib/hook-style-bank.js';
 import { type AsrSegment, chatJson } from './lib/openai.js';
+import { buildStorySegments, isStoryEngine } from './lib/story-arc.js';
 
 // Đối tượng (subject) theo niche — KHÔNG hardcode 1 loài cho mọi video. Bám VISION.
 const NICHE_SUBJECT: Record<string, string> = { 'fishing-vlog': 'cá', squid: 'mực' };
@@ -178,27 +187,67 @@ async function main(): Promise<void> {
 
   // Rebuild montage segments — ĐÚNG anchors money-shot (anchors.json, dùng chung
   // 10/12/15) để script bám đúng timeline. KHÔNG hardcode.
+  // STORY engine (opt-in) → segs theo act; mặc định anchors cũ.
   const plan = readAnchorPlan(dir);
-  let running = 0;
-  const segs = [...plan.anchors]
-    .sort((a, b) => a - b)
-    .map((tSec, idx) => {
-      const srcStart = Math.max(0, tSec - plan.lead);
-      const srcEnd = Math.min(meta.durationSec, tSec + plan.reaction);
-      const dur = srcEnd - srcStart;
-      const montageStart = running;
-      running += dur;
-      return { idx, tSec, srcStart, srcEnd, dur, montageStart };
-    });
-  const montageTotal = running;
+  const story = isStoryEngine(dir, id);
+  let segs: Array<{
+    idx: number;
+    tSec: number;
+    srcStart: number;
+    srcEnd: number;
+    dur: number;
+    montageStart: number;
+  }>;
+  let montageTotal: number;
+  let storyConf = '';
+  const storyRoleByIdx = new Map<number, string>();
+  if (story) {
+    const sb = buildStorySegments(dir, id);
+    segs = sb.segs.map((s) => ({
+      idx: s.idx,
+      tSec: s.tSec,
+      srcStart: s.srcStart,
+      srcEnd: s.srcEnd,
+      dur: s.dur,
+      montageStart: s.montageStart,
+    }));
+    montageTotal = sb.montageTotalSec;
+    storyConf = sb.story_confidence;
+    for (const s of sb.segs) storyRoleByIdx.set(s.idx, s.role);
+    console.log(`[13] STORY mode (conf ${storyConf}) — ${segs.length} act-segs, ${montageTotal}s`);
+  } else {
+    let running = 0;
+    segs = [...plan.anchors]
+      .sort((a, b) => a - b)
+      .map((tSec, idx) => {
+        const srcStart = Math.max(0, tSec - plan.lead);
+        const srcEnd = Math.min(meta.durationSec, tSec + plan.reaction);
+        const dur = srcEnd - srcStart;
+        const montageStart = running;
+        running += dur;
+        return { idx, tSec, srcStart, srcEnd, dur, montageStart };
+      });
+    montageTotal = running;
+  }
   const msMontage = (idx: number): number => {
     const s = segs[idx];
     return s ? s.montageStart + (s.tSec - s.srcStart) : 0;
   };
+  // RV1.5 hook: 1–2 lát money-shot chèn đầu (role teaser). teaserDur = TỔNG độ dài
+  // hook = montageStart của seg story đầu tiên → chừa cả [0..hookDur] khỏi VO/caption.
+  const teaserDur = story
+    ? (segs.find((s) => storyRoleByIdx.get(s.idx) !== 'teaser')?.montageStart ?? 0)
+    : 0;
+  // money-shot (cú cá lên) — story: mọi seg TRỪ teaser & setup; anchor: idx>=1 (như cũ).
+  const isMS = (s: { idx: number }): boolean => {
+    if (!story) return s.idx >= 1;
+    const r = storyRoleByIdx.get(s.idx);
+    return r !== 'teaser' && r !== 'setup';
+  };
   // sceneIdx theo montage time (cho span/QA của step 12).
   const sceneAt = (t: number): number | undefined => {
     for (const s of segs) {
-      if (t >= s.montageStart && t < s.montageStart + s.dur) return s.idx >= 1 ? s.idx : undefined;
+      if (t >= s.montageStart && t < s.montageStart + s.dur) return isMS(s) ? s.idx : undefined;
     }
     return undefined;
   };
@@ -206,6 +255,7 @@ async function main(): Promise<void> {
   // 1) SOURCE CUT REFERENCE: slice ASR into each window, map to montage time.
   const srcLines: SrcLine[] = [];
   for (const seg of segs) {
+    if (storyRoleByIdx.get(seg.idx) === 'teaser') continue; // teaser = lát lặp climax, không map lời
     for (const a of asr.segments) {
       if (a.end <= seg.srcStart || a.start >= seg.srcEnd) continue;
       if (!a.text.trim()) continue;
@@ -236,6 +286,25 @@ async function main(): Promise<void> {
   const introLines = asr.segments
     .filter((a) => a.end <= firstWindowStart && a.text.trim())
     .map((a) => a.text.trim());
+  // Reaction chỉ hợp lệ khi GẦN money-shot (QA: REACT_NEAR=7s). Với teaser/setup đẩy
+  // money-shot đầu ra xa, cấm gpt đặt reaction trong đoạn setup mở đầu → khớp gate.
+  const msTimesSorted = segs
+    .filter((s) => isMS(s))
+    .map((s) => msMontage(s.idx))
+    .sort((a, b) => a - b);
+  const reactFloor = Math.max(0, Math.floor((msTimesSorted[0] ?? 0) - 3));
+
+  // HOOK STYLE BANK: chọn GIỌNG hook cho job (xoay vòng, né style + hook của job gần)
+  // → hook nghe như người thật, KHÔNG lặp 1 câu mẫu khi scale nhiều clip/kênh.
+  const hookHistory = readHookHistory(dir);
+  const hookStyle: HookStyle = pickHookStyle(id, hookHistory);
+  const recentHooks = hookHistory
+    .filter((e) => e.jobId !== id)
+    .slice(-3)
+    .map((e) => e.hookText);
+  console.log(
+    `[13] HOOK STYLE = "${hookStyle.label}" (${hookStyle.id}); né ${recentHooks.length} hook gần đây.`,
+  );
 
   // 2) ONE gpt-5.5 call: storytelling VO (full sentences + memes), anchored to money-shots.
   console.log(
@@ -244,34 +313,67 @@ async function main(): Promise<void> {
   const out = await chatJson<{ beats?: GptBeat[] }>(apiKey, {
     model: scriptModel,
     system: buildScriptSys(subject),
-    user: [
-      `Montage câu ${subject} ngoài biển, dài ${Math.round(montageTotal)}s, có ${segs.length - 1} cú ${subject} lên (money-shot).`,
-      visionWhat.length > 0
-        ? `ĐỐI TƯỢNG THẬT (vision — gọi đúng, KHÔNG đổi loài): ${visionWhat.slice(0, 6).join(' | ')}`
-        : `ĐỐI TƯỢNG THẬT: ${subject}.`,
-      `Money-shot rơi vào các giây (montage time): ${segs
-        .filter((s) => s.idx >= 1)
-        .map((s) => Math.round(msMontage(s.idx)))
-        .join(', ')}.`,
-      '',
-      'STORY CONTEXT — lời gốc phần MỞ ĐẦU (KHÔNG lên hình, chỉ để hiểu nhân vật/chuyện, đừng đọc nguyên văn):',
-      introLines.length > 0 ? introLines.join(' / ') : '(không có)',
-      '',
-      'LỜI GỐC TRONG CẢNH (bám ý, anchor theo t; gộp thành câu đủ, giữ/Việt hóa meme):',
-      ...srcLines.map((l) => `[t=${l.mStart}s | id${l.id}] ${l.zh}`),
-      '',
-      `Yêu cầu: ~18–28 beat, mỗi beat 1 câu 8–14 từ có dấu câu, mở bằng hook persona ở t≈1s, THÊM 3–5 reaction whitelist ("Ha ha,"/"He he,"/"Ơ kìa,"/"Trời ơi,"/"Đúng bài rồi,") ghép đầu câu ở money-shot. Trả JSON {"beats":[...]}.`,
-    ].join('\n'),
+    user: (story
+      ? [
+          `Đây là VIDEO KỂ CHUYỆN câu ${subject} ngoài biển, dài ${Math.round(montageTotal)}s, dựng theo MẠCH: setup → buildup → escalation → climax → resolution.`,
+          `Các đoạn (montage time → vai): ${segs
+            .filter((s) => storyRoleByIdx.get(s.idx) !== 'teaser')
+            .map((s) => `${Math.round(s.montageStart)}s ${storyRoleByIdx.get(s.idx) ?? 'catch'}`)
+            .join(' | ')}.`,
+          visionWhat.length > 0
+            ? `ĐỐI TƯỢNG THẬT (vision — gọi đúng, KHÔNG đổi loài): ${visionWhat.slice(0, 6).join(' | ')}`
+            : `ĐỐI TƯỢNG THẬT: ${subject}.`,
+          buildHookStyleBlock(hookStyle, recentHooks),
+          `Sau hook (t≥${(teaserDur + 0.5).toFixed(1)}s) MỚI vào STORY: mở bằng câu persona setup, rồi buildup → escalation → climax (con TO NHẤT) → resolution. Kết 1 câu CTA mềm ("Theo dõi xem buổi sau…") ở resolution.`,
+          storyConf === 'high'
+            ? 'story_confidence=high → được kể đậm persona (VẪN bám lời gốc).'
+            : `⚠ story_confidence=${storyConf} → viết DÈ DẶT: CHỈ dùng điều CÓ trong lời gốc, TUYỆT ĐỐI KHÔNG bịa persona/hành trình.`,
+          '',
+          'LỜI GỐC TỪNG ĐOẠN (theo montage time — Việt hóa TRUNG THỰC, giữ/Việt hóa meme, KHÔNG bịa):',
+          ...srcLines.map((l) => `[t=${l.mStart}s | id${l.id}] ${l.zh}`),
+          '',
+          `Yêu cầu: 14–18 beat, mỗi câu 8–13 từ có dấu câu, TỔNG đọc ≤ ${Math.max(20, Math.round(montageTotal - 9))}s (thà ít/gọn hơn voice tràn). 3–4 reaction whitelist ("Ha ha,"/"He he,"/"Ơ kìa,"/"Trời ơi,"/"Đúng bài rồi,") — CHỈ ghép Ở CẢNH CÁ LÊN (money-shot, t ≥ ${reactFloor}s); TUYỆT ĐỐI KHÔNG đặt reaction trong đoạn setup/persona mở đầu (giữ setup là lời kể nhân vật, không reo). Trả JSON {"beats":[...]}.`,
+        ]
+      : [
+          `Montage câu ${subject} ngoài biển, dài ${Math.round(montageTotal)}s, có ${segs.length - 1} cú ${subject} lên (money-shot).`,
+          visionWhat.length > 0
+            ? `ĐỐI TƯỢNG THẬT (vision — gọi đúng, KHÔNG đổi loài): ${visionWhat.slice(0, 6).join(' | ')}`
+            : `ĐỐI TƯỢNG THẬT: ${subject}.`,
+          `Money-shot rơi vào các giây (montage time): ${segs
+            .filter((s) => s.idx >= 1)
+            .map((s) => Math.round(msMontage(s.idx)))
+            .join(', ')}.`,
+          '',
+          'STORY CONTEXT — lời gốc phần MỞ ĐẦU (KHÔNG lên hình, chỉ để hiểu nhân vật/chuyện, đừng đọc nguyên văn):',
+          introLines.length > 0 ? introLines.join(' / ') : '(không có)',
+          '',
+          'LỜI GỐC TRONG CẢNH (bám ý, anchor theo t; gộp thành câu đủ, giữ/Việt hóa meme):',
+          ...srcLines.map((l) => `[t=${l.mStart}s | id${l.id}] ${l.zh}`),
+          '',
+          `Yêu cầu: ~18–28 beat, mỗi beat 1 câu 8–14 từ có dấu câu, mở bằng hook persona ở t≈1s, THÊM 3–5 reaction whitelist ("Ha ha,"/"He he,"/"Ơ kìa,"/"Trời ơi,"/"Đúng bài rồi,") ghép đầu câu ở money-shot. Trả JSON {"beats":[...]}.`,
+        ]
+    ).join('\n'),
     temperature: 0.8,
   });
 
   // 3) Build step-12 beats từ GPT output (clamp t, estSec, sceneIdx, srcId).
   const raw = (out.beats ?? []).filter((b) => b && typeof b.text === 'string' && b.text.trim());
+  const voFloor = story ? Number((teaserDur + 0.2).toFixed(2)) : 0.3; // story khác → đọc đè hook
   const beats: Beat[] = raw.map((b) => {
-    const t = Math.max(0.3, Math.min(montageTotal - 0.5, Number(b.t) || 0.5));
+    const role = b.role === 'hook' || b.role === 'react' ? b.role : 'line';
+    const gptT = Number(b.t);
+    // Cold-open hook line: ÉP mọi beat role 'hook' của story về slot 0.3–1.2s (voice
+    // xuất hiện TRƯỚC 1.5s, bất kể GPT đặt t đâu — đảm bảo hook luôn có lời sớm). Beat
+    // story khác → clamp ≥ voFloor (sau hook hình). Anchor (non-story) → giữ như cũ.
+    const isColdOpen = story && role === 'hook';
+    const lo = isColdOpen ? 0.3 : voFloor;
+    const hi = isColdOpen ? Math.min(1.2, montageTotal - 0.5) : montageTotal - 0.5;
+    const t = isColdOpen
+      ? Math.min(hi, Math.max(lo, Number.isFinite(gptT) && gptT < teaserDur ? gptT : 0.6))
+      : Math.max(lo, Math.min(hi, Number.isFinite(gptT) ? gptT : lo + 0.2));
     const text = b.text.trim();
     return {
-      role: b.role === 'hook' || b.role === 'react' ? b.role : 'line',
+      role,
       sceneIdx: sceneAt(t),
       text,
       montageTime: Number(t.toFixed(2)),
@@ -301,7 +403,8 @@ async function main(): Promise<void> {
   const punctRatio = n > 0 ? Number((punctBeats.length / n).toFixed(2)) : 0;
   const longBeats = beats.filter((_, i) => (words[i] ?? 0) > 16);
   const fillerBeats = beats.filter((b) => b.srcId == null && b.role !== 'hook');
-  const hookBeat = beats.find((b) => b.role === 'hook' && b.montageTime <= 5);
+  // Hook persona = beat narration ĐẦU TIÊN, ngay sau hook hình (VO bắt đầu ở teaserDur).
+  const hookBeat = beats.find((b) => b.role === 'hook' && b.montageTime <= teaserDur + 5);
   // nonsense (cấu trúc): câu KHÔNG phải cảm thán/hook, <4 từ và KHÔNG có dấu câu → nghi cụt.
   const suspect = beats.filter(
     (b, i) => b.role === 'line' && (words[i] ?? 0) < 4 && !hasEndPunct(b.text),
@@ -309,7 +412,7 @@ async function main(): Promise<void> {
   const totalSpeech = Number(beats.reduce((s, b) => s + b.estSec, 0).toFixed(1));
 
   // Humor Reaction Layer QA: beat (không phải hook) mở đầu bằng cụm whitelist.
-  const moneyShotTimes = segs.filter((s) => s.idx >= 1).map((s) => msMontage(s.idx));
+  const moneyShotTimes = segs.filter((s) => isMS(s)).map((s) => msMontage(s.idx));
   const reactionBeats = beats.filter((b) => b.role !== 'hook' && reactionPrefix(b.text) != null);
   const reactionCount = reactionBeats.length;
   const REACT_NEAR = 7; // s — reaction phải gần 1 money-shot (cao trào thật)
@@ -325,6 +428,8 @@ async function main(): Promise<void> {
   const maxSamePrefix = prefixCounts.size > 0 ? Math.max(...prefixCounts.values()) : 0;
   const minReact = Math.min(3, moneyShotTimes.length);
   const hookWords = hookBeat ? wordCount(hookBeat.text) : 0;
+  // Chống lặp hook: dính mô-típ cấm ("con đầu đã vậy…") hoặc đụng hook job gần → FAIL.
+  const hookRep = isHookRepeat(hookBeat?.text ?? '', hookHistory, id);
 
   const gates: Array<{ ok: boolean; label: string }> = [
     { ok: n >= 14 && n <= 34, label: `Số beat ${n} trong [14,34]` },
@@ -334,6 +439,14 @@ async function main(): Promise<void> {
     { ok: longBeats.length <= 1, label: `Câu >16 từ ${longBeats.length} ≤ 1` },
     { ok: fillerBeats.length <= 4, label: `Filler không bám gốc ${fillerBeats.length} ≤ 4` },
     { ok: !!hookBeat && hookWords >= 8, label: `Hook persona ${hookWords} từ (≥8)` },
+    {
+      ok: !!hookBeat && hookWords <= 13,
+      label: `Hook ≤13 từ (${hookWords})`,
+    },
+    {
+      ok: !hookRep.repeat,
+      label: `Hook đa dạng style "${hookStyle.id}"${hookRep.repeat ? ` 🛑 ${hookRep.reason}` : ''}`,
+    },
     { ok: suspect.length === 0, label: `Câu cụt nghi vô nghĩa ${suspect.length} = 0` },
     { ok: reactionCount <= 5, label: `Reaction ${reactionCount} ≤ 5 (không lạm dụng)` },
     {
@@ -378,6 +491,16 @@ async function main(): Promise<void> {
     beats,
   };
   writeFileSync(scriptPath, JSON.stringify(scriptJson, null, 2));
+
+  // Hook ĐẠT QA → ghi lịch sử (style + câu) để các job SAU né style gần + né lặp câu.
+  if (failed.length === 0 && hookBeat) {
+    appendHookHistory(dir, {
+      jobId: id,
+      styleId: hookStyle.id,
+      hookText: hookBeat.text,
+      at: new Date().toISOString(),
+    });
+  }
 
   const md: string[] = [];
   md.push('# Script review — SOURCE-BOUND v2 (kể chuyện, ⛔ CHỜ DUYỆT)');
