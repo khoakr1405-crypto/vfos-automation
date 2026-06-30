@@ -155,6 +155,12 @@ export interface EntPackageSummary {
   generatedAt?: string;
 }
 
+/** Story classification surface từ story_arc.json (03d-source-classify) cho UI/manifest. */
+export interface EntStorySummary {
+  confidence?: string;
+  sourceType?: string;
+}
+
 export interface EntJob {
   jobId: string;
   lane: string;
@@ -165,6 +171,10 @@ export interface EntJob {
   accountId?: string;
   channelNiche?: string;
   channelBoundAt?: string;
+  /** Engine montage: 'story' (kể chuyện, mặc định lane) | 'anchors' (cũ). Thiếu = 'story'. */
+  storyEngine?: 'story' | 'anchors';
+  /** Story classification (surface từ story_arc.json) — audit/UI; null khi chưa phân loại. */
+  story?: EntStorySummary | null;
   state: EntJobState;
   createdAt: string;
   updatedAt: string;
@@ -363,6 +373,8 @@ export function createJob(input: { url: string; niche: string; channelId?: strin
     jobId: id,
     lane: 'entertainment',
     niche: input.niche,
+    // Mặc định lane Giải trí = STORY engine. Per-channel/UI toggle: defer (chỉ ghi field).
+    storyEngine: 'story',
     ...(channel
       ? {
           channelId: channel.channelId,
@@ -620,6 +632,24 @@ function readScriptSummary(id: string): EntScriptSummary | null {
   };
 }
 
+/**
+ * Surface story classification từ story_arc.json (03d-source-classify) — READ-ONLY.
+ * Trả null khi chưa phân loại (không có file / không có field) → KHÔNG làm bẩn manifest.
+ */
+export function readStorySummary(id: string): EntStorySummary | null {
+  const j = readJsonSafe<{ story_confidence?: string; source_type?: string }>(
+    entFile(id, 'story_arc.json'),
+  );
+  if (!j) return null;
+  const confidence = j.story_confidence;
+  const sourceType = j.source_type;
+  if (confidence == null && sourceType == null) return null;
+  return {
+    ...(confidence != null ? { confidence } : {}),
+    ...(sourceType != null ? { sourceType } : {}),
+  };
+}
+
 function readRenderSummary(id: string): EntRenderSummary | null {
   const j = readJsonSafe<{
     verdict?: string;
@@ -746,6 +776,7 @@ export function getJobDetail(id: string): EntJob | null {
   const render = readRenderSummary(id);
   const audio = readAudioSummary(id);
   const pkg = readPackageSummary(id);
+  const story = readStorySummary(id);
   const reviewGates = base.reviewGates ?? { scriptApproved: false, previewApproved: false };
   const state = reconcileState(id, base);
 
@@ -757,7 +788,8 @@ export function getJobDetail(id: string): EntJob | null {
     JSON.stringify(base.coverage ?? null) !== JSON.stringify(coverage) ||
     JSON.stringify(base.render ?? null) !== JSON.stringify(render) ||
     JSON.stringify(base.audio ?? null) !== JSON.stringify(audio) ||
-    JSON.stringify(base.package ?? null) !== JSON.stringify(pkg)
+    JSON.stringify(base.package ?? null) !== JSON.stringify(pkg) ||
+    JSON.stringify(base.story ?? null) !== JSON.stringify(story)
   ) {
     writeManifest(id, {
       ...base,
@@ -768,11 +800,23 @@ export function getJobDetail(id: string): EntJob | null {
       render,
       audio,
       package: pkg,
+      story,
       updatedAt: nowIso(),
     });
   }
 
-  return { ...base, state, steps, script, coverage, render, audio, package: pkg, reviewGates };
+  return {
+    ...base,
+    state,
+    steps,
+    script,
+    coverage,
+    render,
+    audio,
+    package: pkg,
+    story,
+    reviewGates,
+  };
 }
 
 /** Tiền điều kiện artifact + gate cho mỗi step. */
@@ -794,6 +838,15 @@ function prereqOk(id: string, step: EntStepName): { ok: true } | { ok: false; ne
 export type StartStepResult =
   | { ok: true; step: EntStepName; pid?: number }
   | { ok: false; code: 'NOT_FOUND' | 'BAD_STATE' | 'BUSY' | 'PREREQ'; message: string };
+
+/**
+ * Engine montage cho spawn (ENT_MONTAGE_ENGINE). DEFENSIVE: chỉ 'anchors' TƯỜNG MINH
+ * mới trả 'anchors'; mọi trường hợp khác (thiếu field / manifest cũ / giá trị lạ) → 'story'.
+ * → KHÔNG đổi hành vi hiện tại (luôn story) khi field vắng.
+ */
+export function resolveMontageEngine(job: Pick<EntJob, 'storyEngine'>): 'story' | 'anchors' {
+  return job.storyEngine === 'anchors' ? 'anchors' : 'story';
+}
 
 /**
  * Khởi chạy 1 step pipeline DETACHED. Single-flight mỗi job (1 step chạy 1 lúc)
@@ -845,12 +898,13 @@ export function startStep(id: string, step: EntStepName): StartStepResult {
 
   // Lane Giải trí dùng STORY engine (hook teaser 0–5s, cold-open Hook Style Bank,
   // seg-floor chống title intro, cấu trúc kể chuyện). Bật lane-scoped ngay tại spawn
-  // — KHÔNG set .env global. Thiếu cờ này pipeline rơi về engine "anchors" cũ.
+  // — KHÔNG set .env global. Engine lấy PER-JOB từ manifest (resolveMontageEngine):
+  // thiếu field → 'story' (mặc định lane). Thiếu cờ này pipeline rơi về "anchors" cũ.
   const { pid } = runRepoScriptDetached(
     PIPELINE_SCRIPT_REL,
     ['--id', id, '--step', step, '--model', SCRIPT_MODEL],
     logPath,
-    { ENT_MONTAGE_ENGINE: 'story' },
+    { ENT_MONTAGE_ENGINE: resolveMontageEngine(job) },
   );
   return { ok: true, step, pid };
 }
