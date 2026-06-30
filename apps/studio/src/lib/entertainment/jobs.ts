@@ -22,7 +22,7 @@ import {
   createTikTokPublishClient,
   queryCreatorUsername,
 } from '@/lib/tiktok/tiktok-publish-client';
-import { getChannel, listChannels, resolveChannelForJob } from './channels';
+import { type EntChannel, getChannel, listChannels, resolveChannelForJob } from './channels';
 import { computeReadiness } from './publish';
 import type {
   EntTikTokPublishSummary,
@@ -373,8 +373,8 @@ export function createJob(input: { url: string; niche: string; channelId?: strin
     jobId: id,
     lane: 'entertainment',
     niche: input.niche,
-    // Mặc định lane Giải trí = STORY engine. Per-channel/UI toggle: defer (chỉ ghi field).
-    storyEngine: 'story',
+    // Per-channel: copy storyEngine từ channel (defensive — thiếu/sai/null → 'story').
+    storyEngine: jobStoryEngineFor(channel),
     ...(channel
       ? {
           channelId: channel.channelId,
@@ -846,6 +846,18 @@ export type StartStepResult =
  */
 export function resolveMontageEngine(job: Pick<EntJob, 'storyEngine'>): 'story' | 'anchors' {
   return job.storyEngine === 'anchors' ? 'anchors' : 'story';
+}
+
+/**
+ * Engine montage copy từ CHANNEL vào job lúc tạo (per-channel). DEFENSIVE: chỉ
+ * 'anchors' tường minh mới ra 'anchors'; channel null / thiếu / giá trị lạ → 'story'
+ * (safe default — khớp guard lớp config coerceChannel). Round safe-mode: config để
+ * toàn 'story' nên không job nào nhận anchors (anchors engine vẫn defer).
+ */
+export function jobStoryEngineFor(
+  channel: Pick<EntChannel, 'storyEngine'> | null,
+): 'story' | 'anchors' {
+  return channel?.storyEngine === 'anchors' ? 'anchors' : 'story';
 }
 
 /**

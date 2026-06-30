@@ -34,6 +34,8 @@ export interface EntChannel {
   guardPolicy: { topicMismatch: 'block' | 'warn'; crossPost: 'deny' | 'allow' };
   /** Kênh nguồn TQ gắn cứng (optional). Thiếu → "Tải link" rơi về dán URL tay. */
   sourceChannel?: EntSourceChannel;
+  /** Engine montage mặc định cho kênh: 'story' (mặc định) | 'anchors'. Thiếu/sai → 'story'. */
+  storyEngine?: 'story' | 'anchors';
 }
 
 /** Parse + validate block sourceChannel (optional). Sai/thiếu → undefined. */
@@ -77,6 +79,8 @@ function coerceChannel(raw: Record<string, unknown>): EntChannel | null {
       crossPost: gp.crossPost === 'allow' ? 'allow' : 'deny',
     },
     sourceChannel: coerceSourceChannel(raw.sourceChannel),
+    // Guard lớp config: chỉ 'anchors' tường minh; thiếu/sai → 'story' (safe default).
+    storyEngine: raw.storyEngine === 'anchors' ? 'anchors' : 'story',
   };
 }
 

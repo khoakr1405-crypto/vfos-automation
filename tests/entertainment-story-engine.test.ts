@@ -16,10 +16,13 @@ import { after, before, describe, test } from 'node:test';
 
 type JobsMod = typeof import('../apps/studio/src/lib/entertainment/jobs.ts');
 type PathsMod = typeof import('../apps/studio/src/lib/studio-data/paths.ts');
+type ChannelsMod = typeof import('../apps/studio/src/lib/entertainment/channels.ts');
 
 let resolveMontageEngine: JobsMod['resolveMontageEngine'];
 let readStorySummary: JobsMod['readStorySummary'];
+let jobStoryEngineFor: JobsMod['jobStoryEngineFor'];
 let resolveInsideRepo: PathsMod['resolveInsideRepo'];
+let getChannel: ChannelsMod['getChannel'];
 
 before(async () => {
   const j = (await import('../apps/studio/src/lib/entertainment/jobs.ts')) as JobsMod & {
@@ -28,11 +31,17 @@ before(async () => {
   const p = (await import('../apps/studio/src/lib/studio-data/paths.ts')) as PathsMod & {
     default?: PathsMod;
   };
+  const c = (await import('../apps/studio/src/lib/entertainment/channels.ts')) as ChannelsMod & {
+    default?: ChannelsMod;
+  };
   const jd = j.default ?? j;
   const pd = p.default ?? p;
+  const cd = c.default ?? c;
   resolveMontageEngine = jd.resolveMontageEngine;
   readStorySummary = jd.readStorySummary;
+  jobStoryEngineFor = jd.jobStoryEngineFor;
   resolveInsideRepo = pd.resolveInsideRepo;
+  getChannel = cd.getChannel;
 });
 
 describe('resolveMontageEngine — defensive default story', () => {
@@ -103,5 +112,34 @@ describe('readStorySummary — surface story_arc.json', () => {
 
   test('jobId không hợp lệ → null (không path-traversal)', () => {
     assert.equal(readStorySummary('../evil'), null);
+  });
+});
+
+describe('jobStoryEngineFor — per-channel copy (defensive default story)', () => {
+  test("channel.storyEngine='anchors' → 'anchors'", () => {
+    assert.equal(jobStoryEngineFor({ storyEngine: 'anchors' }), 'anchors');
+  });
+
+  test("channel.storyEngine='story' → 'story'", () => {
+    assert.equal(jobStoryEngineFor({ storyEngine: 'story' }), 'story');
+  });
+
+  test('channel thiếu storyEngine → story', () => {
+    assert.equal(jobStoryEngineFor({}), 'story');
+  });
+
+  test('channel null → story', () => {
+    assert.equal(jobStoryEngineFor(null), 'story');
+  });
+
+  test('giá trị lạ / không hợp lệ → story (defensive)', () => {
+    const weird = { storyEngine: 'STORY' } as unknown as Parameters<typeof jobStoryEngineFor>[0];
+    assert.equal(jobStoryEngineFor(weird), 'story');
+  });
+});
+
+describe('config thật — ch_fishing storyEngine', () => {
+  test("getChannel('ch_fishing').storyEngine === 'story' (config + coerce)", () => {
+    assert.equal(getChannel('ch_fishing')?.storyEngine, 'story');
   });
 });
