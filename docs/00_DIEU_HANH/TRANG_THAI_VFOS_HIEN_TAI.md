@@ -2663,6 +2663,28 @@ Pipeline anchors chạy đầy đủ (từ log): cắt 4 money-shot → vision h
 
 ---
 
+### ✅ Phần 50 — Round Skill Cleanup: dọn `.claude/skills` còn 5 skill load thật (2026-06-30)
+
+> **Mục tiêu**: làm sạch `.claude/skills` để chỉ còn skill **load thật**. Phát hiện gốc: Claude Code **CHỈ** load skill dạng folder `<tên>/SKILL.md` + frontmatter `---name/description---`; file `.md` **phẳng** vứt thẳng vào `skills/` **không bao giờ kích hoạt** → đây là lý do nhiều skill "viết ra mà không thấy dùng".
+
+**Đã làm (branch `chore/skills-cleanup`, commit `6cd7e03`, CHƯA push):**
+- `chay/` → `.claude/_archive/skills/chay/` — lane Shopee-First short-form + FB Reels Operator chốt **NGỦ ĐÔNG** (không xoá; rename 100% giữ history). 2663 dòng nên tách ra cho nhẹ context.
+- `shop-amazon.md` → **XOÁ** (không load + lệch North Star Amazon; đã tracked nên còn trong git history).
+- 3 file giá trị (sai format, nội dung tốt) → `.claude/_archive/skills/pending-rebuild/`: `vfos_evidence_gated_research.md`, `vfos_proactive_support.md`, `vfos_revenue_experiment_strategist.md` (rename 100% giữ history).
+
+**Verify (gate PASS trước commit):**
+- ✅ `.claude/skills` còn **đúng 5 skill load thật** (đều auto-trigger): `vfos-command-center-skill`, `vfos-git-safety-skill`, `vfos-product-review-workflow-skill`, `vfos-shopee-affiliate-skill`, `vfos-ui-review-skill`.
+- ✅ Không còn file `.md` phẳng nào trong `skills/`.
+- ✅ 100% staged nằm trong `.claude/skills | .claude/_archive` (scoped, **không** `git add -A`).
+
+**Ràng buộc giữ:** KHÔNG sửa code pipeline · KHÔNG đụng Product Review/BGM/render/publish · KHÔNG stage runtime/media/draft · **CHƯA push**.
+
+**Round 2 còn nợ:** rebuild `vfos-evidence-gated-research` thành skill chuẩn `.claude/skills/vfos-evidence-gated-research/SKILL.md` (auto-trigger, chặn agent bịa URL/data — đúng lỗi từng hại Market Validation 001). KHÔNG gộp Round 2 vào Round 1.
+
+**Bước tiếp theo**: (1) Operator duyệt **push** `chore/skills-cleanup`; (2) sau push mới làm Round 2 (rebuild `vfos-evidence-gated-research`).
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
