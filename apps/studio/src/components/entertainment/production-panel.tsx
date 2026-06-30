@@ -80,6 +80,8 @@ interface JobDetail {
   render?: RenderSummary | null;
   audio?: AudioSummary | null;
   reviewGates?: { scriptApproved: boolean; previewApproved: boolean };
+  storyEngine?: 'story' | 'anchors';
+  story?: { confidence?: string; sourceType?: string } | null;
 }
 interface ScriptBeat {
   role: string;
@@ -106,6 +108,14 @@ const SUB_LABEL: Record<string, string> = {
   '12-voice-render': 'Lồng tiếng + caption + render',
   '15-audio-ambient-full': 'Bỏ giọng Trung + giữ ambient (Demucs)',
 };
+
+// Nhãn tiếng Việt cho story metadata (read-only indicator).
+const STORY_SOURCE_LABEL: Record<string, string> = {
+  story: 'Story',
+  highlight: 'Highlight',
+  story_split_candidate: 'Story (ghép)',
+};
+const STORY_CONF_LABEL: Record<string, string> = { high: 'cao', medium: 'vừa', low: 'thấp' };
 
 function mmss(sec: number): string {
   const m = Math.floor(sec / 60);
@@ -336,6 +346,9 @@ export function ProductionPanel() {
         {msg && <p className="text-[11px] text-neutral-400">{msg}</p>}
       </div>
 
+      {/* Story engine + phân loại (read-only indicator — KHÔNG toggle/gate) */}
+      {detail && <StoryEngineBadge detail={detail} />}
+
       {/* Progress line per-step — phản ánh runtime THẬT của job:
           đèn pulse = đang chạy · ✓ xanh = xong · mờ = chưa chạy · ✕ đỏ = lỗi. */}
       {detail && <StepProgress rows={stepRows} running={running} error={stepError} />}
@@ -453,6 +466,44 @@ function StepProgress({
         ))}
       </ol>
       {error && <p className="text-[10px] text-accent-rose">🛑 {error}</p>}
+    </div>
+  );
+}
+
+/** Read-only indicator: engine montage (story/anchors) + phân loại story
+ *  (sourceType/confidence) từ story_arc.json. CHỈ hiển thị — KHÔNG toggle, KHÔNG
+ *  gate, KHÔNG tô đỏ. Thiếu storyEngine → mặc định 'story' (khớp server defensive). */
+function StoryEngineBadge({ detail }: { detail: JobDetail }) {
+  const engineAnchors = detail.storyEngine === 'anchors';
+  const story = detail.story ?? null;
+  const chip = 'rounded-full px-2 py-0.5 text-[10px] font-semibold';
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <span
+        className={
+          engineAnchors
+            ? `${chip} bg-panel/60 text-neutral-300`
+            : `${chip} border border-accent-cyan/30 bg-accent-cyan/10 text-accent-cyan`
+        }
+      >
+        Engine: {engineAnchors ? 'Anchors' : 'Story'}
+      </span>
+      {story ? (
+        <>
+          {story.sourceType && (
+            <span className={`${chip} bg-panel/60 text-neutral-300`}>
+              Phân loại: {STORY_SOURCE_LABEL[story.sourceType] ?? story.sourceType}
+            </span>
+          )}
+          {story.confidence && (
+            <span className={`${chip} bg-panel/60 text-neutral-300`}>
+              Độ tin: {STORY_CONF_LABEL[story.confidence] ?? story.confidence}
+            </span>
+          )}
+        </>
+      ) : (
+        <span className={`${chip} bg-panel/40 text-neutral-600`}>Chưa phân loại</span>
+      )}
     </div>
   );
 }
