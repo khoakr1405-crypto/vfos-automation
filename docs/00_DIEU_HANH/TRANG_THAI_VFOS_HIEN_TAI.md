@@ -1,8 +1,8 @@
 # TRẠNG THÁI VFOS HIỆN TẠI
 
 > **Loại tài liệu**: File điều hành trung tâm — cập nhật sau mỗi vòng làm việc lớn
-> **Cập nhật lần cuối**: 2026-06-29 (**POC scrub chữ Trung (Evidence Gate, 6 clip thật) → giữ `delogo`; recall tune `--fps 3 --min-score 0.5` ĐÃ ÁP vào `10-montage-v2.ts` lane câu cá (222949 sót 12.5%→5.4%, không FP), CHƯA commit; inpaint Option D defer — xem Phần 40**. Trước đó 2026-06-24: **Phase 3 lane Giải trí — NỐI NÚT "ĐĂNG TIKTOK" TRÊN UI STUDIO THẬT (Phần 39)**: đưa 11 file Phase 3 vào `feat/entertainment-lane` (nhánh chạy Studio có .env+data) → UI→route→`publishToTikTok`→client thật; commit `9322f9f` (+1714/−92, KHÔNG đụng 5 dirty WIP). FIX bug `node:fs` edge: bỏ `instrumentation.ts`, nạp `.env` gốc qua `next.config.ts` (Node, không webpack) — **phải restart Studio 3002**. Xác minh Next dev: readiness 200 `tiktokApiReady:true`, publish guard 409 ALREADY_POSTED (không đăng trùng), 404 control; biome/tsc/test sạch. Trước đó: **ROUND 2 (ĐĂNG THẬT) HOÀN TẤT, DoD ĐẠT**: job `ent_squid_001` đăng thật 1 video qua TikTok Content Posting API → state `TIKTOK_POSTED`, `publishId=v_pub_file~v2-1.7654841036543494165`, đăng **SELF_ONLY** vì app chưa audit. Giải blocker `unaudited_client_can_only_post_to_private_accounts` = bật **Private account** (không phải lỗi code). Thêm `creator_info/query` + **multi-chunk upload** (70MB→6 chunk) + CLI runner `tiktok-publish-run.ts`; commit `3eb6788` worktree (CHƯA push, no merge/PR). Validation: biome 0 · node:test 30/30. access_token 24h, refresh_token 365 ngày (`pnpm tiktok:oauth refresh`). Xem **Phần 38**. Round 1 (nền+mock) commit `f9a2fa6`. Trước đó: lane Giải trí MERGED master `e2d0a55` — Phần 37.)
-> **Branch**: master `e2d0a55` (lane Giải trí end-to-end). **Phase 3 round 1**: `feat/entertainment-tiktok-publish` (`f9a2fa6`, base master, **đã push origin, CHƯA merge/PR** — DoD cần đăng thật Round 2). Nhánh dev `feat/entertainment-lane` (`5fde46e`, đa-lane archive). | **Commit mốc**: `f9a2fa6` (`feat(ent-lane): add guarded TikTok publish flow (Phase 3 round 1)`). ⚠️ 5 file dirty NGOÀI SCOPE vẫn treo trên dev branch (`source-intake/route.ts`, `source-url/`, `package.json`, `bgm_library.json`, `implementation_plan.md`) — CHƯA xử lý.
+> **Cập nhật lần cuối**: 2026-06-30 (**Khóa sổ round lane câu cá (Phần 42)**: 3 commit `413e0ac` (scrub recall tune) + `19ed0ba` (caption lower-third) + `0f2924a` (self-repair loop step 13, giữ nguyên 15 cổng QA, 5/5 PASS) đều **ĐÃ PUSH `origin/feat/ent-multichannel` — local == origin** (verify sync); deliverable `montage_v2_short_ambient.mp4` Operator duyệt **ĐẠT**; **publish CHƯA chạy — vẫn là cổng duyệt riêng**. Trước đó **Caption lower-third + verify deliverable end-to-end (Phần 41)**: fix `centerPresetOnBand` neo caption vào dải dưới (kẹp 0.74–0.86) thay vì median mọi dải → commit `19ed0ba` pushed; render thật clip 222949 (KHÔNG publish) → caption lower-third + 0 CJK + hook-verify PASS, Operator duyệt ĐẠT; 2 commit `413e0ac`+`19ed0ba` đã chạy pipeline đầy đủ. Phát hiện flaky script-QA step 13 (gpt-5.5 trượt 1 cổng/lần) → mở round repair-loop. Trước đó 2026-06-29: **POC scrub chữ Trung (Evidence Gate, 6 clip thật) → giữ `delogo`; recall tune `--fps 3 --min-score 0.5` ĐÃ ÁP vào `10-montage-v2.ts` lane câu cá (222949 sót 12.5%→5.4%, không FP), CHƯA commit; inpaint Option D defer — xem Phần 40**. Trước đó 2026-06-24: **Phase 3 lane Giải trí — NỐI NÚT "ĐĂNG TIKTOK" TRÊN UI STUDIO THẬT (Phần 39)**: đưa 11 file Phase 3 vào `feat/entertainment-lane` (nhánh chạy Studio có .env+data) → UI→route→`publishToTikTok`→client thật; commit `9322f9f` (+1714/−92, KHÔNG đụng 5 dirty WIP). FIX bug `node:fs` edge: bỏ `instrumentation.ts`, nạp `.env` gốc qua `next.config.ts` (Node, không webpack) — **phải restart Studio 3002**. Xác minh Next dev: readiness 200 `tiktokApiReady:true`, publish guard 409 ALREADY_POSTED (không đăng trùng), 404 control; biome/tsc/test sạch. Trước đó: **ROUND 2 (ĐĂNG THẬT) HOÀN TẤT, DoD ĐẠT**: job `ent_squid_001` đăng thật 1 video qua TikTok Content Posting API → state `TIKTOK_POSTED`, `publishId=v_pub_file~v2-1.7654841036543494165`, đăng **SELF_ONLY** vì app chưa audit. Giải blocker `unaudited_client_can_only_post_to_private_accounts` = bật **Private account** (không phải lỗi code). Thêm `creator_info/query` + **multi-chunk upload** (70MB→6 chunk) + CLI runner `tiktok-publish-run.ts`; commit `3eb6788` worktree (CHƯA push, no merge/PR). Validation: biome 0 · node:test 30/30. access_token 24h, refresh_token 365 ngày (`pnpm tiktok:oauth refresh`). Xem **Phần 38**. Round 1 (nền+mock) commit `f9a2fa6`. Trước đó: lane Giải trí MERGED master `e2d0a55` — Phần 37.)
+> **Branch**: master `e2d0a55` (lane Giải trí end-to-end). **Phase 3 round 1**: `feat/entertainment-tiktok-publish` (`f9a2fa6`, base master, **đã push origin, CHƯA merge/PR** — DoD cần đăng thật Round 2). Nhánh dev `feat/entertainment-lane` (`5fde46e`, đa-lane archive). | **🆕 Lane câu cá (round hiện tại)**: `feat/ent-multichannel` HEAD **`0f2924a` — local == origin** (đã push, verify sync); chứa `413e0ac`+`19ed0ba`+`0f2924a` (Phần 42). | **Commit mốc**: `f9a2fa6` (`feat(ent-lane): add guarded TikTok publish flow (Phase 3 round 1)`). ⚠️ 5 file dirty NGOÀI SCOPE vẫn treo trên dev branch (`source-intake/route.ts`, `source-url/`, `package.json`, `bgm_library.json`, `implementation_plan.md`) — CHƯA xử lý; trên `feat/ent-multichannel` còn 3 dirty out-of-scope (`bgm_library.json`, `_hookframes/`, `implementation_plan.md`) — CHƯA xử lý.
 > **Đọc trước khi làm bất cứ việc gì**: `CLAUDE.md` → file này → rồi mới bắt đầu task → luôn chạy `pnpm vfos:daily` để có chỉ dẫn trạng thái mới nhất
 
 > ⚠️ **ĐƯỜNG VẬN HÀNH CHÍNH THỨC**: dùng `docs/00_DIEU_HANH/HUONG_DAN_VAN_HANH_CHINH_THUC_VFOS.md` (operator guide chuẩn, flow A-Z `commerce:intake` → `job:run-review` → `job:publish-facebook`).
@@ -2458,11 +2458,50 @@ DOM card img
 - **TUNE mode**: `delogo` vs `delogo-tight` vs `solid` (blur render lỗi filtergraph nhiều đoạn) → tight ≈ delogo, solid để thanh đen xấu → **giữ `delogo`**.
 - **RECALL tune** (clip vấn đề 222949 sót 12.5%): `--fps 3 --min-score 0.5` kéo **12.5% → 5.4%** (sót giảm 57%), cover đoạn giữ **36** (KHÔNG tăng FP), clip sạch 0621 0.8%→0% (không regress), không phạt thời gian.
 
-**ĐÃ ÁP production (scoped, Operator chọn "áp ngay")**: thêm `--fps 3 --min-score 0.5` vào lời gọi detector trong `10-montage-v2.ts` step 7 — **CHỈ lane câu cá**; Product Review giữ default 2fps/0.6. Mode vẫn delogo. **CHƯA commit** (working tree `feat/ent-multichannel`).
+**ĐÃ ÁP production (scoped, Operator chọn "áp ngay")**: thêm `--fps 3 --min-score 0.5` vào lời gọi detector trong `10-montage-v2.ts` step 7 — **CHỈ lane câu cá**; Product Review giữ default 2fps/0.6. Mode vẫn delogo. **ĐÃ commit `413e0ac` + PUSH** `origin/feat/ent-multichannel` (xem Phần 42).
 
 **Quyết định**: Option C (delogo hiện tại) = đủ tốt. **Inpaint AI (video-subtitle-remover, Option D, ~2-4 ngày) DEFER** — chỉ mở nếu Operator xem motion thật và thấy smear băng dưới không chấp nhận được. Chi tiết memory `project_vfos_chinese_subtitle_scrub`.
 
 **Bước tiếp theo**: (1) Khi render thật 1 clip montage end-to-end → xác nhận recall tune không hồi quy. (2) Có thể đẩy `fps4/min-score0.45` nếu muốn ép 222949 <5%. (3) Commit edit `10-montage-v2.ts` khi Operator cho phép (đang lẫn với round multichannel/story-flag CHƯA commit).
+
+---
+
+### ✅ Phần 41 — Caption lower-third + verify deliverable end-to-end lane câu cá (2026-06-30)
+
+> **Mục tiêu**: caption Việt phải nằm lower-third (vùng phụ đề gốc), KHÔNG bay lên dải scrub title trên; rồi render deliverable thật xác nhận 2 commit chạy trong pipeline đầy đủ. Operator duyệt ĐẠT.
+
+**Bug + fix**: `centerPresetOnBand` (`scripts/kinetic-caption-renderer.ts`) lấy MEDIAN tâm-y của MỌI dải cover → có cả dải title TRÊN nên caption rơi ~0.2 (upper-middle, sai layout). Fix: chỉ lấy **dải THẤP NHẤT nửa dưới** (filter c≥0.55, max) + **kẹp 0.74–0.86**. **Commit `19ed0ba` (pushed origin `feat/ent-multichannel`)**. KHÔNG đụng scrub/detector/cover-filter; KHÔNG làm branded panel (yêu cầu #4 tùy chọn — defer).
+
+**Verify end-to-end (clip 222949, render thật, KHÔNG publish)**:
+- Caption deliverable ở lower-third ~0.80, center (3 frame 12/40/70s) ✅
+- POST-SCRUB QA **0 frame CJK** + `17-hook-verify` **PASS** (0 title Trung toàn 2760 frame) ✅
+- DỪNG GATE 2 → Operator duyệt video **ĐẠT**.
+- `413e0ac` (scrub recall tune) cũng chạy trong pipeline (montage step hoàn tất) ✅.
+
+**⚠️ Phát hiện cần round riêng (KHÔNG do 2 commit này)**: `produce` full-chain bị chặn **2 lần liên tiếp ở step 13 (`13-source-bound`, script writer gpt-5.5)** — flaky content QA, mỗi lần trượt 1 cổng KHÁC nhau (lần 1 `hook 14>13 từ`; lần 2 `reaction đúng money-shot 3/5`). Cổng QA chặn ĐÚNG (No-Go "không báo pass giả"). Vòng qua bằng `--step render` với VO đã PASS từ produce lần đầu. → mở round: **script writer/repair-loop ỔN ĐỊNH, KHÔNG nới QA bừa**. → **ĐÃ XỬ LÝ ở Phần 42** (self-repair loop, commit `0f2924a` pushed; 15 cổng giữ nguyên; verify 5/5 PASS).
+
+**Lưu ý kiến trúc**: scrub bản ship do **step 12 (stable-band 5fps)** quyết; `413e0ac` cải thiện scrub trung gian step 10. Memory: `project_vfos_chinese_subtitle_scrub`.
+
+---
+
+### ✅ Phần 42 — Khóa sổ round lane câu cá: scrub + caption + self-repair step 13 (2026-06-30)
+
+> **Mục tiêu**: chốt sổ trạng thái lane câu cá sau 3 thay đổi đã verify + push. KHÔNG sửa code, KHÔNG render, KHÔNG publish — chỉ ghi state.
+
+**Đã push `origin/feat/ent-multichannel` (local == origin, đã verify sync):**
+- **Scrub recall tune** `--fps 3 --min-score 0.5` (lane câu cá, `10-montage-v2.ts` step 7) — commit **`413e0ac`** ĐÃ PUSH.
+- **Caption lower-third** (`centerPresetOnBand` kẹp 0.74–0.86, `kinetic-caption-renderer.ts`) — commit **`19ed0ba`** ĐÃ PUSH.
+- **Self-repair loop step 13** (`13-source-bound.ts`: tách `runAttempt()` + loop tối đa 4 lần, fail → feed cổng trượt + gợi ý từng cổng + bản trước cho gpt-5.5 temp 0.6, giữ best, hết lượt fail → `exit(5)`; **GIỮ NGUYÊN 15 cổng QA byte-identical, KHÔNG fake pass**) — commit **`0f2924a`** ĐÃ PUSH. Verify `--step script` 5 lần: **5/5 PASS**, 2 ca attempt-1 trượt 1 cổng được repair cứu (base ~60% → ~100% invocation, chưa chạm trần 4 lần).
+
+**Deliverable**: `montage_v2_short_ambient.mp4` (clip `ent_fishing_20260625_222949`, render thật KHÔNG publish) — caption lower-third + 0 CJK + hook-verify PASS → **Operator duyệt ĐẠT** (xem Phần 41).
+
+**Branch**: `feat/ent-multichannel` — **local HEAD `0f2924a` == origin** (đã `git fetch` verify sync).
+
+**⛔ Publish CHƯA chạy — vẫn là cổng duyệt riêng** (No-Go #2/#3: render/production/publish cần lệnh rõ; READY ≠ được đăng). Round này không chạm publish.
+
+**Ngoài scope (CHƯA xử lý)**: 3 file dirty `production/_media/bgm_library.json`, `_hookframes/`, `implementation_plan.md` — giữ nguyên, không stage.
+
+**Bước tiếp theo**: chờ Operator quyết — (a) đăng deliverable (mở cổng publish riêng), (b) round mới (vd story-flag wiring / multichannel), hoặc (c) dọn 3 file dirty out-of-scope.
 
 ---
 
