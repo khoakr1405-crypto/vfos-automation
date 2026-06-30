@@ -93,6 +93,9 @@ production/archive/**
 runs/
 **/clean_source_video.mp4
 
+# VFOS hook-frame debug thumbnails (root-level throwaway, regenerable — never commit)
+_hookframes/
+
 # Subtitle-detect PaddleOCR tool: never commit the Python venv, downloaded
 # models, install logs, or Python caches (runtime — installed per machine).
 tools/subtitle-detect-paddle/.venv/
