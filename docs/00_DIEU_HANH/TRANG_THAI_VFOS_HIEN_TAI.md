@@ -2667,7 +2667,7 @@ Pipeline anchors chạy đầy đủ (từ log): cắt 4 money-shot → vision h
 
 > **Mục tiêu**: làm sạch `.claude/skills` để chỉ còn skill **load thật**. Phát hiện gốc: Claude Code **CHỈ** load skill dạng folder `<tên>/SKILL.md` + frontmatter `---name/description---`; file `.md` **phẳng** vứt thẳng vào `skills/` **không bao giờ kích hoạt** → đây là lý do nhiều skill "viết ra mà không thấy dùng".
 
-**Đã làm (branch `chore/skills-cleanup`, commit `6cd7e03`, CHƯA push):**
+**Đã làm (branch `chore/skills-cleanup`, commits `6cd7e03` + `025ba3c`, ĐÃ push + merged vào `feat/ent-multichannel` qua PR #3 / merge `9a8f5bf`; PR #2 base master sai đã đóng):**
 - `chay/` → `.claude/_archive/skills/chay/` — lane Shopee-First short-form + FB Reels Operator chốt **NGỦ ĐÔNG** (không xoá; rename 100% giữ history). 2663 dòng nên tách ra cho nhẹ context.
 - `shop-amazon.md` → **XOÁ** (không load + lệch North Star Amazon; đã tracked nên còn trong git history).
 - 3 file giá trị (sai format, nội dung tốt) → `.claude/_archive/skills/pending-rebuild/`: `vfos_evidence_gated_research.md`, `vfos_proactive_support.md`, `vfos_revenue_experiment_strategist.md` (rename 100% giữ history).
@@ -2677,11 +2677,11 @@ Pipeline anchors chạy đầy đủ (từ log): cắt 4 money-shot → vision h
 - ✅ Không còn file `.md` phẳng nào trong `skills/`.
 - ✅ 100% staged nằm trong `.claude/skills | .claude/_archive` (scoped, **không** `git add -A`).
 
-**Ràng buộc giữ:** KHÔNG sửa code pipeline · KHÔNG đụng Product Review/BGM/render/publish · KHÔNG stage runtime/media/draft · **CHƯA push**.
+**Ràng buộc giữ:** KHÔNG sửa code pipeline · KHÔNG đụng Product Review/BGM/render/publish · KHÔNG stage runtime/media/draft · **đã push + merged vào feat/ent-multichannel** (master không bị đụng).
 
 **Round 2 còn nợ:** rebuild `vfos-evidence-gated-research` thành skill chuẩn `.claude/skills/vfos-evidence-gated-research/SKILL.md` (auto-trigger, chặn agent bịa URL/data — đúng lỗi từng hại Market Validation 001). KHÔNG gộp Round 2 vào Round 1.
 
-**Bước tiếp theo**: (1) Operator duyệt **push** `chore/skills-cleanup`; (2) sau push mới làm Round 2 (rebuild `vfos-evidence-gated-research`).
+**Bước tiếp theo**: PR #3 đã merge vào `feat/ent-multichannel` (`9a8f5bf`), PR #2 (base master, sai) đã đóng. Round 2 (rebuild `vfos-evidence-gated-research`) đang tiến hành trên branch `chore/rebuild-evidence-gated-research-skill`.
 
 ---
 
