@@ -1361,6 +1361,8 @@ export interface EntChannelUi {
   hasSourceChannel: boolean;
   sourcePlatform: 'douyin' | 'tiktok' | null;
   sourceLabel: string | null;
+  /** Engine montage mặc định của kênh (read-only UI). Thiếu → 'story'. */
+  storyEngine: 'story' | 'anchors';
 }
 
 /** Channels cho UI Switcher/Overview — kèm jobCount + postedToday + accountConfigured. KHÔNG token. */
@@ -1386,6 +1388,7 @@ export function listChannelsForUi(): EntChannelUi[] {
       hasSourceChannel: !!c.sourceChannel,
       sourcePlatform: c.sourceChannel?.platform ?? null,
       sourceLabel: c.sourceChannel?.label ?? null,
+      storyEngine: c.storyEngine ?? 'story',
     };
   });
 }

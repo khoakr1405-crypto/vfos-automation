@@ -21,6 +21,7 @@ type ChannelsMod = typeof import('../apps/studio/src/lib/entertainment/channels.
 let resolveMontageEngine: JobsMod['resolveMontageEngine'];
 let readStorySummary: JobsMod['readStorySummary'];
 let jobStoryEngineFor: JobsMod['jobStoryEngineFor'];
+let listChannelsForUi: JobsMod['listChannelsForUi'];
 let resolveInsideRepo: PathsMod['resolveInsideRepo'];
 let getChannel: ChannelsMod['getChannel'];
 
@@ -40,6 +41,7 @@ before(async () => {
   resolveMontageEngine = jd.resolveMontageEngine;
   readStorySummary = jd.readStorySummary;
   jobStoryEngineFor = jd.jobStoryEngineFor;
+  listChannelsForUi = jd.listChannelsForUi;
   resolveInsideRepo = pd.resolveInsideRepo;
   getChannel = cd.getChannel;
 });
@@ -141,5 +143,11 @@ describe('jobStoryEngineFor — per-channel copy (defensive default story)', () 
 describe('config thật — ch_fishing storyEngine', () => {
   test("getChannel('ch_fishing').storyEngine === 'story' (config + coerce)", () => {
     assert.equal(getChannel('ch_fishing')?.storyEngine, 'story');
+  });
+
+  test("listChannelsForUi surface storyEngine cho UI: ch_fishing === 'story'", () => {
+    const ui = listChannelsForUi().find((c) => c.channelId === 'ch_fishing');
+    assert.ok(ui, 'ch_fishing phải có trong listChannelsForUi');
+    assert.equal(ui.storyEngine, 'story');
   });
 });

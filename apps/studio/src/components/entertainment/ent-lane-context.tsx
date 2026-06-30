@@ -43,6 +43,8 @@ export interface EntChannelLite {
   hasSourceChannel: boolean;
   sourcePlatform: 'douyin' | 'tiktok' | null;
   sourceLabel: string | null;
+  /** Engine montage mặc định của kênh (read-only chip). Thiếu → 'story'. */
+  storyEngine?: 'story' | 'anchors';
 }
 
 interface EntLaneCtx {

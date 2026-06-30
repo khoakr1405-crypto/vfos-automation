@@ -48,7 +48,8 @@ export function ChannelSwitcher() {
       </select>
       {selectedChannel ? (
         <span className="inline-flex items-center gap-1.5 rounded-full bg-panel/60 px-2 py-0.5 text-[10px] font-semibold text-neutral-300">
-          <StatusDot active={selectedChannel.status === 'active'} />@{selectedChannel.tiktokUsername}
+          <StatusDot active={selectedChannel.status === 'active'} />@
+          {selectedChannel.tiktokUsername}
         </span>
       ) : (
         <span className="rounded-full bg-accent-amber/15 px-2 py-0.5 text-[10px] font-semibold text-accent-amber">
@@ -59,7 +60,11 @@ export function ChannelSwitcher() {
   );
 }
 
-function ChannelCard({ c, active, onClick }: { c: EntChannelLite; active: boolean; onClick: () => void }) {
+function ChannelCard({
+  c,
+  active,
+  onClick,
+}: { c: EntChannelLite; active: boolean; onClick: () => void }) {
   return (
     <button
       type="button"
@@ -88,6 +93,9 @@ function ChannelCard({ c, active, onClick }: { c: EntChannelLite; active: boolea
         <span className="inline-flex items-center gap-1 rounded bg-panel/60 px-1.5 py-0.5 text-neutral-400">
           <StatusDot active={c.status === 'active'} />
           {c.status === 'active' ? 'active' : 'tắt'}
+        </span>
+        <span className="rounded bg-panel/60 px-1.5 py-0.5 text-neutral-400">
+          Engine: {(c.storyEngine ?? 'story') === 'anchors' ? 'Anchors' : 'Story'}
         </span>
         <span className="rounded bg-panel/60 px-1.5 py-0.5 text-neutral-400">{c.jobCount} job</span>
         <span
