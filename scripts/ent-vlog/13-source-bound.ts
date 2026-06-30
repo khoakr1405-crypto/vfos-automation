@@ -4,10 +4,12 @@
 //     even though the montage only shows money-shots (B-light);
 //   - ONE gpt-5.5 call writes FULL SENTENCES (8–14 words, real punctuation) —
 //     no more 2–6 word fragments (C); keeps + localizes Chinese memes/slang (D);
-//   - a hard QA gate fails on choppy/punct-poor/filler-heavy/hook-less output (E).
+//   - a hard QA gate fails on choppy/punct-poor/filler-heavy/hook-less output (E);
+//   - a bounded SELF-REPAIR loop re-prompts gpt-5.5 with the failed gates +
+//     previous beats (lower temp) up to MAX_ATTEMPTS — KHÔNG nới QA, KHÔNG fake pass.
 // Output OVERWRITES montage_v2_script.json (step 12 voices/renders it as-is after
 // approval) + writes source_cut_reference.json + a human review .md.
-// STOPS — no voice, no render. API: 1 gpt-5.5 text call (no Whisper, no vision).
+// STOPS — no voice, no render. API: 1–MAX_ATTEMPTS gpt-5.5 text calls (no Whisper/vision).
 //   pnpm tsx scripts/ent-vlog/13-source-bound.ts --id ent_squid_001 --model gpt-5.5
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
@@ -123,16 +125,36 @@ function reactionPrefix(text: string): string | null {
   return null;
 }
 
+// QA gate (key ổn định + nhãn người đọc). key dùng để map gợi ý sửa khi repair.
+interface Gate {
+  key: string;
+  ok: boolean;
+  label: string;
+}
+// Một lần GPT sinh + build beats + chấm QA → kết quả đầy đủ để chọn bản tốt nhất.
+interface Attempt {
+  beats: Beat[];
+  gates: Gate[];
+  failed: Gate[];
+  avgWords: number;
+  punctRatio: number;
+  totalSpeech: number;
+  reactionCount: number;
+  fillerCount: number;
+  hookBeat: Beat | undefined;
+}
+
 async function main(): Promise<void> {
   const { values } = parseArgs({
     options: { id: { type: 'string' }, model: { type: 'string' }, force: { type: 'boolean' } },
     strict: true,
   });
-  const id = values.id;
-  if (!id) {
+  const idArg = values.id;
+  if (!idArg) {
     console.error('Usage: --id <slug> [--model gpt-5.5] [--force]');
     process.exit(1);
   }
+  const id: string = idArg; // narrow string để closure runAttempt() bắt được (const giữ type)
   const scriptModel = values.model ?? 'gpt-5.5';
   const force = values.force === true;
   const dir = workDir(id);
@@ -306,14 +328,9 @@ async function main(): Promise<void> {
     `[13] HOOK STYLE = "${hookStyle.label}" (${hookStyle.id}); né ${recentHooks.length} hook gần đây.`,
   );
 
-  // 2) ONE gpt-5.5 call: storytelling VO (full sentences + memes), anchored to money-shots.
-  console.log(
-    `[13] ${scriptModel} viết VO kể chuyện: intro ${introLines.length} câu (context) + ${srcLines.length} câu trong cảnh…`,
-  );
-  const out = await chatJson<{ beats?: GptBeat[] }>(apiKey, {
-    model: scriptModel,
-    system: buildScriptSys(subject),
-    user: (story
+  // 2) Prompt nền (lần sinh đầu). Self-repair sẽ nối thêm khối "sửa cổng fail" vào sau.
+  const baseUser = (
+    story
       ? [
           `Đây là VIDEO KỂ CHUYỆN câu ${subject} ngoài biển, dài ${Math.round(montageTotal)}s, dựng theo MẠCH: setup → buildup → escalation → climax → resolution.`,
           `Các đoạn (montage time → vai): ${segs
@@ -352,118 +369,260 @@ async function main(): Promise<void> {
           '',
           `Yêu cầu: ~18–28 beat, mỗi beat 1 câu 8–14 từ có dấu câu, mở bằng hook persona ở t≈1s, THÊM 3–5 reaction whitelist ("Ha ha,"/"He he,"/"Ơ kìa,"/"Trời ơi,"/"Đúng bài rồi,") ghép đầu câu ở money-shot. Trả JSON {"beats":[...]}.`,
         ]
-    ).join('\n'),
-    temperature: 0.8,
-  });
+  ).join('\n');
 
-  // 3) Build step-12 beats từ GPT output (clamp t, estSec, sceneIdx, srcId).
-  const raw = (out.beats ?? []).filter((b) => b && typeof b.text === 'string' && b.text.trim());
-  const voFloor = story ? Number((teaserDur + 0.2).toFixed(2)) : 0.3; // story khác → đọc đè hook
-  const beats: Beat[] = raw.map((b) => {
-    const role = b.role === 'hook' || b.role === 'react' ? b.role : 'line';
-    const gptT = Number(b.t);
-    // Cold-open hook line: ÉP mọi beat role 'hook' của story về slot 0.3–1.2s (voice
-    // xuất hiện TRƯỚC 1.5s, bất kể GPT đặt t đâu — đảm bảo hook luôn có lời sớm). Beat
-    // story khác → clamp ≥ voFloor (sau hook hình). Anchor (non-story) → giữ như cũ.
-    const isColdOpen = story && role === 'hook';
-    const lo = isColdOpen ? 0.3 : voFloor;
-    const hi = isColdOpen ? Math.min(1.2, montageTotal - 0.5) : montageTotal - 0.5;
-    const t = isColdOpen
-      ? Math.min(hi, Math.max(lo, Number.isFinite(gptT) && gptT < teaserDur ? gptT : 0.6))
-      : Math.max(lo, Math.min(hi, Number.isFinite(gptT) ? gptT : lo + 0.2));
-    const text = b.text.trim();
-    return {
-      role,
-      sceneIdx: sceneAt(t),
-      text,
-      montageTime: Number(t.toFixed(2)),
-      estSec: estRead(text),
-      srcId: parseSrcId(b.srcIds),
-    };
-  });
-  beats.sort((a, b) => a.montageTime - b.montageTime);
-  // Min spacing nhẹ (dedupe; step 12 mới là nơi anti-overlap theo audio thật).
-  const MIN_GAP = 1.0;
-  for (let i = 1; i < beats.length; i += 1) {
-    const prev = beats[i - 1];
-    const cur = beats[i];
-    if (!prev || !cur) continue;
-    if (cur.montageTime < prev.montageTime + MIN_GAP) {
-      cur.montageTime = Number(Math.min(montageTotal - 0.3, prev.montageTime + MIN_GAP).toFixed(2));
+  // Gợi ý sửa theo TỪNG cổng (key ổn định, không phụ thuộc con số trong label).
+  // Self-repair feed đúng gợi ý của cổng đang fail → GPT sửa trúng chỗ, không xáo trộn cả bài.
+  const REPAIR_HINTS: Record<string, string> = {
+    beatCount: 'Số beat phải nằm trong [14,34]: thêm/bớt beat cho đúng khoảng.',
+    avgWords: 'Câu quá ngắn: viết câu đủ chủ-vị 8–14 từ, trung bình ≥7 từ/beat.',
+    shortRatio: 'Quá nhiều câu <5 từ: gộp lại thành câu hoàn chỉnh, bỏ câu cụt.',
+    punctRatio: 'Thiếu dấu câu: MỖI beat phải kết bằng . ! hoặc ? (≥65% beat).',
+    longBeats: 'Có câu >16 từ: tách hoặc rút gọn xuống ≤16 từ.',
+    filler: 'Quá nhiều beat không bám lời gốc: mỗi "line" phải kèm srcIds id gốc liên quan.',
+    hookMin: 'Hook quá ngắn: viết hook ≥8 từ, giới thiệu nhân vật + chốt kèo.',
+    hookMax: 'Hook quá dài: rút hook xuống ≤13 từ mà vẫn ăn tiền.',
+    hookDiversity:
+      'Hook bị lặp mô-típ/đụng hook job gần: viết hook MỚI theo đúng style đã chỉ định, đừng dùng mô-típ "con đầu đã vậy…".',
+    suspect: 'Có câu cụt vô nghĩa: bỏ hoặc viết lại thành câu đủ nghĩa.',
+    reactMax: 'Quá 5 reaction: giảm còn ≤5 cụm cảm thán.',
+    reactMin:
+      'Thiếu reaction: thêm cụm whitelist ("Ha ha,"/"He he,"/"Ơ kìa,"/"Trời ơi,"/"Đúng bài rồi,") ghép đầu câu money-shot cho đủ.',
+    reactMisplaced:
+      'Reaction sai chỗ: CHỈ ghép cụm cảm thán vào câu money-shot CÓ srcIds, gần cảnh cá lên (±7s).',
+    reactRepeat: 'Lặp 1 kiểu reaction quá 2 lần: đa dạng cụm cảm thán.',
+    totalSpeech: 'Đọc tràn video: cắt bớt/viết gọn để tổng đọc ≤ tổng độ dài video.',
+  };
+  // Repair prompt = baseUser + cổng fail + gợi ý + BẢN TRƯỚC để GPT sửa từ đó (không viết lại từ đầu).
+  function buildRepairUser(prev: Attempt): string {
+    const failHints = prev.failed.map(
+      (g) => `- 🛑 ${g.label} → ${REPAIR_HINTS[g.key] ?? 'sửa cho đạt cổng này.'}`,
+    );
+    const prevBeats = prev.beats.map(
+      (b, i) =>
+        `${i + 1}. [${b.role} t=${b.montageTime}s${b.srcId != null ? ` id${b.srcId}` : ''}] ${b.text}`,
+    );
+    return [
+      baseUser,
+      '',
+      '⚠️ BẢN TRƯỚC TRƯỢT QA — SỬA LẠI: GIỮ các câu đã ổn, chỉ chỉnh đúng cổng fail dưới đây (đừng viết lại từ đầu nếu không cần):',
+      ...failHints,
+      '',
+      'Bản VO trước (sửa từ đây):',
+      ...prevBeats,
+      '',
+      'Trả lại JSON {"beats":[...]} đã sửa.',
+    ].join('\n');
+  }
+
+  // Một lần sinh: gọi GPT → build beats (clamp t/estSec/sceneIdx/srcId) → chấm 15 cổng QA.
+  async function runAttempt(userPrompt: string, temperature: number): Promise<Attempt> {
+    const out = await chatJson<{ beats?: GptBeat[] }>(apiKey, {
+      model: scriptModel,
+      system: buildScriptSys(subject),
+      user: userPrompt,
+      temperature,
+    });
+
+    // 3) Build step-12 beats từ GPT output (clamp t, estSec, sceneIdx, srcId).
+    const raw = (out.beats ?? []).filter((b) => b && typeof b.text === 'string' && b.text.trim());
+    const voFloor = story ? Number((teaserDur + 0.2).toFixed(2)) : 0.3; // story khác → đọc đè hook
+    const beats: Beat[] = raw.map((b) => {
+      const role = b.role === 'hook' || b.role === 'react' ? b.role : 'line';
+      const gptT = Number(b.t);
+      // Cold-open hook line: ÉP mọi beat role 'hook' của story về slot 0.3–1.2s (voice
+      // xuất hiện TRƯỚC 1.5s, bất kể GPT đặt t đâu — đảm bảo hook luôn có lời sớm). Beat
+      // story khác → clamp ≥ voFloor (sau hook hình). Anchor (non-story) → giữ như cũ.
+      const isColdOpen = story && role === 'hook';
+      const lo = isColdOpen ? 0.3 : voFloor;
+      const hi = isColdOpen ? Math.min(1.2, montageTotal - 0.5) : montageTotal - 0.5;
+      const t = isColdOpen
+        ? Math.min(hi, Math.max(lo, Number.isFinite(gptT) && gptT < teaserDur ? gptT : 0.6))
+        : Math.max(lo, Math.min(hi, Number.isFinite(gptT) ? gptT : lo + 0.2));
+      const text = b.text.trim();
+      return {
+        role,
+        sceneIdx: sceneAt(t),
+        text,
+        montageTime: Number(t.toFixed(2)),
+        estSec: estRead(text),
+        srcId: parseSrcId(b.srcIds),
+      };
+    });
+    beats.sort((a, b) => a.montageTime - b.montageTime);
+    // Min spacing nhẹ (dedupe; step 12 mới là nơi anti-overlap theo audio thật).
+    const MIN_GAP = 1.0;
+    for (let i = 1; i < beats.length; i += 1) {
+      const prev = beats[i - 1];
+      const cur = beats[i];
+      if (!prev || !cur) continue;
+      if (cur.montageTime < prev.montageTime + MIN_GAP) {
+        cur.montageTime = Number(
+          Math.min(montageTotal - 0.3, prev.montageTime + MIN_GAP).toFixed(2),
+        );
+      }
     }
+
+    // 4) QA GATE (E) — fail thật khi script cụt/xàm/lủng củng. Không fake pass.
+    const n = beats.length;
+    const words = beats.map((b) => wordCount(b.text));
+    const avgWords = n > 0 ? Number((words.reduce((s, w) => s + w, 0) / n).toFixed(1)) : 0;
+    const shortBeats = beats.filter((b, i) => (words[i] ?? 0) < 5 && b.role !== 'react');
+    const shortRatio = n > 0 ? Number((shortBeats.length / n).toFixed(2)) : 1;
+    const punctBeats = beats.filter((b) => hasEndPunct(b.text));
+    const punctRatio = n > 0 ? Number((punctBeats.length / n).toFixed(2)) : 0;
+    const longBeats = beats.filter((_, i) => (words[i] ?? 0) > 16);
+    const fillerBeats = beats.filter((b) => b.srcId == null && b.role !== 'hook');
+    // Hook persona = beat narration ĐẦU TIÊN, ngay sau hook hình (VO bắt đầu ở teaserDur).
+    const hookBeat = beats.find((b) => b.role === 'hook' && b.montageTime <= teaserDur + 5);
+    // nonsense (cấu trúc): câu KHÔNG phải cảm thán/hook, <4 từ và KHÔNG có dấu câu → nghi cụt.
+    const suspect = beats.filter(
+      (b, i) => b.role === 'line' && (words[i] ?? 0) < 4 && !hasEndPunct(b.text),
+    );
+    const totalSpeech = Number(beats.reduce((s, b) => s + b.estSec, 0).toFixed(1));
+
+    // Humor Reaction Layer QA: beat (không phải hook) mở đầu bằng cụm whitelist.
+    const moneyShotTimes = segs.filter((s) => isMS(s)).map((s) => msMontage(s.idx));
+    const reactionBeats = beats.filter((b) => b.role !== 'hook' && reactionPrefix(b.text) != null);
+    const reactionCount = reactionBeats.length;
+    const REACT_NEAR = 7; // s — reaction phải gần 1 money-shot (cao trào thật)
+    const reactMisplaced = reactionBeats.filter(
+      (b) =>
+        b.srcId == null || !moneyShotTimes.some((mt) => Math.abs(b.montageTime - mt) <= REACT_NEAR),
+    );
+    const prefixCounts = new Map<string, number>();
+    for (const b of reactionBeats) {
+      const p = reactionPrefix(b.text) ?? '';
+      prefixCounts.set(p, (prefixCounts.get(p) ?? 0) + 1);
+    }
+    const maxSamePrefix = prefixCounts.size > 0 ? Math.max(...prefixCounts.values()) : 0;
+    const minReact = Math.min(3, moneyShotTimes.length);
+    const hookWords = hookBeat ? wordCount(hookBeat.text) : 0;
+    // Chống lặp hook: dính mô-típ cấm ("con đầu đã vậy…") hoặc đụng hook job gần → FAIL.
+    const hookRep = isHookRepeat(hookBeat?.text ?? '', hookHistory, id);
+
+    const gates: Gate[] = [
+      { key: 'beatCount', ok: n >= 14 && n <= 34, label: `Số beat ${n} trong [14,34]` },
+      { key: 'avgWords', ok: avgWords >= 7, label: `TB từ/beat ${avgWords} ≥ 7` },
+      {
+        key: 'shortRatio',
+        ok: shortRatio <= 0.3,
+        label: `Tỷ lệ câu <5 từ ${shortRatio} ≤ 0.30`,
+      },
+      {
+        key: 'punctRatio',
+        ok: punctRatio >= 0.65,
+        label: `Tỷ lệ câu có dấu câu ${punctRatio} ≥ 0.65`,
+      },
+      { key: 'longBeats', ok: longBeats.length <= 1, label: `Câu >16 từ ${longBeats.length} ≤ 1` },
+      {
+        key: 'filler',
+        ok: fillerBeats.length <= 4,
+        label: `Filler không bám gốc ${fillerBeats.length} ≤ 4`,
+      },
+      {
+        key: 'hookMin',
+        ok: !!hookBeat && hookWords >= 8,
+        label: `Hook persona ${hookWords} từ (≥8)`,
+      },
+      {
+        key: 'hookMax',
+        ok: !!hookBeat && hookWords <= 13,
+        label: `Hook ≤13 từ (${hookWords})`,
+      },
+      {
+        key: 'hookDiversity',
+        ok: !hookRep.repeat,
+        label: `Hook đa dạng style "${hookStyle.id}"${hookRep.repeat ? ` 🛑 ${hookRep.reason}` : ''}`,
+      },
+      {
+        key: 'suspect',
+        ok: suspect.length === 0,
+        label: `Câu cụt nghi vô nghĩa ${suspect.length} = 0`,
+      },
+      {
+        key: 'reactMax',
+        ok: reactionCount <= 5,
+        label: `Reaction ${reactionCount} ≤ 5 (không lạm dụng)`,
+      },
+      {
+        key: 'reactMin',
+        ok: reactionCount >= minReact,
+        label: `Reaction ${reactionCount} ≥ ${minReact} (đủ Humor Layer)`,
+      },
+      {
+        key: 'reactMisplaced',
+        ok: reactMisplaced.length === 0,
+        label: `Reaction đúng money-shot+có nội dung ${reactionCount - reactMisplaced.length}/${reactionCount}`,
+      },
+      {
+        key: 'reactRepeat',
+        ok: maxSamePrefix <= 2,
+        label: `Lặp 1 kiểu reaction ≤ 2 (max ${maxSamePrefix})`,
+      },
+      {
+        key: 'totalSpeech',
+        ok: totalSpeech <= montageTotal,
+        label: `Tổng đọc ${totalSpeech}s ≤ ${montageTotal.toFixed(0)}s`,
+      },
+    ];
+    const failed = gates.filter((g) => !g.ok);
+    return {
+      beats,
+      gates,
+      failed,
+      avgWords,
+      punctRatio,
+      totalSpeech,
+      reactionCount,
+      fillerCount: fillerBeats.length,
+      hookBeat,
+    };
   }
 
-  // 4) QA GATE (E) — fail thật khi script cụt/xàm/lủng củng. Không fake pass.
-  const n = beats.length;
-  const words = beats.map((b) => wordCount(b.text));
-  const avgWords = n > 0 ? Number((words.reduce((s, w) => s + w, 0) / n).toFixed(1)) : 0;
-  const shortBeats = beats.filter((b, i) => (words[i] ?? 0) < 5 && b.role !== 'react');
-  const shortRatio = n > 0 ? Number((shortBeats.length / n).toFixed(2)) : 1;
-  const punctBeats = beats.filter((b) => hasEndPunct(b.text));
-  const punctRatio = n > 0 ? Number((punctBeats.length / n).toFixed(2)) : 0;
-  const longBeats = beats.filter((_, i) => (words[i] ?? 0) > 16);
-  const fillerBeats = beats.filter((b) => b.srcId == null && b.role !== 'hook');
-  // Hook persona = beat narration ĐẦU TIÊN, ngay sau hook hình (VO bắt đầu ở teaserDur).
-  const hookBeat = beats.find((b) => b.role === 'hook' && b.montageTime <= teaserDur + 5);
-  // nonsense (cấu trúc): câu KHÔNG phải cảm thán/hook, <4 từ và KHÔNG có dấu câu → nghi cụt.
-  const suspect = beats.filter(
-    (b, i) => b.role === 'line' && (words[i] ?? 0) < 4 && !hasEndPunct(b.text),
+  // SELF-REPAIR LOOP — sinh lại tối đa MAX_ATTEMPTS lần, GIỮ NGUYÊN 15 cổng QA.
+  // Lần 1: temp 0.8 (đa dạng). Fail → feed cổng trượt + bản trước, temp 0.6 (bám gợi ý sửa).
+  // Giữ bản TỐT NHẤT (ít cổng fail nhất); vẫn fail hết lượt → ghi best + exit(5), KHÔNG fake pass.
+  const MAX_ATTEMPTS = 4;
+  console.log(
+    `[13] ${scriptModel} viết VO kể chuyện: intro ${introLines.length} câu (context) + ${srcLines.length} câu trong cảnh… (tối đa ${MAX_ATTEMPTS} lần)`,
   );
-  const totalSpeech = Number(beats.reduce((s, b) => s + b.estSec, 0).toFixed(1));
-
-  // Humor Reaction Layer QA: beat (không phải hook) mở đầu bằng cụm whitelist.
-  const moneyShotTimes = segs.filter((s) => isMS(s)).map((s) => msMontage(s.idx));
-  const reactionBeats = beats.filter((b) => b.role !== 'hook' && reactionPrefix(b.text) != null);
-  const reactionCount = reactionBeats.length;
-  const REACT_NEAR = 7; // s — reaction phải gần 1 money-shot (cao trào thật)
-  const reactMisplaced = reactionBeats.filter(
-    (b) =>
-      b.srcId == null || !moneyShotTimes.some((mt) => Math.abs(b.montageTime - mt) <= REACT_NEAR),
-  );
-  const prefixCounts = new Map<string, number>();
-  for (const b of reactionBeats) {
-    const p = reactionPrefix(b.text) ?? '';
-    prefixCounts.set(p, (prefixCounts.get(p) ?? 0) + 1);
+  let best: Attempt | null = null;
+  let attempts = 0;
+  let bestAttemptNo = 0;
+  for (let attemptNo = 1; attemptNo <= MAX_ATTEMPTS; attemptNo += 1) {
+    attempts = attemptNo;
+    let userPrompt = baseUser;
+    let temperature = 0.8;
+    if (attemptNo > 1 && best != null) {
+      userPrompt = buildRepairUser(best);
+      temperature = 0.6;
+      console.log(
+        `[13] 🔧 Repair ${attemptNo}/${MAX_ATTEMPTS} — sửa ${best.failed.length} cổng QA (temp ${temperature})…`,
+      );
+    }
+    const attempt = await runAttempt(userPrompt, temperature);
+    if (best == null || attempt.failed.length < best.failed.length) {
+      best = attempt;
+      bestAttemptNo = attemptNo;
+    }
+    if (attempt.failed.length === 0) break;
   }
-  const maxSamePrefix = prefixCounts.size > 0 ? Math.max(...prefixCounts.values()) : 0;
-  const minReact = Math.min(3, moneyShotTimes.length);
-  const hookWords = hookBeat ? wordCount(hookBeat.text) : 0;
-  // Chống lặp hook: dính mô-típ cấm ("con đầu đã vậy…") hoặc đụng hook job gần → FAIL.
-  const hookRep = isHookRepeat(hookBeat?.text ?? '', hookHistory, id);
-
-  const gates: Array<{ ok: boolean; label: string }> = [
-    { ok: n >= 14 && n <= 34, label: `Số beat ${n} trong [14,34]` },
-    { ok: avgWords >= 7, label: `TB từ/beat ${avgWords} ≥ 7` },
-    { ok: shortRatio <= 0.3, label: `Tỷ lệ câu <5 từ ${shortRatio} ≤ 0.30` },
-    { ok: punctRatio >= 0.65, label: `Tỷ lệ câu có dấu câu ${punctRatio} ≥ 0.65` },
-    { ok: longBeats.length <= 1, label: `Câu >16 từ ${longBeats.length} ≤ 1` },
-    { ok: fillerBeats.length <= 4, label: `Filler không bám gốc ${fillerBeats.length} ≤ 4` },
-    { ok: !!hookBeat && hookWords >= 8, label: `Hook persona ${hookWords} từ (≥8)` },
-    {
-      ok: !!hookBeat && hookWords <= 13,
-      label: `Hook ≤13 từ (${hookWords})`,
-    },
-    {
-      ok: !hookRep.repeat,
-      label: `Hook đa dạng style "${hookStyle.id}"${hookRep.repeat ? ` 🛑 ${hookRep.reason}` : ''}`,
-    },
-    { ok: suspect.length === 0, label: `Câu cụt nghi vô nghĩa ${suspect.length} = 0` },
-    { ok: reactionCount <= 5, label: `Reaction ${reactionCount} ≤ 5 (không lạm dụng)` },
-    {
-      ok: reactionCount >= minReact,
-      label: `Reaction ${reactionCount} ≥ ${minReact} (đủ Humor Layer)`,
-    },
-    {
-      ok: reactMisplaced.length === 0,
-      label: `Reaction đúng money-shot+có nội dung ${reactionCount - reactMisplaced.length}/${reactionCount}`,
-    },
-    { ok: maxSamePrefix <= 2, label: `Lặp 1 kiểu reaction ≤ 2 (max ${maxSamePrefix})` },
-    {
-      ok: totalSpeech <= montageTotal,
-      label: `Tổng đọc ${totalSpeech}s ≤ ${montageTotal.toFixed(0)}s`,
-    },
-  ];
-  const failed = gates.filter((g) => !g.ok);
+  if (best == null) {
+    console.error('🛑 SCRIPT_GEN_FAILED — không sinh được beat nào.');
+    process.exit(1);
+  }
+  const {
+    beats,
+    gates,
+    failed,
+    avgWords,
+    punctRatio,
+    totalSpeech,
+    reactionCount,
+    fillerCount,
+    hookBeat,
+  } = best;
 
   // 5) Write step-12-compatible script JSON (overwrite) + review .md.
   const anchorsHash = createHash('sha256')
@@ -482,11 +641,12 @@ async function main(): Promise<void> {
     storyMode: true,
     chunkCount: beats.length,
     boundChunks: boundCount,
-    microChunks: fillerBeats.length,
+    microChunks: fillerCount,
     reactionCount,
     avgWordsPerBeat: avgWords,
     punctRatio,
     estTotalSpeechSec: totalSpeech,
+    genAttempts: attempts,
     qaPass: failed.length === 0,
     beats,
   };
@@ -514,6 +674,9 @@ async function main(): Promise<void> {
   md.push(
     `- Beat: **${beats.length}** | TB **${avgWords}** từ/beat | dấu câu **${Math.round(punctRatio * 100)}%** | đọc ~${totalSpeech}s/${montageTotal.toFixed(1)}s`,
   );
+  md.push(
+    `- Self-repair: **${attempts}** lần sinh (chọn bản lần **${bestAttemptNo}**) | kết quả ${failed.length === 0 ? '✅ PASS' : `🛑 FAIL ${failed.length} cổng`}`,
+  );
   md.push('');
   md.push('## SOURCE TRANSCRIPT trong cảnh (theo montage time)');
   for (const l of srcLines) md.push(`- [${tc(l.mStart)}] (id${l.id}, cú ${l.sceneIdx}) ${l.zh}`);
@@ -538,16 +701,18 @@ async function main(): Promise<void> {
 
   console.log('------------------------------------------------------');
   console.log(
-    `[13] VO kể chuyện — ${beats.length} beat | TB ${avgWords} từ | dấu câu ${Math.round(punctRatio * 100)}% | đọc ~${totalSpeech}s`,
+    `[13] VO kể chuyện — ${beats.length} beat | TB ${avgWords} từ | dấu câu ${Math.round(punctRatio * 100)}% | đọc ~${totalSpeech}s | sinh ${attempts} lần`,
   );
   for (const g of gates) console.log(`     ${g.ok ? '✅' : '🛑'} ${g.label}`);
   if (failed.length > 0) {
     console.error(
-      `🛑 SCRIPT_QA_FAILED — ${failed.length} cổng QA fail (xem trên). Không báo pass giả.`,
+      `🛑 SCRIPT_QA_FAILED — ${failed.length} cổng QA fail sau ${attempts} lần sinh (giữ bản tốt nhất lần ${bestAttemptNo}). Không báo pass giả.`,
     );
     process.exit(5);
   }
-  console.log('[13] ✅ QA PASS — chờ Operator duyệt nội dung chữ (chưa voice/render).');
+  console.log(
+    `[13] ✅ QA PASS (lần ${bestAttemptNo}/${attempts}) — chờ Operator duyệt nội dung chữ (chưa voice/render).`,
+  );
   console.log('------------------------------------------------------');
 }
 
