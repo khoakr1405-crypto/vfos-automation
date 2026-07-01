@@ -2762,6 +2762,30 @@ Pipeline anchors chạy đầy đủ (từ log): cắt 4 money-shot → vision h
 
 ---
 
+### ✅ Phần 54 — Round 4 bước 2: slash command `/review-status` (Product Review lane, typed-invoke) ĐÃ MERGE + VERIFY (2026-07-01)
+
+> **Mục tiêu**: lệnh READ-ONLY thứ 2 của Round 4 — `/review-status` cho **lane Product Review** (Entertainment đã có `/ent-status`, KHÔNG gom chung). **Đã hoàn tất.**
+
+**Audit trước khi code (evidence-gated, workflow 5 agent read-only):** xác minh field thật từ file thật, không bịa schema. Kết quả nền:
+- Nguồn chính = `data/temp/vfos_jobs_registry.json` (**39 entry** — đúng nguồn `pnpm job:list`/`job:status` đọc; đã xác nhận 2 lệnh này READ-ONLY: chỉ `loadRegistry()`/`loadManifest()`, không `save*`).
+- Enrich optional per-job: `job_manifest.json`, `product_card.json`, `final_video_qa_report.json`, `render_manifest.json`, `preview_artifact.json`, `launch_check_report.json`, `facebook_publish_status.json`, `publish_audit_log.jsonl`.
+- **Quan trọng về workflow**: code nội bộ dùng **10-state machine** (`scripts/vfos-job-manager.ts`) + UI **3-action**; `/review-status` chỉ **map state nội bộ → khung 5 bước hiển thị**, KHÔNG định nghĩa lại workflow, KHÔNG thêm gate.
+- Quyết định preview approve/reject nằm ở `job_manifest.json $.review.operatorDecision` (PENDING|APPROVED|REJECTED), mirror ở registry `$.operatorDecision`.
+
+**File thêm: `.claude/skills/review-status/SKILL.md`** (84 dòng). Typed-invoke (`description` hẹp chặn auto-trigger, loại trừ Entertainment). Read-only HARD DENY: không Edit/Write, không intake/production/render/QA/package/publish, không gọi FB/TikTok API, không đụng `data/temp/ent/*`, không đổi workflow 5 bước, git phải sạch sau chạy. `.claude/skills` giờ = **8 skill load thật** (thêm `review-status`).
+
+**`/review-status` verify PASS (read-only thật):** bảng chính **39 job** từ registry, sắp `updatedAt` mới→cũ, cột `jobId·state·bước·product·operatorDecision·qaStatus·publish·updatedAt`. Đếm state: `PUBLISHED: 14 · FAILED: 11 · READY_FOR_OPERATOR_REVIEW: 4 · WAITING_FOR_SOURCE_VIDEO: 4 · SOURCE_READY: 2 · PACKAGED: 2 · APPROVED: 1 · READY_TO_RENDER: 1`. **Unregistered/test dirs** (`job_20260530_001_unified_test`, `job_test56b`) hiện mục phụ riêng, không trộn bảng chính (dir tổng 41 = registry 39 + 2 test). KHÔNG có `ent_*` lọt vào. Publish giữ nguyên trạng thái thật (vd `UNCONFIRMED`, `PUBLIC_CONFIRMED` ở `job_20260609_001`) — không tự kết luận live/public. Sau chạy `git status` sạch.
+
+**Commit + merge:** commit `123a172` `feat(skills): add /review-status read-only product review command` (1 file, +84), branch `feat/review-status-command`. PR #7 (base `feat/ent-multichannel` ← head) — **merge `--ff-only` bằng CLI** (KHÔNG dùng UI merge, KHÔNG squash): `b59efbe..123a172` fast-forward, push non-force. PR #7 hiển thị **Merged** trên UI (ghi nhận theo UI vì REST API dính rate-limit 60 req/h lúc merge — không đoán state qua API).
+
+**Trạng thái:** `origin/feat/ent-multichannel` = **`123a172`** · local == origin · `master` KHÔNG đụng (`e2d0a55`) · working tree sạch. Branch `feat/review-status-command` **CHƯA cleanup** (bước riêng).
+
+**Gotcha mới:** GitHub REST API unauthenticated giới hạn **60 req/h per IP** — audit + verify nhiều lần làm cạn quota. Khi hết: (1) `git ls-remote origin 'refs/pull/*/head'` tra được PR number theo head SHA (git protocol, KHÔNG dính REST rate-limit); (2) parent-check (`123a172^ == b59efbe`) chứng minh linear trên base; (3) endpoint `/rate_limit` không tính quota, xem được mốc reset.
+
+**Còn nợ (Round 4 tiếp):** cleanup branch `feat/review-status-command` (local + remote UI); slash command lane khác (`/gate-check`, `/produce`).
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
