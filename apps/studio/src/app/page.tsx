@@ -1,4 +1,5 @@
 import { Card, CardBody, CardHeader } from '@/components/card';
+import { EntertainmentStatusPanel } from '@/components/entertainment/status-panel';
 import { UtilIcon } from '@/components/icons';
 import { MockBanner } from '@/components/mock-banner';
 import { OperatorJobQueue } from '@/components/overview/operator-job-queue';
@@ -70,6 +71,10 @@ export default function OverviewPage() {
       {/* Trạng thái Product Review (PR-A) — bảng điều hành READ-ONLY, thay logic
           /review-status. Ở màn Tổng quan (ngoài LANE NỘI DUNG), tự fetch data thật. */}
       <ProductReviewStatusPanel />
+
+      {/* Trạng thái Entertainment (PR-B) — bảng điều hành READ-ONLY, thay logic
+          /ent-status. Ở màn Tổng quan (ngoài LANE NỘI DUNG), tự fetch data thật. */}
+      <EntertainmentStatusPanel />
 
       {/* Hàng đợi sản phẩm thật (Shopee registry) */}
       <ProductQueue />
