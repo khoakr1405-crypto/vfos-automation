@@ -2685,6 +2685,29 @@ Pipeline anchors chạy đầy đủ (từ log): cắt 4 money-shot → vision h
 
 ---
 
+### ✅ Phần 51 — Round 2: rebuild `vfos-evidence-gated-research` ĐÃ MERGE + VERIFY (2026-07-01)
+
+> **Mục tiêu**: hồi sinh skill chống-bịa-nguồn (`vfos_evidence_gated_research` — trước là file phẳng chết, không load) thành skill auto-trigger đúng format. Nối tiếp Round 1 (Phần 50). **Round 2 đã hoàn tất.**
+
+**Đã hoàn tất:**
+- Rebuild **`.claude/skills/vfos-evidence-gated-research/SKILL.md`** (71 dòng, auto-trigger, đúng format folder/SKILL.md): phân biệt **external evidence** (URL/repo/vendor/API/public data) vs **internal evidence** (file/path/log/artifact); `verification_status` 4 cấp; must-do / must-not-do; output 7 mục; pre-handoff checklist. Được verify data/nguồn cho Product Review nhưng KHÔNG đổi workflow 5 bước.
+- `feat/ent-multichannel` hiện ở commit **`6238da1`**.
+- `.claude/skills` = **6 skill load thật**: command-center, git-safety, product-review-workflow, shopee-affiliate, ui-review, **evidence-gated-research**.
+
+**Cách merge (bài học quan trọng):**
+- Merge PR #4 bằng **GitHub UI "Confirm merge" KHÔNG ăn thật** — `feat/ent-multichannel` không nhảy khỏi `9a8f5bf` dù đã bấm (kiểm nhiều lần qua thời gian dài).
+- Xử lý bằng CLI: `git merge --ff-only origin/chore/rebuild-evidence-gated-research-skill` + `git push origin feat/ent-multichannel` (fast-forward, **non-force**, không tạo commit thừa).
+- **Verify PASS bằng `git ls-remote` / `git ls-tree`** (không tin badge UI): feat vượt `9a8f5bf` → `6238da1` · `SKILL.md` tồn tại trên origin/feat · 6 skill · **`master` KHÔNG đụng** (`e2d0a55`) · **working tree sạch**.
+
+**Ràng buộc giữ:** KHÔNG đụng code pipeline · KHÔNG đụng Product Review/BGM/render/publish · KHÔNG đụng runtime/media/secret · không force push.
+
+**Còn nợ (chưa làm):**
+- 2 skill vẫn ở `_archive/skills/pending-rebuild/`: `vfos_proactive_support.md`, `vfos_revenue_experiment_strategist.md` (rebuild round riêng nếu Operator muốn).
+- `/chay` vẫn **archived** ở `.claude/_archive/skills/chay/` (chưa xoá hẳn — Operator chốt ngủ đông).
+- Branch cleanup (`chore/skills-cleanup`, `chore/rebuild-evidence-gated-research-skill`) — bước sau, chưa làm trong Phần này.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
