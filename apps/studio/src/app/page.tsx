@@ -4,6 +4,7 @@ import { MockBanner } from '@/components/mock-banner';
 import { OperatorJobQueue } from '@/components/overview/operator-job-queue';
 import { ProductQueue } from '@/components/overview/product-queue';
 import { PageHeader } from '@/components/page-header';
+import { ProductReviewStatusPanel } from '@/components/product-review/status-panel';
 import { Button, RuleList } from '@/components/ui';
 import { VFOS_RULES } from '@/lib/mock-data';
 import Link from 'next/link';
@@ -65,6 +66,10 @@ export default function OverviewPage() {
           </CardBody>
         </Card>
       </div>
+
+      {/* Trạng thái Product Review (PR-A) — bảng điều hành READ-ONLY, thay logic
+          /review-status. Ở màn Tổng quan (ngoài LANE NỘI DUNG), tự fetch data thật. */}
+      <ProductReviewStatusPanel />
 
       {/* Hàng đợi sản phẩm thật (Shopee registry) */}
       <ProductQueue />
