@@ -2805,6 +2805,32 @@ Pipeline anchors chạy đầy đủ (từ log): cắt 4 money-shot → vision h
 
 ---
 
+### ✅ Phần 56 — Round UI Integration PR-A: Product Review Status panel (ở Tổng quan) ĐÃ MERGE + VERIFY (2026-07-01)
+
+> **Mục tiêu**: bước 1 của Round UI Integration — đưa logic slash command `/review-status` vào UI dưới dạng **bảng điều hành READ-ONLY**. **PR-A đã hoàn tất, merge FF.**
+
+**Merge:** **PR #9** (base `feat/ent-multichannel` ← head `feat/ui-pr-status-panel`) merge **FF-only** bằng CLI; `origin/feat/ent-multichannel` tip/merge = **`cc24b72`** (REST xác nhận merged_at 2026-07-01T15:30:44Z). 2 file, +190.
+
+**Feature:** **Product Review Status panel** trên **Tổng quan / Trung tâm điều hành**.
+
+**Placement ĐÚNG (bài học từ lần đặt sai đầu tiên — đã reset gộp 1 commit sạch, bỏ bản sai chưa push):**
+- Panel nằm ở route **`/`** (Tổng quan), file `apps/studio/src/app/page.tsx`.
+- **KHÔNG** nằm trong LANE NỘI DUNG; **KHÔNG** nằm trong Review Sản phẩm.
+- Lane Review Sản phẩm giữ nguyên nhiệm vụ **sản xuất video**: workflow **5 bước KHÔNG đổi**; page `lanes/product-review/page.tsx` **NET CLEAN** (không có status panel).
+
+**Panel READ-ONLY (`components/product-review/status-panel.tsx`):**
+- Self-fetch **`GET /api/studio/jobs`** (Tổng quan là server component không giữ jobs[] page-level).
+- `source: real`, **39 job**; **KHÔNG mock**; **KHÔNG** action button; **KHÔNG** gọi slash command; **KHÔNG** mutate `data/temp`; **KHÔNG** production/render/QA/package/publish.
+- Bảng jobId·state·bước·product·operatorDecision·qaStatus·publish·updatedAt; thiếu → `—`. Cột publish chỉ suy từ `state`, **không** kết luận live/public.
+
+**Verify:** `typecheck` PASS · `build` PASS · browser: `/` (Tổng quan) **CÓ** panel; `/lanes/product-review` **KHÔNG** có panel. Sự cố runtime: chạy `build` đè `.next` dưới dev server đang chạy → CSS 404; fix bằng kill port 3002 + `studio:dev:clean` (wipe `.next` + start fresh). Studio UI xem bằng **Chrome** (không Cốc Cốc — rule browser separation).
+
+**Ý nghĩa kiến trúc (chốt):** **LANE NỘI DUNG chỉ là XƯỞNG SẢN XUẤT VIDEO** (Review Sản phẩm, Nội dung/Giải trí). **Bảng điều hành/status phải ở Tổng quan / Trung tâm điều hành**, không nhét vào lane sản xuất. Áp cho toàn bộ Round UI Integration (PR-B/C/D theo cùng nguyên tắc).
+
+**Trạng thái:** `origin/feat/ent-multichannel` = **`cc24b72`** · `master` KHÔNG đụng (`e2d0a55`). Branch `feat/ui-pr-status-panel` **chưa cleanup** (bước riêng). PR-B/C/D chưa làm.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
