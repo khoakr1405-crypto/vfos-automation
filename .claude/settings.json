@@ -59,7 +59,23 @@
       "PowerShell(Remove-Item -Recurse -Force *)",
       "PowerShell(Remove-Item -Force -Recurse *)",
       "PowerShell(Invoke-WebRequest * | Invoke-Expression*)",
-      "PowerShell(iwr * | iex*)"
+      "PowerShell(iwr * | iex*)",
+      "Bash(git add -A)",
+      "Bash(git add -A *)",
+      "Bash(git add --all)",
+      "Bash(git add --all *)",
+      "Bash(git add .)",
+      "Bash(git add . *)",
+      "Bash(git add :/)",
+      "Bash(git add :/ *)",
+      "Bash(git add -f *)",
+      "Bash(git add --force *)",
+      "Bash(git commit -a)",
+      "Bash(git commit -a *)",
+      "Bash(git commit -am *)",
+      "Bash(git commit -am*)",
+      "Bash(git commit --all)",
+      "Bash(git commit --all *)"
     ],
     "ask": [
       "Bash(gh pr create*)",
@@ -84,7 +100,12 @@
       "Bash(rm .env*)",
       "Bash(rm tsconfig*.json)",
       "Bash(rm package.json)",
-      "Bash(rm .gitignore)"
+      "Bash(rm .gitignore)",
+      "Bash(pnpm job:publish-facebook*)",
+      "Bash(tsx scripts/job-facebook-publish-command.ts*)",
+      "Bash(pnpm tsx scripts/ent-vlog/tiktok-publish-run.ts*)",
+      "Bash(tsx scripts/ent-vlog/tiktok-publish-run.ts*)",
+      "Bash(pnpm facebook:test-post*)"
     ]
   },
   "hooks": {
