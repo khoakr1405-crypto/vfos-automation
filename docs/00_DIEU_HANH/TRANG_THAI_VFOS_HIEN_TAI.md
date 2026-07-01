@@ -2731,6 +2731,37 @@ Pipeline anchors chạy đầy đủ (từ log): cắt 4 money-shot → vision h
 
 ---
 
+### ✅ Phần 53 — Round 4: slash command đầu tiên `/ent-status` (typed-invoke skill) ĐÃ MERGE + VERIFY (2026-07-01)
+
+> **Mục tiêu**: mở Round 4 (slash commands theo lane, đã ghi nợ ở Phần 52) bằng lệnh đầu tiên `/ent-status` — cửa sổ **READ-ONLY** xem trạng thái lane Entertainment. **Round 4 bước 1 đã hoàn tất.**
+
+**Bước 0 — verify `.claude/commands/` FAIL thật (evidence-gated):**
+- Tạo `.claude/commands/test-cmd.md` **tồn tại thật** (verify bằng `ls`/`cat`/`git status`), nội dung chỉ in token `SLASH-COMMANDS-DIR-WORKS`.
+- Gõ `/test-cmd` → UI báo **`Unknown command: /test-cmd`** dù file tồn tại thật.
+- **Kết luận**: harness Claude Code hiện tại **KHÔNG load `.claude/commands/`**. → **Option A FAIL thật**. Đã xoá file test + thư mục `.claude/commands/` rỗng.
+
+**Chuyển Option B — `/ent-status` dưới dạng typed-invoke skill:**
+- File thêm: **`.claude/skills/ent-status/SKILL.md`** (51 dòng). Frontmatter `description` viết **HẸP** — nêu rõ typed-invoke, **KHÔNG auto-trigger**, không tự bật cho câu nói chung về "lane giải trí / produce / render / publish".
+- **Skill registry hiện = 7 skill load thật**: 6 cũ (vfos-command-center · vfos-evidence-gated-research · vfos-git-safety · vfos-product-review-workflow · vfos-shopee-affiliate · vfos-ui-review) **+ `ent-status`**. Tăng 6→7 có chủ đích: là slash command gõ tay, không phải auto-trigger rộng.
+
+**`/ent-status` đã chạy PASS (read-only thật):**
+- Chỉ đọc `data/temp/ent/*/ent_job.json` (bỏ qua thư mục phụ trợ không có job).
+- Báo **14 Entertainment jobs** (jobId · state · channel · gates · render.verdict · reviewStatus), đếm theo state: `PREVIEW_PENDING: 4 · INTAKE_DONE: 2 · INTAKE_FAILED: 6 · TIKTOK_POSTED: 2`.
+- **Không** produce / render / publish / sửa file. **`git status` sạch sau khi chạy** (đã verify).
+
+**Commit + merge:**
+- Commit tính năng: **`510d52b`** `feat(skills): add /ent-status read-only entertainment lane command` (1 file, +51/-0), branch `feat/ent-status-command` (tách từ feat/ent-multichannel).
+- **PR #6** (base `feat/ent-multichannel` ← head `feat/ent-status-command`) — verify qua GitHub API: `commits:1 · changed_files:1 · mergeable_state:clean`.
+- **Merge `--ff-only` bằng CLI** (KHÔNG dùng UI merge, KHÔNG squash, KHÔNG merge commit): `de3fb5d..510d52b` fast-forward, push non-force. PR #6 GitHub **tự chuyển `merged`** (`merge_commit_sha=510d52b`, đúng bản chất FF).
+
+**Trạng thái:** `origin/feat/ent-multichannel` hiện chứa **`510d52b`** · local == origin · `master` **KHÔNG đụng** (`e2d0a55`) · working tree sạch. Branch `feat/ent-status-command` **chưa xoá** (cleanup là bước riêng).
+
+**Gotcha ghi nhận:** GitHub list-PR API có độ trễ vài giây sau khi bấm "Create pull request" — lần query đầu thấy 0 PR (mâu thuẫn bằng chứng) → đợi + query lại mới thấy PR #6. Luôn verify bằng API thật, không đoán.
+
+**Còn nợ (Round 4 tiếp):** slash command lane khác (`/gate-check`, `/review-status`, `/produce`); cleanup branch `feat/ent-status-command` (local + remote qua UI vì deny-rule chặn `push --delete`).
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
