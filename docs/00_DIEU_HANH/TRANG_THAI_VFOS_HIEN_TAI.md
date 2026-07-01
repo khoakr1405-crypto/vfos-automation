@@ -2708,6 +2708,29 @@ Pipeline anchors chạy đầy đủ (từ log): cắt 4 money-shot → vision h
 
 ---
 
+### ✅ Phần 52 — Round 3: Guardrail Hardening v0 (settings.json deny/ask) ĐÃ MERGE + VERIFY (2026-07-01)
+
+> **Mục tiêu**: biến luật git-safety/No-Go thành **chặn cứng** ở tầng permission `.claude/settings.json`, và **ask-gate** lệnh publish/live thật. Nâng cấp #1 từ báo cáo Iceberg AI-coding. **Round 3 đã hoàn tất.**
+
+**Đã hoàn tất (verify server + content, KHÔNG tin badge UI):**
+- `feat/ent-multichannel` hiện ở commit **`bca80b8`**; guardrail đang **LIVE**.
+- **Hard deny** (chặn cứng): `git add -A` / `git add .` / `git add --all` / `git add :/` / `git add -f` / `--force`.
+- **Hard deny**: `git commit -a` / `-am` / `--all` (VFOS phải stage file cụ thể trước rồi mới commit).
+- **Ask-gate** (Operator xác nhận) lệnh publish/live thật đã audit: `pnpm job:publish-facebook*`, `tsx scripts/job-facebook-publish-command.ts*`, `(pnpm )tsx scripts/ent-vlog/tiktok-publish-run.ts*`, `pnpm facebook:test-post*`.
+- Giữ nguyên deny cũ (force push, push --delete, reset --hard, clean -fd, branch -D, rm -rf). **Không chặn nhầm** `git add <file cụ thể>`, `git commit -m`, `git status/diff/log`, `pnpm typecheck/lint/tsx/ffmpeg/ent:produce`.
+
+**Không cần PreToolUse hook:** matcher settings **hot-reload** + **env-var prefix bị strip trước khi match** ⇒ base prefix đã phủ cả env-prefixed publish (`META_MODE=live pnpm ...` → match `pnpm ...`). Leading-wildcard `Bash(*X*)` không match → đã loại bỏ.
+
+**Cách merge (gotcha lặp lại):** GitHub UI merge PR #5 **KHÔNG stick** (feat không nhảy) — lần 2 sau PR #4. Xử lý bằng CLI `git merge --ff-only origin/chore/guardrail-hardening` + `git push origin feat/ent-multichannel` (FF, non-force). **Verify bằng `git ls-remote` + content check, KHÔNG tin badge UI.**
+
+**Trạng thái:** `master` KHÔNG đụng (`e2d0a55`) · working tree sạch · local == origin (`bca80b8`).
+
+**Còn nợ (Round 4/5 — chưa làm):** slash commands theo lane (`/ent-status`, `/gate-check`, `/review-status`, `/produce`); subagent read-only (`gate-auditor`, `qa-verifier`).
+
+**Bước tiếp theo**: dọn PR #5 + branch `chore/guardrail-hardening` (bước sau, chưa làm trong Phần này).
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
