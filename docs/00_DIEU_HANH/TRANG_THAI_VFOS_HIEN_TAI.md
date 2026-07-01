@@ -2831,6 +2831,32 @@ Pipeline anchors chạy đầy đủ (từ log): cắt 4 money-shot → vision h
 
 ---
 
+### ✅ Phần 57 — Round UI Integration PR-B: Entertainment Status panel (ở Tổng quan) ĐÃ MERGE + VERIFY (2026-07-01)
+
+> **Mục tiêu**: bước 2 của Round UI Integration — đưa logic slash command `/ent-status` vào UI dưới dạng **bảng điều hành READ-ONLY**. **PR-B đã hoàn tất, merge FF.**
+
+**Merge:** **PR #10** (base `feat/ent-multichannel` ← head `feat/ui-ent-status-panel`) merge **FF-only** bằng CLI (`git merge --ff-only`, **không** merge commit); `origin/feat/ent-multichannel` tip = **`53cfe18`**, `merge_commit_sha = 53cfe18` (REST xác nhận `merged=True`, merged_at 2026-07-01T16:35:10Z → **FF thật**). 4 file, **+261 / −0**. PR tạo **tự động qua GitHub API** (token lấy từ credential-store, chỉ trong env, **không lộ**) vì `gh` CLI chưa cài.
+
+**Feature:** **Entertainment Status panel** trên **Tổng quan / Trung tâm điều hành**.
+
+**Placement ĐÚNG (tiếp nối bài học PR-A):**
+- Panel nằm ở route **`/`** (Tổng quan), file `apps/studio/src/app/page.tsx`, **cùng cấp** `ProductReviewStatusPanel`.
+- **KHÔNG** nằm trong LANE NỘI DUNG; **KHÔNG** nằm trong `/lanes/content`; **KHÔNG** nằm trong `/lanes/product-review`.
+
+**Panel READ-ONLY (3 file mới):**
+- `components/entertainment/status-panel.tsx` — self-fetch **`GET /api/studio/entertainment/status`** (**route mới**, GET/read-only, local-only).
+- `lib/entertainment/status.ts` — projection **pure-read** từ `data/temp/ent/*/ent_job.json` qua `listJobs()` (KHÔNG reconcile/ghi). **KHÔNG** dùng `getJobDetail()` vì hàm đó có side-effect `writeManifest`.
+- **Data thật 14 job**; **KHÔNG mock**; **KHÔNG** action button; **KHÔNG** gọi slash command; **KHÔNG** mutate `data/temp`; **KHÔNG** production/render/QA/package/publish; **KHÔNG** đụng pipeline/render/BGM/blur; **KHÔNG** gọi FB/TikTok API.
+- Bảng jobId·state·channel/account·niche·gates(S/P)·reviewStatus·render.verdict·updatedAt; thiếu → `—`; sort mới→cũ theo `updatedAt`.
+
+**Verify:** `typecheck` PASS · `build` PASS (route `/api/studio/entertainment/status` có trong build manifest) · `curl` API **200** (14 job: INTAKE_FAILED 6 · PREVIEW_PENDING 4 · TIKTOK_POSTED 2 · INTAKE_DONE 2) · browser: `/` (Tổng quan) **CÓ** cả **Product Review Status panel + Entertainment Status panel**; `/lanes/content` **KHÔNG** có status panel; `/lanes/product-review` **KHÔNG** có Entertainment status panel. `git status` sạch, `data/temp` không bẩn (read-only chuẩn).
+
+**Ý nghĩa kiến trúc:** củng cố tiếp rule chốt ở Phần 56 — **LANE NỘI DUNG = XƯỞNG SẢN XUẤT VIDEO**; **bảng điều hành/status ở Tổng quan / Trung tâm điều hành**, không nhét vào lane sản xuất. PR-B là bằng chứng thứ 2 áp đúng nguyên tắc.
+
+**Trạng thái:** `origin/feat/ent-multichannel` = **`53cfe18`** (sau khi ghi Phần 57 sẽ tiến thêm 1 docs commit) · `master` KHÔNG đụng (`e2d0a55`). Branch `feat/ui-ent-status-panel` **chưa cleanup** (bước riêng). PR-C/D chưa làm.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
