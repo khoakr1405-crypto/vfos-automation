@@ -2786,6 +2786,25 @@ Pipeline anchors chạy đầy đủ (từ log): cắt 4 money-shot → vision h
 
 ---
 
+### ✅ Phần 55 — Round 4 bước 3: slash command `/gate-check <jobId>` (per-job gate diagnostic) ĐÃ MERGE + VERIFY (2026-07-01)
+
+> **Mục tiêu**: lệnh READ-ONLY diagnostic thứ 3 — soi 1 job cụ thể đang **kẹt gate nào, vì sao**. Bổ trợ `/ent-status` + `/review-status` (bức tranh tổng) bằng góc nhìn per-job. **Round 4 bước 3 đã hoàn tất.**
+
+**File thêm: `.claude/skills/gate-check/SKILL.md`.** Commit tính năng **`6c1b982`** `feat(skills): add /gate-check read-only per-job gate diagnostic command`. **PR #8** merged bằng **FF-only** (`cef8b86..6c1b982`) vào `feat/ent-multichannel` (REST xác nhận merged_at 2026-07-01T10:02:56Z). `.claude/skills` = **9 skill** load thật.
+
+**Đặc tả `/gate-check` (typed-invoke READ-ONLY diagnostic):**
+- **Auto-detect lane theo prefix**: `job_*` → Product Review (đọc `data/temp/jobs/<jobId>/`); `ent_*` → Entertainment (đọc `data/temp/ent/<jobId>/ent_job.json`). KHÔNG đọc chéo lane. Prefix lạ → `UNSUPPORTED_JOB_ID_PREFIX`; không tồn tại → `JOB_NOT_FOUND`; thiếu jobId → `USAGE` (không auto-scan).
+- Product Review 5 gate: binding → source-clean → duration/QA → operator-preview → launch/publish. Entertainment: intake/blocker → GATE1 script → GATE2 preview/audio → GATE3 render.
+- Blocker in **verbatim** (PR=`lastError`, Ent=`error.code`/`violations`); **mismatch** state↔lastError hiện cả hai + ghi `mismatch observed`, không tự chọn bên đúng. `publishVisibility` giữ nguyên văn (không kết luận live/public). Artifact thiếu → `MISSING`, JSON hỏng → `PARSE_ERROR`.
+
+**Test PASS 7/7 (read-only thật):** `job_20260625_003` (PR 5 gate PASS, PUBLISHED) · `job_20260616_001` (PENDING operator preview + state/lastError mismatch) · `job_20260625_004` (FAILED provider-fetch, blocker `PROVIDER_PAGE_FAILED` verbatim) · `ent_squid_001` (Ent GATE1/2/3 PASS) · `ent_fishing_20260626_231555` (Ent BLOCK GATE1, `error.code=DOWNLOAD_FAILED` verbatim) · `job_khong_ton_tai` (JOB_NOT_FOUND) · no-arg (USAGE). **KHÔNG** chạy job:qa/intake/production/render/package/publish; **KHÔNG** gọi FB/TikTok API; **KHÔNG** sinh artifact; **git sạch sau test**.
+
+**QUYẾT ĐỊNH FREEZE + PIVOT (Operator chốt):** Bộ 3 command READ-ONLY diagnostic — `/ent-status`, `/review-status`, `/gate-check <jobId>` — **ĐÃ FREEZE. DỪNG tạo slash command mới.** Chuyển sang **Round UI Integration**: đưa logic 3 command vào UI panel (/ent-status → Entertainment Status panel; /review-status → Product Review Status panel; /gate-check → nút "Kiểm tra gate" trong job card/modal). **Sau khi UI Integration thay thế PASS, 3 slash command này chỉ là GIÀN GIÁO TẠM và sẽ được XOÁ.** `/produce` **KHÔNG** làm slash command — sẽ là **UI action CÓ GUARD ở round riêng** (không read-only → tách bạch).
+
+**Trạng thái:** `origin/feat/ent-multichannel` = `6c1b982` (sau khi ghi Phần 55 sẽ tiến thêm 1 docs commit) · `master` KHÔNG đụng (`e2d0a55`). Branch `feat/gate-check-command` **cleanup ngay sau khi push state doc** (local + remote UI).
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
