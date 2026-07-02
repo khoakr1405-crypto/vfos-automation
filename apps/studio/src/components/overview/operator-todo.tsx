@@ -5,7 +5,12 @@ import {
   TODO_BUCKET_ACCENT,
   TODO_BUCKET_LABEL,
   TODO_BUCKET_ORDER,
+  TODO_BUCKET_SEVERITY,
+  TODO_SEVERITY_ACCENT,
+  TODO_SEVERITY_LABEL,
+  TODO_SEVERITY_ORDER,
   type TodoAccent,
+  type TodoBucket,
   type TodoResult,
 } from '@/lib/overview/operator-todo';
 import Link from 'next/link';
@@ -19,8 +24,11 @@ import { useEffect, useState } from 'react';
  * capped). Component chỉ render — KHÔNG bucket client, KHÔNG gọi gate-check per-job.
  *
  * Phase 2B-1: chip "Bị chặn" (BLOCKED) CHỈ hiện khi route tính được gate rollup
- * (gateComputed > 0) — KHÔNG bao giờ chip BLOCKED=0 giả. Dòng BLOCKED/FAILED hiện
- * blocker verbatim nếu có. gateCapped → hiện note "một số job chưa tính gate".
+ * (gateComputed > 0) — KHÔNG bao giờ chip BLOCKED=0 giả.
+ *
+ * Phase 2B-2 (UI-only polish): gom count theo 3 severity tier (Nguy cấp / Cần thao
+ * tác / Thiếu nguồn) để nhấn mức ưu tiên; dòng nguy cấp (BLOCKED/FAILED) nổi bật hơn.
+ * KHÔNG đổi data model / count logic — tổng tier derive từ `counts` sẵn có.
  *
  * KHÔNG nút produce/render/package/publish (Dashboard = report, không phải make).
  * Chỉ 2 tương tác: "Vào lane" (điều hướng) + "Kiểm tra gate" (drawer read-only sẵn có).
@@ -43,6 +51,15 @@ const TEXT_TONE: Record<TodoAccent, string> = {
   cyan: 'text-accent-cyan',
   green: 'text-accent-green',
   neutral: 'text-neutral-400',
+};
+
+// Viền + nền nhấn cho card severity khi tier có job (>0). Neutral khi rỗng.
+const SEVERITY_CARD_TONE: Record<TodoAccent, string> = {
+  rose: 'border-accent-rose/30 bg-accent-rose/5',
+  amber: 'border-accent-amber/25 bg-accent-amber/5',
+  cyan: 'border-accent-cyan/25 bg-accent-cyan/5',
+  green: 'border-accent-green/25 bg-accent-green/5',
+  neutral: 'border-hairline bg-raised/10',
 };
 
 function fmtTime(iso: string | null): string {
@@ -78,7 +95,18 @@ export function OperatorTodo() {
 
   // Chip BLOCKED chỉ hiện khi gate rollup thật đã tính (không giả 0).
   const showBlocked = (todo?.gateComputed ?? 0) > 0;
-  const stripBuckets = TODO_BUCKET_ORDER.filter((b) => b !== 'BLOCKED' || showBlocked);
+  const isDisplayable = (b: TodoBucket) => b !== 'BLOCKED' || showBlocked;
+
+  // Gom bucket theo severity tier. Tổng tier = SUM counts của bucket hiển thị được
+  // (KHÔNG đổi count logic — chỉ cộng lại các con số route đã trả). BLOCKED bị loại
+  // khỏi tier "critical" khi chưa tính được gate → không giả 0.
+  const severityGroups = TODO_SEVERITY_ORDER.map((sev) => {
+    const buckets = TODO_BUCKET_ORDER.filter(
+      (b) => TODO_BUCKET_SEVERITY[b] === sev && isDisplayable(b),
+    );
+    const total = buckets.reduce((sum, b) => sum + (todo?.counts[b] ?? 0), 0);
+    return { sev, buckets, total };
+  });
 
   return (
     <div className="rounded-2xl border border-hairline bg-card/80 shadow-[0_1px_0_0_rgba(255,255,255,0.03)_inset]">
@@ -88,7 +116,8 @@ export function OperatorTodo() {
           <div>
             <h2 className="text-sm font-semibold text-neutral-100">Việc Operator cần làm</h2>
             <p className="mt-0.5 text-xs text-neutral-500">
-              Chỉ đọc — gom job cần hành động từ cả 2 lane. Bấm "Vào lane" để xử lý.
+              Chỉ đọc — gom job cần hành động từ cả 2 lane, xếp theo mức ưu tiên. Bấm "Vào lane" để
+              xử lý.
             </p>
           </div>
         </div>
@@ -99,44 +128,74 @@ export function OperatorTodo() {
 
       <div className="px-5 py-4">
         {load === 'loading' ? (
-          <p className="text-xs text-neutral-500">Đang tải việc cần làm…</p>
+          <div className="flex items-center gap-2 text-xs text-neutral-500">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-neutral-600" />
+            Đang tải việc cần làm…
+          </div>
         ) : load === 'error' || !todo ? (
-          <p className="text-xs text-accent-rose">
-            Không đọc được job (data boundary lỗi). Thử tải lại trang.
-          </p>
+          <div className="rounded-lg border border-accent-rose/25 bg-accent-rose/5 px-3 py-2 text-xs text-accent-rose">
+            Không đọc được danh sách việc (lỗi biên dữ liệu). Dashboard vẫn an toàn — thử tải lại
+            trang.
+          </div>
         ) : todo.totalActionable === 0 ? (
-          <p className="text-xs text-neutral-500">
-            Không có việc cần xử lý — mọi job đang chạy hoặc đã xong.
-          </p>
+          <div className="text-xs">
+            <p className="font-medium text-neutral-300">Không có việc cần xử lý.</p>
+            <p className="mt-0.5 text-neutral-500">Mọi job đang chạy hoặc đã hoàn tất.</p>
+          </div>
         ) : (
           <>
-            {/* Count strip — chip "Bị chặn" chỉ hiện khi gateComputed > 0 (gate rollup thật). */}
-            <div className="mb-3 flex flex-wrap gap-1.5">
-              {stripBuckets.map((b) => {
-                const n = todo.counts[b];
-                const tone = TODO_BUCKET_ACCENT[b];
+            {/* Severity band — 3 tier ưu tiên, tier "Nguy cấp" (BLOCKED/FAILED) nổi bật nhất. */}
+            <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+              {severityGroups.map(({ sev, buckets, total }) => {
+                const tone = TODO_SEVERITY_ACCENT[sev];
+                const active = total > 0;
                 return (
-                  <span
-                    key={b}
-                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-semibold ${
-                      n > 0
-                        ? `border-hairline bg-raised/40 ${TEXT_TONE[tone]}`
-                        : 'border-hairline/40 text-neutral-600'
+                  <div
+                    key={sev}
+                    className={`rounded-xl border px-3 py-2 ${
+                      active ? SEVERITY_CARD_TONE[tone] : 'border-hairline/40 bg-raised/5'
                     }`}
                   >
-                    <span
-                      className={`h-1.5 w-1.5 rounded-full ${n > 0 ? DOT_TONE[tone] : 'bg-neutral-700'}`}
-                    />
-                    {TODO_BUCKET_LABEL[b]}
-                    <span className="font-mono font-bold">{n}</span>
-                  </span>
+                    <div className="flex items-center justify-between">
+                      <span
+                        className={`flex items-center gap-1.5 text-[11px] font-semibold ${
+                          active ? TEXT_TONE[tone] : 'text-neutral-600'
+                        }`}
+                      >
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full ${active ? DOT_TONE[tone] : 'bg-neutral-700'}`}
+                        />
+                        {TODO_SEVERITY_LABEL[sev]}
+                      </span>
+                      <span
+                        className={`font-mono text-base font-bold ${active ? TEXT_TONE[tone] : 'text-neutral-600'}`}
+                      >
+                        {total}
+                      </span>
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap gap-x-2 gap-y-0.5">
+                      {buckets.map((b) => {
+                        const n = todo.counts[b];
+                        return (
+                          <span
+                            key={b}
+                            className={`text-[10px] ${n > 0 ? 'text-neutral-400' : 'text-neutral-600'}`}
+                          >
+                            {TODO_BUCKET_LABEL[b]}{' '}
+                            <span className="font-mono font-semibold text-neutral-300">{n}</span>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
                 );
               })}
             </div>
 
             {todo.gateCapped && todo.capNote && (
-              <p className="mb-3 rounded-lg border border-accent-amber/25 bg-accent-amber/5 px-3 py-1.5 text-[10px] text-accent-amber">
-                ⚠ {todo.capNote}
+              <p className="mb-3 flex items-center gap-1.5 rounded-lg border border-accent-amber/25 bg-accent-amber/5 px-3 py-1.5 text-[10px] text-accent-amber">
+                <span aria-hidden>⚠</span>
+                {todo.capNote}
               </p>
             )}
 
@@ -144,10 +203,15 @@ export function OperatorTodo() {
             <ul className="space-y-1.5">
               {todo.items.map((it) => {
                 const tone = TODO_BUCKET_ACCENT[it.bucket];
+                const isCritical = TODO_BUCKET_SEVERITY[it.bucket] === 'critical';
                 return (
                   <li
                     key={`${it.lane}:${it.jobId}`}
-                    className="rounded-lg border border-hairline/50 bg-raised/10 px-3 py-2 text-[11px]"
+                    className={`rounded-lg border px-3 py-2 text-[11px] ${
+                      isCritical
+                        ? 'border-accent-rose/30 bg-accent-rose/[0.06]'
+                        : 'border-hairline/50 bg-raised/10'
+                    }`}
                   >
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                       <span
@@ -182,7 +246,7 @@ export function OperatorTodo() {
                         <GateCheckButton jobId={it.jobId} />
                       </span>
                     </div>
-                    {it.blocker && (it.bucket === 'BLOCKED' || it.bucket === 'FAILED') && (
+                    {it.blocker && isCritical && (
                       <p
                         className="mt-1 truncate text-[10px] text-accent-rose/90"
                         title={it.blocker}

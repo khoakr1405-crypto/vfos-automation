@@ -89,6 +89,37 @@ export const TODO_BUCKET_ACCENT: Record<TodoBucket, TodoAccent> = {
   MISSING: 'amber',
 };
 
+// --- Severity metadata (Phase 2B-2, UI-only) --------------------------------
+// Gom bucket thành 3 tier để nhấn mạnh mức ưu tiên trên Dashboard. THUẦN metadata:
+// KHÔNG đổi count/precedence/data — component tự derive tổng tier từ `counts` sẵn có.
+export type TodoSeverity = 'critical' | 'action' | 'missing';
+
+// Thứ tự tier trên band: nguy cấp trước.
+export const TODO_SEVERITY_ORDER: TodoSeverity[] = ['critical', 'action', 'missing'];
+
+// Bucket nào thuộc tier nào. Khớp precedence/màu: BLOCKED+FAILED = nguy cấp.
+export const TODO_BUCKET_SEVERITY: Record<TodoBucket, TodoSeverity> = {
+  BLOCKED: 'critical',
+  FAILED: 'critical',
+  READY_FOR_REVIEW: 'action',
+  READY_TO_PUBLISH: 'action',
+  READY_TO_PACKAGE: 'action',
+  MISSING: 'missing',
+};
+
+export const TODO_SEVERITY_LABEL: Record<TodoSeverity, string> = {
+  critical: 'Nguy cấp',
+  action: 'Cần thao tác',
+  missing: 'Thiếu nguồn',
+};
+
+// Tone của header tier: critical = rose (nóng, nổi bật nhất), action = cyan, missing = amber.
+export const TODO_SEVERITY_ACCENT: Record<TodoSeverity, TodoAccent> = {
+  critical: 'rose',
+  action: 'cyan',
+  missing: 'amber',
+};
+
 // Product Review (VfosJobState) → bucket theo state. State không liệt kê = in-flight
 // (SOURCE_READY/READY_TO_RENDER/RENDERING) hoặc terminal (PUBLISHED/REJECTED) → KHÔNG to-do.
 const PR_BUCKET: Partial<Record<VfosJobState, TodoBucket>> = {
