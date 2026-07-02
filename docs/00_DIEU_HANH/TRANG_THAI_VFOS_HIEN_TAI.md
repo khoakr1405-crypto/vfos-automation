@@ -3019,6 +3019,32 @@ Pipeline anchors chạy đầy đủ (từ log): cắt 4 money-shot → vision h
 
 ---
 
+### ✅ Phần 64 — Phase 2B-1: Gate-rollup BLOCKED thật cho Operator To-Do ĐÃ CODE + VERIFY + PUSH (2026-07-02)
+
+> **Mục tiêu**: bucket **BLOCKED / "Bị chặn"** trong Operator To-Do phải là **dữ liệu gate THẬT** (từ `buildGateCheck`), KHÔNG fake, KHÔNG chip 0 gây hiểu nhầm. Tính server-side, read-only.
+
+**Đã làm:**
+- 🆕 `apps/studio/src/app/api/studio/overview/todo/route.ts` — route **READ-ONLY** `GET /api/studio/overview/todo`, `source: 'real'`, `dynamic = 'force-dynamic'`. Gom job 2 lane (`loadOperatorJobs` + `listEntStatusForUi`) → chọn tập actionable → gọi `buildGateCheck(jobId)` server-side cho từng actionable job để tính gate rollup → phân loại lại với precedence gate. **KHÔNG side-effect, KHÔNG mutate, KHÔNG pipeline/render/publish.**
+- ✏️ `apps/studio/src/lib/overview/operator-todo.ts` — thêm `GateRollup` + tham số `gateMap` optional cho `buildOperatorTodo`. Hàm vẫn **PURE** (không import `buildGateCheck` server-only; route truyền `gateMap` đã tính vào). Precedence: **gate BLOCKED > (state FAILED | gate FAIL) > READY_FOR_REVIEW > READY_TO_PUBLISH > READY_TO_PACKAGE > (state MISSING | gate MISSING)** — mỗi job đúng 1 bucket, không double-count.
+- ✏️ `apps/studio/src/components/overview/operator-todo.tsx` — fetch 1 route `/api/studio/overview/todo` (không còn bucket client / không gọi gate per-job). Chip "Bị chặn" **chỉ hiện khi `gateComputed > 0`** (không bao giờ chip BLOCKED=0 giả). Mỗi dòng hiện `state:` GỐC + blocker verbatim (dòng BLOCKED/FAILED). Banner cap khi `gateCapped`.
+
+**Hành vi chốt:**
+- **Gate-check cap = 30 actionable jobs mỗi lần load** (`GATE_CHECK_CAP`), vì `buildGateCheck` đọc file/job (I/O). Vượt cap → `gateCapped = true` + `capNote` hiển thị banner — **KHÔNG silent cap**. Mỗi call `buildGateCheck` bọc `try/catch`: 1 job lỗi gate → bỏ qua, phân loại theo state — **KHÔNG giả BLOCKED**.
+- **BLOCKED/"Bị chặn" = dữ liệu gate thật**, không fake. **BLOCKED thắng FAILED** theo precedence (job state=FAILED nhưng gate `qa_render` BLOCKED → hiện bucket BLOCKED, `state:` vẫn ghi `FAILED`).
+- UI vẫn hiển thị **state gốc mỗi dòng** (ví dụ `state: FAILED`) + **blocker verbatim** nếu có.
+- Mỗi dòng giữ **"Vào lane →"** + **"Kiểm tra gate"** (drawer read-only). **KHÔNG** nút produce/render/package/publish trên Dashboard (report ≠ make).
+- Data thật khi verify: **32 actionable · gateComputed 30 · gateCapped true · 17 BLOCKED** (job FAILED→gate `qa_render` BLOCKED) — counts reconcile, không double-count.
+
+**Verify:** typecheck **PASS** · build **PASS** · Biome **sạch** · dev `localhost:3002` `/`=200 · **Operator đã duyệt UI**.
+
+**Commit/push:** `356c1b4` `feat(studio): real gate-rollup for operator todo blocked bucket` — **ĐÃ PUSH `origin/feat/ent-multichannel`, local == origin**. `master` KHÔNG đụng (`e2d0a55`). `docs/prototypes/` untracked concept — KHÔNG stage.
+
+**GOTCHA (ghi để không lặp):** **đừng chạy `pnpm build` khi dev server đang chạy** — production build đè `.next` khiến dev trả HTTP 500 (không phải lỗi code). Build trước rồi mở dev, hoặc restart dev sạch sau build.
+
+**Bước tiếp theo — Phase 2B-2 (chưa code):** severity band + polish (nhóm BLOCKED/FAILED nổi bật, chốt thứ tự ưu tiên, density/empty-error). **Nếu** muốn gộp/thay 3 panel cũ (OperatorJobQueue + 2 status panel) bằng To-Do surface → **BẮT BUỘC Step Inventory 6 cột trước (No-Go #9)**.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
