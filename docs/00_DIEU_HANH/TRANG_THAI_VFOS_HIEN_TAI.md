@@ -2996,6 +2996,29 @@ Pipeline anchors chạy đầy đủ (từ log): cắt 4 money-shot → vision h
 
 ---
 
+### ✅ Phần 63 — Phase 2A: Operator To-Do hợp nhất (tối thiểu) ĐÃ CODE + VERIFY + PUSH (2026-07-02)
+
+> **Mục tiêu**: gom "việc Operator cần làm bây giờ" (đang rải ở 3 component) thành 1 surface READ-ONLY trên Dashboard. Dùng job data sẵn có, KHÔNG data affiliate mới, KHÔNG route mới.
+
+**Đã làm:**
+- 🆕 `apps/studio/src/lib/overview/operator-todo.ts` — lib **pure read-only** `buildOperatorTodo(prJobs, entJobs)`: bucket theo `job.state` THẬT + đếm + sắp ưu tiên. Không I/O, không mock, không mutate.
+- 🆕 `apps/studio/src/components/overview/operator-todo.tsx` — component READ-ONLY: fetch `/api/studio/jobs` (source='real') + `/api/studio/entertainment/status` (ok===true) sẵn có, render count strip + list ưu tiên.
+- ✏️ `apps/studio/src/app/page.tsx` — chèn `<OperatorTodo />` làm **band ĐẦU** Dashboard (additive — KHÔNG gỡ OperatorJobQueue / 2 status panel / ProductQueue).
+
+**Hành vi chốt:**
+- Count strip **chỉ 5 bucket dẫn từ state thật**: **Lỗi · Chờ duyệt · Chờ đăng · Chờ đóng gói · Thiếu nguồn** (reconcile được với panel cũ, mỗi job 1 bucket, không double-count; job in-flight/terminal không hiện).
+- **KHÔNG hiển thị BLOCKED/"Bị chặn"** ở count strip — gate-rollup tổng hợp để **Phase 2B** (Operator chốt bỏ chip để không hiểu nhầm "0 = không có job bị chặn").
+- Mỗi dòng: bucket + jobId + lane + tên + thời gian + **"Vào lane →"** (điều hướng) + **"Kiểm tra gate"** (drawer read-only sẵn có). Gate blocker xem per-job qua "Kiểm tra gate".
+- **KHÔNG** nút produce/render/package/publish trên Dashboard (report ≠ make).
+
+**Verify:** typecheck **PASS** · build **PASS** · Biome **sạch** · dev `localhost:3002` `/`=200 · **Operator đã duyệt UI**.
+
+**Commit/push:** `d39a365` `feat(studio): add operator todo overview surface` (3 file, +362) — **ĐÃ PUSH `origin/feat/ent-multichannel`, local == origin**. `master` KHÔNG đụng (`e2d0a55`). `docs/prototypes/` là untracked concept của Operator — KHÔNG stage.
+
+**Bước tiếp theo — Phase 2B (chưa code):** nối gate-rollup cho bucket **BLOCKED** (từ `buildGateCheck` overallStatus) + severity band/polish thứ tự ưu tiên; **nếu** muốn gộp/thay 3 panel cũ bằng To-Do surface → **BẮT BUỘC Step Inventory 6 cột trước (No-Go #9)**.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
