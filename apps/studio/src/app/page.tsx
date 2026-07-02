@@ -3,6 +3,7 @@ import { EntertainmentStatusPanel } from '@/components/entertainment/status-pane
 import { UtilIcon } from '@/components/icons';
 import { MockBanner } from '@/components/mock-banner';
 import { OperatorJobQueue } from '@/components/overview/operator-job-queue';
+import { OperatorTodo } from '@/components/overview/operator-todo';
 import { ProductQueue } from '@/components/overview/product-queue';
 import { PageHeader } from '@/components/page-header';
 import { ProductReviewStatusPanel } from '@/components/product-review/status-panel';
@@ -38,6 +39,10 @@ export default function OverviewPage() {
           </Link>
         }
       />
+
+      {/* Việc Operator cần làm (Phase 2A) — band đầu Dashboard, gom job cần hành động
+          từ 2 lane. READ-ONLY + additive (không thay OperatorJobQueue / status panel). */}
+      <OperatorTodo />
 
       {/* Hàng đợi job thật (registry/manifest) + đường tiếp tục vòng lặp */}
       <div className="grid gap-5 lg:grid-cols-3">
