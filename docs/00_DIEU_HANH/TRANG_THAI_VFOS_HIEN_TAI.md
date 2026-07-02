@@ -2887,6 +2887,39 @@ Pipeline anchors chạy đầy đủ (từ log): cắt 4 money-shot → vision h
 
 ---
 
+### ✅ Phần 59 — Round UI Integration PR-D: nút "Kiểm tra gate" + modal ĐÃ MERGE + VERIFY · **ROUND UI INTEGRATION (A→D) HOÀN TẤT** (2026-07-02)
+
+> **Mục tiêu**: bước 4 (cuối) của Round UI Integration — gắn UI cho gate-check: nút per-job + modal gọi route read-only PR-C. **PR-D đã hoàn tất, merge FF. Round UI Integration A→D DONE.**
+
+**Merge:** **PR #12** (base `feat/ent-multichannel` ← head `feat/ui-gate-check-modal`) merge **FF-only** bằng CLI (`git merge --ff-only`, **không** merge commit); `origin/feat/ent-multichannel` tip = **`1d845cd`**, `merge_commit_sha = 1d845cd` (REST xác nhận `merged=True`, merged_at 2026-07-02T03:44:58Z → **FF thật**). 3 file, **+183 / −2** (−2 = biome wrap cell `publish` liền kề, format-only). PR tạo tự động qua GitHub API (token credential-store, không lộ).
+
+**Feature:**
+- Nút **"Kiểm tra gate"** (compact, per-row) trong **Product Review Status panel** VÀ **Entertainment Status panel** — cả 2 ở **Tổng quan `/`**.
+- Click → **modal** hiện: `jobId` (mono) · `lane` · `state` · **`overallStatus`** (badge màu) · `isPassing` · `blocker` (verbatim, nếu có) · `updatedAt` (nếu có) · **danh sách 5 gate** (label · status · reason). Loading + nút Đóng + map lỗi (INVALID_JOB_ID/UNSUPPORTED_JOB_ID_PREFIX/JOB_NOT_FOUND).
+- **Chỉ fetch theo click từng job** — gọi route PR-C **`GET /api/studio/jobs/[jobId]/gate-check`** (read-only). KHÔNG auto-run hàng loạt.
+
+**Scope (3 file):**
+- `apps/studio/src/components/gate-check/gate-check-modal.tsx` (NEW — `GateCheckButton` client + modal)
+- `apps/studio/src/components/product-review/status-panel.tsx` (MOD — +cột `gate`, `jobId={j.id}`)
+- `apps/studio/src/components/entertainment/status-panel.tsx` (MOD — +cột `gate`, `jobId={j.jobId}`)
+- Type dùng **type-only import** từ PR-C lib (erase-at-compile, KHÔNG kéo server code vào client bundle — precedent PR-B). `app/page.tsx` **không sửa**.
+
+**Kiến trúc — Round UI Integration A→D HOÀN TẤT:** UI đã **thay thế đủ chức năng đọc/trạng thái/gate-check** của 3 slash command:
+- `/review-status` → **Product Review Status panel** (Phần 56, PR-A)
+- `/ent-status` → **Entertainment Status panel** (Phần 57, PR-B)
+- `/gate-check` → shared `buildGateCheck()` + route (Phần 58, PR-C) + nút/modal (Phần 59, PR-D)
+- 2 panel + nút gate đều ở **Tổng quan `/`**; **KHÔNG** đưa dashboard/status/gate overview vào LANE NỘI DUNG; **KHÔNG** đụng `/lanes/content`, `/lanes/product-review`, sidebar, page mới, `OperatorJobQueue`.
+
+**Read-only boundary:** chỉ GET route PR-C theo click · KHÔNG POST/action/auto-run/mutate `data/temp`/write manifest · KHÔNG slash command · KHÔNG FB/TikTok API · KHÔNG production/render/QA/package/publish · KHÔNG expose source URL/path/token · KHÔNG đụng PR workflow 5 bước / Ent pipeline·BGM·blur·render.
+
+**Verify:** `typecheck` PASS · `build` PASS (17/17, component vào client bundle `app/page.js`) · biome **clean** · API 200 (overall PASS) · browser `/`: 2 panel có nút, modal mở/đóng, PASS/BLOCKED/PENDING đúng · `/lanes/content` & `/lanes/product-review` **KHÔNG** có gate dashboard/modal · `git status` sạch · `data/temp` không bẩn.
+
+**Trạng thái:** `origin/feat/ent-multichannel` = **`1d845cd`** (sau khi ghi Phần 59 sẽ tiến thêm 1 docs commit) · `master` KHÔNG đụng (`e2d0a55`). Branch `feat/ui-gate-check-modal` **chưa cleanup** (bước riêng).
+
+**Bước kế (chưa làm ở Phần này):** (1) cleanup branch PR-D local + remote; (2) **round riêng cleanup GIÀN GIÁO** — xoá/di chuyển 3 skill `ent-status`/`review-status`/`gate-check` + xử lý `_archive/skills/chay/`, theo **Guardrail §10** (chỉ tháo giàn giáo khi UI thay thế đã PASS — giờ đã PASS). **KHÔNG** làm cleanup giàn giáo trong commit Phần 59.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
