@@ -2857,6 +2857,36 @@ Pipeline anchors chạy đầy đủ (từ log): cắt 4 money-shot → vision h
 
 ---
 
+### ✅ Phần 58 — Round UI Integration PR-C: shared read-only `buildGateCheck()` + route gate-check ĐÃ MERGE + VERIFY (2026-07-02)
+
+> **Mục tiêu**: bước 3 của Round UI Integration — đưa logic slash command `/gate-check <jobId>` vào **backend/shared logic READ-ONLY**. Đây là **nền cho PR-D**; **CHƯA gắn UI** (nút/modal là PR-D). **PR-C đã hoàn tất, merge FF.**
+
+**Merge:** **PR #11** (base `feat/ent-multichannel` ← head `feat/ui-gate-check-route`) merge **FF-only** bằng CLI (`git merge --ff-only`, **không** merge commit); `origin/feat/ent-multichannel` tip = **`15f65ca`**, `merge_commit_sha = 15f65ca` (REST xác nhận `merged=True`, merged_at 2026-07-02T03:18:45Z → **FF thật**). 2 file, **+288 / −0**. PR tạo tự động qua GitHub API (token credential-store, không lộ).
+
+**Feature:** shared **`buildGateCheck(jobId)`** + route **`GET /api/studio/jobs/[jobId]/gate-check`** (READ-ONLY diagnostic).
+
+**Scope (2 file mới, additive — KHÔNG sửa file có sẵn):**
+- `apps/studio/src/lib/gate-check/build-gate-check.ts`
+- `apps/studio/src/app/api/studio/jobs/[jobId]/gate-check/route.ts`
+- **KHÔNG** thêm UI button/modal · **KHÔNG** sidebar · **KHÔNG** page/panel · **KHÔNG** đụng `/lanes/content` · **KHÔNG** đụng `/lanes/product-review`.
+
+**Response contract:**
+- `ok:true` khi đọc job thành công — **kể cả gate FAIL/BLOCKED**; `overallStatus` roll-up nghiệp vụ **BLOCKED > FAIL > PENDING > MISSING > PASS > UNKNOWN**; `isPassing = overallStatus==='PASS'`.
+- API lỗi thật mới `ok:false`: **`INVALID_JOB_ID`** (400) · **`UNSUPPORTED_JOB_ID_PREFIX`** (400) · **`JOB_NOT_FOUND`** (404).
+- Mỗi gate: `{ key, label, status, reason }`; blocker in **verbatim**.
+
+**Dispatch theo prefix:** `job_*` → Product Review (5 gate: product_binding·source_clean·qa_render·operator_preview·launch_publish) · `ent_*` → Entertainment (intake·gate1_script·gate2_preview_audio·gate3_render·conclusion) · prefix khác → unsupported.
+
+**Read-only boundary:** PR dùng **`loadJobById`** pure-read; Ent dùng **`readManifest`** pure-read. **KHÔNG** `getJobDetail()` (writeManifest side-effect) · **KHÔNG** `appendPublishAuditLog` · **KHÔNG** mutate `data/temp`/write manifest · **KHÔNG** slash command · **KHÔNG** production/render/QA/package/publish · **KHÔNG** FB/TikTok API · **KHÔNG** đụng PR workflow 5 bước / Ent pipeline·BGM·blur·render · **KHÔNG** expose source URL/path/token.
+
+**Verify:** `typecheck` PASS · `build` PASS (route có trong manifest) · biome **clean** · **curl 8 case PASS**: PR PUBLISHED→overall PASS · PR FAILED→BLOCKED + blocker verbatim (`PROVIDER_PAGE_FAILED`) · PR PACKAGED cũ thiếu `cleanlinessStatus`→`source_clean=MISSING` (**trung thực, không bịa**) · Ent PREVIEW_PENDING (gate1 PASS/gate2 PENDING) · Ent INTAKE_FAILED→intake BLOCKED (`DOWNLOAD_FAILED`) · `foo_123`→400 UNSUPPORTED · `ent_khongtontai`→404 NOT_FOUND · `bad_id!!`→400 INVALID. `git status` sạch · `data/temp` không bẩn (read-only chuẩn).
+
+**Ý nghĩa kiến trúc:** PR-C là **backend foundation** cho PR-D — PR-D mới gắn nút/modal "Kiểm tra gate" trên UI (job card). Route dùng chung cho màn điều hành; **không** đưa logic điều hành vào LANE NỘI DUNG (giữ đúng rule Phần 56).
+
+**Trạng thái:** `origin/feat/ent-multichannel` = **`15f65ca`** (sau khi ghi Phần 58 sẽ tiến thêm 1 docs commit) · `master` KHÔNG đụng (`e2d0a55`). Branch `feat/ui-gate-check-route` **chưa cleanup** (bước riêng). PR-D chưa làm.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
