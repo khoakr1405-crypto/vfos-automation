@@ -1,25 +1,26 @@
 'use client';
 
 import { GateCheckButton } from '@/components/gate-check/gate-check-modal';
-import type { EntJobStatusUi } from '@/lib/entertainment/status';
 import {
   TODO_BUCKET_ACCENT,
   TODO_BUCKET_LABEL,
-  TODO_STATE_BUCKET_ORDER,
+  TODO_BUCKET_ORDER,
   type TodoAccent,
   type TodoResult,
-  buildOperatorTodo,
 } from '@/lib/overview/operator-todo';
-import type { OperatorJobDTO } from '@/lib/studio-data/types';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 
 /**
- * Operator To-Do — surface HỢP NHẤT "việc Operator cần làm bây giờ" (Phase 2A).
+ * Operator To-Do — surface HỢP NHẤT "việc Operator cần làm bây giờ".
  *
- * READ-ONLY, đặt ở band đầu Dashboard (app/page.tsx). Gom job cần hành động từ
- * cả 2 lane (fetch /api/studio/jobs + /api/studio/entertainment/status, chỉ nhận
- * data THẬT), bucket qua lib pure-read buildOperatorTodo, sắp ưu tiên + đếm số.
+ * READ-ONLY, đặt ở band đầu Dashboard (app/page.tsx). Fetch 1 route aggregation
+ * server-side GET /api/studio/overview/todo (đã bucket + tính gate rollup thật,
+ * capped). Component chỉ render — KHÔNG bucket client, KHÔNG gọi gate-check per-job.
+ *
+ * Phase 2B-1: chip "Bị chặn" (BLOCKED) CHỈ hiện khi route tính được gate rollup
+ * (gateComputed > 0) — KHÔNG bao giờ chip BLOCKED=0 giả. Dòng BLOCKED/FAILED hiện
+ * blocker verbatim nếu có. gateCapped → hiện note "một số job chưa tính gate".
  *
  * KHÔNG nút produce/render/package/publish (Dashboard = report, không phải make).
  * Chỉ 2 tương tác: "Vào lane" (điều hướng) + "Kiểm tra gate" (drawer read-only sẵn có).
@@ -57,20 +58,15 @@ export function OperatorTodo() {
     let alive = true;
     (async () => {
       try {
-        const [prRes, entRes] = await Promise.all([
-          fetch('/api/studio/jobs'),
-          fetch('/api/studio/entertainment/status'),
-        ]);
-        const prData = await prRes.json();
-        const entData = await entRes.json();
+        const res = await fetch('/api/studio/overview/todo');
+        const data = await res.json();
         if (!alive) return;
-        // Chỉ nhận data THẬT — PR: source==='real'; Ent: ok===true. Không thì bỏ (không mock).
-        const prJobs: OperatorJobDTO[] =
-          prData?.source === 'real' && Array.isArray(prData.jobs) ? prData.jobs : [];
-        const entJobs: EntJobStatusUi[] =
-          entData?.ok === true && Array.isArray(entData.jobs) ? entData.jobs : [];
-        setTodo(buildOperatorTodo(prJobs, entJobs));
-        setLoad('ready');
+        if (data?.ok === true) {
+          setTodo(data as TodoResult);
+          setLoad('ready');
+        } else {
+          setLoad('error');
+        }
       } catch {
         if (alive) setLoad('error');
       }
@@ -79,6 +75,10 @@ export function OperatorTodo() {
       alive = false;
     };
   }, []);
+
+  // Chip BLOCKED chỉ hiện khi gate rollup thật đã tính (không giả 0).
+  const showBlocked = (todo?.gateComputed ?? 0) > 0;
+  const stripBuckets = TODO_BUCKET_ORDER.filter((b) => b !== 'BLOCKED' || showBlocked);
 
   return (
     <div className="rounded-2xl border border-hairline bg-card/80 shadow-[0_1px_0_0_rgba(255,255,255,0.03)_inset]">
@@ -100,20 +100,19 @@ export function OperatorTodo() {
       <div className="px-5 py-4">
         {load === 'loading' ? (
           <p className="text-xs text-neutral-500">Đang tải việc cần làm…</p>
-        ) : load === 'error' ? (
+        ) : load === 'error' || !todo ? (
           <p className="text-xs text-accent-rose">
             Không đọc được job (data boundary lỗi). Thử tải lại trang.
           </p>
-        ) : !todo || todo.totalActionable === 0 ? (
+        ) : todo.totalActionable === 0 ? (
           <p className="text-xs text-neutral-500">
             Không có việc cần xử lý — mọi job đang chạy hoặc đã xong.
           </p>
         ) : (
           <>
-            {/* Count strip — CHỈ bucket dẫn từ job.state thật (không có "Bị chặn"/BLOCKED
-                vì gate rollup chưa aggregate ở 2A). Dim khi 0. */}
+            {/* Count strip — chip "Bị chặn" chỉ hiện khi gateComputed > 0 (gate rollup thật). */}
             <div className="mb-3 flex flex-wrap gap-1.5">
-              {TODO_STATE_BUCKET_ORDER.map((b) => {
+              {stripBuckets.map((b) => {
                 const n = todo.counts[b];
                 const tone = TODO_BUCKET_ACCENT[b];
                 return (
@@ -135,6 +134,12 @@ export function OperatorTodo() {
               })}
             </div>
 
+            {todo.gateCapped && todo.capNote && (
+              <p className="mb-3 rounded-lg border border-accent-amber/25 bg-accent-amber/5 px-3 py-1.5 text-[10px] text-accent-amber">
+                ⚠ {todo.capNote}
+              </p>
+            )}
+
             {/* Danh sách ưu tiên — mỗi dòng read-only + "Vào lane" + gate-check drawer. */}
             <ul className="space-y-1.5">
               {todo.items.map((it) => {
@@ -142,41 +147,57 @@ export function OperatorTodo() {
                 return (
                   <li
                     key={`${it.lane}:${it.jobId}`}
-                    className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-hairline/50 bg-raised/10 px-3 py-2 text-[11px]"
+                    className="rounded-lg border border-hairline/50 bg-raised/10 px-3 py-2 text-[11px]"
                   >
-                    <span
-                      className={`inline-flex items-center gap-1.5 font-semibold ${TEXT_TONE[tone]}`}
-                    >
-                      <span className={`h-2 w-2 rounded-full ${DOT_TONE[tone]}`} />
-                      {TODO_BUCKET_LABEL[it.bucket]}
-                    </span>
-                    <span className="font-mono text-neutral-200">{it.jobId}</span>
-                    <span className="rounded border border-hairline/60 px-1.5 py-0.5 text-[10px] text-neutral-400">
-                      {it.laneLabel}
-                    </span>
-                    <span className="max-w-[240px] truncate text-neutral-400" title={it.label}>
-                      {it.label}
-                    </span>
-                    <span className="font-mono text-[10px] text-neutral-600">
-                      {fmtTime(it.updatedAt)}
-                    </span>
-                    <span className="ml-auto flex items-center gap-2">
-                      <Link
-                        href={it.laneHref}
-                        className="rounded-md border border-hairline px-2 py-1 text-[10px] font-semibold text-neutral-300 transition hover:bg-raised/40 hover:text-neutral-100"
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                      <span
+                        className={`inline-flex items-center gap-1.5 font-semibold ${TEXT_TONE[tone]}`}
                       >
-                        Vào lane →
-                      </Link>
-                      <GateCheckButton jobId={it.jobId} />
-                    </span>
+                        <span className={`h-2 w-2 rounded-full ${DOT_TONE[tone]}`} />
+                        {TODO_BUCKET_LABEL[it.bucket]}
+                      </span>
+                      <span className="font-mono text-neutral-200">{it.jobId}</span>
+                      <span className="rounded border border-hairline/60 px-1.5 py-0.5 text-[10px] text-neutral-400">
+                        {it.laneLabel}
+                      </span>
+                      <span
+                        className="font-mono text-[10px] text-neutral-500"
+                        title="state gốc của job"
+                      >
+                        state: {it.state}
+                      </span>
+                      <span className="max-w-[220px] truncate text-neutral-400" title={it.label}>
+                        {it.label}
+                      </span>
+                      <span className="font-mono text-[10px] text-neutral-600">
+                        {fmtTime(it.updatedAt)}
+                      </span>
+                      <span className="ml-auto flex items-center gap-2">
+                        <Link
+                          href={it.laneHref}
+                          className="rounded-md border border-hairline px-2 py-1 text-[10px] font-semibold text-neutral-300 transition hover:bg-raised/40 hover:text-neutral-100"
+                        >
+                          Vào lane →
+                        </Link>
+                        <GateCheckButton jobId={it.jobId} />
+                      </span>
+                    </div>
+                    {it.blocker && (it.bucket === 'BLOCKED' || it.bucket === 'FAILED') && (
+                      <p
+                        className="mt-1 truncate text-[10px] text-accent-rose/90"
+                        title={it.blocker}
+                      >
+                        ⛔ {it.blocker}
+                      </p>
+                    )}
                   </li>
                 );
               })}
             </ul>
 
             <p className="mt-3 text-[10px] text-neutral-600">
-              Gate blocker xem trong từng job qua "Kiểm tra gate"; tổng hợp blocker sẽ làm ở Phase
-              2B. Read-only: không có nút sản xuất/đăng ở đây.
+              Bucket "Bị chặn" tính từ gate-check thật (tối đa 30 job/lần load); chi tiết gate xem
+              per-job qua "Kiểm tra gate". Read-only: không có nút sản xuất/đăng ở đây.
             </p>
           </>
         )}
