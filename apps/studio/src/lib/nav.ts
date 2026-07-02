@@ -7,6 +7,13 @@
 //   URL vẫn truy cập trực tiếp được).
 // - 2 stub vlog gộp thành LANE 2 "Nội dung / Giải trí" (/lanes/content) — Vlog Câu cá
 //   và Vlog Về xe là NGÁCH bên trong lane này theo North Star v2.
+//
+// IA reframe — Affiliate Video OS (docs/00_DIEU_HANH/VFOS_STUDIO_IA_AFFILIATE_VIDEO_OS_V1.md,
+// Phase 1, 2026-07-02):
+// - Nhóm "TRUNG TÂM ĐIỀU HÀNH" → "DASHBOARD" (trung tâm quản lý/thống kê/báo cáo, read-only).
+// - /analytics ("Hiệu suất & Báo cáo") chuyển từ "KẾT QUẢ / TƯƠNG TÁC" lên nhóm DASHBOARD.
+// - "LANE NỘI DUNG" làm rõ = xưởng sản xuất video đa nội dung/kênh/nền tảng.
+// - Phase 1 CHỈ đổi nhãn/nhóm nav; không đổi route, data, chart hay logic trang.
 
 export type AccentKey = 'blue' | 'violet' | 'green' | 'amber' | 'cyan' | 'rose';
 export type IconKey =
@@ -38,21 +45,30 @@ export type NavGroup = {
 
 export const NAV_GROUPS: NavGroup[] = [
   {
-    title: 'TRUNG TÂM ĐIỀU HÀNH',
-    items: [{ no: 1, href: '/', label: 'Tổng quan', icon: 'overview', accent: 'blue' }],
-  },
-  {
-    title: 'LANE NỘI DUNG',
+    title: 'DASHBOARD',
     items: [
+      { no: 1, href: '/', label: 'Tổng quan', icon: 'overview', accent: 'blue' },
       {
         no: 2,
+        href: '/analytics',
+        label: 'Hiệu suất & Báo cáo',
+        icon: 'analytics',
+        accent: 'green',
+      },
+    ],
+  },
+  {
+    title: 'LANE NỘI DUNG / XƯỞNG SẢN XUẤT',
+    items: [
+      {
+        no: 3,
         href: '/lanes/product-review',
         label: 'Review Sản phẩm',
         icon: 'products',
         accent: 'amber',
       },
       {
-        no: 3,
+        no: 4,
         href: '/lanes/content',
         label: 'Nội dung / Giải trí',
         icon: 'rawvisual',
@@ -62,24 +78,17 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     title: 'CẤU TRÚC',
-    items: [{ no: 4, href: '/channels', label: 'Ngách & Kênh', icon: 'channels', accent: 'blue' }],
+    items: [{ no: 5, href: '/channels', label: 'Ngách & Kênh', icon: 'channels', accent: 'blue' }],
   },
   {
     title: 'KẾT QUẢ / TƯƠNG TÁC',
     items: [
       {
-        no: 5,
+        no: 6,
         href: '/history',
         label: 'Lịch sử & Evidence',
         icon: 'schedule',
         accent: 'cyan',
-      },
-      {
-        no: 6,
-        href: '/analytics',
-        label: 'Hiệu suất / Analytics',
-        icon: 'analytics',
-        accent: 'green',
       },
       {
         no: 7,
