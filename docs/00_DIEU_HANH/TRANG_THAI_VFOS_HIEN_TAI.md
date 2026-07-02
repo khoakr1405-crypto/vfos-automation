@@ -2969,6 +2969,30 @@ Pipeline anchors chạy đầy đủ (từ log): cắt 4 money-shot → vision h
 **Ràng buộc tuân thủ:** không mock doanh thu (No-Go #6) · không chart tiền khi chưa có data thật · không KPI trong Lane · không nút sản xuất trên Dashboard · không đụng pipeline/runtime/secret.
 
 **Trạng thái:** 3 file doc commit trên `feat/ent-multichannel` (scoped staging, **KHÔNG push** — chờ Operator). `master` KHÔNG đụng (`e2d0a55`). **Bước tiếp theo duy nhất:** dựng plan **Phase 1 (IA/nav)** — vẫn chưa code UI.
+> *(Cập nhật sau: Phase 0 đã push — commit `166a419`.)*
+
+---
+
+### ✅ Phần 62 — Phase 1: IA/nav reframe (sidebar theo Affiliate Video OS) ĐÃ CODE + VERIFY + PUSH (2026-07-02)
+
+> **Mục tiêu**: chỉnh sidebar/nav phản ánh IA mới (doc `VFOS_STUDIO_IA_AFFILIATE_VIDEO_OS_V1.md`). Round UI **chỉ đổi nhãn/nhóm nav** — KHÔNG đổi route, data, chart, hay logic trang.
+
+**Đã làm:**
+- Đổi `NAV_GROUPS` trong `apps/studio/src/lib/nav.ts`: nhóm `TRUNG TÂM ĐIỀU HÀNH` → **`DASHBOARD`**; item `/analytics` đổi nhãn `Hiệu suất / Analytics` → **`Hiệu suất & Báo cáo`** và **chuyển từ nhóm `KẾT QUẢ / TƯƠNG TÁC` lên `DASHBOARD`**; nhóm `LANE NỘI DUNG` → **`LANE NỘI DUNG / XƯỞNG SẢN XUẤT`** (giữ 2 item Review Sản phẩm + Nội dung/Giải trí); `CẤU TRÚC` giữ nguyên; `KẾT QUẢ / TƯƠNG TÁC` còn Lịch sử & Evidence + Bình luận & Mắt thần; renumber `no` 1→7.
+- `sidebar.tsx` **KHÔNG đổi** (render group generic từ `NAV_GROUPS`; nhãn dài tự wrap). `NAV_ITEMS`/`no` không dùng ở đâu khác trong app → renumber an toàn.
+
+**File app đã sửa:** `apps/studio/src/lib/nav.ts` (DUY NHẤT, +23/−14).
+
+**Verify:**
+- `pnpm --filter @vfos/studio typecheck` **PASS** · `pnpm --filter @vfos/studio build` **PASS** (mọi route compile).
+- Browser smoke 7 trang trên dev `localhost:3002` đều **HTTP 200**: `/`, `/analytics`, `/lanes/product-review`, `/lanes/content`, `/history`, `/comments`, `/channels`.
+- Operator duyệt UI thật (theo vfos-ui-review-skill) — OK.
+
+**Commit/push:** `dde3004` `feat(studio): reframe navigation IA for affiliate video OS` — **ĐÃ PUSH `origin/feat/ent-multichannel`, local == origin**. Phase 0 (`166a419`) cũng đã push trước đó. `master` KHÔNG đụng (`e2d0a55`).
+
+**Ngoài Phase 1:** `docs/prototypes/` là **untracked concept HTML do Operator tự tạo/mở** — KHÔNG thuộc Phase 1, KHÔNG stage, KHÔNG đụng.
+
+**Bước tiếp theo:** **Phase 2 = Operator To-Do hợp nhất** (gom OperatorJobQueue + 2 status panel + gate-check thành 1 to-do có đếm số + severity trên Dashboard; dùng job data hiện có, KHÔNG cần data affiliate mới). **Chưa code** — mới ở mức plan.
 
 ---
 
