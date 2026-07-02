@@ -3045,6 +3045,31 @@ Pipeline anchors chạy đầy đủ (từ log): cắt 4 money-shot → vision h
 
 ---
 
+### ✅ Phần 65 — Phase 2B-2: Severity band + polish cho Operator To-Do ĐÃ CODE + VERIFY + PUSH (2026-07-02)
+
+> **Mục tiêu**: polish UI Operator To-Do cho dễ vận hành — nhấn nhóm nguy cấp, làm rõ thứ tự ưu tiên, gọn empty/loading/error/cap note. **UI-only: KHÔNG đổi data model, KHÔNG thêm action sản xuất/publish.**
+
+**Đã làm (chỉ 2 file):**
+- ✏️ `apps/studio/src/lib/overview/operator-todo.ts` — **CHỈ thêm metadata severity** (thuần UI): `TodoSeverity` (`critical|action|missing`) + `TODO_SEVERITY_ORDER` + `TODO_BUCKET_SEVERITY` (map bucket→tier) + `TODO_SEVERITY_LABEL` + `TODO_SEVERITY_ACCENT`. **KHÔNG đụng** `buildOperatorTodo` / counts / precedence.
+- ✏️ `apps/studio/src/components/overview/operator-todo.tsx` — severity band 3 nhóm + row prominence + polish empty/loading/error/cap.
+- **Route `GET /api/studio/overview/todo` KHÔNG đổi.**
+
+**Hành vi chốt:**
+- **Severity band 3 tier** đầu To-Do (thay strip phẳng): **Nguy cấp** (BLOCKED+FAILED, tone rose — nổi bật nhất) · **Cần thao tác** (Chờ duyệt+Chờ đăng+Chờ đóng gói, cyan) · **Thiếu nguồn** (MISSING, amber). Mỗi card = tổng tier + mini-chip từng bucket; card có job tô nền/viền theo tone, rỗng thì dịu.
+- **Counts KHÔNG đổi** (khớp Phần 64): `totalActionable 32` · BLOCKED 17 · FAILED 0 · READY_FOR_REVIEW 8 · READY_TO_PUBLISH 2 · READY_TO_PACKAGE 1 · MISSING 4. Tổng tier chỉ **derive** từ `counts` sẵn có: Nguy cấp = 17+0 = **17** · Cần thao tác = 8+2+1 = **11** · Thiếu nguồn = **4** (= 32).
+- **Dòng nguy cấp nổi bật**: BLOCKED/FAILED có viền + nền rose nhạt; dòng khác giữ hairline trung tính. Blocker verbatim (⛔) chỉ ở dòng critical.
+- **BLOCKED honesty giữ nguyên**: tier Nguy cấp loại BLOCKED khi `gateComputed=0` — **KHÔNG fake 0**.
+- **Empty**: "Không có việc cần xử lý." + subline "Mọi job đang chạy hoặc đã hoàn tất." · **Loading**: dot pulse gọn · **Error**: banner rose "Dashboard vẫn an toàn — thử tải lại trang." (không crash) · **Cap note**: giữ, style gọn (⚠ + capNote).
+- **UI giữ read-only**: chỉ **"Vào lane →"** + **"Kiểm tra gate"**. **KHÔNG** nút produce/render/package/publish trên Dashboard.
+
+**Verify:** Biome **sạch** · typecheck **PASS** · build **PASS** · dev `localhost:3002`: `/`=200, `/lanes/product-review`=200, `/lanes/content`=200, `/api/studio/overview/todo` `ok:true` (counts khớp) · **Operator đã duyệt UI**.
+
+**Commit/push:** `7016d58` `feat(studio): polish operator todo severity view` (2 file, +127/−32) — **ĐÃ PUSH `origin/feat/ent-multichannel`, local == origin**. `master` KHÔNG đụng (`e2d0a55`).
+
+**Chưa làm / ranh giới:** **CHƯA gộp/xoá 3 panel cũ** (OperatorJobQueue + 2 status panel). Muốn gộp/thay bằng To-Do surface → **BẮT BUỘC Step Inventory 6 cột trước (No-Go #9)**.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
