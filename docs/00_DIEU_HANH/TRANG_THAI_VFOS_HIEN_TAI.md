@@ -2948,6 +2948,30 @@ Pipeline anchors chạy đầy đủ (từ log): cắt 4 money-shot → vision h
 
 ---
 
+### ✅ Phần 61 — Phase 0: Chốt reframe IA "VFOS = Affiliate Video Operating System" + doc IA chính thức (2026-07-02)
+
+> **Mục tiêu**: ghi nhận chính thức định nghĩa mới của Operator + tạo doc IA chuẩn. Round **CHỈ DOC** — KHÔNG code UI, KHÔNG sửa nav/analytics, KHÔNG đụng pipeline/runtime/secret.
+
+**Bối cảnh:** trước đó 2 vòng research (GitHub UI Benchmark 18 repo + Supplement 10 repo, tất cả **star verified** từ GitHub API, chạy qua Workflow đa-agent) → chốt hướng **Concept C (Hybrid Command Center + Video Factory)**. Operator định nghĩa lại: **VFOS = Affiliate Video Operating System**.
+
+**Quyết định chốt (Phase 0):**
+- **Concept C giữ lõi** (monitor≠make, 1 token system, gated stepper, no-auto-publish). **Chỉ mở rộng SCOPE của Overview**: từ readiness-only → **Dashboard báo cáo kết quả** (kiểm soát/thống kê/hiệu suất/affiliate/doanh thu/lợi nhuận/To-Do).
+- Ranh giới cứng: Dashboard = report/read-only; Lane = make/produce/publish. Revenue/affiliate reporting **thuộc Dashboard**; produce/render/package/publish **thuộc Lane**.
+
+**Doc đã tạo/sửa (round này):**
+- 🆕 `docs/00_DIEU_HANH/VFOS_STUDIO_IA_AFFILIATE_VIDEO_OS_V1.md` — **IA chính thức hiện hành**: Dashboard 7 nhánh (Kiểm soát & Sức khỏe · Việc Operator cần làm · Hiệu suất Video/Kênh/Nền tảng · Hiệu suất Affiliate · Doanh thu & Lợi nhuận · Sản phẩm tạo doanh thu · Báo cáo Chiến dịch/Nội dung); Lane 7 bước (Chọn Ngách/Kênh · Tải/Clean nguồn · Sản xuất · Xem trước & Duyệt · Đóng gói · Đăng đa nền tảng · Vòng lặp nhiều video); mapping route + sidebar; 6 gap; Phase 1–5.
+- ✏️ `VFOS_UI_ARCHITECTURE_V1.md` — thêm con trỏ **SUPERSEDE riêng phần Overview-scope** (§1-A1 & §2); mọi luật an toàn khác giữ nguyên.
+
+**Gap ghi rõ (đọc code xác nhận):** G1 chưa có ingestion affiliate revenue/commission tự động (mới có manual revenue + FB/TikTok view/click insights) 🔴 · G2 `/analytics` còn trộn mock+real 🔴 · G3 chưa có Operator To-Do hợp nhất 🟠 · G4 chưa có job-bound revenue attribution 🟠 · G5 TikTok data mỏng (SELF_ONLY, insights read-only) 🟡 · G6 V1 từng gỡ KPI khỏi Overview → reframe là quyết định mới 🟡.
+
+**Phase kế (đã duyệt hướng):** Phase 1 IA/nav → Phase 2 Operator To-Do → Phase 3 real-only gating/quarantine fixture → Phase 4 affiliate revenue ingestion + job-bound attribution → Phase 5 revenue/affiliate/product reporting. **Thứ tự lõi: IA trước, KHÔNG dựng chart tiền trước khi có data thật.**
+
+**Ràng buộc tuân thủ:** không mock doanh thu (No-Go #6) · không chart tiền khi chưa có data thật · không KPI trong Lane · không nút sản xuất trên Dashboard · không đụng pipeline/runtime/secret.
+
+**Trạng thái:** 3 file doc commit trên `feat/ent-multichannel` (scoped staging, **KHÔNG push** — chờ Operator). `master` KHÔNG đụng (`e2d0a55`). **Bước tiếp theo duy nhất:** dựng plan **Phase 1 (IA/nav)** — vẫn chưa code UI.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |

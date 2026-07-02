@@ -4,6 +4,8 @@
 > **Trạng thái**: Operator đã duyệt hướng audit + kiến trúc. Implement theo phase, không phá Action 1–2–3.
 > **PASS UI** = Operator chạy nhiều job liên tiếp trơn tru, không kẹt state, không nhầm job cũ/mới,
 > luôn có đường quay về trạng thái bắt đầu, evidence/history đầy đủ. Không chỉ là "đẹp".
+>
+> **🆕 CẬP NHẬT 2026-07-02 — SUPERSEDE RIÊNG PHẦN OVERVIEW-SCOPE**: §1-A1 & §2 (Tổng quan = readiness-only, KPI/analytics đẩy sang màn `/analytics` riêng) được cập nhật bởi `docs/00_DIEU_HANH/VFOS_STUDIO_IA_AFFILIATE_VIDEO_OS_V1.md`. Theo định nghĩa mới **VFOS = Affiliate Video Operating System**, Tổng quan mở rộng thành **Dashboard báo cáo kết quả (real-only: hiệu suất video/kênh/nền tảng · affiliate · doanh thu · lợi nhuận · sản phẩm ra tiền · To-Do Operator)**. Vẫn KHÔNG mock doanh thu, vẫn KHÔNG show chart tiền khi chưa có data thật (Phase 4 trước Phase 5). **Mọi luật an toàn khác của doc này GIỮ NGUYÊN** (no-mock-lẫn-real, no-floating, publish=cổng tay, API tự chặn, vòng lặp 9 bước/reset-to-ready).
 
 ## 1. Kết luận audit (2026-06-12, HEAD `781cc42`)
 
