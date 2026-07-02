@@ -1,5 +1,6 @@
 'use client';
 
+import { GateCheckButton } from '@/components/gate-check/gate-check-modal';
 import type { EntJobStatusUi } from '@/lib/entertainment/status';
 import { useEffect, useState } from 'react';
 
@@ -136,6 +137,7 @@ export function EntertainmentStatusPanel() {
                     <th className="py-1.5 pr-3 font-medium">reviewStatus</th>
                     <th className="py-1.5 pr-3 font-medium">render.verdict</th>
                     <th className="py-1.5 pr-3 font-medium">updatedAt</th>
+                    <th className="py-1.5 pr-3 font-medium">gate</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -165,6 +167,9 @@ export function EntertainmentStatusPanel() {
                         </td>
                         <td className="py-1.5 pr-3 font-mono text-neutral-500">
                           {fmtTime(j.updatedAt)}
+                        </td>
+                        <td className="py-1.5 pr-3">
+                          <GateCheckButton jobId={j.jobId} />
                         </td>
                       </tr>
                     );

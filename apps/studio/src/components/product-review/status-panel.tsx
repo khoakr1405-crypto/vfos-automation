@@ -1,5 +1,6 @@
 'use client';
 
+import { GateCheckButton } from '@/components/gate-check/gate-check-modal';
 import type { OperatorJobDTO, VfosJobState } from '@/lib/studio-data/types';
 import { useEffect, useState } from 'react';
 
@@ -82,7 +83,9 @@ export function ProductReviewStatusPanel() {
         if (!alive) return;
         // Read-only: chỉ nhận data THẬT từ route; KHÔNG dùng mock.
         setJobs(Array.isArray(data.jobs) ? data.jobs : []);
-        setNotice(data.source === 'real' ? null : 'Nguồn dữ liệu không phải "real" — không hiển thị.');
+        setNotice(
+          data.source === 'real' ? null : 'Nguồn dữ liệu không phải "real" — không hiển thị.',
+        );
       } catch {
         if (alive) setNotice('Không tải được trạng thái job.');
       } finally {
@@ -151,6 +154,7 @@ export function ProductReviewStatusPanel() {
                     <th className="py-1.5 pr-3 font-medium">qaStatus</th>
                     <th className="py-1.5 pr-3 font-medium">publish</th>
                     <th className="py-1.5 pr-3 font-medium">updatedAt</th>
+                    <th className="py-1.5 pr-3 font-medium">gate</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -168,9 +172,14 @@ export function ProductReviewStatusPanel() {
                         {dash(j.operatorDecision)}
                       </td>
                       <td className={`py-1.5 pr-3 ${qaAccent(j.qaStatus)}`}>{dash(j.qaStatus)}</td>
-                      <td className="py-1.5 pr-3">{j.state === 'PUBLISHED' ? 'PUBLISHED' : DASH}</td>
+                      <td className="py-1.5 pr-3">
+                        {j.state === 'PUBLISHED' ? 'PUBLISHED' : DASH}
+                      </td>
                       <td className="py-1.5 pr-3 font-mono text-neutral-500">
                         {fmtTime(j.updatedAt)}
+                      </td>
+                      <td className="py-1.5 pr-3">
+                        <GateCheckButton jobId={j.id} />
                       </td>
                     </tr>
                   ))}
