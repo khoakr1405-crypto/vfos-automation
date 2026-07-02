@@ -2920,6 +2920,34 @@ Pipeline anchors chạy đầy đủ (từ log): cắt 4 money-shot → vision h
 
 ---
 
+### ✅ Phần 60 — Cleanup GIÀN GIÁO: gỡ 3 slash-command sau Round UI Integration A→D (2026-07-02)
+
+> **Mục tiêu**: tháo giàn giáo tạm sau khi UI thay thế đã PASS + merge + verify (Guardrail §10). Round RIÊNG, chỉ đụng `.claude/` + docs — **KHÔNG** đụng `apps/`.
+
+**Đã xoá (`git rm`) đúng 3 skill giàn giáo:**
+- `.claude/skills/ent-status/SKILL.md`
+- `.claude/skills/review-status/SKILL.md`
+- `.claude/skills/gate-check/SKILL.md`
+
+**Lý do (mỗi command đã có UI thay thế đủ chức năng, đều ở Tổng quan `/`):**
+- `/review-status` → **ProductReviewStatusPanel** (Phần 56, PR-A `cc24b72`).
+- `/ent-status` → **EntertainmentStatusPanel** (Phần 57, PR-B `53cfe18`).
+- `/gate-check` → **buildGateCheck route** (Phần 58, PR-C `15f65ca`) + **GateCheckButton modal** (Phần 59, PR-D `1d845cd`).
+- **Guardrail §10 thỏa điều kiện:** UI thay thế đã PASS + merge FF + verify. "Giàn giáo chỉ tháo khi công trình đã đứng."
+
+**An toàn xoá:** grep toàn repo → **KHÔNG có invocation runtime**; match chỉ là feature UI (route/component/lib gate-check) + comment giải thích + docs; `settings.json` KHÔNG ref. Xoá folder chỉ **unregister typed-invoke command** cho session sau; reversible (còn trong git history). Sau xoá `.claude/skills` còn **6 skill auto-trigger** (`vfos-command-center`, `vfos-git-safety`, `vfos-product-review-workflow`, `vfos-shopee-affiliate`, `vfos-ui-review`, `vfos-evidence-gated-research`).
+
+**GIỮ `.claude/_archive/skills/chay/` (quyết định Operator):**
+- `chay/` là **lane/tính năng NGỦ ĐÔNG** (Shopee-First short-form + FB Reels), **KHÔNG** phải giàn giáo của Round UI Integration, **không** có UI thay thế tương đương.
+- Đã archived (ngoài registry active), không làm nặng context. **Giữ nguyên** — không xoá trong round này (dù Guardrail §10 có liệt kê — Operator chốt ghi đè, giữ ngủ đông).
+- **GIỮ** `.claude/_archive/skills/pending-rebuild/` (2 skill parked chờ rebuild: proactive_support, revenue_experiment_strategist).
+
+**Không đụng:** `apps/` · Product Review workflow 5 bước · Entertainment pipeline · `master` · runtime/media/secret.
+
+**Trạng thái:** branch `chore/cleanup-scaffolding-skills` từ `feat/ent-multichannel` @ `c9b8227`. Chưa commit/push lúc ghi Phần này (state doc + guardrail note đi cùng commit cleanup). `master` KHÔNG đụng (`e2d0a55`).
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |

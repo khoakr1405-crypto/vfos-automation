@@ -67,6 +67,7 @@ Status/gate UI **chỉ được ĐỌC dữ liệu**. **CẤM tuyệt đối** (
   - `.claude/skills/gate-check/`
   - `.claude/_archive/skills/chay/`
 - **[MỚI]** **KHÔNG xoá trước khi UI thay thế PASS.** Giàn giáo chỉ được tháo khi công trình đã đứng.
+- **[CẬP NHẬT 2026-07-02]** `ent-status` / `review-status` / `gate-check` **ĐÃ GỠ** sau khi UI thay thế PASS + merge FF + verify (state doc Phần 60). `_archive/skills/chay/` **GIỮ** — là archived dormant lane (ngủ đông), không phải giàn giáo UI Integration, không có UI thay thế; quyết định Operator ghi đè việc liệt kê ở trên.
 
 ## 11. UI Integration PR Acceptance Checklist
 **[MỚI]** Mỗi PR UI Integration **bắt buộc** báo checklist nghiệm thu dưới đây (thiếu mục nào → chưa được duyệt commit/merge):
