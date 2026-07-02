@@ -51,6 +51,7 @@
     "debug:shopee:select": "tsx packages/shopee/scripts/select-products.ts",
     "shopee:extract-links-cdp": "tsx packages/shopee/scripts/extract-links-cdp.ts",
     "status": "tsx scripts/status-cli.ts",
+    "gemini:pack": "tsx scripts/gemini-context-pack.ts",
     "pipeline:run-manifest": "tsx scripts/pipeline-run-manifest.ts",
     "offline-script-generate": "tsx scripts/offline-script-generate-demo.ts",
     "offline-voice-generate": "tsx scripts/offline-voice-generate-demo.ts",
