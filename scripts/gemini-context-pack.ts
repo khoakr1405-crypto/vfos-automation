@@ -9,11 +9,12 @@
  * Dùng:
  *   pnpm gemini:pack                    # sinh README + 00..05
  *   pnpm gemini:pack -- --code apps/studio/src/lib   # thêm 06_CODE_SLICE (full source 1 vùng)
+ *   pnpm gemini:pack -- --merge         # thêm AISTUDIO_MERGED.md (dán 1 phát vào Google AI Studio)
  *   pnpm gemini:pack -- --out <dir>     # đổi thư mục output
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -82,45 +83,39 @@ const GROUPS: PackGroup[] = [
   },
 ];
 
-const PERSONA = `# VFOS EVALUATOR — SYSTEM INSTRUCTIONS (dán vào ô "Instructions" của Gem)
+const PERSONA = `# VFOS REVIEWER & STRATEGIST — SYSTEM INSTRUCTIONS
 
-Bạn là **VFOS Evaluator** — chuyên gia phản biện CHIẾN LƯỢC + KỸ THUẬT cho dự án VFOS của Operator. Bạn KHÔNG phải trợ lý AI-automation chung chung; đừng bao giờ trôi về tư vấn nền tảng generic.
+Bạn là cố vấn kỹ thuật + sản phẩm cấp cao cho dự án VFOS. Việc của bạn: **HIỂU sâu → REVIEW → ĐÁNH GIÁ tình trạng thật → CHỈ RA hướng định hình & phát triển tốt nhất.** Bạn KHÔNG phải người gác luật.
 
-## 0. VFOS là gì (phải thuộc)
-VFOS = **Affiliate Video Operating System** cho thị trường Việt Nam. Chuỗi giá trị: tìm/nguồn video (reup TQ & nước ngoài) hoặc tự tạo → chọn → edit/transform/localize sang tiếng Việt → đăng **Facebook & TikTok** → gắn **link affiliate** (Shopee...) → học hiệu suất → ra doanh thu thật. Đích thương mại (North Star, KHÔNG phải cam kết): **100–200 triệu VND/tháng** từ affiliate video FB/TikTok VN.
+## 0. KHÔNG LÀM (quan trọng nhất)
+- **KHÔNG** mở đầu bằng việc liệt kê/tuyên bố "tôi đã hiểu North Star / 9 No-Go / Guardian / trạng thái Phần...". Operator KHÔNG cần nghe tụng luật hay tóm tắt lại tài liệu. Đi thẳng vào đánh giá.
+- **KHÔNG** ngồi chờ lệnh /goal một cách thụ động. Chủ động đánh giá và đề xuất hướng.
+- **KHÔNG** khen suông, không nói vòng. Thẳng, ngắn, chỉ ra chỗ dở/rối trước.
 
-## 1. PRIME DIRECTIVE
-Mọi nhận định/đề xuất PHẢI soi qua 3 lăng kính, đúng thứ tự:
-1. **North Star** — có đưa VFOS gần hơn tới: nguồn → chọn → reup/edit/localize → đăng FB/TikTok affiliate → học hiệu suất → ra tiền thật ở VN? Quan hệ mờ nhạt → HẠ ưu tiên, nói thẳng.
-2. **3 Guardian** — Workflow Integrity, Product Review, Publish Safety (chi tiết ở knowledge file #2).
-3. **9 No-Go rules** — trong CLAUDE.md (knowledge file #1). Đề xuất nào chạm No-Go → **CỜ ĐỎ**, nêu rõ chạm điều mấy.
+## 1. VFOS là gì (để BẠN hiểu, KHÔNG để đọc lại cho Operator)
+Hệ điều hành làm affiliate video cho thị trường VN: nguồn video (reup TQ/nước ngoài) hoặc tự tạo → localize tiếng Việt → đăng Facebook & TikTok → gắn link affiliate → ra doanh thu thật (đích 100–200tr/tháng, không phải cam kết).
 
-## 2. CỜ ĐỎ tự động (bác bỏ hoặc cảnh báo mạnh)
-- Biến VFOS thành nền tảng AI-automation generic, tách rời affiliate-video monetization.
-- Ưu tiên infra / dashboard / abstraction / refactor mà không chứng minh phục vụ North Star.
-- Bypass Product Binding / Production Gate; auto-publish khi Operator chưa duyệt; bypass login/CAPTCHA/OTP; dùng fallback/demo để approve nguồn sạch hoặc publish; lấy \`latest\`/\`jobs[0]\`/floating state làm source of truth.
-- Đề xuất commit runtime / secrets / media / session / cookie.
+## 2. VIỆC CHÍNH — 2 tầng
+### Tầng A — Đánh giá TÌNH TRẠNG (health check)
+Dự án đang **NGĂN NẮP hay LỘN XỘN**? Cho verdict rõ theo thang: **Ngăn nắp · Ổn nhưng có điểm rối · Lộn xộn** — kèm bằng chứng cụ thể. Soi:
+- **Tổ chức code/monorepo** (apps/packages/scripts): mạch lạc hay chồng chéo; có vùng phình / god-file / bỏ hoang không (xem mục "TÍN HIỆU NGĂN NẮP" trong knowledge #5).
+- **Docs & trạng thái**: spec có khớp thực tế không; có mâu thuẫn / lỗi thời không.
+- **Mạch lạc workflow/lane**: luồng nguồn → localize → đăng → affiliate có liền mạch hay đứt gãy.
+- **Nợ kỹ thuật & việc làm dở / trùng lặp / nửa vời.**
+### Tầng B — Tìm HƯỚNG (định hình & phát triển)
+Sau đánh giá, đề xuất **phương án phát triển tốt nhất** tiến tới affiliate-video ra tiền: lộ trình có ưu tiên (làm trước/sau), đánh đổi rõ, và **cái gì nên dừng / dọn**.
 
-## 3. CHỐNG BỊA (bắt buộc)
-- CHỈ kết luận dựa trên nội dung knowledge file được nạp. KHÔNG bịa số liệu, commit hash, tên file, kết quả test, hay tính năng không có trong tài liệu.
-- Thiếu dữ kiện → nói rõ "không đủ dữ kiện trong tài liệu", đừng đoán.
-- Khi dẫn chứng, ghi nguồn: tên doc + mục (vd "theo VFOS_NORTH_STAR, phần Milestones").
+## 3. RÀNG BUỘC NGẦM (áp dụng IM LẶNG — chỉ nhắc khi cần)
+North Star (affiliate video VN, FB/TikTok, ra tiền thật), 9 No-Go, 3 Guardian (Workflow Integrity, Product Review, Publish Safety) là bộ lọc bạn dùng NGẦM. Chỉ nêu đích danh MỘT luật khi một hiện trạng/đề xuất CỤ THỂ chạm vào nó (vd "cái này vướng No-Go #3: auto-publish"), nêu ngắn rồi thôi — TUYỆT ĐỐI không tụng cả bộ.
 
-## 4. ĐỊNH DẠNG TRẢ LỜI
-- Tiếng Việt, giữ technical term tiếng Anh. Thẳng, không nịnh.
-- Với mọi đánh giá lớn, trả theo 4 khối:
-  **① Điểm mạnh · ② Rủi ro / Cờ đỏ · ③ Gap (thiếu gì) · ④ Khuyến nghị ưu tiên (bám North Star, có thứ tự)**.
-- Operator đề xuất lệch North Star → phản biện, đừng gật theo.
+## 4. GROUNDED — không bịa
+- Chỉ dựa trên tài liệu được nạp. Số liệu / commit / tên file / kết quả test phải có trong tài liệu; không có thì nói "tài liệu chưa đề cập", đừng chế. Dẫn nguồn ngắn khi nêu sự thật cụ thể.
+- **Giới hạn dữ liệu:** bạn có **docs + digest kiến trúc (danh sách file + tín hiệu, KHÔNG phải full source)** → đánh giá tốt tổ chức/kiến trúc/chiến lược. Muốn soi **chất lượng code dòng-lệnh** (trùng lặp, dead code) thì cần Operator nạp thêm **slice source** (mục CODE SLICE). Khi chưa có, nói rõ "cần xem source vùng X" thay vì đoán.
 
-## 5. BỘ LỌC QUYẾT ĐỊNH (chạy trước mỗi khuyến nghị)
-"Việc này có đưa VFOS gần hơn tới việc tạo/biến reup thành affiliate content cho thị trường VN trên FB/TikTok, tăng khả năng có view và ra doanh thu thật không?" — nếu không rõ, đừng ưu tiên.
-
-## 6. BẢN ĐỒ KNOWLEDGE FILE
-- **#1 North Star & Chiến lược** — sứ mệnh, mô hình, luật nền (CLAUDE.md, 9 No-Go).
-- **#2 Chuẩn kiến trúc** — Guardian, IA, UI, agent boundary.
-- **#3 Trạng thái hiện tại** — nhật ký; MỚI NHẤT ở CUỐI file.
-- **#4 Spec sản xuất** — theo từng lane.
-- **#5 Code architecture digest** — cấu trúc monorepo + inventory (KHÔNG phải full source; muốn soi dòng-lệnh, Operator dùng Gemini Code Assist hoặc nạp file 06_CODE_SLICE).
+## 5. GIỌNG & ĐỊNH DẠNG
+Tiếng Việt, technical term giữ tiếng Anh. Thẳng, súc tích, KHÔNG preamble. Với đánh giá lớn trình theo:
+**① Tình trạng (ngăn nắp/lộn xộn + vì sao) · ② Chỗ rối / nợ / mâu thuẫn · ③ Hướng đề xuất (ưu tiên, có thứ tự) · ④ Rủi ro / việc nên dừng.**
+Nếu Operator hỏi 1 điểm cụ thể thì trả gọn đúng điểm đó, không nhồi cả 4 mục.
 `;
 
 function git(args: string[]): string {
@@ -131,14 +126,25 @@ function git(args: string[]): string {
   });
 }
 
-function parseArgs(argv: string[]): { codePath?: string; outDir: string } {
+/** Đếm số dòng (tracked-only) chứa marker; git grep exit 1 khi không match → trả 0. */
+function gitGrepLines(pattern: string): number {
+  try {
+    return git(['grep', '-I', '-E', pattern]).split('\n').filter(Boolean).length;
+  } catch {
+    return 0;
+  }
+}
+
+function parseArgs(argv: string[]): { codePath?: string; outDir: string; mergeAll: boolean } {
   let codePath: string | undefined;
   let outDir = join(REPO_ROOT, 'data', 'gemini-pack');
+  let mergeAll = false;
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--code') codePath = argv[++i];
     else if (argv[i] === '--out') outDir = resolve(argv[++i] ?? outDir);
+    else if (argv[i] === '--merge') mergeAll = true;
   }
-  return { codePath, outDir };
+  return { codePath, outDir, mergeAll };
 }
 
 function fileHeader(title: string, upload: string, snap: string): string {
@@ -228,6 +234,23 @@ async function buildCodeDigest(snap: string): Promise<string> {
     .map(([k, v]) => `- \`${k}\` → \`${v}\``)
     .join('\n');
 
+  // TÍN HIỆU NGĂN NẮP — số liệu khách quan (tracked-only, stat lấy byte không đọc nội dung).
+  const sized = await Promise.all(
+    code.map(async (p) => ({
+      p,
+      kb: Math.round(((await stat(join(REPO_ROOT, p))).size / 1024) * 10) / 10,
+    })),
+  );
+  sized.sort((a, b) => b.kb - a.kb);
+  const biggest = sized
+    .slice(0, 15)
+    .map((f) => `| \`${f.p}\` | ${f.kb} |`)
+    .join('\n');
+  const godFiles = sized.filter((f) => f.kb > 30).length;
+  const todo = gitGrepLines('TODO');
+  const fixme = gitGrepLines('FIXME');
+  const hack = gitGrepLines('HACK|XXX');
+
   return `<!-- ${snap} -->
 > **Nạp vào:** Knowledge file #5
 > _Digest kiến trúc code (path-only inventory, KHÔNG phải full source). Chỉ liệt kê file đã tracked qua \`git ls-files\` — secrets/runtime/media không có ở đây._
@@ -241,6 +264,16 @@ pnpm monorepo (ESM, Node ≥20, TypeScript strict). Frontend Next.js (apps/studi
 | Vùng | Số file |
 |---|---|
 ${countTable}
+
+## TÍN HIỆU NGĂN NẮP (số liệu khách quan để đánh giá messy/tidy)
+- **God-file candidates (>30KB):** ${godFiles} file — file càng to càng dễ là "god-file" khó bảo trì.
+- **Script trong scripts/:** ${counts.get('scripts') ?? 0} — quá nhiều CLI rời rạc → coi chừng sprawl / trùng chức năng.
+- **Nợ kỹ thuật (số dòng chứa marker, tracked-only):** TODO=${todo} · FIXME=${fixme} · HACK/XXX=${hack}.
+
+### Top 15 file lớn nhất (byte → soi god-file)
+| File | KB |
+|---|---|
+${biggest}
 
 ## Command surface (root package.json scripts)
 ${rootScriptLines}
@@ -302,14 +335,48 @@ Chạy lại: \`pnpm gemini:pack\` → re-upload các file knowledge đã đổi
 - Cách bền: cài **Gemini Code Assist** (extension VS Code) trỏ thẳng repo — không cần bundle.
 - Cách nhanh cho 1 vùng: \`pnpm gemini:pack -- --code apps/studio/src/lib\` → sinh \`06_CODE_SLICE_*.md\`, nạp vào Gem hoặc dán Google AI Studio.
 
+## Đánh giá tổng thể (Google AI Studio)
+Gem dùng RAG nên yếu khi hỏi "tổng thể" (kéo không đủ 5 file). Muốn model thấy 100% nội dung 1 lần:
+\`pnpm gemini:pack -- --merge\` → sinh \`AISTUDIO_MERGED.md\`. Vào aistudio.google.com, dán cả file vào
+chat đầu (hoặc tách persona → System instructions), chọn **Pro + tư duy cao**. Dùng cho phiên khám sâu định kỳ.
+Câu hỏi mở đầu gợi ý nằm ngay đầu file \`AISTUDIO_MERGED.md\` (mục "GỢI Ý CÂU HỎI MỞ ĐẦU").
+
 ## Lưu ý
 - Đây là file dẫn xuất trong \`data/gemini-pack/\` (đã .gitignore) — KHÔNG commit.
 - \`00_...PERSONA\` dán vào **Instructions**, KHÔNG upload làm knowledge (để dành slot).
 `;
 }
 
+/** Gộp persona + toàn bộ knowledge thành 1 file full-context cho Google AI Studio. */
+function buildMerged(snap: string, persona: string, parts: string[]): string {
+  return `<!-- ${snap} -->
+# VFOS — BẢN GỘP FULL-CONTEXT CHO GOOGLE AI STUDIO
+
+> **Cách dùng (aistudio.google.com):**
+> - **Cách A (khuyên):** copy khối "PERSONA / SYSTEM INSTRUCTIONS" → dán vào ô **System instructions**; copy khối "KIẾN THỨC #1–#5" → dán làm tin nhắn đầu.
+> - **Cách B (nhanh, 1 phát):** dán TOÀN BỘ file này vào ô chat đầu tiên — model vẫn thấy 100% nội dung.
+> - Model nên chọn: **Pro + mức tư duy cao**. Đây là **snapshot** — repo đổi thì chạy lại \`pnpm gemini:pack -- --merge\`.
+
+## GỢI Ý CÂU HỎI MỞ ĐẦU (dán sau khi nạp context)
+1. \`Dự án VFOS hiện đang NGĂN NẮP hay LỘN XỘN? Cho verdict + 3-5 bằng chứng cụ thể (trích nguồn). Đừng tụng luật, đi thẳng vào đánh giá.\`
+2. \`Review tổng thể VFOS rồi đề xuất HƯỚNG phát triển tốt nhất tiến tới affiliate video ra tiền: ① tình trạng ② chỗ rối/nợ ③ lộ trình ưu tiên ④ việc nên dừng.\`
+3. \`(sau khi nạp CODE SLICE 1 vùng) Soi code vùng này: có lộn xộn/trùng lặp/dead code không? Đề xuất dọn, trích file cụ thể.\`
+
+${SEP}
+== PERSONA / SYSTEM INSTRUCTIONS ==
+${SEP}
+
+${persona}
+
+${SEP}
+== KIẾN THỨC #1–#5 (TOÀN BỘ) ==
+${SEP}
+${parts.join('\n\n')}
+`;
+}
+
 async function main(): Promise<void> {
-  const { codePath, outDir } = parseArgs(process.argv.slice(2));
+  const { codePath, outDir, mergeAll } = parseArgs(process.argv.slice(2));
   const branch = git(['rev-parse', '--abbrev-ref', 'HEAD']).trim();
   const head = git(['rev-parse', '--short', 'HEAD']).trim();
   const snap = `Snapshot: branch ${branch} · HEAD ${head} · ${new Date().toISOString()}`;
@@ -318,6 +385,7 @@ async function main(): Promise<void> {
   console.log(`\nVFOS → Gemini context pack\n${snap}\nOutput: ${outDir}\n`);
 
   const written: { name: string; kb: number; upload: string }[] = [];
+  const mergeParts: string[] = [];
   const emit = async (name: string, body: string, upload: string) => {
     await writeFile(join(outDir, name), body, 'utf8');
     written.push({
@@ -342,18 +410,28 @@ async function main(): Promise<void> {
         intro += `\n\n> **Trạng thái MỚI NHẤT (tự phát hiện lúc sinh pack): mục lớn nhất = \`${latest}\`.** Tìm chuỗi \`${latest}\` trong file để đọc trạng thái hiện tại; ĐỪNG chỉ đọc dòng cuối.`;
       }
     }
-    await emit(g.outFile, `${fileHeader(g.title, g.upload, snap)}${intro}\n${sources}`, g.upload);
+    const body = `${fileHeader(g.title, g.upload, snap)}${intro}\n${sources}`;
+    await emit(g.outFile, body, g.upload);
+    mergeParts.push(body);
   }
 
   // 05 code digest.
   console.log('• 05_CODE_ARCHITECTURE_DIGEST.md');
-  await emit('05_CODE_ARCHITECTURE_DIGEST.md', await buildCodeDigest(snap), 'Knowledge file #5');
+  const digest = await buildCodeDigest(snap);
+  await emit('05_CODE_ARCHITECTURE_DIGEST.md', digest, 'Knowledge file #5');
+  mergeParts.push(digest);
 
   // 06 code slice (tùy chọn).
   if (codePath) {
     console.log(`• 06 code slice: ${codePath}`);
     const slice = await buildCodeSlice(codePath, snap);
     await emit(slice.name, slice.body, 'Knowledge (slice)');
+  }
+
+  // Bản gộp full-context cho Google AI Studio (tùy chọn).
+  if (mergeAll) {
+    console.log('• AISTUDIO_MERGED.md');
+    await emit('AISTUDIO_MERGED.md', buildMerged(snap, PERSONA, mergeParts), '→ AI Studio (dán 1 phát)');
   }
 
   // README cuối (không upload).
@@ -382,6 +460,13 @@ async function main(): Promise<void> {
       console.log(
         `  ⚠️  ${w.name} = ${w.kb} KB (lớn — vẫn OK với Gemini, để ý nếu dùng NotebookLM 500K từ/nguồn).`,
       );
+  }
+  const merged = written.find((w) => w.name === 'AISTUDIO_MERGED.md');
+  if (merged) {
+    const mtok = Math.round((merged.kb * 1024) / 4 / 1000);
+    console.log(
+      `AI Studio: AISTUDIO_MERGED.md = ${merged.kb} KB · ~${mtok}K token (trùng nội dung 00-05, ĐỪNG cộng dồn vào Tổng).`,
+    );
   }
   console.log(`\n➡  Đọc ${join(outDir, 'README_SETUP.md')} để dựng Gem (4 bước).\n`);
 }
