@@ -67,6 +67,10 @@ interface PublishEvidence {
   error: string | null;
 }
 
+function fmtNum(n: number): string {
+  return new Intl.NumberFormat('vi-VN').format(n);
+}
+
 // biome-ignore lint/style/noDefaultExport: Next.js page requires default export
 export default function HistoryPage() {
   const [jobs, setJobs] = useState<OperatorJobDTO[]>([]);
@@ -319,6 +323,59 @@ export default function HistoryPage() {
                             </a>
                           )}
                         </>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Số liệu đã đo (M3–M6) — join từ runtime snapshots (Operator nhập tay).
+                      job.evidence đã có sẵn trên DTO qua /api/studio/jobs. null = chưa đo. */}
+                  {job.state === 'PUBLISHED' && (
+                    <div className="rounded-lg border border-hairline/60 bg-panel/40 p-3 space-y-1.5">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">
+                        Số liệu đã đo (M3–M6 · Operator nhập tay)
+                      </p>
+                      {job.evidence ? (
+                        <>
+                          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                            <p className="text-neutral-400">
+                              Views:{' '}
+                              <span className="text-neutral-200">{fmtNum(job.evidence.views)}</span>
+                            </p>
+                            <p className="text-neutral-400">
+                              Clicks:{' '}
+                              <span className="text-neutral-200">{fmtNum(job.evidence.clicks)}</span>
+                            </p>
+                            <p className="text-neutral-400">
+                              Đơn:{' '}
+                              <span className="text-neutral-200">
+                                {fmtNum(job.evidence.conversions)}
+                              </span>
+                            </p>
+                            <p className="text-neutral-400">
+                              Doanh thu:{' '}
+                              <span className="text-accent-green">
+                                {fmtNum(job.evidence.revenue)}₫
+                              </span>
+                            </p>
+                          </div>
+                          <p className="text-[10px] text-neutral-600">
+                            {job.evidence.snapshotCount} lần đo · mới nhất{' '}
+                            {job.evidence.lastMeasuredAt
+                              ? new Date(job.evidence.lastMeasuredAt).toLocaleString('vi-VN')
+                              : '—'}{' '}
+                            ·{' '}
+                            <Link href="/analytics" className="text-accent-cyan underline">
+                              Nhập/xem ở Analytics →
+                            </Link>
+                          </p>
+                        </>
+                      ) : (
+                        <p className="text-neutral-500">
+                          Chưa đo —{' '}
+                          <Link href="/analytics" className="text-accent-cyan underline">
+                            nhập số ở Analytics →
+                          </Link>
+                        </p>
                       )}
                     </div>
                   )}

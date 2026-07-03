@@ -462,16 +462,26 @@ export function loadOperatorJobs(): OperatorJobDTO[] {
   return jobs;
 }
 
+/**
+ * Evidence-on-job cho 1 job (dùng cho loadJobById + Analytics per-video). Đọc
+ * runtime store 1 lần, gom post-level theo jobId. null = chưa đo (KHÔNG bịa 0).
+ */
+export function computeJobEvidenceSummary(jobId: string): JobEvidenceSummary | null {
+  return evidenceByJob().get(jobId) ?? null;
+}
+
 export function loadJobById(jobId: string): OperatorJobDTO | null {
   const entry = loadRegistryEntries().find((j) => j.jobId === jobId);
   if (!entry) {
     // Cho phép đọc job có manifest nhưng chưa nằm trong registry.
     if (fileExistsInside(`${JOBS_ROOT_REL}/${jobId}/job_manifest.json`)) {
-      return buildJobDTO({ jobId });
+      const dto = buildJobDTO({ jobId });
+      return { ...dto, evidence: computeJobEvidenceSummary(dto.id) };
     }
     return null;
   }
-  return buildJobDTO(entry);
+  const dto = buildJobDTO(entry);
+  return { ...dto, evidence: computeJobEvidenceSummary(dto.id) };
 }
 
 const PRODUCT_STATE_MAP: Record<VfosJobState, ProductRowDTO['jobStatus']> = {

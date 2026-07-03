@@ -15,7 +15,7 @@
  *   - Các loader khác: vẫn fixtures (sẽ nâng dần theo phase).
  * ========================================================================== */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { resolveInsideRepo } from '@/lib/studio-data/paths';
 import { growthFixturesDir } from './paths';
@@ -172,6 +172,100 @@ export function loadPostingPlans(): PostingPlan[] {
 
 export function loadPublishedPosts(): PublishedPost[] {
   return loadArray<PublishedPost>('published-posts.json');
+}
+
+/**
+ * 1 video đã đăng THẬT — đủ field cho bảng per-video ở Analytics (thumbnail + link
+ * bài + link affiliate + số đo). Tách khỏi type PublishedPost (giữ type ổn định);
+ * permalinkUrl/productName không nằm trong PublishedPost nên gom riêng ở đây.
+ * Chỉ chứa dữ liệu CÔNG KHAI (postId/permalink/shortLink), KHÔNG token/secret/path.
+ */
+export interface PublishedVideoRow {
+  jobId: string;
+  publishedPostId: string;
+  facebookPostId: string | null;
+  videoId: string | null;
+  permalinkUrl: string | null;
+  affiliateShortLink: string | null;
+  productName: string | null;
+  publishedAt: string | null;
+}
+
+/** Đọc JSON nhỏ trong thư mục job runtime, never-throw. Server-only. */
+function readJobJson<T>(jobId: string, file: string): T | null {
+  const abs = resolveInsideRepo(`data/temp/jobs/${jobId}/${file}`);
+  if (!abs || !existsSync(abs)) return null;
+  try {
+    return JSON.parse(readFileSync(abs, 'utf8')) as T;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Inventory video đã đăng THẬT: scan data/temp/jobs/* lấy job có
+ * facebook_publish_status.json state=PUBLISHED. Real-first; 0 job thật → fallback
+ * fixture published-posts (demo, không permalink). Never-throw. KHÔNG lộ path/token.
+ */
+export function loadRealPublishedVideos(): { rows: PublishedVideoRow[]; source: 'real' | 'fixture' } {
+  const jobsDir = resolveInsideRepo('data/temp/jobs');
+  const rows: PublishedVideoRow[] = [];
+  if (jobsDir && existsSync(jobsDir)) {
+    let jobIds: string[] = [];
+    try {
+      jobIds = readdirSync(jobsDir, { withFileTypes: true })
+        .filter((d) => d.isDirectory() && /^[A-Za-z0-9_-]+$/.test(d.name))
+        .map((d) => d.name);
+    } catch {
+      jobIds = [];
+    }
+    for (const jobId of jobIds) {
+      const status = readJobJson<{
+        state?: string;
+        generatedAt?: string;
+        facebook?: {
+          postId?: string | null;
+          videoId?: string | null;
+          permalinkUrl?: string | null;
+          published?: boolean;
+        } | null;
+      }>(jobId, 'facebook_publish_status.json');
+      if (!status || status.state !== 'PUBLISHED' || !status.facebook?.published) continue;
+      const card = readJobJson<{ shortLink?: string | null; name?: string | null }>(
+        jobId,
+        'product_card.json',
+      );
+      const manifest = readJobJson<{ createdAt?: string; updatedAt?: string }>(
+        jobId,
+        'job_manifest.json',
+      );
+      rows.push({
+        jobId,
+        publishedPostId: `pp_${jobId}`,
+        facebookPostId: status.facebook?.postId ?? null,
+        videoId: status.facebook?.videoId ?? null,
+        permalinkUrl: status.facebook?.permalinkUrl ?? null,
+        affiliateShortLink: card?.shortLink ?? null,
+        productName: card?.name ?? null,
+        publishedAt: status.generatedAt ?? manifest?.updatedAt ?? manifest?.createdAt ?? null,
+      });
+    }
+  }
+  if (rows.length > 0) {
+    rows.sort((a, b) => (b.publishedAt ?? '').localeCompare(a.publishedAt ?? ''));
+    return { rows, source: 'real' };
+  }
+  const fixtureRows: PublishedVideoRow[] = loadPublishedPosts().map((p) => ({
+    jobId: p.jobId,
+    publishedPostId: p.publishedPostId,
+    facebookPostId: p.facebookPostId,
+    videoId: p.videoId,
+    permalinkUrl: null,
+    affiliateShortLink: p.affiliateShortLink,
+    productName: null,
+    publishedAt: p.publishedAt,
+  }));
+  return { rows: fixtureRows, source: 'fixture' };
 }
 
 export function loadPerformanceMetrics(): PerformanceMetric[] {

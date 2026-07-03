@@ -55,14 +55,31 @@ const SAVE_ENDPOINT = '/api/studio/analytics/manual-performance/save';
 export function ManualInputPreview({
   knownJobIds,
   knownPostIds,
+  prefillJobId,
+  prefillPostId,
 }: {
   knownJobIds: string[];
   knownPostIds: string[];
+  /** Khi Operator bấm "Nhập số cho video này" ở bảng per-video → gợi ý dòng CSV. */
+  prefillJobId?: string | null;
+  prefillPostId?: string | null;
 }) {
   const [text, setText] = useState('');
   const [result, setResult] = useState<ManualCsvParseResult | null>(null);
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [saveResp, setSaveResp] = useState<SaveResponse | null>(null);
+
+  // Chèn 1 dòng CSV mẫu cho đúng video đang chọn (số = 0 để Operator sửa). Append
+  // để không xoá dòng đang gõ; measuredAt = bây giờ (client, không gọi API).
+  const insertPrefillRow = () => {
+    if (!prefillJobId) return;
+    const now = new Date().toISOString();
+    const line = `${prefillJobId},${prefillPostId ?? ''},${now},0,0,0,0,0,0,,manual,0`;
+    setText((prev) => (prev.trim() ? `${prev.trim()}\n${line}` : line));
+    setResult(null);
+    setSaveState('idle');
+    setSaveResp(null);
+  };
 
   const runPreview = () => {
     setResult(parseManualCsv(text, { knownJobIds, knownPostIds }));
@@ -122,6 +139,21 @@ export function ManualInputPreview({
             Lưu vào file local gitignored, không gửi ra ngoài, không ghi vào fixtures source.
           </span>
         </div>
+
+        {prefillJobId && (
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-accent-green/30 bg-accent-green/5 px-3.5 py-2 text-[11px] text-accent-green">
+            <span>
+              Đang nhập cho video <span className="font-mono text-neutral-200">{prefillJobId}</span>
+            </span>
+            <Button
+              variant="outline"
+              onClick={insertPrefillRow}
+              className="ml-auto !py-1 !px-2 text-[10px]"
+            >
+              Chèn dòng cho video này
+            </Button>
+          </div>
+        )}
 
         <div className="rounded-xl border border-hairline bg-raised/30 px-3.5 py-2.5">
           <p className="text-[10px] uppercase tracking-wider text-neutral-600">

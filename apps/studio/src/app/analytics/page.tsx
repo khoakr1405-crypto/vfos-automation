@@ -1,7 +1,10 @@
 import { FacebookInsightsFetchCard } from '@/components/analytics/facebook-insights-fetch-card';
 import { FacebookPreflightCard } from '@/components/analytics/facebook-preflight-card';
-import { ManualInputPreview } from '@/components/analytics/manual-input-preview';
 import { ManualPerformanceSection } from '@/components/analytics/manual-performance-section';
+import {
+  PerVideoEvidenceSection,
+  type PerVideoRow,
+} from '@/components/analytics/per-video-evidence-section';
 import { TikTokInsightsFetchCard } from '@/components/analytics/tiktok-insights-fetch-card';
 import { TikTokPreflightCard } from '@/components/analytics/tiktok-preflight-card';
 import { WeeklyReportCard } from '@/components/analytics/weekly-report-card';
@@ -21,6 +24,7 @@ import {
   loadCtaRoleMetrics,
   loadPerformanceMetrics,
   loadPublishedPosts,
+  loadRealPublishedVideos,
 } from '@/lib/growth-data/load';
 import { readRuntimeStore } from '@/lib/growth-data/runtime-store';
 import type { CtaReadiness, LinkRole } from '@/lib/growth-data/types';
@@ -256,17 +260,40 @@ export default function AnalyticsPage() {
   // channelId → niche (Niche → Channel → Job): evidence gom theo ngách (#5 G1).
   const channelNicheById = channelNicheMap();
 
-  // 7. Known ids cho preview validate — job THẬT từ registry/manifest trước,
-  // fixture giữ lại cho demo CSV cũ (chỉ là cảnh báo match, không ghi).
+  // 7. Per-video evidence — video đã đăng THẬT (real-first). Số M3–M6 join theo job
+  // qua loadJobById (đã merge evidence từ runtime store). null = chưa đo.
+  const { rows: publishedVideos, source: videoSource } = loadRealPublishedVideos();
+  const perVideoRows: PerVideoRow[] = publishedVideos.map((v) => {
+    const job = loadJobById(v.jobId);
+    return {
+      jobId: v.jobId,
+      publishedPostId: v.publishedPostId,
+      title: v.productName || job?.product || job?.title || v.jobId,
+      channelName: job?.suggestedChannel || '—',
+      permalinkUrl: v.permalinkUrl,
+      affiliateShortLink: v.affiliateShortLink || job?.productBinding.shortLink || null,
+      thumbUrl: `/api/studio/jobs/${v.jobId}/thumbnail`,
+      evidence: job?.evidence ?? null,
+    };
+  });
+
+  // 8. Known ids cho preview validate — job THẬT từ registry/manifest + video đã đăng
+  // thật; fixture giữ lại cho demo CSV cũ (chỉ là cảnh báo match, không ghi).
   const realJobs = loadOperatorJobs();
   const knownJobIds = [
     ...new Set([
       ...realJobs.map((j) => j.id),
       ...posts.map((p) => p.jobId),
       ...ctaPlanByJobId.keys(),
+      ...publishedVideos.map((v) => v.jobId),
     ]),
   ];
-  const knownPostIds = posts.map((p) => p.publishedPostId);
+  const knownPostIds = [
+    ...new Set([
+      ...posts.map((p) => p.publishedPostId),
+      ...publishedVideos.map((v) => v.publishedPostId),
+    ]),
+  ];
 
   return (
     <div className="space-y-6">
@@ -506,8 +533,14 @@ export default function AnalyticsPage() {
         channelNicheById={channelNicheById}
       />
 
-      {/* Manual Performance Input — Preview Only (Real Analytics 02A) */}
-      <ManualInputPreview knownJobIds={knownJobIds} knownPostIds={knownPostIds} />
+      {/* Per-video evidence + nhập số cho ĐÚNG video (Real Analytics — per-video).
+          Bảng video đã đăng (thumbnail + link + số M3–M6) + ô nhập gợi ý theo video. */}
+      <PerVideoEvidenceSection
+        rows={perVideoRows}
+        source={videoSource}
+        knownJobIds={knownJobIds}
+        knownPostIds={knownPostIds}
+      />
 
       {/* Top performers */}
       <Card>
