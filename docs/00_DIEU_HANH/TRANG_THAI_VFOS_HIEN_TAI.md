@@ -42,6 +42,22 @@ VFOS là hệ thống hỗ trợ chiến lược **content-led affiliate**:
 | **Không tô vẽ kết quả** | Không claim "đã xong" khi chưa kiểm chứng |
 | **Data beats opinion** | Quyết định dựa trên kết quả test thực tế, không dựa cảm giác |
 
+### 🆕 2026-07-03 — Round Proposal Discipline (chốt sau Round 1 Revenue Feedback Loop)
+
+- **Bám roadmap, không bắt đầu từ số 0**: mỗi round phải bám `state doc + North Star + roadmap hiện có`.
+- **Round = mảng lớn**: mỗi round phải là **một mảng lớn của VFOS**, không phải patch lặt vặt.
+- **Agent tự đề xuất, KHÔNG bắt Operator chọn**: agent phải **tự đề xuất hướng mặc định tốt nhất kèm lý do**. KHÔNG đưa nhiều lựa chọn ngang hàng bắt Operator chọn nếu đã đủ context.
+- **Chỉ hỏi khi nhánh lớn**: chỉ hỏi Operator khi có nhánh **thật sự ảnh hưởng lớn đến kinh doanh / workflow / dữ liệu / architecture**. Nếu phải hỏi, vẫn kèm khuyến nghị rõ: "Tôi đề xuất chọn X vì…".
+- **Không refactor/dọn vô cớ**: KHÔNG refactor / dọn UI / dọn code nếu không phục vụ **trực tiếp** North Star hoặc roadmap hiện tại.
+- **Format BẮT BUỘC trình bày trước khi đề xuất round** (7 mục):
+  1. Roadmap hiện ở đâu
+  2. North Star yêu cầu gì
+  3. Bottleneck lớn nhất tiếp theo
+  4. Đề xuất round tiếp theo
+  5. Vì sao chọn round đó
+  6. Scope làm / không làm
+  7. Acceptance criteria
+
 ---
 
 ## 3. Các phần đã hoàn thành
