@@ -3070,6 +3070,31 @@ Pipeline anchors chạy đầy đủ (từ log): cắt 4 money-shot → vision h
 
 ---
 
+### ✅ Phần 66 — Round 1: Revenue Feedback Loop V1 — đóng vòng đo lường cho video đã đăng (2026-07-03)
+
+> **Mục tiêu**: đóng vòng lặp "làm video → đăng → đo → nhìn thành quả" cho video **ĐÃ ĐĂNG THẬT** — số M3–M6 (view/click/đơn/doanh thu) đập vào **TỪNG video cụ thể**. Xuất phát từ audit ngoài (Gemini) verdict "ra video + đo, dừng refactor". Verify: hạ tầng đo đã dựng ~80% → chỉ **nối phần thiếu bằng reuse, KHÔNG refactor God-file**.
+
+**Đã làm — R1a (số đập vào JOB):**
+- ✏️ `apps/studio/src/lib/studio-data/jobs.ts` — fix `loadJobById` merge `evidence` (bug: chỉ `loadOperatorJobs` merge → job đơn lẻ mất số) + export `computeJobEvidenceSummary`. Tái dùng nguyên `evidenceByJob()`.
+- ✏️ `apps/studio/src/app/history/page.tsx` — block **"Số liệu đã đo (M3–M6)"** đọc `job.evidence` (đã có trên wire qua `/api/studio/jobs`); chưa đo → "Chưa đo" (**KHÔNG bịa 0**).
+
+**Đã làm — R1b (số đập vào VIDEO):**
+- 🆕 `apps/studio/src/app/api/studio/jobs/[jobId]/thumbnail/route.ts` — stream `vision_frames/frame_001.jpg` (fallback 002/003), chống traversal; thiếu → 404.
+- ✏️ `apps/studio/src/lib/growth-data/load.ts` — `loadRealPublishedVideos()` inventory video FB đã đăng THẬT (scan `data/temp/jobs/*` state PUBLISHED), **real-first**, fallback fixture.
+- 🆕 `apps/studio/src/components/analytics/per-video-evidence-section.tsx` — bảng **mỗi video 1 dòng** (thumbnail + tiêu đề + "Xem bài ↗" + "Link affiliate ↗" + số M3–M6) + nút **"Nhập số cho video này"**; thumbnail có **nhãn rõ "frame nguồn"** — **KHÔNG phải cover Facebook thật**.
+- ✏️ `apps/studio/src/components/analytics/manual-input-preview.tsx` — nhận **prefill theo video** (chèn dòng CSV đúng jobId/postId); save vẫn qua route local-only cũ (**0 đổi contract**).
+- ✏️ `apps/studio/src/app/analytics/page.tsx` — dựng rows + render section (thay ô nhập standalone).
+
+**Verify:** `tsc --noEmit` **0 lỗi** (2 lần) · thumbnail route **200** jpeg thật / **404** / **400** · `/analytics` render dữ liệu **THẬT** (permalink `facebook.com/reel/…`, link `s.shopee.vn/…`) · **vòng lặp end-to-end**: POST 1 snapshot → evidence job đập `{views 12.345 · clicks 678 · đơn 9 · doanh thu 1.500.000}` + bảng per-video hiện số (trước đó "—") → **runtime store đã khôi phục rỗng** (không để lại data test) · **working tree CLEAN** sau commit code.
+
+**Commit/push:** `b281386` `feat(studio): close revenue feedback loop for published videos` (**7 file, +465/−9**) — branch **`feat/ent-multichannel`, LOCAL (CHƯA push)**. `master` KHÔNG đụng (`e2d0a55`).
+
+**An toàn:** runtime `manual-performance-snapshots.json` **GITIGNORED**, không stage · không registry/`.env`/secret/media · stage đích danh **7 file** (không `git add -A`).
+
+**Bước tiếp theo — R2 Entertainment affiliate (TẠM HOÃN):** trước khi làm R2 **phải chốt nguồn affiliate cho lane giải trí**: (a) **product-of-day theo niche** · (b) **Operator gán tay lúc package** · (c) **contextual pool**. **KHÔNG thiết kế sâu R2 trong doc này.** Điểm chèn (tham khảo, chưa làm): `EntPackageSummary.affiliateLink` + `scripts/ent-vlog/16-package.ts` + `entertainment/package-panel.tsx`.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
