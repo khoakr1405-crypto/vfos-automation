@@ -11,7 +11,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { resolveInsideRepo } from './paths';
-import type { ApiPerformanceSnapshot, ManualPerformanceSnapshot } from './types';
+import type { ApiPerformanceSnapshot, ManualPerformanceSnapshot, PublishedPost } from './types';
 
 const RUNTIME_REL = join('data', 'growth', 'runtime', 'manual-performance-snapshots.json');
 const SCHEMA_VERSION = 1;
@@ -106,6 +106,89 @@ export function appendSnapshots(incoming: StoredSnapshot[]): AppendResult {
   }
 
   return { ok: true, savedCount: toAdd.length, duplicateIds, totalAfter: next.snapshots.length };
+}
+
+/* =============================================================================
+ * Published posts store (G4 — Revenue Attribution §4 B.1)
+ * -----------------------------------------------------------------------------
+ * Index runtime materialize từ artifact publish đã có trên đĩa (KHÔNG phải nguồn
+ * sự thật duy nhất — resolver có fallback derive-on-read). Append-only, dedupe
+ * theo publishedPostId (pp_<jobId>, idempotent — re-publish là no-op).
+ * ========================================================================== */
+
+const PUBLISHED_POSTS_REL = join('data', 'growth', 'runtime', 'published-posts.json');
+
+export interface PublishedPostsStoreFile {
+  schemaVersion: number;
+  updatedAt: string;
+  posts: PublishedPost[];
+}
+
+function publishedPostsPath(): string | null {
+  return resolveInsideRepo(PUBLISHED_POSTS_REL);
+}
+
+function emptyPublishedPostsStore(): PublishedPostsStoreFile {
+  return { schemaVersion: SCHEMA_VERSION, updatedAt: new Date().toISOString(), posts: [] };
+}
+
+/** Đọc store published posts. Never-throw → empty nếu thiếu/hỏng/sai shape. */
+export function readPublishedPostsStore(): PublishedPostsStoreFile {
+  const p = publishedPostsPath();
+  if (!p || !existsSync(p)) return emptyPublishedPostsStore();
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(p, 'utf8'));
+    if (!parsed || typeof parsed !== 'object') return emptyPublishedPostsStore();
+    const obj = parsed as Partial<PublishedPostsStoreFile>;
+    if (!Array.isArray(obj.posts)) return emptyPublishedPostsStore();
+    return {
+      schemaVersion: typeof obj.schemaVersion === 'number' ? obj.schemaVersion : SCHEMA_VERSION,
+      updatedAt: typeof obj.updatedAt === 'string' ? obj.updatedAt : '',
+      posts: obj.posts as PublishedPost[],
+    };
+  } catch {
+    return emptyPublishedPostsStore();
+  }
+}
+
+/**
+ * Append PublishedPost mới (atomic tmp→rename). Dedupe theo publishedPostId —
+ * KHÔNG overwrite record đã có (publish lần 2 cùng job = duplicate, skip).
+ */
+export function appendPublishedPosts(incoming: PublishedPost[]): AppendResult {
+  const p = publishedPostsPath();
+  if (!p) return { ok: false, savedCount: 0, duplicateIds: [], totalAfter: 0 };
+
+  const store = readPublishedPostsStore();
+  const existingIds = new Set(store.posts.map((x) => x.publishedPostId));
+  const duplicateIds: string[] = [];
+  const toAdd: PublishedPost[] = [];
+
+  for (const post of incoming) {
+    if (existingIds.has(post.publishedPostId)) {
+      duplicateIds.push(post.publishedPostId);
+      continue;
+    }
+    existingIds.add(post.publishedPostId);
+    toAdd.push(post);
+  }
+
+  const next: PublishedPostsStoreFile = {
+    schemaVersion: SCHEMA_VERSION,
+    updatedAt: new Date().toISOString(),
+    posts: [...store.posts, ...toAdd],
+  };
+
+  try {
+    mkdirSync(dirname(p), { recursive: true });
+    const tmp = `${p}.tmp`;
+    writeFileSync(tmp, JSON.stringify(next, null, 2), 'utf8');
+    renameSync(tmp, p);
+  } catch {
+    return { ok: false, savedCount: 0, duplicateIds, totalAfter: store.posts.length };
+  }
+
+  return { ok: true, savedCount: toAdd.length, duplicateIds, totalAfter: next.posts.length };
 }
 
 /* =============================================================================
