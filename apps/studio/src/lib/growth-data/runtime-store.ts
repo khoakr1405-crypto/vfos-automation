@@ -11,7 +11,12 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { resolveInsideRepo } from './paths';
-import type { ApiPerformanceSnapshot, ManualPerformanceSnapshot, PublishedPost } from './types';
+import type {
+  ApiPerformanceSnapshot,
+  ManualPerformanceSnapshot,
+  PublishedPost,
+  ShopeeRevenueSnapshot,
+} from './types';
 
 const RUNTIME_REL = join('data', 'growth', 'runtime', 'manual-performance-snapshots.json');
 const SCHEMA_VERSION = 1;
@@ -189,6 +194,85 @@ export function appendPublishedPosts(incoming: PublishedPost[]): AppendResult {
   }
 
   return { ok: true, savedCount: toAdd.length, duplicateIds, totalAfter: next.posts.length };
+}
+
+/* =============================================================================
+ * Shopee revenue store (G1 — Revenue Attribution §5-C C.2 lớp Storage)
+ * -----------------------------------------------------------------------------
+ * Lưu ShopeeRevenueSnapshot đã ingest (manual_csv). Atomic tmp→rename, dedupe
+ * theo snapshotId deterministic → re-import cùng file CSV là no-op (idempotent).
+ * ========================================================================== */
+
+const SHOPEE_REVENUE_REL = join('data', 'growth', 'runtime', 'shopee-revenue-snapshots.json');
+
+export interface ShopeeRevenueStoreFile {
+  schemaVersion: number;
+  updatedAt: string;
+  snapshots: ShopeeRevenueSnapshot[];
+}
+
+function shopeeRevenuePath(): string | null {
+  return resolveInsideRepo(SHOPEE_REVENUE_REL);
+}
+
+function emptyShopeeRevenueStore(): ShopeeRevenueStoreFile {
+  return { schemaVersion: SCHEMA_VERSION, updatedAt: new Date().toISOString(), snapshots: [] };
+}
+
+/** Đọc store doanh thu Shopee. Never-throw → empty nếu thiếu/hỏng/sai shape. */
+export function readShopeeRevenueStore(): ShopeeRevenueStoreFile {
+  const p = shopeeRevenuePath();
+  if (!p || !existsSync(p)) return emptyShopeeRevenueStore();
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(p, 'utf8'));
+    if (!parsed || typeof parsed !== 'object') return emptyShopeeRevenueStore();
+    const obj = parsed as Partial<ShopeeRevenueStoreFile>;
+    if (!Array.isArray(obj.snapshots)) return emptyShopeeRevenueStore();
+    return {
+      schemaVersion: typeof obj.schemaVersion === 'number' ? obj.schemaVersion : SCHEMA_VERSION,
+      updatedAt: typeof obj.updatedAt === 'string' ? obj.updatedAt : '',
+      snapshots: obj.snapshots as ShopeeRevenueSnapshot[],
+    };
+  } catch {
+    return emptyShopeeRevenueStore();
+  }
+}
+
+/** Append snapshot Shopee mới (atomic). Dedupe theo snapshotId — không overwrite. */
+export function appendShopeeRevenueSnapshots(incoming: ShopeeRevenueSnapshot[]): AppendResult {
+  const p = shopeeRevenuePath();
+  if (!p) return { ok: false, savedCount: 0, duplicateIds: [], totalAfter: 0 };
+
+  const store = readShopeeRevenueStore();
+  const existingIds = new Set(store.snapshots.map((s) => s.snapshotId));
+  const duplicateIds: string[] = [];
+  const toAdd: ShopeeRevenueSnapshot[] = [];
+
+  for (const s of incoming) {
+    if (existingIds.has(s.snapshotId)) {
+      duplicateIds.push(s.snapshotId);
+      continue;
+    }
+    existingIds.add(s.snapshotId);
+    toAdd.push(s);
+  }
+
+  const next: ShopeeRevenueStoreFile = {
+    schemaVersion: SCHEMA_VERSION,
+    updatedAt: new Date().toISOString(),
+    snapshots: [...store.snapshots, ...toAdd],
+  };
+
+  try {
+    mkdirSync(dirname(p), { recursive: true });
+    const tmp = `${p}.tmp`;
+    writeFileSync(tmp, JSON.stringify(next, null, 2), 'utf8');
+    renameSync(tmp, p);
+  } catch {
+    return { ok: false, savedCount: 0, duplicateIds, totalAfter: store.snapshots.length };
+  }
+
+  return { ok: true, savedCount: toAdd.length, duplicateIds, totalAfter: next.snapshots.length };
 }
 
 /* =============================================================================

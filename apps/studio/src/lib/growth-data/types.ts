@@ -298,6 +298,50 @@ export interface ManualPerformanceSnapshot {
   note?: string;
 }
 
+/* ---- Shopee revenue ingestion (G1 — Revenue Attribution §5-C) --------------- */
+
+/** Nguồn nạp doanh thu Shopee. 'shopee_affiliate_api' chỉ là stub — KHÔNG dùng
+ * round này (No-Go #2: không gọi API thật khi chưa cho phép). */
+export type ShopeeSource = 'manual_csv' | 'shopee_affiliate_api';
+
+/** Trạng thái attribute của 1 dòng nạp:
+ *   - 'success'      : map được về đúng 1 jobId.
+ *   - 'partial'      : khớp NHIỀU job (vd nhiều job dùng chung shortLink) — không
+ *                      đoán job nào, jobId để null, note ghi các ứng viên.
+ *   - 'unattributed' : không khớp job nào — jobId null, KHÔNG đoán. */
+export type ShopeeIngestStatus = 'success' | 'partial' | 'unattributed';
+
+/**
+ * Một dòng doanh thu affiliate Shopee đã nạp (G1). Entity RIÊNG — không nhồi vào
+ * ApiPerformanceSnapshot (engagement-shaped); Shopee là order/commission-shaped.
+ * Tiền là VND SỐ NGUYÊN (đồng — không thập phân, không float lẻ). KHÔNG PII/token:
+ * chỉ id/link công khai; email/UID người mua KHÔNG có chỗ trong entity này.
+ */
+export interface ShopeeRevenueSnapshot {
+  /** Deterministic từ nội dung (jobId|unattributed + periodEnd + orderRef) — idempotent re-import. */
+  snapshotId: string;
+  /** Attribution TƯỜNG MINH (No-Go #7). null = chưa map được, KHÔNG đoán. */
+  jobId: string | null;
+  /** Join key về PublishedPost / product card. Public link, không secret. */
+  affiliateShortLink: string | null;
+  shopId: string | null;
+  itemId: string | null;
+  periodStart: string;
+  periodEnd: string;
+  /** Tổng đơn ghi nhận trong kỳ. */
+  orderCount: number;
+  /** Đơn đã attribute (conversions affiliate). */
+  conversions: number;
+  /** GMV gross (VND nguyên). */
+  gmv: number;
+  /** Hoa hồng (VND nguyên) — đây là M5 revenue THẬT của snapshot này. */
+  commission: number;
+  currency: 'VND';
+  source: ShopeeSource;
+  ingestStatus: ShopeeIngestStatus;
+  note?: string;
+}
+
 /** Tín hiệu học được từ dữ liệu hiệu suất/comment. refId trỏ entity theo scope. */
 export interface LearningSignal {
   signalId: string;
