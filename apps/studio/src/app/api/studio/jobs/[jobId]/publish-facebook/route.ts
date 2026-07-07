@@ -13,6 +13,8 @@
  * ========================================================================== */
 
 import { existsSync, readFileSync } from 'node:fs';
+import { derivePublishedPostFromArtifacts } from '@/lib/growth-data/attribution';
+import { appendPublishedPosts } from '@/lib/growth-data/runtime-store';
 import {
   appendPublishAuditLog,
   evaluateLivePublishGates,
@@ -301,7 +303,19 @@ export async function POST(req: Request, ctx: { params: Promise<{ jobId: string 
     );
   }
 
-  // 7. Success → trả state thật + kết quả publish đã sanitize.
+  // 7a. G4 writer hook (Revenue Attribution §4 B.3): materialize PublishedPost
+  // vào store runtime từ artifact command vừa ghi (status/card/manifest keyed
+  // jobId — chỉ id/permalink/shortLink công khai, không token). Cô lập hoàn toàn:
+  // store-write fail KHÔNG đổi HTTP 200 của publish (publish đã thành công là
+  // sự thật ưu tiên). Dedupe pp_<jobId> → re-publish là no-op.
+  try {
+    const post = derivePublishedPostFromArtifacts(jobId);
+    if (post) appendPublishedPosts([post]);
+  } catch {
+    /* không log payload, không đổi response publish */
+  }
+
+  // 7b. Success → trả state thật + kết quả publish đã sanitize.
   const after = evaluateLivePublishGates(jobId);
   return Response.json({
     ok: true,
