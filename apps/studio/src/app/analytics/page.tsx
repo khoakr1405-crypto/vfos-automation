@@ -1,6 +1,7 @@
 import { FacebookInsightsFetchCard } from '@/components/analytics/facebook-insights-fetch-card';
 import { FacebookPreflightCard } from '@/components/analytics/facebook-preflight-card';
 import { ManualPerformanceSection } from '@/components/analytics/manual-performance-section';
+import { NoRealData } from '@/components/analytics/no-real-data';
 import {
   PerVideoEvidenceSection,
   type PerVideoRow,
@@ -17,12 +18,13 @@ import { Button } from '@/components/ui';
 import { computeCtaReadiness } from '@/lib/growth-data/cta-readiness';
 import {
   channelNicheMap,
+  fixtureAnalyticsEnabled,
   loadAffiliateCtaPlans,
   loadChannels,
   loadChannelsWithSource,
   loadContentAngles,
-  loadCtaRoleMetrics,
-  loadPerformanceMetrics,
+  loadCtaRoleMetricsWithSource,
+  loadPerformanceMetricsWithSource,
   loadPublishedPosts,
   loadRealPublishedVideos,
 } from '@/lib/growth-data/load';
@@ -78,7 +80,14 @@ const READINESS_ACCENT: Record<CtaReadiness, AccentKey> = {
 
 // biome-ignore lint/style/noDefaultExport: Next.js page requires default export
 export default function AnalyticsPage() {
-  const metrics = loadPerformanceMetrics();
+  // G2 gate (Revenue Attribution §3): section chỉ hiện SỐ khi source==='real';
+  // fixture chỉ trở lại khi dev flag ON. Short-circuit TRƯỚC mọi reduce (§A.6):
+  // section bị gate tính trên mảng RỖNG → không NaN, không 0 giả hiển thị.
+  const fixtureVisible = fixtureAnalyticsEnabled();
+  const { rows: perfRows, source: metricsSource } = loadPerformanceMetricsWithSource();
+  const showPerformance = metricsSource === 'real' || fixtureVisible;
+  const metrics = showPerformance ? perfRows : [];
+
   const posts = loadPublishedPosts();
   const channels = loadChannels();
   const angles = loadContentAngles();
@@ -216,7 +225,10 @@ export default function AnalyticsPage() {
   performanceDetails.sort((a, b) => b.views - a.views);
 
   // 5. CTA role breakdown (Affiliate Hub 05 — MOCK). Join role metrics ↔ CTA plan.
-  const ctaRoleMetrics = loadCtaRoleMetrics();
+  // G2 gate: role-level chưa có nguồn thật → chỉ hiện khi dev flag ON.
+  const { rows: ctaRows, source: ctaSource } = loadCtaRoleMetricsWithSource();
+  const showCta = ctaSource === 'real' || fixtureVisible;
+  const ctaRoleMetrics = showCta ? ctaRows : [];
   const ctaPlanByJobId = new Map(loadAffiliateCtaPlans().map((p) => [p.jobId, p]));
 
   const ctaRoleBreakdown = CTA_ROLE_ORDER.map((role) => {
@@ -299,14 +311,17 @@ export default function AnalyticsPage() {
     <div className="space-y-6">
       <MockBanner />
 
-      <div className="flex items-center gap-2 rounded-xl border border-accent-cyan/30 bg-accent-cyan/10 px-3.5 py-2 text-[11px] text-accent-cyan">
-        <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-accent-cyan" />
-        <span>
-          <strong>GROWTH FIXTURE DATA · READ-ONLY.</strong> Số liệu bên dưới được tải từ tệp tin cấu
-          hình giả lập (growth fixtures/mock seed) để tối ưu hóa hiển thị. Hệ thống chưa kết nối
-          trực tiếp với Meta Graph API/Insights API thật.
-        </span>
-      </div>
+      {/* Banner fixture chỉ hiện khi dev flag ON (G2 §A.3) — Operator mặc định không thấy mock. */}
+      {fixtureVisible && (
+        <div className="flex items-center gap-2 rounded-xl border border-accent-cyan/30 bg-accent-cyan/10 px-3.5 py-2 text-[11px] text-accent-cyan">
+          <span className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-accent-cyan" />
+          <span>
+            <strong>GROWTH FIXTURE DATA · DEV FLAG ON.</strong> Số liệu fixture (mock seed) đang
+            hiển thị vì VFOS_SHOW_FIXTURE_ANALYTICS bật. Section tiền vẫn KHÔNG render fixture
+            (No-Go #6). Tắt flag để xem đúng trạng thái Operator.
+          </span>
+        </div>
+      )}
 
       <PageHeader
         no={10}
@@ -329,18 +344,42 @@ export default function AnalyticsPage() {
         }
       />
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {funnelKpis.map((k) => (
-          <StatCard key={k.label} {...k} />
-        ))}
-      </div>
+      {showPerformance ? (
+        <div className="space-y-1.5">
+          {metricsSource === 'fixture' && (
+            <p className="px-1 text-[10px] font-semibold uppercase tracking-wider text-accent-amber">
+              KPI dưới đây là fixture/mock (dev flag ON)
+            </p>
+          )}
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {funnelKpis.map((k) => (
+              <StatCard key={k.label} {...k} />
+            ))}
+          </div>
+        </div>
+      ) : (
+        <NoRealData
+          metric="KPI phễu — Lượt xem · Click · CTR · Tương tác"
+          reason="Chưa có snapshot API thật nào trong runtime store (Facebook/TikTok Insights). Số fixture bị ẩn theo G2."
+        />
+      )}
+
+      {/* Section TIỀN — lằn ranh cứng No-Go #6: KHÔNG BAO GIỜ render fixture cho
+          doanh thu/lợi nhuận, kể cả dev flag ON. Số tiền THẬT per-video/per-job xem
+          ở "Evidence M3–M6" + bảng per-video bên dưới. */}
+      <NoRealData
+        kind="money"
+        metric="Doanh thu / lợi nhuận affiliate (tổng hợp)"
+        reason="Số thật theo từng video xem ở Evidence M3–M6 bên dưới. Chart tổng hợp chỉ vẽ khi có nguồn doanh thu thật (Shopee ingestion — G1)."
+      />
 
       <div className="grid gap-5 lg:grid-cols-2">
         {/* Lượt xem theo ngách — donut */}
+        {showPerformance ? (
         <Card>
           <CardHeader
             title="Lượt xem theo ngách"
-            subtitle="Tỷ trọng (growth fixture)"
+            subtitle={metricsSource === 'real' ? 'Tỷ trọng (số thật)' : 'Tỷ trọng (growth fixture · dev flag)'}
             accentClass="text-accent-green"
           />
           <CardBody className="flex items-center gap-6">
@@ -377,12 +416,19 @@ export default function AnalyticsPage() {
             </ul>
           </CardBody>
         </Card>
+        ) : (
+          <NoRealData
+            metric="Lượt xem theo ngách"
+            reason="Chưa có số liệu thật map về ngách — fixture bị ẩn theo G2."
+          />
+        )}
 
         {/* Lượt xem theo nền tảng — bars */}
+        {showPerformance ? (
         <Card>
           <CardHeader
             title="Lượt xem theo nền tảng"
-            subtitle="So sánh (growth fixture)"
+            subtitle={metricsSource === 'real' ? 'So sánh (số thật)' : 'So sánh (growth fixture · dev flag)'}
             accentClass="text-accent-green"
           />
           <CardBody className="space-y-4 pt-5">
@@ -404,13 +450,20 @@ export default function AnalyticsPage() {
             ))}
           </CardBody>
         </Card>
+        ) : (
+          <NoRealData
+            metric="Lượt xem theo nền tảng"
+            reason="Chưa có số liệu thật theo nền tảng — fixture bị ẩn theo G2."
+          />
+        )}
       </div>
 
       {/* CTA Performance by Role — Mock (Affiliate Hub 05) */}
+      {showCta ? (
       <Card>
         <CardHeader
           title="CTA Performance by Role — Mock"
-          subtitle="Hiệu quả theo vai trò CTA · dữ liệu giả lập (fixture), CHƯA phải số liệu Facebook/Shopee thật"
+          subtitle="Hiệu quả theo vai trò CTA · dữ liệu giả lập (fixture · dev flag), CHƯA phải số liệu Facebook/Shopee thật"
           accentClass="text-accent-amber"
           right={<Badge accent="amber">MOCK / READ-ONLY</Badge>}
         />
@@ -508,6 +561,12 @@ export default function AnalyticsPage() {
           </p>
         </CardBody>
       </Card>
+      ) : (
+        <NoRealData
+          metric="CTA Performance by Role"
+          reason="Chưa có nguồn thật cho metrics theo vai trò CTA (per-link insights chưa ingest) — fixture bị ẩn theo G2."
+        />
+      )}
 
       {/* Facebook Preflight Capability — Real API 02A */}
       <FacebookPreflightCard />
@@ -524,10 +583,11 @@ export default function AnalyticsPage() {
       {/* Weekly Growth Review Report — Real API 04A */}
       <WeeklyReportCard />
 
-      {/* Manual Performance — SỐ THẬT đã lưu local runtime (P3 Tracking M3–M6) */}
+      {/* Manual Performance — SỐ THẬT đã lưu local runtime (P3 Tracking M3–M6).
+          fixtureMetrics chỉ truyền khi dev flag ON (bảng so sánh vs mock là đồ demo). */}
       <ManualPerformanceSection
         snapshots={manualSnapshots}
-        fixtureMetrics={metrics}
+        fixtureMetrics={fixtureVisible && metricsSource === 'fixture' ? metrics : []}
         fixturePostIdByJob={fixturePostIdByJob}
         channelNameById={channelNameById}
         channelNicheById={channelNicheById}
@@ -543,10 +603,11 @@ export default function AnalyticsPage() {
       />
 
       {/* Top performers */}
+      {showPerformance ? (
       <Card>
         <CardHeader
           title="Top video hiệu quả"
-          subtitle="Theo lượt xem (growth fixture)"
+          subtitle={metricsSource === 'real' ? 'Theo lượt xem (số thật)' : 'Theo lượt xem (growth fixture · dev flag)'}
           accentClass="text-accent-green"
         />
         <CardBody className="!p-0">
@@ -603,6 +664,12 @@ export default function AnalyticsPage() {
           </table>
         </CardBody>
       </Card>
+      ) : (
+        <NoRealData
+          metric="Top video hiệu quả"
+          reason="Chưa có snapshot API thật để xếp hạng video — fixture bị ẩn theo G2."
+        />
+      )}
     </div>
   );
 }

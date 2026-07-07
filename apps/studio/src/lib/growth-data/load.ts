@@ -19,6 +19,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { resolveInsideRepo } from '@/lib/studio-data/paths';
 import { growthFixturesDir } from './paths';
+import { readApiRuntimeStore } from './runtime-store';
 import type {
   AffiliateCtaPlan,
   Channel,
@@ -268,8 +269,61 @@ export function loadRealPublishedVideos(): { rows: PublishedVideoRow[]; source: 
   return { rows: fixtureRows, source: 'fixture' };
 }
 
+/**
+ * Dev-fixture flag (G2 gate — Revenue Attribution §3 A.4). Server-read, default OFF:
+ * Operator không bao giờ thấy fixture analytics trừ khi bật rõ
+ * VFOS_SHOW_FIXTURE_ANALYTICS=true|1. Money sections KHÔNG theo flag này (No-Go #6).
+ */
+export function fixtureAnalyticsEnabled(): boolean {
+  ensureRootEnvLoaded();
+  const v = (process.env.VFOS_SHOW_FIXTURE_ANALYTICS ?? '').trim().toLowerCase();
+  return v === 'true' || v === '1';
+}
+
+/**
+ * PerformanceMetric THẬT từ api-performance-snapshots runtime store (Real API 02B/05C).
+ * Chỉ nhận snapshot post-level attribute được về post/job tường minh (No-Go #7) và có
+ * views+clicks đo thật — thiếu metric lõi thì BỎ dòng, KHÔNG bịa 0 (No-Go #6).
+ * reactions/comments/shares null → 0 (chỉ understate, không phóng đại).
+ */
+function realPerformanceMetrics(): PerformanceMetric[] {
+  const rows: PerformanceMetric[] = [];
+  for (const s of readApiRuntimeStore().snapshots) {
+    if (s.fetchStatus !== 'success' && s.fetchStatus !== 'partial') continue;
+    if (s.ctaRole) continue;
+    const publishedPostId = s.publishedPostId ?? (s.jobId ? `pp_${s.jobId}` : null);
+    if (!publishedPostId) continue;
+    if (s.views === null || s.clicks === null) continue;
+    rows.push({
+      metricId: `real_${s.snapshotId}`,
+      publishedPostId,
+      capturedAt: s.measuredAt,
+      views: s.views,
+      clicks: s.clicks,
+      ctr: s.views > 0 ? (s.clicks / s.views) * 100 : 0,
+      reactions: s.reactions ?? 0,
+      commentsCount: s.comments ?? 0,
+      shares: s.shares ?? 0,
+      source: 'real',
+    });
+  }
+  return rows;
+}
+
+/** G2 gate (§3 A.2): real-first mirror loadRealPublishedVideos — API store thật
+ * trước, fixture chỉ là fallback demo khi chưa có dòng real nào. */
+export function loadPerformanceMetricsWithSource(): {
+  rows: PerformanceMetric[];
+  source: 'real' | 'fixture';
+} {
+  const real = realPerformanceMetrics();
+  if (real.length > 0) return { rows: real, source: 'real' };
+  return { rows: loadArray<PerformanceMetric>('performance-metrics.json'), source: 'fixture' };
+}
+
+/** Wrapper mỏng behavior-preserving (caller cũ: loadGrowthSnapshot + smoke test). */
 export function loadPerformanceMetrics(): PerformanceMetric[] {
-  return loadArray<PerformanceMetric>('performance-metrics.json');
+  return loadPerformanceMetricsWithSource().rows;
 }
 
 export function loadCommentItems(): CommentItem[] {
@@ -292,8 +346,19 @@ export function loadAffiliateCtaPlans(): AffiliateCtaPlan[] {
   return loadArray<AffiliateCtaPlan>('affiliate-cta-plans.json');
 }
 
+/** G2 gate (§3 A.2): CHƯA có nguồn thật role-level (per-link insights chưa ingest)
+ * → source luôn 'fixture'. Khi có nguồn thật, thêm nhánh real-first ở đây
+ * (mirror loadPerformanceMetricsWithSource). */
+export function loadCtaRoleMetricsWithSource(): {
+  rows: CtaRoleMetric[];
+  source: 'real' | 'fixture';
+} {
+  return { rows: loadArray<CtaRoleMetric>('cta-role-metrics.json'), source: 'fixture' };
+}
+
+/** Wrapper mỏng behavior-preserving (caller cũ: loadGrowthSnapshot + smoke test). */
 export function loadCtaRoleMetrics(): CtaRoleMetric[] {
-  return loadArray<CtaRoleMetric>('cta-role-metrics.json');
+  return loadCtaRoleMetricsWithSource().rows;
 }
 
 export function loadManualPerformanceSnapshots(): ManualPerformanceSnapshot[] {
