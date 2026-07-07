@@ -8,12 +8,13 @@
  *   audio mix → preview → package.
  *
  * ĐÚNG 4 NÚT (E-UI-7 gom nút · E-UI-8 gộp 1 cổng):
- *   1) Tải link  2) Sản xuất video  3) Duyệt video  4) Đăng lên TikTok
+ *   1) Tải link  2) Sản xuất video  3) Duyệt video  4) Đăng lên Facebook
  * 1 ô chọn job DÙNG CHUNG cho cả 3 phần (EntJobSelector). "Sản xuất video" chạy
  * NGUYÊN chuỗi analyze→montage→script→voice→audio (1 process) rồi DỪNG ở CỔNG DUY
  * NHẤT = Duyệt video. KHÔNG còn cổng duyệt script (đã gộp). Video chỉ hiện khi
- * render XONG HẲN (không hiện giữa chừng). Nút 4 = đóng gói đăng TAY (roadmap:
- * nối TikTok API). KHÔNG auto publish — Duyệt video + đăng tay vẫn là cổng tay.
+ * render XONG HẲN (không hiện giữa chừng). Nút 4 = đóng gói đăng TAY lên Facebook
+ * Reels (đổi target từ TikTok) + contextual affiliate tuỳ chọn. KHÔNG auto publish
+ * — Duyệt video + đăng tay vẫn là cổng tay.
  *
  * Isolation: page riêng, KHÔNG tái dùng component Product Review, KHÔNG đụng
  * /lanes/product-review, jobs/[jobId], orchestrator, Product Card, nav.ts.
@@ -118,7 +119,7 @@ export default function ContentLanePage() {
             <EntJobSelector />
             <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
               <span>audioMode: remove_speech_keep_ambient</span>
-              <span>Không Product Card · Không affiliate · Không auto-publish</span>
+              <span>Không Product Card · Affiliate contextual (tuỳ chọn) · Không auto-publish</span>
             </div>
           </CardBody>
         </Card>
@@ -161,19 +162,19 @@ export default function ContentLanePage() {
           </CardBody>
         </Card>
 
-        {/* BƯỚC 3 — Đóng gói & hướng dẫn đăng tay */}
+        {/* BƯỚC 3 — Đóng gói & đăng Facebook (đổi target từ TikTok) */}
         <Card>
           <CardBody className="space-y-3 p-6">
             <div className="flex items-start justify-between gap-3">
-              <StepHeader no={3} title="Đăng lên TikTok" sub="1 nút: đóng gói → đăng tay" />
+              <StepHeader no={3} title="Đăng lên Facebook" sub="1 nút: đóng gói → đăng tay" />
               <Badge accent="cyan">E-UI-7</Badge>
             </div>
             <p className="text-xs leading-relaxed text-neutral-400">
-              1 nút <strong>Đăng lên TikTok</strong>: xuất final mp4 + caption + hashtag +
-              checklist.{' '}
+              1 nút <strong>Đăng lên Facebook</strong>: xuất final mp4 + caption + hashtag +
+              (tuỳ chọn) affiliate link theo ngữ cảnh.{' '}
               <strong className="text-neutral-300">Hiện đăng TAY, KHÔNG auto-publish.</strong>{' '}
-              Roadmap: nối TikTok API → tự đăng + tự viết caption như lane Review (cần token +
-              safety gate).
+              Affiliate là <strong>contextual</strong> (không bắt Product Card, owner chỉ cảnh báo
+              mềm). Mặc định MOCK — live cần credential + GO riêng.
             </p>
             <PackagePanel />
           </CardBody>

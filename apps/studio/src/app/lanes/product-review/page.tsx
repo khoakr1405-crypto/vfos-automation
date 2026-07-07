@@ -19,6 +19,7 @@ import { Card } from '@/components/card';
 import { Icon, UtilIcon } from '@/components/icons';
 import { MockBanner } from '@/components/mock-banner';
 import { PageHeader } from '@/components/page-header';
+import { ReviewTikTokPublishPanel } from '@/components/product-review/review-tiktok-publish-panel';
 import { Button } from '@/components/ui';
 import { ACCENT_BG_SOFT, ACCENT_TEXT, type AccentKey } from '@/lib/nav';
 import type { GateState, OperatorJobDTO } from '@/lib/studio-data/types';
@@ -3018,6 +3019,15 @@ export default function ProductReviewLanePage() {
           </div>
         )}
 
+        {/* ĐỔI TARGET (swap): publish CHÍNH của lane Review giờ là TikTok (video thuần).
+            Publisher Facebook CŨ giữ nguyên bên dưới (rollback) — KHÔNG xoá backend. */}
+        <ReviewTikTokPublishPanel jobId={selectedJobId} />
+
+        <details className="rounded-lg border border-hairline/60 bg-panel/30">
+          <summary className="cursor-pointer px-3 py-2 text-[11px] font-semibold text-neutral-400">
+            Facebook (bản cũ — giữ để rollback)
+          </summary>
+          <div className="space-y-3 px-3 pb-3">
         {/* Flow chính Action 3 chỉ có 1 CTA cuối: "Đăng bài Facebook" (Phase C, gate cứng).
             Phase C UX: bấm nút khi gate xanh → đăng luôn, KHÔNG modal confirm phrase.
             Server vẫn evaluateLivePublishGates trước khi đăng. Retry kín đáo ở "Chi tiết kỹ thuật". */}
@@ -3116,6 +3126,8 @@ export default function ProductReviewLanePage() {
             </div>
           )}
         </PanelActions>
+          </div>
+        </details>
 
         {/* Chi tiết kỹ thuật — KHÔNG phải flow chính của Operator (debug/detail). */}
         <details className="border-t border-hairline/50 pt-2">

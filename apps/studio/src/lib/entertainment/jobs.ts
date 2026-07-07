@@ -10,6 +10,7 @@
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { publishReelToPage } from '@vfos/facebook';
 import { resolveInsideRepo } from '@/lib/studio-data/paths';
 import { runRepoScript, runRepoScriptDetached } from '@/lib/studio-data/run-command';
 import {
@@ -23,6 +24,15 @@ import {
   queryCreatorUsername,
 } from '@/lib/tiktok/tiktok-publish-client';
 import { type EntChannel, getChannel, listChannels, resolveChannelForJob } from './channels';
+import {
+  computeFacebookReadiness,
+  type EntFacebookPublishSummary,
+  type EntFacebookReadiness,
+  type FacebookPublishClient,
+  type FacebookPublishDeps,
+  type FacebookPublishJobView,
+  type ResolveFbClientResult,
+} from './facebook-publish';
 import { computeReadiness } from './publish';
 import type {
   EntTikTokPublishSummary,
@@ -33,6 +43,7 @@ import type {
 } from './publish';
 
 export type { EntTikTokPublishSummary, EntTikTokReadiness } from './publish';
+export type { EntFacebookPublishSummary, EntFacebookReadiness } from './facebook-publish';
 
 const ENT_DIR_REL = 'data/temp/ent';
 const FETCH_SCRIPT_REL = 'scripts/ent-vlog/01-fetch-source.ts';
@@ -186,6 +197,8 @@ export interface EntJob {
   audio?: EntAudioSummary | null;
   package?: EntPackageSummary | null;
   tiktok?: EntTikTokPublishSummary | null;
+  /** Tóm tắt đăng Facebook (lane Giải trí đổi target sang FB). Additive — job cũ null. */
+  facebook?: EntFacebookPublishSummary | null;
   reviewGates?: { scriptApproved: boolean; previewApproved: boolean };
   error?: { code: string; message: string } | null;
 }
@@ -1456,6 +1469,140 @@ export function buildPublishDeps(): PublishDeps {
     resolveClientForAccount: (accountId) => resolveTikTokClientForAccount(accountId),
     verifyAccountIdentity: (accountId, expectedUsername) =>
       verifyTikTokIdentity(accountId, expectedUsername),
+    now: () => nowIso(),
+  };
+}
+
+// ── Facebook publish (lane Giải trí đổi target TikTok → Facebook) ──────────────
+
+/** Mock FB client — mô phỏng POSTED, KHÔNG gọi Graph. Cho vòng mock/dev. */
+function createMockFacebookClient(): FacebookPublishClient {
+  return {
+    async publishReel(_input) {
+      const ts = Date.now();
+      return {
+        ok: true,
+        mode: 'mock',
+        videoId: `mock_fb_${ts}`,
+        permalinkUrl: `https://www.facebook.com/reel/mock_${ts}`,
+        publishVisibility: 'UNCONFIRMED',
+      };
+    },
+  };
+}
+
+/** Live FB client — bọc publishReelToPage (Graph v22, có mode-gate META_MODE=live). */
+function createLiveFacebookClient(pageId: string, token: string): FacebookPublishClient {
+  return {
+    async publishReel(input) {
+      const res = await publishReelToPage(pageId, token, {
+        videoFilePath: input.videoPath,
+        description: input.description,
+      });
+      if (res.success) {
+        return {
+          ok: true,
+          mode: 'live',
+          videoId: res.videoId,
+          permalinkUrl: res.permalinkUrl,
+          publishVisibility: 'UNCONFIRMED',
+        };
+      }
+      return {
+        ok: false,
+        mode: 'live',
+        videoId: res.videoId,
+        error: { code: res.phase, message: res.error ?? 'Facebook publish failed.' },
+      };
+    },
+  };
+}
+
+/**
+ * Resolve FB client. Mặc định (META_MODE ≠ live) → mock (KHÔNG gọi Graph). Live
+ * cần META_MODE=live + VFOS_STUDIO_ALLOW_LIVE_PUBLISH=true + credential page
+ * (ENT_FACEBOOK_* ưu tiên, fallback FACEBOOK_*).
+ */
+function resolveFacebookClient(): ResolveFbClientResult {
+  const metaMode = (process.env.META_MODE ?? '').trim().toLowerCase();
+  if (metaMode !== 'live') {
+    return { ok: true, client: createMockFacebookClient(), mode: 'mock' };
+  }
+  if ((process.env.VFOS_STUDIO_ALLOW_LIVE_PUBLISH ?? '').trim().toLowerCase() !== 'true') {
+    return {
+      ok: false,
+      code: 'LIVE_NOT_ENABLED',
+      message: 'Đăng Facebook thật chưa bật (đặt VFOS_STUDIO_ALLOW_LIVE_PUBLISH=true).',
+    };
+  }
+  const pageId = (process.env.ENT_FACEBOOK_PAGE_ID || process.env.FACEBOOK_PAGE_ID || '').trim();
+  const token = (
+    process.env.ENT_FACEBOOK_PAGE_ACCESS_TOKEN ||
+    process.env.FACEBOOK_PAGE_ACCESS_TOKEN ||
+    ''
+  ).trim();
+  if (!pageId || !token) {
+    return {
+      ok: false,
+      code: 'FACEBOOK_NOT_CONFIGURED',
+      message: 'Thiếu ENT_FACEBOOK_PAGE_ID / ENT_FACEBOOK_PAGE_ACCESS_TOKEN cho lane Giải trí.',
+    };
+  }
+  return { ok: true, client: createLiveFacebookClient(pageId, token), mode: 'live' };
+}
+
+/** View tối giản cho FB publish (từ manifest + artifact thật). */
+function buildFacebookPublishView(id: string): FacebookPublishJobView | null {
+  const detail = getJobDetail(id);
+  if (!detail) return null;
+  const pkg = detail.package;
+  const runningStep = anyStepRunning(id);
+  return {
+    jobId: id,
+    state: detail.state,
+    previewApproved: detail.reviewGates?.previewApproved === true,
+    finalVideoAbsPath: previewVideoPath(id),
+    caption: pkg?.caption ?? '',
+    hashtags: pkg?.hashtags ?? [],
+    facebookStatus: detail.facebook?.status ?? null,
+    facebookStartedAt: detail.facebook?.startedAt ?? null,
+    pipelineBusyReason: runningStep ? `Đang chạy "${runningStep}" — chờ xong rồi đăng.` : null,
+  };
+}
+
+/** 4 đèn readiness cho UI card "Đăng lên Facebook" — KHÔNG token. */
+export function getFacebookReadiness(id: string): EntFacebookReadiness | null {
+  const view = buildFacebookPublishView(id);
+  if (!view) return null;
+  return computeFacebookReadiness(view, resolveFacebookClient().ok);
+}
+
+/** Ghi facebook summary vào manifest + trace file runtime (no token). KHÔNG đổi state. */
+export function setFacebookStatus(id: string, summary: EntFacebookPublishSummary): EntJob | null {
+  const job = readManifest(id);
+  if (!job) return null;
+  writeManifest(id, { ...job, facebook: summary, updatedAt: nowIso() });
+  const tracePath = entFile(id, 'montage_v2/facebook_publish.json');
+  if (tracePath) {
+    try {
+      mkdirSync(join(tracePath, '..'), { recursive: true });
+      writeFileSync(tracePath, JSON.stringify(summary, null, 2));
+    } catch {
+      /* trace là phụ — không chặn flow */
+    }
+  }
+  return getJobDetail(id);
+}
+
+/** Deps thật cho publishToFacebook (facebook-publish.ts là pure/DI). */
+export function buildFacebookPublishDeps(): FacebookPublishDeps {
+  return {
+    loadJob: (id) => buildFacebookPublishView(id),
+    saveCaption: (id, caption, hashtags) => saveCaptionToPackage(id, caption, hashtags),
+    setStatus: (id, summary) => {
+      setFacebookStatus(id, summary);
+    },
+    resolveClient: () => resolveFacebookClient(),
     now: () => nowIso(),
   };
 }

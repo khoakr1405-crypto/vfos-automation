@@ -1,15 +1,16 @@
 'use client';
 
 /* =============================================================================
- * VFOS Studio — Entertainment "Đăng lên TikTok" panel (Phase 3) — CLIENT island
+ * VFOS Studio — Entertainment "Đăng lên Facebook" panel — CLIENT island
  * -----------------------------------------------------------------------------
- * Card 3: readiness 5 đèn + caption preview/edit + nút "Tạo caption" (đóng gói →
- * caption gpt) + nút "Đăng TikTok" (Content Posting API, cổng tay). Sau đăng hiện
- * TIKTOK_POSTED + thời gian + postId/shareUrl; lỗi hiện message sanitize.
- * Round 1: env mock → đăng mô phỏng an toàn, KHÔNG live. KHÔNG auto-publish.
- * KHÔNG Shopee/affiliate/sản phẩm.
+ * ĐỔI TARGET (swap): lane Giải trí đăng Facebook Reels (trước là TikTok).
+ * Card: readiness 4 đèn + caption preview/edit + ô affiliate link/CTA TUỲ CHỌN
+ * (contextual affiliate) + nút "Đăng lên Facebook" (cổng tay). Owner Shopee chỉ
+ * CẢNH BÁO MỀM (không chặn). Mặc định MOCK → đăng mô phỏng, KHÔNG live.
+ * KHÔNG bắt Product Card, KHÔNG gate owner cứng, KHÔNG auto-publish.
  * ========================================================================== */
 
+import { checkAffiliateLinkOwner } from '@/lib/entertainment/affiliate-owner';
 import { useCallback, useEffect, useState } from 'react';
 import { useEntLane } from './ent-lane-context';
 
@@ -17,26 +18,21 @@ interface Readiness {
   videoApproved: boolean;
   hasFinalVideo: boolean;
   hasCaption: boolean;
-  tiktokApiReady: boolean;
+  facebookApiReady: boolean;
   notPosted: boolean;
   allReady: boolean;
 }
-interface TikTokSummary {
+interface FacebookSummary {
   status: 'POSTING' | 'POSTED' | 'FAILED';
   mode: string;
-  publishId?: string;
-  postId?: string;
-  shareUrl?: string;
+  videoId?: string;
+  permalinkUrl?: string;
+  publishVisibility?: string;
+  affiliateLinkUsed?: string | null;
+  contextualCtaUsed?: string | null;
+  affiliateOwnerWarning?: string | null;
   postedAt?: string;
   error?: { code: string; message: string } | null;
-}
-interface JobChannel {
-  channelId: string | null;
-  accountId: string | null;
-  channelName: string | null;
-  tiktokUsername: string | null;
-  status: 'active' | 'inactive' | null;
-  accountConfigured: boolean;
 }
 interface ReadinessResp {
   ok: boolean;
@@ -44,8 +40,7 @@ interface ReadinessResp {
   state?: string | null;
   caption?: string;
   hashtags?: string[];
-  tiktok?: TikTokSummary | null;
-  channel?: JobChannel | null;
+  facebook?: FacebookSummary | null;
 }
 
 function Light({ on, label }: { on: boolean; label: string }) {
@@ -85,9 +80,11 @@ function CopyBox({ label, value }: { label: string; value: string }) {
 }
 
 export function PackagePanel() {
-  const { selectedId, refreshJobs, selectedChannelId } = useEntLane();
+  const { selectedId, refreshJobs } = useEntLane();
   const [data, setData] = useState<ReadinessResp | null>(null);
   const [caption, setCaption] = useState('');
+  const [affiliateLink, setAffiliateLink] = useState('');
+  const [contextualCta, setContextualCta] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
@@ -98,11 +95,13 @@ export function PackagePanel() {
       return;
     }
     try {
-      const r = await fetch(`/api/studio/entertainment/jobs/${id}/tiktok-readiness`);
+      const r = await fetch(`/api/studio/entertainment/jobs/${id}/facebook-readiness`);
       const j = (await r.json()) as ReadinessResp;
       if (j.ok) {
         setData(j);
         setCaption(j.caption ?? '');
+        setAffiliateLink(j.facebook?.affiliateLinkUsed ?? '');
+        setContextualCta(j.facebook?.contextualCtaUsed ?? '');
       } else {
         setData(null);
       }
@@ -116,11 +115,8 @@ export function PackagePanel() {
   }, [selectedId, load]);
 
   const rd = data?.readiness ?? null;
-  const tk = data?.tiktok ?? null;
-  const ch = data?.channel ?? null;
-  // Mismatch: job thuộc kênh khác kênh đang chọn → CHẶN đăng (đỏ).
-  const mismatch = !!ch?.channelId && !!selectedChannelId && ch.channelId !== selectedChannelId;
-  const username = ch?.tiktokUsername ?? null;
+  const fb = data?.facebook ?? null;
+  const ownerCheck = checkAffiliateLinkOwner(affiliateLink);
 
   async function onGenCaption() {
     if (!selectedId || busy) return;
@@ -131,9 +127,7 @@ export function PackagePanel() {
         method: 'POST',
       });
       const j = (await r.json()) as { ok: boolean; message?: string; code?: string };
-      setMsg(
-        j.ok ? '✅ Đã tạo caption — xem/sửa rồi đăng.' : `🛑 ${j.message ?? j.code ?? 'Lỗi.'}`,
-      );
+      setMsg(j.ok ? '✅ Đã tạo caption — xem/sửa rồi đăng.' : `🛑 ${j.message ?? j.code ?? 'Lỗi.'}`);
     } catch (e) {
       setMsg(`🛑 ${e instanceof Error ? e.message : 'Lỗi mạng.'}`);
     } finally {
@@ -145,36 +139,28 @@ export function PackagePanel() {
 
   async function onPublish() {
     if (!selectedId || busy) return;
-    if (mismatch) {
-      setMsg('🛑 Job thuộc kênh khác kênh đang chọn — không đăng (chống nhầm kênh).');
-      return;
-    }
     const reposting = rd ? !rd.notPosted : false;
-    if (
-      reposting &&
-      !window.confirm(`Job đã đăng TikTok${username ? ` (@${username})` : ''}. Đăng LẠI lần nữa?`)
-    )
-      return;
+    if (reposting && !window.confirm('Job đã đăng Facebook. Đăng LẠI lần nữa?')) return;
     setBusy(true);
-    setMsg(`Đang đăng lên TikTok${username ? ` (@${username})` : ''}…`);
+    setMsg('Đang đăng lên Facebook…');
     try {
-      const r = await fetch(`/api/studio/entertainment/jobs/${selectedId}/tiktok-publish`, {
+      const r = await fetch(`/api/studio/entertainment/jobs/${selectedId}/facebook-publish`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ caption, confirmRepost: reposting, selectedChannelId }),
+        body: JSON.stringify({ caption, affiliateLink, contextualCta, confirmRepost: reposting }),
       });
       const j = (await r.json()) as {
         ok: boolean;
-        summary?: TikTokSummary;
+        summary?: FacebookSummary;
         message?: string;
         code?: string;
       };
       if (j.ok && j.summary) {
         setMsg(
-          `✅ Đã đăng TikTok (${j.summary.mode})${j.summary.postId ? ` · post ${j.summary.postId}` : ''}.`,
+          `✅ Đã đăng Facebook (${j.summary.mode})${j.summary.videoId ? ` · video ${j.summary.videoId}` : ''}.`,
         );
       } else {
-        setMsg(`🛑 ${j.message ?? j.code ?? 'Đăng TikTok lỗi.'}`);
+        setMsg(`🛑 ${j.message ?? j.code ?? 'Đăng Facebook lỗi.'}`);
       }
     } catch (e) {
       setMsg(`🛑 ${e instanceof Error ? e.message : 'Lỗi mạng.'}`);
@@ -186,13 +172,7 @@ export function PackagePanel() {
   }
 
   const canPublish =
-    !!rd &&
-    rd.videoApproved &&
-    rd.hasFinalVideo &&
-    rd.hasCaption &&
-    rd.tiktokApiReady &&
-    !mismatch &&
-    !busy;
+    !!rd && rd.videoApproved && rd.hasFinalVideo && rd.hasCaption && rd.facebookApiReady && !busy;
 
   if (!selectedId) {
     return <p className="text-[11px] text-neutral-600">Chọn job (Tải link / Sản xuất trước).</p>;
@@ -205,46 +185,21 @@ export function PackagePanel() {
 
   return (
     <div className="space-y-3">
-      {/* Kênh / tài khoản đích — rõ ràng, chống đăng nhầm kênh */}
-      {ch?.channelId ? (
-        <div
-          className={`flex flex-wrap items-center gap-2 rounded-xl border p-3 ${
-            mismatch ? 'border-accent-rose/40 bg-accent-rose/5' : 'border-hairline/40 bg-panel/30'
-          }`}
-        >
-          <span className="text-[11px] text-neutral-500">Đăng tới:</span>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-cyan/10 px-2 py-0.5 text-[11px] font-bold text-accent-cyan">
-            @{ch.tiktokUsername ?? '—'}
-          </span>
-          {ch.channelName && <span className="text-[11px] text-neutral-400">{ch.channelName}</span>}
-          <span
-            className={`rounded px-1.5 py-0.5 text-[10px] ${
-              ch.accountConfigured
-                ? 'bg-accent-green/15 text-accent-green'
-                : 'bg-accent-amber/15 text-accent-amber'
-            }`}
-          >
-            {ch.accountConfigured ? '🔑 token sẵn sàng' : '⚠ chưa có token'}
-          </span>
-        </div>
-      ) : (
-        <div className="rounded-xl border border-accent-rose/40 bg-accent-rose/10 px-3 py-2 text-[11px] font-semibold text-accent-rose">
-          ⛔ Job chưa gắn kênh — không xác định được tài khoản đích, không đăng được.
-        </div>
-      )}
-      {mismatch && (
-        <div className="rounded-xl border border-accent-rose/40 bg-accent-rose/10 px-3 py-2 text-[11px] font-semibold text-accent-rose">
-          ⛔ Job này thuộc kênh <strong>{ch?.channelName ?? ch?.channelId}</strong> — KHÔNG khớp
-          kênh đang chọn. Đổi kênh ở trên cho khớp rồi mới đăng (chống đăng nhầm kênh).
-        </div>
-      )}
+      {/* Đích đăng — Facebook Reels */}
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-hairline/40 bg-panel/30 p-3">
+        <span className="text-[11px] text-neutral-500">Đăng tới:</span>
+        <span className="inline-flex items-center gap-1.5 rounded-full bg-accent-blue/10 px-2 py-0.5 text-[11px] font-bold text-accent-blue">
+          Facebook Reels
+        </span>
+        <span className="text-[11px] text-neutral-400">Trang giải trí (cấu hình server-side)</span>
+      </div>
 
-      {/* Readiness 5 đèn */}
+      {/* Readiness 4 đèn */}
       <div className="grid grid-cols-2 gap-1.5 rounded-xl border border-hairline/40 bg-panel/30 p-3 sm:grid-cols-3">
         <Light on={!!rd?.videoApproved} label="Video đã duyệt" />
         <Light on={!!rd?.hasFinalVideo} label="Có video final" />
         <Light on={!!rd?.hasCaption} label="Có caption" />
-        <Light on={!!rd?.tiktokApiReady} label="TikTok API sẵn sàng" />
+        <Light on={!!rd?.facebookApiReady} label="Facebook sẵn sàng" />
         <Light on={!!rd?.notPosted} label="Chưa đăng" />
       </div>
 
@@ -265,6 +220,40 @@ export function PackagePanel() {
         )}
       </div>
 
+      {/* Contextual affiliate (tuỳ chọn) */}
+      <div className="space-y-1.5 rounded-xl border border-hairline/40 bg-panel/20 p-3">
+        <span className="text-[11px] font-semibold text-neutral-400">
+          Affiliate link theo ngữ cảnh (tuỳ chọn — vd video câu cá gắn link đồ câu)
+        </span>
+        <input
+          type="text"
+          value={affiliateLink}
+          onChange={(e) => setAffiliateLink(e.target.value)}
+          placeholder="Dán link affiliate (để trống nếu không có) — không bắt buộc"
+          className="w-full rounded-lg border border-hairline/50 bg-panel/40 px-2 py-1.5 text-[11px] text-neutral-200 focus:border-accent-cyan/50 focus:outline-none"
+        />
+        <input
+          type="text"
+          value={contextualCta}
+          onChange={(e) => setContextualCta(e.target.value)}
+          placeholder="CTA đi kèm (vd: 🎣 Cần câu mình dùng ở đây:) — tuỳ chọn"
+          className="w-full rounded-lg border border-hairline/50 bg-panel/40 px-2 py-1.5 text-[11px] text-neutral-200 focus:border-accent-cyan/50 focus:outline-none"
+        />
+        {ownerCheck.status !== 'none' && (
+          <p
+            className={`text-[10px] ${
+              ownerCheck.status === 'ok'
+                ? 'text-accent-green'
+                : ownerCheck.status === 'mismatch'
+                  ? 'text-accent-rose'
+                  : 'text-accent-amber'
+            }`}
+          >
+            {ownerCheck.message}
+          </p>
+        )}
+      </div>
+
       {/* Nút */}
       <div className="flex flex-wrap items-center gap-3">
         <button
@@ -279,27 +268,21 @@ export function PackagePanel() {
           type="button"
           onClick={onPublish}
           disabled={!canPublish}
-          className="rounded-xl border border-accent-cyan/40 bg-accent-cyan/15 px-5 py-2.5 text-sm font-bold text-accent-cyan transition hover:bg-accent-cyan/25 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-xl border border-accent-blue/40 bg-accent-blue/15 px-5 py-2.5 text-sm font-bold text-accent-blue transition hover:bg-accent-blue/25 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {busy
-            ? 'Đang đăng…'
-            : username
-              ? `Đăng lên TikTok: @${username}`
-              : 'Đăng lên TikTok'}
+          {busy ? 'Đang đăng…' : 'Đăng lên Facebook'}
         </button>
         {!canPublish && rd && (
           <span className="text-[11px] text-neutral-600">
-            {mismatch
-              ? '⛔ Sai kênh — đổi kênh đang chọn cho khớp job.'
-              : !rd.videoApproved
-                ? '⛔ Cần duyệt video (GATE 2).'
-                : !rd.hasCaption
-                  ? '⛔ Tạo caption trước.'
-                  : !rd.tiktokApiReady
-                    ? '⛔ TikTok API chưa sẵn sàng (env/live).'
-                    : !rd.notPosted
-                      ? 'Đã đăng — bấm để đăng lại (xác nhận).'
-                      : ''}
+            {!rd.videoApproved
+              ? '⛔ Cần duyệt video (GATE 2).'
+              : !rd.hasCaption
+                ? '⛔ Tạo caption trước.'
+                : !rd.facebookApiReady
+                  ? '⛔ Facebook chưa sẵn sàng (env/live).'
+                  : !rd.notPosted
+                    ? 'Đã đăng — bấm để đăng lại (xác nhận).'
+                    : ''}
           </span>
         )}
       </div>
@@ -314,42 +297,51 @@ export function PackagePanel() {
       />
 
       {/* Trạng thái đăng */}
-      {tk && (
+      {fb && (
         <div
           className={`space-y-1 rounded-xl border p-3 ${
-            tk.status === 'POSTED'
+            fb.status === 'POSTED'
               ? 'border-accent-green/30 bg-accent-green/5'
-              : tk.status === 'FAILED'
+              : fb.status === 'FAILED'
                 ? 'border-accent-rose/30 bg-accent-rose/5'
                 : 'border-hairline/40 bg-panel/30'
           }`}
         >
           <p className="text-[11px] font-bold text-neutral-100">
-            {tk.status === 'POSTED'
-              ? '✅ TIKTOK_POSTED'
-              : tk.status === 'FAILED'
-                ? '⚠️ TIKTOK_FAILED'
-                : '⏳ TIKTOK_POSTING'}{' '}
-            <span className="font-normal text-neutral-500">· {tk.mode}</span>
+            {fb.status === 'POSTED'
+              ? '✅ FACEBOOK_POSTED'
+              : fb.status === 'FAILED'
+                ? '⚠️ FACEBOOK_FAILED'
+                : '⏳ FACEBOOK_POSTING'}{' '}
+            <span className="font-normal text-neutral-500">· {fb.mode}</span>
           </p>
-          {tk.postedAt && <p className="text-[10px] text-neutral-500">Đăng lúc: {tk.postedAt}</p>}
-          {tk.postId && <p className="text-[10px] text-neutral-500">post id: {tk.postId}</p>}
-          {tk.shareUrl && (
+          {fb.postedAt && <p className="text-[10px] text-neutral-500">Đăng lúc: {fb.postedAt}</p>}
+          {fb.videoId && <p className="text-[10px] text-neutral-500">video id: {fb.videoId}</p>}
+          {fb.publishVisibility && (
+            <p className="text-[10px] text-neutral-500">
+              visibility: {fb.publishVisibility} (Operator xác nhận public bằng nick ngoài)
+            </p>
+          )}
+          {fb.permalinkUrl && (
             <a
-              href={tk.shareUrl}
+              href={fb.permalinkUrl}
               target="_blank"
               rel="noreferrer"
-              className="text-[10px] text-accent-cyan underline"
+              className="text-[10px] text-accent-blue underline"
             >
-              {tk.shareUrl}
+              {fb.permalinkUrl}
             </a>
           )}
-          {tk.error && <p className="text-[10px] text-accent-rose">Lỗi: {tk.error.message}</p>}
+          {fb.affiliateOwnerWarning && (
+            <p className="text-[10px] text-accent-amber">{fb.affiliateOwnerWarning}</p>
+          )}
+          {fb.error && <p className="text-[10px] text-accent-rose">Lỗi: {fb.error.message}</p>}
         </div>
       )}
 
       <p className="text-[10px] text-accent-amber">
-        ⚠️ READY ≠ tự đăng. Operator bấm "Đăng lên TikTok". Affiliate chưa gắn (giai đoạn xây kênh).
+        ⚠️ READY ≠ tự đăng. Operator bấm "Đăng lên Facebook". Affiliate là contextual (tuỳ chọn) —
+        không bắt Product Card, owner chỉ cảnh báo mềm.
       </p>
     </div>
   );
