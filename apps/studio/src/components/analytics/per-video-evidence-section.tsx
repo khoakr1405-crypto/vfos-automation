@@ -129,26 +129,45 @@ export function PerVideoEvidenceSection({
                       </div>
                     </div>
 
-                    {/* Số M3–M6 */}
+                    {/* Số M3–M6 — per-metric "—" khi chưa đo (G1 Slice 5): job chỉ có
+                        số Shopee (snapshotCount 0) không hiện 0 giả cho engagement;
+                        revenue chỉ hiện khi có nguồn tiền thật (revenueSource). */}
                     <div className="grid grid-cols-4 gap-2 text-center">
-                      {METRIC_COLS.map((c) => (
-                        <div key={c.key} className="min-w-[52px]">
-                          <p className="text-[9px] uppercase tracking-wider text-neutral-600">
-                            {c.label}
-                          </p>
-                          <p
-                            className={`text-[11px] font-semibold ${
-                              r.evidence
-                                ? c.key === 'revenue'
-                                  ? 'text-accent-green'
-                                  : 'text-neutral-100'
-                                : 'text-neutral-600'
-                            }`}
-                          >
-                            {r.evidence ? fmt(r.evidence[c.key]) : '—'}
-                          </p>
-                        </div>
-                      ))}
+                      {METRIC_COLS.map((c) => {
+                        const measured = r.evidence
+                          ? c.key === 'revenue'
+                            ? r.evidence.revenueSource !== null
+                            : r.evidence.snapshotCount > 0
+                          : false;
+                        return (
+                          <div key={c.key} className="min-w-[52px]">
+                            <p className="text-[9px] uppercase tracking-wider text-neutral-600">
+                              {c.label}
+                            </p>
+                            <p
+                              className={`text-[11px] font-semibold ${
+                                measured
+                                  ? c.key === 'revenue'
+                                    ? 'text-accent-green'
+                                    : 'text-neutral-100'
+                                  : 'text-neutral-600'
+                              }`}
+                            >
+                              {measured && r.evidence ? fmt(r.evidence[c.key]) : '—'}
+                            </p>
+                            {c.key === 'revenue' &&
+                              r.evidence &&
+                              (r.evidence.revenueSource === 'manual_csv' ||
+                                r.evidence.revenueSource === 'shopee_affiliate_api') && (
+                                <p className="text-[8px] uppercase tracking-wider text-accent-green/70">
+                                  {r.evidence.revenueSource === 'manual_csv'
+                                    ? 'Shopee CSV'
+                                    : 'Shopee API'}
+                                </p>
+                              )}
+                          </div>
+                        );
+                      })}
                     </div>
 
                     {/* Action → gợi ý nhập cho video này */}

@@ -27,20 +27,24 @@ export type VfosJobState =
 export type StatusAccent = 'blue' | 'violet' | 'green' | 'amber' | 'cyan' | 'rose';
 
 /**
- * Evidence-on-job (#5 G3): tổng số liệu Operator ĐÃ ĐO cho job (join từ local
- * runtime snapshots theo jobId, chỉ post-level để tránh double-count role). null
- * khi job chưa có snapshot nào — KHÔNG bịa 0. Doanh thu là số nhập tay, không API.
+ * Evidence-on-job (#5 G3 + G1 Slice 5): tổng số liệu ĐÃ ĐO cho job. Engagement
+ * (views/clicks/conversions) additive từ manual snapshot post-level (tránh
+ * double-count role). Revenue (M5) theo PRECEDENCE-KHÔNG-SUM giữa các nguồn:
+ * shopee_affiliate_api > manual_csv > manual — không cộng dồn cùng khoản hoa hồng
+ * qua nhiều tier. null khi job không có snapshot nào — KHÔNG bịa 0.
  */
 export interface JobEvidenceSummary {
-  /** Doanh thu affiliate (M5) bằng VND — tổng post-level. */
+  /** Doanh thu affiliate (M5) bằng VND — theo nguồn precedence cao nhất hiện có. */
   revenue: number;
   clicks: number;
   conversions: number;
   views: number;
-  /** Số snapshot post-level đã đo cho job. */
+  /** Số snapshot MANUAL post-level đã đo cho job (0 = job chỉ có số Shopee). */
   snapshotCount: number;
-  /** measuredAt mới nhất (ISO) trong các snapshot của job; null nếu không có. */
+  /** Mốc đo mới nhất (measuredAt manual hoặc periodEnd Shopee); null nếu không có. */
   lastMeasuredAt: string | null;
+  /** Nguồn đang cung cấp con số revenue (minh bạch tiền — No-Go #6). */
+  revenueSource: 'shopee_affiliate_api' | 'manual_csv' | 'manual' | null;
 }
 
 export interface OperatorJobDTO {
