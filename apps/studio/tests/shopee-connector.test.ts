@@ -11,6 +11,7 @@ import {
   ManualCsvShopeeConnector,
   ShopeeAffiliateApiConnector,
   deriveShopeeSnapshotId,
+  shopeeContentKey,
 } from '../src/lib/growth-data/shopee/connector.ts';
 
 const posts: PublishedPost[] = [
@@ -185,6 +186,37 @@ describe('ManualCsvShopeeConnector.ingest', () => {
     const r = await connector.ingest(csv);
     assert.equal(r.snapshots.length, 1);
     assert.equal(r.rejected.length, 0);
+  });
+});
+
+describe('shopeeContentKey — định danh dòng tiền độc lập attribution', () => {
+  const row = {
+    periodStart: '2026-07-01',
+    periodEnd: '2026-07-07',
+    orderRef: 'batch_t27',
+    affiliateShortLink: 'https://s.shopee.vn/aaa',
+    itemId: 'item_1',
+  };
+
+  test('unattributed → jobId thật: snapshotId ĐỔI nhưng content-key GIỮ NGUYÊN', () => {
+    const idBefore = deriveShopeeSnapshotId({ ...row, jobId: null });
+    const idAfter = deriveShopeeSnapshotId({ ...row, jobId: 'job_20260617_002' });
+    assert.notEqual(idBefore, idAfter);
+    assert.equal(shopeeContentKey(idBefore), shopeeContentKey(idAfter));
+  });
+
+  test('khác kỳ/khác orderRef → content-key KHÁC (không nuốt nhầm dòng tiền khác)', () => {
+    const base = deriveShopeeSnapshotId({ ...row, jobId: null });
+    const otherPeriod = deriveShopeeSnapshotId({ ...row, jobId: null, periodEnd: '2026-07-14' });
+    const otherRef = deriveShopeeSnapshotId({ ...row, jobId: null, orderRef: 'batch_t28' });
+    assert.notEqual(shopeeContentKey(base), shopeeContentKey(otherPeriod));
+    assert.notEqual(shopeeContentKey(base), shopeeContentKey(otherRef));
+  });
+
+  test('jobId chứa ký tự lạ không phá segment (slug không sinh __)', () => {
+    const id = deriveShopeeSnapshotId({ ...row, jobId: 'job__weird--id!!' });
+    const plain = deriveShopeeSnapshotId({ ...row, jobId: null });
+    assert.equal(shopeeContentKey(id), shopeeContentKey(plain));
   });
 });
 

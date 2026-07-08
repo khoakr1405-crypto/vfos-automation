@@ -74,6 +74,18 @@ export function deriveShopeeSnapshotId(d: {
   return `srs_${parts.join('__')}`;
 }
 
+/**
+ * Content-key = snapshotId BỎ segment anchor (jobId/'unattributed') — định danh
+ * DÒNG TIỀN độc lập với kết quả attribution. Cùng dòng CSV re-import sau khi
+ * attribution context đổi (unattributed → jobId thật) sinh snapshotId KHÁC
+ * (anchor đổi) nên dedupe theo id trượt → cùng commission bị ghi 2 lần.
+ * slug() không bao giờ sinh '__' (mọi run ký tự lạ gộp thành 1 '_') nên split
+ * '__' tách segment không nhập nhằng.
+ */
+export function shopeeContentKey(snapshotId: string): string {
+  return snapshotId.split('__').slice(1).join('__');
+}
+
 /** Header = ô ĐẦU TIÊN đúng tên cột 'affiliateshortlink' — không dò substring
  * cả dòng (dòng data có 'gmv'/'commission' trong orderRef từng bị nuốt nhầm). */
 function isHeaderLine(line: string): boolean {

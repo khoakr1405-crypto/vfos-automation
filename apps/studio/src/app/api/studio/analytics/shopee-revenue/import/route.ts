@@ -19,7 +19,7 @@ import {
   readPublishedPostsStore,
   readShopeeRevenueStore,
 } from '@/lib/growth-data/runtime-store';
-import { ManualCsvShopeeConnector } from '@/lib/growth-data/shopee/connector';
+import { ManualCsvShopeeConnector, shopeeContentKey } from '@/lib/growth-data/shopee/connector';
 import type { PublishedPost, ShopeeRevenueSnapshot } from '@/lib/growth-data/types';
 
 export const dynamic = 'force-dynamic';
@@ -152,9 +152,29 @@ export async function POST(req: Request) {
     );
   }
 
-  const overlapWarnings = findOverlapWarnings(snapshots, readShopeeRevenueStore().snapshots);
+  // Chống đếm trùng TIỀN THẬT khi attribution đổi giữa 2 lần import: snapshotId
+  // anchor theo jobId nên cùng dòng CSV re-import sau khi bài đăng được đăng ký
+  // (unattributed → jobId) sinh id KHÁC → dedupe id trượt. So content-key
+  // (id bỏ anchor) với store: trùng nội dung → BỎ QUA dòng đó, báo rõ.
+  const existing = readShopeeRevenueStore().snapshots;
+  const existingIds = new Set(existing.map((s) => s.snapshotId));
+  const existingContentKeys = new Set(existing.map((s) => shopeeContentKey(s.snapshotId)));
+  const contentDuplicates: string[] = [];
+  const toSave = snapshots.filter((s) => {
+    // id trùng hệt → để append dedupe idempotent báo duplicateIds như cũ.
+    if (existingIds.has(s.snapshotId)) return true;
+    if (existingContentKeys.has(shopeeContentKey(s.snapshotId))) {
+      contentDuplicates.push(
+        `kỳ ${s.periodStart}→${s.periodEnd} (${s.affiliateShortLink ?? s.itemId ?? '?'}): trùng nội dung với dòng đã có trong store (chỉ khác attribution) — bỏ qua để không đếm trùng tiền; re-attribute dòng cũ là round riêng`,
+      );
+      return false;
+    }
+    return true;
+  });
 
-  const result = appendShopeeRevenueSnapshots(snapshots);
+  const overlapWarnings = findOverlapWarnings(toSave, existing);
+
+  const result = appendShopeeRevenueSnapshots(toSave);
   if (!result.ok) {
     return Response.json(
       {
@@ -168,10 +188,12 @@ export async function POST(req: Request) {
     );
   }
 
+  // Attribution tính trên toSave (dòng thật sự được xét ghi) — không tính dòng
+  // bị bỏ vì trùng nội dung, tránh "success N" > số dòng ghi gây hiểu nhầm.
   const attribution = {
-    success: snapshots.filter((s) => s.ingestStatus === 'success').length,
-    partial: snapshots.filter((s) => s.ingestStatus === 'partial').length,
-    unattributed: snapshots.filter((s) => s.ingestStatus === 'unattributed').length,
+    success: toSave.filter((s) => s.ingestStatus === 'success').length,
+    partial: toSave.filter((s) => s.ingestStatus === 'partial').length,
+    unattributed: toSave.filter((s) => s.ingestStatus === 'unattributed').length,
   };
 
   return Response.json({
@@ -181,9 +203,12 @@ export async function POST(req: Request) {
     totalAfter: result.totalAfter,
     attribution,
     overlapWarnings,
+    contentDuplicates,
     message:
       result.savedCount > 0
-        ? `Đã import ${result.savedCount} dòng doanh thu Shopee (${attribution.success} attribute được job).${overlapWarnings.length > 0 ? ` ⚠ ${overlapWarnings.length} cảnh báo kỳ chồng lấn.` : ''}`
-        : 'Không có dòng mới (tất cả đều trùng snapshotId — re-import idempotent).',
+        ? `Đã import ${result.savedCount} dòng doanh thu Shopee (${attribution.success} attribute được job).${contentDuplicates.length > 0 ? ` ${contentDuplicates.length} dòng bỏ qua vì trùng nội dung.` : ''}${overlapWarnings.length > 0 ? ` ⚠ ${overlapWarnings.length} cảnh báo kỳ chồng lấn.` : ''}`
+        : contentDuplicates.length > 0
+          ? `Không ghi dòng nào: ${contentDuplicates.length} dòng trùng nội dung với store (chỉ khác attribution), còn lại trùng snapshotId.`
+          : 'Không có dòng mới (tất cả đều trùng snapshotId — re-import idempotent).',
   });
 }

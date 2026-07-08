@@ -6,6 +6,7 @@ import {
   PerVideoEvidenceSection,
   type PerVideoRow,
 } from '@/components/analytics/per-video-evidence-section';
+import { ShopeeCsvImportCard } from '@/components/analytics/shopee-csv-import-card';
 import { TikTokInsightsFetchCard } from '@/components/analytics/tiktok-insights-fetch-card';
 import { TikTokPreflightCard } from '@/components/analytics/tiktok-preflight-card';
 import { WeeklyReportCard } from '@/components/analytics/weekly-report-card';
@@ -33,6 +34,11 @@ import type { CtaReadiness, LinkRole } from '@/lib/growth-data/types';
 import { LANES, LANE_LABEL, type PlatformId } from '@/lib/mock-data';
 import { ACCENT_TEXT, type AccentKey } from '@/lib/nav';
 import { loadJobById, loadOperatorJobs } from '@/lib/studio-data/jobs';
+
+// Page đọc runtime store (tiền Shopee, manual snapshots) mỗi request — không được
+// prerender tĩnh lúc build, nếu không router.refresh() sau import CSV trả payload
+// cũ và trạng thái tiền thật đóng băng ở next start (convention: channels/schedule).
+export const dynamic = 'force-dynamic';
 
 // Hex per accent for the conic-gradient donut (CSS gradients can't read Tailwind classes).
 const ACCENT_HEX: Record<string, string> = {
@@ -388,6 +394,11 @@ export default function AnalyticsPage() {
             : 'Số thật theo từng video xem ở Evidence M3–M6 bên dưới. Chart tổng hợp chỉ vẽ khi có nguồn doanh thu thật (Shopee ingestion — G1).'
         }
       />
+
+      {/* Nạp doanh thu Shopee (G1 UI Ingestion) — cổng nhập tiền THẬT duy nhất
+          trên UI: paste CSV → route import local-only all-or-nothing → runtime
+          store → Evidence M3–M6 bên dưới. Không sinh số, không mock. */}
+      <ShopeeCsvImportCard />
 
       <div className="grid gap-5 lg:grid-cols-2">
         {/* Lượt xem theo ngách — donut (join fixture-only, xem showJoinBreakdowns) */}
