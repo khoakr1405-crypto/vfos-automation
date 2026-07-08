@@ -3137,6 +3137,20 @@ Pipeline anchors chạy đầy đủ (từ log): cắt 4 money-shot → vision h
 
 ---
 
+### ✅ Phần 68 — Operator DUYỆT Phần 67 → PUSH + cách ly WIP + hygiene growth:smoke (2026-07-08)
+
+> Operator xác nhận UI OK (empty-state chuẩn, không còn mock) và ra lệnh 3 bước theo thứ tự.
+
+1. **PUSH ✅**: 9 commit `39f2a4a..00c5a34` đã lên `origin/feat/ent-multichannel` (`624532f..00c5a34`, verify `git branch -r --contains` + ahead 0). Operator chấp thuận rõ thay đổi bảo mật `127.0.0.1` (`440dca4`, package.json scripts).
+2. **CÁCH LY WIP ✅**: 4 file entertainment (fix outage lane Giải trí của session song song) đưa vào `stash@{0}` message **"WIP: Ent lane outage fix"** — KHÔNG commit/stage; lấy lại bằng `git stash pop`. Working tree **CLEAN 100%**. Memory session outage-fix đã được ghi chú vị trí stash.
+3. **HYGIENE `growth:smoke` ✅** (`1b09d0e`, LOCAL chưa push): 2 fix gốc trong `load.ts` — (a) `resolveInsideRepo` import qua `./paths` (re-export sẵn) thay alias `@/` → chuỗi smoke alias-free, `pnpm growth:smoke` chạy thẳng không cần TSX_TSCONFIG_PATH; (b) `loadGrowthSnapshot()` (caller duy nhất = smoke) cố định **fixture-only** cho channels/performanceMetrics/ctaRoleMetrics — hết trộn channels real với plans/posts fixture (nguyên nhân referential fail oan, drift từ round channels real-first; đúng Guardian Luật 4 không trộn nguồn). KHÔNG fake pass: mọi check của smoke giữ nguyên, chỉ sửa nguồn dữ liệu cho nhất quán. Verify: `pnpm growth:smoke` **✅ SMOKE PASS** · typecheck 0 lỗi · test 37/37 (connector 13 + fold 9 + stub 1 + cn-search 14) · `/analytics` HTTP 200.
+
+**Trạng thái git:** local ahead origin **2 commit** (`1b09d0e` fix + commit docs Phần 68 này) — chờ GO push đợt kế. Stash: `stash@{0}` WIP ent lane.
+
+**Bước tiếp theo duy nhất:** Operator GO push 2 commit hygiene/docs → rồi chọn round kế theo North Star: (a) UI paste-CSV cho Shopee import route (nạp CSV diện rộng — smoke đã xanh theo yêu cầu tiền đề), hoặc (b) join real cho breakdown ngách/nền tảng ở /analytics. Session ent lane: `git stash pop` khi quay lại + Operator review UI 4 fix đó.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
