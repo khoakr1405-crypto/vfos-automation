@@ -17,8 +17,10 @@
 
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { resolveInsideRepo } from '@/lib/studio-data/paths';
-import { growthFixturesDir } from './paths';
+// resolveInsideRepo qua './paths' (re-export từ studio-data/paths) thay vì alias
+// '@/': giữ chuỗi import của growth-data alias-free để tsx chạy smoke từ root
+// không cần TSX_TSCONFIG_PATH (gotcha CJS+alias — xem growth-data-smoke.ts).
+import { growthFixturesDir, resolveInsideRepo } from './paths';
 import { readApiRuntimeStore } from './runtime-store';
 import type {
   AffiliateCtaPlan,
@@ -382,22 +384,29 @@ export function loadGrowthRecommendations(): GrowthRecommendation[] {
   return loadArray<GrowthRecommendation>('growth-recommendations.json');
 }
 
-/** Gộp toàn bộ 14 entity thành 1 snapshot. source='mock' ở Growth 02. */
+/**
+ * Gộp toàn bộ 14 entity FIXTURE thành 1 snapshot MOCK (source='mock') — caller
+ * duy nhất là growth-data-smoke.ts để validate data model fixture. CỐ ĐỊNH
+ * fixture-only, KHÔNG dùng loader real-first: channels real (config/channels.json)
+ * trộn với posting-plans/published-posts fixture từng làm referential-integrity
+ * fail oan (drift từ round channels real-first). Không trộn mock với real trong
+ * cùng 1 snapshot (Sidebar Guardian Luật 4); workflow thật KHÔNG dùng hàm này.
+ */
 export function loadGrowthSnapshot(): GrowthSnapshot {
   return {
     source: 'mock',
     generatedAt: new Date().toISOString(),
-    channels: loadChannels(),
+    channels: loadArray<Channel>('channels.json'),
     contentAngles: loadContentAngles(),
     postingPlans: loadPostingPlans(),
     publishedPosts: loadPublishedPosts(),
-    performanceMetrics: loadPerformanceMetrics(),
+    performanceMetrics: loadArray<PerformanceMetric>('performance-metrics.json'),
     commentItems: loadCommentItems(),
     commentIntents: loadCommentIntents(),
     replyTemplates: loadReplyTemplates(),
     commentActionLog: loadCommentActionLog(),
     affiliateCtaPlans: loadAffiliateCtaPlans(),
-    ctaRoleMetrics: loadCtaRoleMetrics(),
+    ctaRoleMetrics: loadArray<CtaRoleMetric>('cta-role-metrics.json'),
     manualPerformanceSnapshots: loadManualPerformanceSnapshots(),
     learningSignals: loadLearningSignals(),
     growthRecommendations: loadGrowthRecommendations(),
