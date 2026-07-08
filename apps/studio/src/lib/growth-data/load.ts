@@ -285,29 +285,38 @@ export function fixtureAnalyticsEnabled(): boolean {
  * Chỉ nhận snapshot post-level attribute được về post/job tường minh (No-Go #7) và có
  * views+clicks đo thật — thiếu metric lõi thì BỎ dòng, KHÔNG bịa 0 (No-Go #6).
  * reactions/comments/shares null → 0 (chỉ understate, không phóng đại).
+ * Store là TIME-SERIES append-only (re-fetch cùng post tạo snapshot mới, counter
+ * lifetime cumulative) → chỉ giữ snapshot MỚI NHẤT per publishedPostId, không sum
+ * cả chuỗi (sum = cộng trùng, thổi phồng KPI). Đây là dedupe theo key tường minh,
+ * không phải floating "latest job" (No-Go #7 vẫn giữ: post id là khóa chính xác).
+ * LƯU Ý: 2 writer hiện tại (FB insights: views/clicks null; TikTok: chưa map job)
+ * chưa từng thoả filter → nhánh real này là hook chờ ingestion đủ trường.
  */
 function realPerformanceMetrics(): PerformanceMetric[] {
-  const rows: PerformanceMetric[] = [];
+  const latestByPost = new Map<string, PerformanceMetric>();
   for (const s of readApiRuntimeStore().snapshots) {
     if (s.fetchStatus !== 'success' && s.fetchStatus !== 'partial') continue;
     if (s.ctaRole) continue;
     const publishedPostId = s.publishedPostId ?? (s.jobId ? `pp_${s.jobId}` : null);
     if (!publishedPostId) continue;
     if (s.views === null || s.clicks === null) continue;
-    rows.push({
+    const prev = latestByPost.get(publishedPostId);
+    if (prev && prev.capturedAt >= s.measuredAt) continue;
+    latestByPost.set(publishedPostId, {
       metricId: `real_${s.snapshotId}`,
       publishedPostId,
       capturedAt: s.measuredAt,
       views: s.views,
       clicks: s.clicks,
-      ctr: s.views > 0 ? (s.clicks / s.views) * 100 : 0,
+      // ctr theo convention fixture: PHÂN SỐ (0.0226 = 2.26%) — consumer *100 khi hiển thị.
+      ctr: s.views > 0 ? s.clicks / s.views : 0,
       reactions: s.reactions ?? 0,
       commentsCount: s.comments ?? 0,
       shares: s.shares ?? 0,
       source: 'real',
     });
   }
-  return rows;
+  return [...latestByPost.values()];
 }
 
 /** G2 gate (§3 A.2): real-first mirror loadRealPublishedVideos — API store thật

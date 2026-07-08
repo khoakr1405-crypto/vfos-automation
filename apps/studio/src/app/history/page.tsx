@@ -327,39 +327,58 @@ export default function HistoryPage() {
                     </div>
                   )}
 
-                  {/* Số liệu đã đo (M3–M6) — join từ runtime snapshots (Operator nhập tay).
-                      job.evidence đã có sẵn trên DTO qua /api/studio/jobs. null = chưa đo. */}
+                  {/* Số liệu đã đo (M3–M6) — join từ runtime snapshots (manual + Shopee).
+                      job.evidence đã có sẵn trên DTO qua /api/studio/jobs. null = chưa đo.
+                      Per-metric "—" (G1 Slice 5): job chỉ có tiền Shopee (snapshotCount 0)
+                      KHÔNG hiện 0 giả cho engagement; revenue chỉ hiện khi có nguồn tiền. */}
                   {job.state === 'PUBLISHED' && (
                     <div className="rounded-lg border border-hairline/60 bg-panel/40 p-3 space-y-1.5">
                       <p className="text-[10px] font-bold uppercase tracking-wider text-neutral-500">
-                        Số liệu đã đo (M3–M6 · Operator nhập tay)
+                        Số liệu đã đo (M3–M6)
                       </p>
                       {job.evidence ? (
                         <>
                           <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
                             <p className="text-neutral-400">
                               Views:{' '}
-                              <span className="text-neutral-200">{fmtNum(job.evidence.views)}</span>
+                              <span className="text-neutral-200">
+                                {job.evidence.snapshotCount > 0 ? fmtNum(job.evidence.views) : '—'}
+                              </span>
                             </p>
                             <p className="text-neutral-400">
                               Clicks:{' '}
-                              <span className="text-neutral-200">{fmtNum(job.evidence.clicks)}</span>
+                              <span className="text-neutral-200">
+                                {job.evidence.snapshotCount > 0 ? fmtNum(job.evidence.clicks) : '—'}
+                              </span>
                             </p>
                             <p className="text-neutral-400">
                               Đơn:{' '}
                               <span className="text-neutral-200">
-                                {fmtNum(job.evidence.conversions)}
+                                {job.evidence.snapshotCount > 0
+                                  ? fmtNum(job.evidence.conversions)
+                                  : '—'}
                               </span>
                             </p>
                             <p className="text-neutral-400">
                               Doanh thu:{' '}
                               <span className="text-accent-green">
-                                {fmtNum(job.evidence.revenue)}₫
+                                {job.evidence.revenueSource
+                                  ? `${fmtNum(job.evidence.revenue)}₫`
+                                  : '—'}
                               </span>
+                              {(job.evidence.revenueSource === 'manual_csv' ||
+                                job.evidence.revenueSource === 'shopee_affiliate_api') && (
+                                <span className="ml-1 text-[9px] uppercase text-accent-green/70">
+                                  Shopee
+                                </span>
+                              )}
                             </p>
                           </div>
                           <p className="text-[10px] text-neutral-600">
-                            {job.evidence.snapshotCount} lần đo · mới nhất{' '}
+                            {job.evidence.snapshotCount > 0
+                              ? `${job.evidence.snapshotCount} lần đo tay`
+                              : 'chưa đo tay (số tiền từ Shopee import)'}{' '}
+                            · mới nhất{' '}
                             {job.evidence.lastMeasuredAt
                               ? new Date(job.evidence.lastMeasuredAt).toLocaleString('vi-VN')
                               : '—'}{' '}

@@ -100,6 +100,50 @@ describe('ManualCsvShopeeConnector.ingest', () => {
     assert.equal(r.rejected.length, 4);
   });
 
+  test('reject format tiền VN/exotic: "500.000"→KHÔNG thành 500, "1e3", "0x10"', async () => {
+    const csv = [
+      'https://s.shopee.vn/aaa,item_1,shop_1,2026-07-01,2026-07-07,10,3,500.000,45000,',
+      'https://s.shopee.vn/aaa,item_1,shop_1,2026-07-01,2026-07-07,10,3,500000,1e3,',
+      'https://s.shopee.vn/aaa,item_1,shop_1,2026-07-01,2026-07-07,0x10,3,500000,45000,',
+    ].join('\n');
+    const r = await connector.ingest(csv);
+    assert.equal(r.snapshots.length, 0);
+    assert.equal(r.rejected.length, 3);
+  });
+
+  test('reject lệch cột: dấu phẩy nghìn "500,000" tách cột → KHÔNG nhận tiền sai lặng lẽ', async () => {
+    const csv = 'https://s.shopee.vn/aaa,item_1,shop_1,2026-07-01,2026-07-07,10,3,500,000,45000,ref1';
+    const r = await connector.ingest(csv);
+    assert.equal(r.snapshots.length, 0);
+    assert.equal(r.rejected.length, 1);
+    assert.match(r.rejected[0]?.reason ?? '', /9-10 cột/);
+  });
+
+  test('reject date không phải YYYY-MM-DD (25/06/2026)', async () => {
+    const csv = 'https://s.shopee.vn/aaa,item_1,shop_1,25/06/2026,2026-07-07,10,3,500000,45000,';
+    const r = await connector.ingest(csv);
+    assert.equal(r.snapshots.length, 0);
+    assert.equal(r.rejected.length, 1);
+  });
+
+  test('2 dòng cùng batch orderRef nhưng KHÁC itemId → 2 snapshotId khác nhau (không nuốt dòng tiền)', async () => {
+    const csv = [
+      'https://s.shopee.vn/aaa,item_1,shop_1,2026-07-01,2026-07-07,10,3,500000,45000,batch_w27',
+      ',item_x,shop_1,2026-07-01,2026-07-07,4,1,200000,18000,batch_w27',
+    ].join('\n');
+    const r = await connector.ingest(csv);
+    assert.equal(r.snapshots.length, 2);
+    assert.notEqual(r.snapshots[0]?.snapshotId, r.snapshots[1]?.snapshotId);
+  });
+
+  test('dòng data đầu tiên chứa "gmv"/"commission" trong orderRef KHÔNG bị nuốt như header', async () => {
+    const csv =
+      'https://s.shopee.vn/aaa,item_1,shop_1,2026-07-01,2026-07-07,10,3,500000,45000,export_gmv_commission_w27';
+    const r = await connector.ingest(csv);
+    assert.equal(r.snapshots.length, 1);
+    assert.equal(r.rejected.length, 0);
+  });
+
   test('reject: thiếu cả shortLink lẫn itemId / periodEnd trước periodStart / input rỗng', async () => {
     const r1 = await connector.ingest(',,shop_1,2026-07-01,2026-07-07,1,0,1000,100,');
     assert.equal(r1.rejected.length, 1);
@@ -121,6 +165,7 @@ describe('ManualCsvShopeeConnector.ingest', () => {
     assert.equal(
       deriveShopeeSnapshotId({
         jobId: 'job_a',
+        periodStart: '2026-07-01',
         periodEnd: '2026-07-07',
         orderRef: 'ref1',
         affiliateShortLink: 'https://s.shopee.vn/aaa',

@@ -17,9 +17,10 @@ import { findSensitiveTerms } from '@/lib/growth-data/manual-input';
 import {
   appendShopeeRevenueSnapshots,
   readPublishedPostsStore,
+  readShopeeRevenueStore,
 } from '@/lib/growth-data/runtime-store';
 import { ManualCsvShopeeConnector } from '@/lib/growth-data/shopee/connector';
-import type { PublishedPost } from '@/lib/growth-data/types';
+import type { PublishedPost, ShopeeRevenueSnapshot } from '@/lib/growth-data/types';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,6 +48,34 @@ function isLocalRequest(req: Request): boolean {
 
 /** Context attribution server-side: store G4 + derive từ artifact job PUBLISHED
  * thật. Fixture rows KHÔNG bao giờ vào đây (source real only). */
+/**
+ * Cảnh báo kỳ CHỒNG LẤN cùng job + cùng tier nguồn: evidence fold SUM commission
+ * trong tier (các kỳ được coi là rời nhau) — export tuần đè lên export tháng sẽ
+ * đếm trùng tiền thật. Không chặn (Operator có thể chủ ý), nhưng phải cảnh báo rõ.
+ */
+function findOverlapWarnings(
+  incoming: readonly ShopeeRevenueSnapshot[],
+  existing: readonly ShopeeRevenueSnapshot[],
+): string[] {
+  const warnings: string[] = [];
+  const overlaps = (a: ShopeeRevenueSnapshot, b: ShopeeRevenueSnapshot): boolean =>
+    a.periodStart <= b.periodEnd && b.periodStart <= a.periodEnd;
+  const pool: ShopeeRevenueSnapshot[] = [...existing];
+  for (const s of incoming) {
+    if (s.jobId) {
+      for (const o of pool) {
+        if (o.jobId === s.jobId && o.source === s.source && o.snapshotId !== s.snapshotId && overlaps(s, o)) {
+          warnings.push(
+            `job ${s.jobId}: kỳ ${s.periodStart}→${s.periodEnd} CHỒNG LẤN kỳ đã có ${o.periodStart}→${o.periodEnd} — tổng doanh thu job này sẽ CỘNG CẢ HAI (nguy cơ đếm trùng, kiểm tra lại export)`,
+          );
+        }
+      }
+    }
+    pool.push(s);
+  }
+  return warnings;
+}
+
 function buildAttributionContext(): PublishedPost[] {
   const fromStore = readPublishedPostsStore().posts;
   const known = new Set(fromStore.map((p) => p.jobId));
@@ -123,6 +152,8 @@ export async function POST(req: Request) {
     );
   }
 
+  const overlapWarnings = findOverlapWarnings(snapshots, readShopeeRevenueStore().snapshots);
+
   const result = appendShopeeRevenueSnapshots(snapshots);
   if (!result.ok) {
     return Response.json(
@@ -149,9 +180,10 @@ export async function POST(req: Request) {
     duplicateIds: result.duplicateIds,
     totalAfter: result.totalAfter,
     attribution,
+    overlapWarnings,
     message:
       result.savedCount > 0
-        ? `Đã import ${result.savedCount} dòng doanh thu Shopee (${attribution.success} attribute được job).`
+        ? `Đã import ${result.savedCount} dòng doanh thu Shopee (${attribution.success} attribute được job).${overlapWarnings.length > 0 ? ` ⚠ ${overlapWarnings.length} cảnh báo kỳ chồng lấn.` : ''}`
         : 'Không có dòng mới (tất cả đều trùng snapshotId — re-import idempotent).',
   });
 }

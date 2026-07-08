@@ -590,27 +590,41 @@ export function OperatorJobQueue() {
                     </div>
                   </div>
 
-                  {/* Evidence-on-job (#5 G3) — chỉ hiện khi job đã có số đo thật (runtime
-                      snapshots join theo jobId). Chưa đo → không hiện (không "0 đ" gây hiểu nhầm). */}
-                  {job.evidence && (
+                  {/* Evidence-on-job (#5 G3 + G1 Slice 5) — chỉ hiện phần ĐÃ ĐO thật:
+                      doanh thu cần revenueSource (manual có tiền / Shopee); engagement cần
+                      ≥1 snapshot tay. Job chỉ có tiền Shopee KHÔNG hiện "0 clicks · 0 đơn"
+                      giả (không "0 đ" gây hiểu nhầm). */}
+                  {job.evidence && (job.evidence.revenueSource || job.evidence.snapshotCount > 0) && (
                     <div className="rounded-xl border border-accent-green/20 bg-accent-green/5 p-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
                       <span className="inline-flex items-center gap-1.5 text-xs font-bold text-accent-green">
                         <UtilIcon name="check" width={12} height={12} />
                         Đã đo
                       </span>
-                      <span className="text-xs text-neutral-200">
-                        Doanh thu{' '}
-                        <span className="font-bold text-accent-green">
-                          {formatVnd(job.evidence.revenue)} đ
+                      {job.evidence.revenueSource && (
+                        <span className="text-xs text-neutral-200">
+                          Doanh thu{' '}
+                          <span className="font-bold text-accent-green">
+                            {formatVnd(job.evidence.revenue)} đ
+                          </span>
+                          {(job.evidence.revenueSource === 'manual_csv' ||
+                            job.evidence.revenueSource === 'shopee_affiliate_api') && (
+                            <span className="ml-1 text-[9px] uppercase text-accent-green/70">
+                              Shopee
+                            </span>
+                          )}
                         </span>
-                      </span>
-                      <span className="text-[11px] text-neutral-400">
-                        {formatVnd(job.evidence.clicks)} clicks · {formatVnd(job.evidence.conversions)}{' '}
-                        đơn
-                      </span>
+                      )}
+                      {job.evidence.snapshotCount > 0 && (
+                        <span className="text-[11px] text-neutral-400">
+                          {formatVnd(job.evidence.clicks)} clicks ·{' '}
+                          {formatVnd(job.evidence.conversions)} đơn
+                        </span>
+                      )}
                       <span className="text-[10px] text-neutral-500">
-                        {job.evidence.snapshotCount} snapshot · đo{' '}
-                        {formatMeasuredAt(job.evidence.lastMeasuredAt)}
+                        {job.evidence.snapshotCount > 0
+                          ? `${job.evidence.snapshotCount} snapshot tay`
+                          : 'tiền từ Shopee import'}{' '}
+                        · đo {formatMeasuredAt(job.evidence.lastMeasuredAt)}
                       </span>
                     </div>
                   )}

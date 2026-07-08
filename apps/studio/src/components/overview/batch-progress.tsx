@@ -35,6 +35,8 @@ interface BatchRow {
   clicks: number;
   conversions: number;
   measuredCount: number;
+  /** Số job có ≥1 snapshot ĐO TAY (engagement) — tách khỏi job chỉ có tiền Shopee. */
+  engagementMeasuredCount: number;
 }
 
 const formatVnd = (n: number): string => new Intl.NumberFormat('vi-VN').format(n);
@@ -81,6 +83,7 @@ function buildBatches(jobs: OperatorJobDTO[]): BatchRow[] {
       clicks: 0,
       conversions: 0,
       measuredCount: 0,
+      engagementMeasuredCount: 0,
     };
     row.total += 1;
     if (j.state === 'READY_FOR_OPERATOR_REVIEW') row.pendingReview += 1;
@@ -88,11 +91,14 @@ function buildBatches(jobs: OperatorJobDTO[]): BatchRow[] {
     else if (j.state === 'APPROVED' || j.state === 'PACKAGED') row.readyToPublish += 1;
     else if (j.state === 'PUBLISHED') row.published += 1;
     else if (RUNNING_STATES.has(j.state)) row.running += 1;
-    if (j.evidence) {
-      row.revenue += j.evidence.revenue;
+    // G1 Slice 5: chỉ tính "đã đo" khi có nguồn tiền hoặc ≥1 snapshot tay —
+    // entry chỉ-Shopee không được thổi "0 clicks · 0 đơn" giả vào batch.
+    if (j.evidence && (j.evidence.revenueSource || j.evidence.snapshotCount > 0)) {
+      row.revenue += j.evidence.revenueSource ? j.evidence.revenue : 0;
       row.clicks += j.evidence.clicks;
       row.conversions += j.evidence.conversions;
       row.measuredCount += 1;
+      if (j.evidence.snapshotCount > 0) row.engagementMeasuredCount += 1;
     }
     if (j.createdAt && j.createdAt > row.sortTs) row.sortTs = j.createdAt;
     map.set(key, row);
@@ -156,8 +162,13 @@ export function BatchProgressPanel({ jobs }: { jobs: OperatorJobDTO[] }) {
             {b.measuredCount > 0 ? (
               <p className="mt-1 text-[10px] text-neutral-400">
                 Doanh thu batch:{' '}
-                <span className="font-bold text-accent-green">{formatVnd(b.revenue)} đ</span> ·{' '}
-                {formatVnd(b.clicks)} clicks · {formatVnd(b.conversions)} đơn
+                <span className="font-bold text-accent-green">{formatVnd(b.revenue)} đ</span>
+                {b.engagementMeasuredCount > 0 && (
+                  <>
+                    {' '}
+                    · {formatVnd(b.clicks)} clicks · {formatVnd(b.conversions)} đơn
+                  </>
+                )}
                 <span className="text-neutral-600">
                   {' '}
                   ({b.measuredCount}/{b.total} job đã đo)

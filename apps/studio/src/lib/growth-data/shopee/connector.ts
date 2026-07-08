@@ -49,29 +49,45 @@ const slug = (s: string): string =>
     .replace(/^_+|_+$/g, '')
     .toLowerCase();
 
-/** snapshotId deterministic theo NỘI DUNG — re-import cùng dòng ⇒ cùng id ⇒ dedupe. */
+/**
+ * snapshotId deterministic theo TOÀN BỘ định danh dòng (không chỉ orderRef —
+ * orderRef là mã batch nên NHIỀU dòng cùng batch/kỳ từng va chạm id → dòng tiền
+ * bị dedupe nuốt lặng lẽ). Re-import đúng cùng dòng ⇒ cùng id ⇒ dedupe idempotent.
+ */
 export function deriveShopeeSnapshotId(d: {
   jobId: string | null;
+  periodStart: string;
   periodEnd: string;
   orderRef: string | null;
   affiliateShortLink: string | null;
   itemId: string | null;
 }): string {
   const anchor = d.jobId ?? 'unattributed';
-  const ref = d.orderRef ?? d.itemId ?? d.affiliateShortLink ?? 'norow';
-  return `srs_${slug(anchor)}__${slug(d.periodEnd)}__${slug(ref)}`;
+  const parts = [
+    slug(anchor),
+    slug(d.periodStart),
+    slug(d.periodEnd),
+    slug(d.itemId ?? 'noitem'),
+    slug(d.affiliateShortLink ?? 'nolink'),
+    slug(d.orderRef ?? 'noref'),
+  ];
+  return `srs_${parts.join('__')}`;
 }
 
+/** Header = ô ĐẦU TIÊN đúng tên cột 'affiliateshortlink' — không dò substring
+ * cả dòng (dòng data có 'gmv'/'commission' trong orderRef từng bị nuốt nhầm). */
 function isHeaderLine(line: string): boolean {
-  const low = line.toLowerCase();
-  return low.includes('affiliateshortlink') || (low.includes('gmv') && low.includes('commission'));
+  return (line.split(',')[0] ?? '').trim().toLowerCase() === 'affiliateshortlink';
 }
 
-/** Parse 1 ô tiền/đếm: số NGUYÊN ≥ 0 (VND đồng). Sai → null (caller reject). */
+const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/** Parse 1 ô tiền/đếm: CHỈ chuỗi digit thuần (VND đồng, số nguyên ≥ 0). Chặn
+ * '500.000' (Number() hiểu là 500 — sai 1000 lần), '1e3', '0x10'. Sai → null. */
 function intNonNeg(raw: string): number | null {
-  if (raw === '') return null;
+  if (!/^\d+$/.test(raw)) return null;
   const n = Number(raw);
-  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0) return null;
+  if (!Number.isSafeInteger(n)) return null;
   return n;
 }
 
@@ -94,15 +110,26 @@ export class ManualCsvShopeeConnector implements ShopeeRevenueConnector {
     }
 
     let dataLine = 0;
+    let headerCandidate = true;
     for (const rawLine of input.split(/\r?\n/)) {
       const trimmed = rawLine.trim();
       if (trimmed === '' || trimmed.startsWith('#')) continue;
-      if (isHeaderLine(trimmed)) continue;
+      // Header chỉ được nhận ở DÒNG ĐẦU (trước mọi dòng data) — dòng data chứa
+      // chữ 'gmv'/'commission' trong orderRef không bị nuốt lặng lẽ như header.
+      if (headerCandidate && isHeaderLine(trimmed)) {
+        headerCandidate = false;
+        continue;
+      }
+      headerCandidate = false;
       dataLine += 1;
 
       const cells = trimmed.split(',').map((c) => c.trim());
-      if (cells.length < 9) {
-        rejected.push({ reason: `dòng ${dataLine}: cần tối thiểu 9 cột (đang có ${cells.length})` });
+      // Đúng 9-10 cột (orderRef optional). Nhiều hơn = có dấu phẩy lạc (vd tiền
+      // '500,000' bị tách cột → mọi cột sau lệch, tiền sai lặng lẽ) → reject.
+      if (cells.length < 9 || cells.length > 10) {
+        rejected.push({
+          reason: `dòng ${dataLine}: cần đúng 9-10 cột, đang có ${cells.length} — kiểm tra dấu phẩy trong ô tiền (bỏ ngăn cách nghìn)`,
+        });
         continue;
       }
 
@@ -120,19 +147,20 @@ export class ManualCsvShopeeConnector implements ShopeeRevenueConnector {
       const errors: string[] = [];
       if (!affiliateShortLink && !itemId)
         errors.push('cần affiliateShortLink hoặc itemId để attribute');
-      if (periodStart === '') errors.push('periodStart: thiếu');
-      if (periodEnd === '') errors.push('periodEnd: thiếu');
-      if (orderCount === null) errors.push('orderCount: phải là số nguyên ≥ 0');
-      if (conversions === null) errors.push('conversions: phải là số nguyên ≥ 0');
-      if (gmv === null) errors.push('gmv: phải là số nguyên ≥ 0 (VND đồng)');
-      if (commission === null) errors.push('commission: phải là số nguyên ≥ 0 (VND đồng)');
+      // ISO date bắt buộc — '25/06/2026' hay format khác làm snapshotId mất
+      // determinism + so sánh kỳ sai → reject thay vì nhận mơ hồ.
+      if (!ISO_DATE_RE.test(periodStart)) errors.push('periodStart: cần dạng YYYY-MM-DD');
+      if (!ISO_DATE_RE.test(periodEnd)) errors.push('periodEnd: cần dạng YYYY-MM-DD');
+      if (orderCount === null) errors.push('orderCount: phải là số nguyên ≥ 0 (chỉ digit)');
+      if (conversions === null) errors.push('conversions: phải là số nguyên ≥ 0 (chỉ digit)');
+      if (gmv === null) errors.push('gmv: phải là số nguyên ≥ 0 (VND đồng, chỉ digit)');
+      if (commission === null)
+        errors.push('commission: phải là số nguyên ≥ 0 (VND đồng, chỉ digit)');
       if (orderCount !== null && conversions !== null && conversions > orderCount)
         errors.push(`conversions (${conversions}) > orderCount (${orderCount})`);
       if (gmv !== null && commission !== null && commission > gmv)
         errors.push(`commission (${commission}) > gmv (${gmv})`);
-      const startMs = Date.parse(periodStart);
-      const endMs = Date.parse(periodEnd);
-      if (!Number.isNaN(startMs) && !Number.isNaN(endMs) && endMs < startMs)
+      if (ISO_DATE_RE.test(periodStart) && ISO_DATE_RE.test(periodEnd) && periodEnd < periodStart)
         errors.push('periodEnd trước periodStart');
 
       if (errors.length > 0) {
@@ -162,7 +190,14 @@ export class ManualCsvShopeeConnector implements ShopeeRevenueConnector {
       }
 
       snapshots.push({
-        snapshotId: deriveShopeeSnapshotId({ jobId, periodEnd, orderRef, affiliateShortLink, itemId }),
+        snapshotId: deriveShopeeSnapshotId({
+          jobId,
+          periodStart,
+          periodEnd,
+          orderRef,
+          affiliateShortLink,
+          itemId,
+        }),
         jobId,
         affiliateShortLink,
         shopId,

@@ -19,6 +19,7 @@ import {
   loadNichesWithSource,
 } from '@/lib/growth-data/load';
 import { readRuntimeStore, readShopeeRevenueStore } from '@/lib/growth-data/runtime-store';
+import { foldEvidence } from './evidence-fold';
 import type { Channel as GrowthChannel } from '@/lib/growth-data/types';
 import { repoRoot, resolveInsideRepo } from './paths';
 import {
@@ -426,70 +427,12 @@ function loadRegistryEntries(): RegistryEntry[] {
 }
 
 /**
- * Evidence-on-job (#5 G3 + G1 Slice 5): đọc local runtime stores 1 LẦN, gom theo
- * jobId → tổng đã đo. Engagement additive từ manual post-level (ctaRole === null,
- * tránh double-count role-level). Revenue (M5) theo PRECEDENCE-KHÔNG-SUM:
- *   shopee_affiliate_api > manual_csv > manual
- * — cùng khoản hoa hồng không được cộng qua nhiều tier; trong cùng tier Shopee,
- * các kỳ (periodEnd khác nhau, dedupe snapshotId) mới được cộng. Snapshot Shopee
- * jobId=null (unattributed/partial) BỎ QUA — không đoán job. Read-only,
- * never-throw (store rỗng → map rỗng). KHÔNG bịa số.
+ * Evidence-on-job (#5 G3 + G1 Slice 5): đọc local runtime stores 1 LẦN rồi fold
+ * bằng foldEvidence (pure, xem evidence-fold.ts — luật precedence-không-sum +
+ * null-không-bịa-0 + revenueSource minh bạch). Read-only, never-throw.
  */
 function evidenceByJob(): Map<string, JobEvidenceSummary> {
-  const map = new Map<string, JobEvidenceSummary>();
-  const emptyEntry = (): JobEvidenceSummary => ({
-    revenue: 0,
-    clicks: 0,
-    conversions: 0,
-    views: 0,
-    snapshotCount: 0,
-    lastMeasuredAt: null,
-    revenueSource: null,
-  });
-
-  for (const s of readRuntimeStore().snapshots) {
-    if (s.ctaRole !== null) continue;
-    const e = map.get(s.jobId) ?? emptyEntry();
-    e.revenue += s.revenue ?? 0;
-    e.clicks += s.clicks;
-    e.conversions += s.conversions;
-    e.views += s.views;
-    e.snapshotCount += 1;
-    e.revenueSource = 'manual';
-    if (!e.lastMeasuredAt || s.measuredAt > e.lastMeasuredAt) e.lastMeasuredAt = s.measuredAt;
-    map.set(s.jobId, e);
-  }
-
-  // Fold Shopee revenue theo tier (G1). Sum TRONG tier (các kỳ khác nhau),
-  // pick GIỮA tier theo precedence — ghi đè revenue manual, không cộng thêm.
-  const shopeeByJob = new Map<
-    string,
-    { api: number | null; csv: number | null; lastPeriodEnd: string | null }
-  >();
-  for (const s of readShopeeRevenueStore().snapshots) {
-    if (!s.jobId) continue;
-    const g = shopeeByJob.get(s.jobId) ?? { api: null, csv: null, lastPeriodEnd: null };
-    if (s.source === 'shopee_affiliate_api') g.api = (g.api ?? 0) + s.commission;
-    else g.csv = (g.csv ?? 0) + s.commission;
-    if (!g.lastPeriodEnd || s.periodEnd > g.lastPeriodEnd) g.lastPeriodEnd = s.periodEnd;
-    shopeeByJob.set(s.jobId, g);
-  }
-  for (const [jobId, g] of shopeeByJob) {
-    const e = map.get(jobId) ?? emptyEntry();
-    if (g.api !== null) {
-      e.revenue = g.api;
-      e.revenueSource = 'shopee_affiliate_api';
-    } else if (g.csv !== null) {
-      e.revenue = g.csv;
-      e.revenueSource = 'manual_csv';
-    }
-    if (g.lastPeriodEnd && (!e.lastMeasuredAt || g.lastPeriodEnd > e.lastMeasuredAt)) {
-      e.lastMeasuredAt = g.lastPeriodEnd;
-    }
-    map.set(jobId, e);
-  }
-
-  return map;
+  return foldEvidence(readRuntimeStore().snapshots, readShopeeRevenueStore().snapshots);
 }
 
 /** Tất cả job thật, mới nhất trước. Read-only, fallback an toàn. */

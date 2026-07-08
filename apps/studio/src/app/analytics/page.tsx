@@ -28,7 +28,7 @@ import {
   loadPublishedPosts,
   loadRealPublishedVideos,
 } from '@/lib/growth-data/load';
-import { readRuntimeStore } from '@/lib/growth-data/runtime-store';
+import { readRuntimeStore, readShopeeRevenueStore } from '@/lib/growth-data/runtime-store';
 import type { CtaReadiness, LinkRole } from '@/lib/growth-data/types';
 import { LANES, LANE_LABEL, type PlatformId } from '@/lib/mock-data';
 import { ACCENT_TEXT, type AccentKey } from '@/lib/nav';
@@ -87,6 +87,18 @@ export default function AnalyticsPage() {
   const { rows: perfRows, source: metricsSource } = loadPerformanceMetricsWithSource();
   const showPerformance = metricsSource === 'real' || fixtureVisible;
   const metrics = showPerformance ? perfRows : [];
+  // Các breakdown ngách/nền tảng/top-video JOIN qua fixture posts+channels —
+  // metric real join vào đó sẽ misattribute (lane default 'review', platform
+  // default 'facebook') dưới nhãn "số thật". Vì vậy các section join chỉ hiện
+  // ở chế độ fixture (dev flag); bản real cần join kênh/ngách thật (round sau).
+  const showJoinBreakdowns = fixtureVisible && metricsSource === 'fixture';
+  const joinEmptyReason =
+    metricsSource === 'real'
+      ? 'Có số API thật nhưng chưa map được về kênh/ngách thật (join real — round sau); không mượn fixture để gán nhãn.'
+      : 'Chưa có số liệu thật — fixture bị ẩn theo G2.';
+  // Đếm dòng doanh thu Shopee thật (cho reason của money card — không nói
+  // "chưa có" khi store đã có dòng thật).
+  const shopeeSnapshotCount = readShopeeRevenueStore().snapshots.length;
 
   const posts = loadPublishedPosts();
   const channels = loadChannels();
@@ -360,7 +372,7 @@ export default function AnalyticsPage() {
       ) : (
         <NoRealData
           metric="KPI phễu — Lượt xem · Click · CTR · Tương tác"
-          reason="Chưa có snapshot API thật nào trong runtime store (Facebook/TikTok Insights). Số fixture bị ẩn theo G2."
+          reason="Chưa có snapshot API thật đủ trường (views + clicks) map về bài đăng — FB Insights hiện chưa trả views/clicks, TikTok chưa map job. Số fixture bị ẩn theo G2."
         />
       )}
 
@@ -370,16 +382,20 @@ export default function AnalyticsPage() {
       <NoRealData
         kind="money"
         metric="Doanh thu / lợi nhuận affiliate (tổng hợp)"
-        reason="Số thật theo từng video xem ở Evidence M3–M6 bên dưới. Chart tổng hợp chỉ vẽ khi có nguồn doanh thu thật (Shopee ingestion — G1)."
+        reason={
+          shopeeSnapshotCount > 0
+            ? `Đã có ${shopeeSnapshotCount} dòng doanh thu Shopee thật trong runtime store — xem theo từng video ở Evidence M3–M6 bên dưới; chart tổng hợp sẽ vẽ ở round sau (Phase 5, cần data thật đủ dày).`
+            : 'Số thật theo từng video xem ở Evidence M3–M6 bên dưới. Chart tổng hợp chỉ vẽ khi có nguồn doanh thu thật (Shopee ingestion — G1).'
+        }
       />
 
       <div className="grid gap-5 lg:grid-cols-2">
-        {/* Lượt xem theo ngách — donut */}
-        {showPerformance ? (
+        {/* Lượt xem theo ngách — donut (join fixture-only, xem showJoinBreakdowns) */}
+        {showJoinBreakdowns ? (
         <Card>
           <CardHeader
             title="Lượt xem theo ngách"
-            subtitle={metricsSource === 'real' ? 'Tỷ trọng (số thật)' : 'Tỷ trọng (growth fixture · dev flag)'}
+            subtitle="Tỷ trọng (growth fixture · dev flag)"
             accentClass="text-accent-green"
           />
           <CardBody className="flex items-center gap-6">
@@ -417,18 +433,15 @@ export default function AnalyticsPage() {
           </CardBody>
         </Card>
         ) : (
-          <NoRealData
-            metric="Lượt xem theo ngách"
-            reason="Chưa có số liệu thật map về ngách — fixture bị ẩn theo G2."
-          />
+          <NoRealData metric="Lượt xem theo ngách" reason={joinEmptyReason} />
         )}
 
-        {/* Lượt xem theo nền tảng — bars */}
-        {showPerformance ? (
+        {/* Lượt xem theo nền tảng — bars (join fixture-only) */}
+        {showJoinBreakdowns ? (
         <Card>
           <CardHeader
             title="Lượt xem theo nền tảng"
-            subtitle={metricsSource === 'real' ? 'So sánh (số thật)' : 'So sánh (growth fixture · dev flag)'}
+            subtitle="So sánh (growth fixture · dev flag)"
             accentClass="text-accent-green"
           />
           <CardBody className="space-y-4 pt-5">
@@ -451,10 +464,7 @@ export default function AnalyticsPage() {
           </CardBody>
         </Card>
         ) : (
-          <NoRealData
-            metric="Lượt xem theo nền tảng"
-            reason="Chưa có số liệu thật theo nền tảng — fixture bị ẩn theo G2."
-          />
+          <NoRealData metric="Lượt xem theo nền tảng" reason={joinEmptyReason} />
         )}
       </div>
 
@@ -602,12 +612,12 @@ export default function AnalyticsPage() {
         knownPostIds={knownPostIds}
       />
 
-      {/* Top performers */}
-      {showPerformance ? (
+      {/* Top performers (join fixture-only, xem showJoinBreakdowns) */}
+      {showJoinBreakdowns ? (
       <Card>
         <CardHeader
           title="Top video hiệu quả"
-          subtitle={metricsSource === 'real' ? 'Theo lượt xem (số thật)' : 'Theo lượt xem (growth fixture · dev flag)'}
+          subtitle="Theo lượt xem (growth fixture · dev flag)"
           accentClass="text-accent-green"
         />
         <CardBody className="!p-0">
@@ -665,10 +675,7 @@ export default function AnalyticsPage() {
         </CardBody>
       </Card>
       ) : (
-        <NoRealData
-          metric="Top video hiệu quả"
-          reason="Chưa có snapshot API thật để xếp hạng video — fixture bị ẩn theo G2."
-        />
+        <NoRealData metric="Top video hiệu quả" reason={joinEmptyReason} />
       )}
     </div>
   );
