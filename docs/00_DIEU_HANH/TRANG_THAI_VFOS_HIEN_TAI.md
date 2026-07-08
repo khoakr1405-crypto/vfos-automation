@@ -3151,6 +3151,25 @@ Pipeline anchors chạy đầy đủ (từ log): cắt 4 money-shot → vision h
 
 ---
 
+### ✅ Phần 69 — UI Paste-CSV nạp doanh thu Shopee + fix đếm-trùng-tiền (2026-07-08 → 09, PUSHED `ea5e662`)
+
+> Operator GO push 2 commit chờ (`1b09d0e`+`e9974ee` → origin, sync 0/0) rồi giao round UI Ingestion: component Paste-CSV trên `/analytics` bám G1/G4 Phần 66-67. Operator đã **duyệt UI thật** ("hoạt động tốt, test dedupe và báo lỗi chuẩn") → GO commit+push `ea5e662`.
+
+**Deliverable (5 file, commit `ea5e662` ĐÃ PUSH origin/feat/ent-multichannel):**
+1. **`shopee-csv-import-card.tsx` (MỚI)** — client card trên `/analytics` ngay dưới money card: textarea paste CSV thuần (không upload), hint format (cột đúng thứ tự · ngày ISO · tiền digit thuần · all-or-nothing), đếm dòng data client trước gửi, nút "Nạp dữ liệu" POST route import; feedback: ghi mới/trùng bỏ qua/attribution 3 loại/lỗi từng dòng (box đỏ)/cảnh báo chồng lấn + trùng nội dung (amber); thành công → clear textarea + `router.refresh()` cho Evidence M3–M6.
+2. **Route import: content-dedupe chống đếm trùng TIỀN** — finding MAJOR từ adversarial review (8 agent, 5/5 finding sống refute): snapshotId anchor theo jobId nên cùng dòng CSV re-import sau khi attribution đổi (unattributed→jobId) sinh id khác → dedupe id trượt → cùng commission ghi 2 lần. Fix: `shopeeContentKey(snapshotId)` (pure, bỏ segment anchor — slug không bao giờ sinh `__` nên split an toàn) + route so content-key với store, trùng → BỎ QUA + trả `contentDuplicates` báo rõ. Verify sống end-to-end trên dev server (đổi anchor trong store test → re-import bị chặn, totalAfter giữ 1); store test xoá sạch sau verify.
+3. **`/analytics` thêm `force-dynamic`** — finding MAJOR #2: page thiếu nó sẽ bị prerender TĨNH lúc `next build` → `next start` đóng băng trạng thái tiền (router.refresh trả payload cũ). Build verify: `/analytics` = `ƒ` dynamic.
+4. **UI hardening** (3 finding minor): savedCount=0 → box trung tính + nhãn "số của dòng ĐÃ GỬI, không phải tiền mới"; attribution stats tính trên toSave (không tính dòng bị bỏ); dedupe key list cảnh báo.
+5. **Test 40/40** (+3 test `shopeeContentKey`: anchor đổi giữ content-key, kỳ/orderRef khác → key khác, jobId ký tự lạ không phá segment) · typecheck 0 lỗi · `next build` PASS · smoke không đụng.
+
+**Quy trình:** ultracode adversarial review (3 lăng kính contract/No-Go-UX/security → refute-verify từng finding) TRƯỚC khi trình Operator; UI review skill đúng flow (dev:clean → typecheck → build → dev + URL); No-Go #6 giữ: component không sinh số, mọi validate/ghi server-side all-or-nothing.
+
+**Trạng thái git:** `ea5e662` đã push, sync 0/0 (commit docs Phần 69 này sẽ chờ GO push riêng). Stash: `stash@{0}` WIP ent lane còn nguyên.
+
+**Bước tiếp theo duy nhất:** Operator nạp CSV Shopee THẬT đầu tiên qua UI (khi có export từ Shopee Affiliate dashboard) → tiền thật hiện ở Evidence M3–M6; round kế theo North Star: join real cho breakdown ngách/nền tảng ở /analytics, hoặc quay lại session ent lane (`git stash pop` + review UI 4 fix outage).
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
