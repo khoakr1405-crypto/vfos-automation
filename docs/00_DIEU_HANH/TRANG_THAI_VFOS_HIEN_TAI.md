@@ -3111,6 +3111,32 @@ Pipeline anchors chạy đầy đủ (từ log): cắt 4 money-shot → vision h
 
 ---
 
+### ✅ Phần 67 — Revenue Attribution G2/G1/G4: THỰC THI đủ Slice 1→6 + hardening theo adversarial review (2026-07-07 → 08)
+
+> **Goal Operator (autonomous)**: thực thi trọn spec `VFOS_REVENUE_ATTRIBUTION_SPEC_V1.md` (`c50ee8e`) Slice 1→6, 3 ranh giới cứng: KHÔNG refactor god-file/scripts, KHÔNG fake success, G4 read-side only. Cả 3 đã giữ nguyên vẹn (diff `624532f..3c7f796` không đụng `scripts/`).
+
+**8 commit trên `feat/ent-multichannel` (LOCAL, CHƯA push):**
+- `39f2a4a` **Slice 1 — G2 gate**: `NoRealData` (kind metric/money) + `loadPerformanceMetricsWithSource`/`loadCtaRoleMetricsWithSource` (real-first, wrapper cũ behavior-preserving) + bọc mọi section fixture ở `/analytics` + env `VFOS_SHOW_FIXTURE_ANALYTICS` (default OFF). **Money card KHÔNG BAO GIỜ render fixture, kể cả flag ON.**
+- `e3ceda9` **Slice 2 — G4 store+resolver**: `published-posts.json` store (dedupe `pp_<jobId>`) + `attribution.ts` (`resolvePublishedPost` exact-match, derive-on-read fallback từ artifact; KHÔNG code path latest/sort). Verify: **17/17 job PUBLISHED resolve đúng postId/shortLink qua fallback**; jobId lạ/traversal → null.
+- `c0e35b6` **Slice 3 — G4 writer hook**: publish route nhánh success materialize `PublishedPost` (try/catch cô lập — store-write fail KHÔNG đổi HTTP 200; re-publish no-op). KHÔNG đụng `scripts/job-facebook-publish-command.ts`.
+- `e86eef4` **Slice 4 — G1 entity+connector**: `ShopeeRevenueSnapshot` (VND nguyên, jobId nullable tường minh) + shopee revenue store + `ManualCsvShopeeConnector` PURE (attribution match shortLink/itemId; 1 job=success, nhiều job=partial-không-đoán, 0=unattributed) + `ShopeeAffiliateApiConnector` stub (No-Go #2).
+- `0727bff` **Slice 5 — fold evidence**: revenue M5 **precedence-không-sum** (`shopee_affiliate_api > manual_csv > manual`), engagement additive giữ nguyên, `JobEvidenceSummary.revenueSource` minh bạch nguồn tiền, null-không-bịa-0.
+- `b8e5a03` **Slice 6 — import route** `analytics/shopee-revenue/import`: local-only 403 + secret-scan + all-or-nothing + idempotent; context attribution CHỈ từ bài đăng THẬT.
+- `440dca4` **fix bind `127.0.0.1`** cho dev/start (apps/studio/package.json — CHỈ scripts, không dependency): vá finding major "LAN host-spoof ghi được doanh thu giả vào money store" (netstat verify: chỉ còn `127.0.0.1:3002`).
+- `3c7f796` **hardening theo adversarial review** (workflow 4 reviewer + verify, ~2.5M token): connector chỉ nhận digit thuần (chặn `500.000`→500 sai 1000 lần), đúng 9-10 cột (chặn lệch cột do phẩy nghìn), header khớp đúng tên cột đầu, ISO date bắt buộc, snapshotId chống va chạm (batch orderRef từng nuốt dòng tiền); fold tách `evidence-fold.ts` PURE + 9 unit test; `revenueSource` chỉ set khi có tiền thật (>0); **fake-0 engagement** vá ở 3 consumer (history + operator-job-queue + batch-progress: job chỉ-Shopee hiện "—", không "0 clicks · 0 đơn" giả); import route cảnh báo **kỳ chồng lấn** (chống đếm trùng trong tier); real KPI lấy latest-per-post (chống cộng trùng time-series), ctr về phân số như fixture; breakdown ngách/nền tảng/top-video là join-fixture nên KHÔNG mang nhãn "số thật" (real → empty-state chờ join real); money card reason phản ánh đúng số dòng Shopee thật trong store.
+
+**Verify:** typecheck 0 lỗi sau mỗi slice · build production PASS · test `tsx --test` **23/23** (connector 13 + fold 9 + stub 1) + cn-search 14/14 không vỡ · UI flag OFF: 9/9 check (empty-state, 0 số fixture, per-video thật giữ nguyên, không NaN) · flag ON: 7/7 (fixture trở lại TRỪ money) · e2e thật: import CSV khớp shortLink `job_20260617_002` → attribution success → evidence per-video hiện đúng tiền + nhãn "Shopee CSV" + cảnh báo chồng lấn hoạt động → **runtime store khôi phục sạch sau test** · route bad-path: 403 host lạ / 400 BAD_JSON / 400 SENSITIVE / 400 INVALID_ROWS / idempotent duplicate.
+
+**Finding ghi nhận (không vá round này):** resolver ưu tiên store trước derive có thể stale nếu re-publish cùng job qua CLI (route đã chặn `alreadyPublished`; thứ tự do spec B.2 quy định) · Shopee conversions KHÔNG fold vào evidence.conversions (quyết định scope spec C.3, tránh double-count với đơn nhập tay) · nhánh real KPI là hook chờ (FB Insights hiện không trả views/clicks, TikTok chưa map job) · `growth:smoke` FAIL **pre-existing từ base `624532f`** (alias `@/` không resolve khi tsx không có TSX_TSCONFIG_PATH + fixture referential lệch channels real) — đề xuất round hygiene riêng.
+
+**⚠ NGOÀI SCOPE — 4 file entertainment bị modified trong working tree KHÔNG do round này** (`entertainment/channels/[channelId]/source-videos/route.ts`, `entertainment/jobs/route.ts`, `intake-panel.tsx`, `entertainment/jobs.ts` — nội dung: guard DUPLICATE_SOURCE + diagnostics log, tham chiếu cặp job trùng 232632/232656 ngày 26/06). Xuất hiện giữa phiên, nghi từ session/agent khác của Operator. **KHÔNG stage, KHÔNG revert — chờ Operator xác nhận.**
+
+**Trạng thái duyệt:** UI Operator CHƯA review bằng mắt (dev server localhost:3002 flag OFF sẵn sàng: `/analytics`, `/history`, `/`) · **CHƯA push** — chờ Operator duyệt commit list (lưu ý `440dca4` đụng `apps/studio/package.json` phần scripts, cần Operator gật riêng theo git-safety).
+
+**Bước tiếp theo duy nhất:** Operator review UI `/analytics` (flag OFF là chế độ thật) + duyệt 8 commit → GO push. Sau đó: nối UI paste-CSV cho import route (Slice 6 hiện là route thuần) hoặc join real cho breakdown ngách/nền tảng — chọn theo North Star.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
