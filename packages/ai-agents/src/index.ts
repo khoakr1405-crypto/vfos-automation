@@ -53,5 +53,9 @@ export {
   scanClaims,
   splitSentences,
 } from './script-claim-safety/validation-engine.js';
+export {
+  chunkForSubtitles,
+  MAX_SUBTITLE_WORDS,
+} from './script-claim-safety/subtitle-chunker.js';
 // Phase 2/3 — skeleton (implement sau)
 export { generateSafeScript } from './script-claim-safety/agent.js';
