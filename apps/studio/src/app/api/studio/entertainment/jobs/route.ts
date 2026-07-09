@@ -7,7 +7,12 @@
  * jobs/[jobId] (Product Review), không ghi registry Review/Shopee/publish.
  * ========================================================================== */
 
-import { createJob, isValidNiche, listJobsForUi } from '@/lib/entertainment/jobs';
+import {
+  createJob,
+  findLivingJobBySourceKey,
+  isValidNiche,
+  listJobsForUi,
+} from '@/lib/entertainment/jobs';
 
 export const dynamic = 'force-dynamic';
 
@@ -80,6 +85,20 @@ export async function POST(req: Request) {
     return Response.json(
       { ok: false, code: 'BAD_NICHE', message: 'Niche không hợp lệ.' },
       { status: 400 },
+    );
+  }
+
+  // Guard chống job trùng: video đã có job đang sống (khác INTAKE_FAILED) thì
+  // từ chối, KHÔNG tạo manifest mới (nguồn cặp trùng 232632/232656 ngày 26/06).
+  const dup = findLivingJobBySourceKey(url);
+  if (dup) {
+    return Response.json(
+      {
+        ok: false,
+        code: 'DUPLICATE_SOURCE',
+        message: `Video này đã có job ${dup.jobId} (${dup.state}) — không tạo job trùng.`,
+      },
+      { status: 409 },
     );
   }
 

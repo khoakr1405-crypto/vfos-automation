@@ -12,8 +12,11 @@
  * clip cũ khi lỗi (No-Go #6).
  * ========================================================================== */
 
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 import { getChannel } from '@/lib/entertainment/channels';
 import { canonicalVideoKey, reusedSourceKeys } from '@/lib/entertainment/jobs';
+import { resolveInsideRepo } from '@/lib/studio-data/paths';
 import { runRepoScript } from '@/lib/studio-data/run-command';
 
 export const dynamic = 'force-dynamic';
@@ -21,6 +24,33 @@ export const dynamic = 'force-dynamic';
 const LIST_SCRIPT_REL = 'scripts/ent-vlog/02-list-channel.ts';
 const LIST_TIMEOUT_MS = 120_000; // Douyin: browser cold-start + nav + scroll
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', '[::1]', '0.0.0.0']);
+// Log chẩn đoán lần list gần nhất (data/ gitignored) — trước đây stderr bị vứt,
+// list fail không để lại dấu vết nào trên đĩa để hậu kiểm.
+const LIST_LOG_REL = 'data/temp/ent/_logs/list_channel_last.log';
+
+function writeListDiagnostics(
+  channelId: string,
+  run: ReturnType<typeof runRepoScript>,
+  note: string,
+): void {
+  const abs = resolveInsideRepo(LIST_LOG_REL);
+  if (!abs) return;
+  try {
+    mkdirSync(dirname(abs), { recursive: true });
+    writeFileSync(
+      abs,
+      [
+        `at=${new Date().toISOString()} channel=${channelId} exit=${run.status} signal=${run.signal ?? ''} note=${note}`,
+        run.error ? `spawnError=${String(run.error)}` : '',
+        '--- stderr (tail 4000) ---',
+        (run.stderr ?? '').slice(-4000),
+        '',
+      ].join('\n'),
+    );
+  } catch {
+    /* log phụ — lỗi ghi không chặn response */
+  }
+}
 
 function isLocalRequest(req: Request): boolean {
   const host = (req.headers.get('host') ?? '').toLowerCase().split(':')[0];
@@ -89,16 +119,18 @@ export async function GET(req: Request, ctx: { params: Promise<{ channelId: stri
   );
   const payload = parseLastJson(run.stdout ?? '');
   if (!payload) {
+    writeListDiagnostics(channelId, run, 'LIST_UNREADABLE (stdout không có JSON)');
     return Response.json(
       {
         ok: false,
         code: 'LIST_UNREADABLE',
-        message: `Không đọc được kết quả list kênh (exit ${run.status}).`,
+        message: `Không đọc được kết quả list kênh (exit ${run.status}) — xem ${LIST_LOG_REL}.`,
       },
       { status: 502 },
     );
   }
   if (!payload.ok) {
+    writeListDiagnostics(channelId, run, `script trả lỗi ${payload.code}`);
     // Captcha → mã thống nhất với intake để UI hướng dẫn ent:douyin-login.
     const code = payload.code === 'CAPTCHA' ? 'DOUYIN_SETUP_REQUIRED' : payload.code;
     return Response.json({ ok: false, code, message: payload.message }, { status: 200 });

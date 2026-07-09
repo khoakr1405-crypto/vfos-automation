@@ -111,11 +111,18 @@ export function IntakePanel() {
         setCandidates((prev) =>
           prev ? prev.map((c) => (c.url === target ? { ...c, alreadyReused: true } : c)) : prev,
         );
+        // Xoá cache "clip mới nhất" vừa dùng — bấm "Lấy mới nhất" lần 2 phải list
+        // lại thay vì tạo job trùng đúng clip này (nguồn cặp job trùng 232632/232656).
+        setLatestUnreused((prev) => (prev === target ? null : prev));
       } else {
         setMsg(`🛑 ${j.message ?? 'Tải thất bại.'}`);
+        // Fail (kể cả 409 DUPLICATE_SOURCE) cũng xoá cache — không thì "Lấy mới
+        // nhất" cứ POST lại đúng target hỏng này mãi thay vì list lại.
+        setLatestUnreused((prev) => (prev === target ? null : prev));
       }
     } catch (e) {
       setMsg(`🛑 ${e instanceof Error ? e.message : 'Lỗi mạng.'}`);
+      setLatestUnreused((prev) => (prev === target ? null : prev));
     } finally {
       setBusy(false);
       void refreshJobs();
@@ -127,6 +134,7 @@ export function IntakePanel() {
   async function loadCandidates(): Promise<ListResp | null> {
     if (!selectedChannel || listing) return null;
     setListing(true);
+    setMsg(null); // msg cũ được ưu tiên hiển thị — phải xoá để không che lỗi list mới
     setListMsg('Đang lấy danh sách video của kênh nguồn…');
     try {
       const r = await fetch(
@@ -167,11 +175,18 @@ export function IntakePanel() {
     let target = latestUnreused;
     if (!target) {
       const j = await loadCandidates();
-      target = j?.ok ? (j.latestUnreused ?? null) : null;
-    }
-    if (!target) {
-      setMsg('🛑 Không có clip mới chưa reup để lấy.');
-      return;
+      // List LỖI (captcha/script/mạng) → listMsg đã chứa lỗi cụ thể; không được đè
+      // bằng thông báo "hết clip" (bug cũ: mọi lỗi fetch đều hiện như hết clip).
+      if (!j?.ok) return;
+      target = j.latestUnreused ?? null;
+      if (!target) {
+        setMsg(
+          (j.videos?.length ?? 0) === 0
+            ? '🛑 Kênh nguồn chưa có video nào.'
+            : '🛑 Không có clip mới chưa reup — tất cả video đang hiện đều đã reup.',
+        );
+        return;
+      }
     }
     await createJobFromUrl(target);
   }

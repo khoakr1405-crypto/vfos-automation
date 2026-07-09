@@ -338,12 +338,16 @@ async function resolveShortLinkId(url: string): Promise<string | null> {
  * Tập khoá video nguồn ĐÃ reup (từ source.url của mọi job) — để gắn cờ alreadyReused.
  * Job lưu canonical `/video/<id>` → khớp ngay; job lưu SHARE LINK rút gọn → resolve
  * sang aweme_id (cache lại) để vẫn khớp candidate canonical, chống reup video đã đăng.
+ * LOẠI job INTAKE_FAILED (chưa tải được byte nào) — không cho job lỗi chiếm khoá
+ * vĩnh viễn khiến video không bao giờ retry được. GIỮ INTAKE_RUNNING trong tập
+ * (loại nó sẽ mở cửa sổ race tạo job trùng khi đang fetch) — TRỪ zombie quá hạn.
  */
 export async function reusedSourceKeys(): Promise<Set<string>> {
   const out = new Set<string>();
   const cache = readIdCache();
   let cacheDirty = false;
   for (const j of listJobs()) {
+    if (j.state === 'INTAKE_FAILED' || isDeadIntakeRunning(j)) continue;
     const url = j.source?.url;
     if (!url) continue;
     const sync = canonicalVideoKey(url);
@@ -370,6 +374,54 @@ export async function reusedSourceKeys(): Promise<Set<string>> {
   }
   if (cacheDirty) writeIdCache(cache);
   return out;
+}
+
+/**
+ * INTAKE_RUNNING quá hạn = zombie: intake chạy SYNC (spawnSync, tối đa
+ * FETCH_TIMEOUT_MS) nên RUNNING lâu hơn timeout + margin chỉ có thể là process
+ * studio bị kill giữa chừng — manifest kẹt RUNNING mãi (reconcileState không
+ * chuyển khi chưa có source.mp4, không có pid để probe như readStep). Không
+ * được để zombie giữ khoá dedup + chặn 409 vĩnh viễn.
+ */
+const INTAKE_RUNNING_STALE_MS = FETCH_TIMEOUT_MS + 60_000;
+function isDeadIntakeRunning(j: EntJob): boolean {
+  if (j.state !== 'INTAKE_RUNNING') return false;
+  const t = Date.parse(j.updatedAt || j.createdAt || '');
+  if (Number.isNaN(t)) return true; // manifest hỏng timestamp — không chứng minh được đang sống
+  return Date.now() - t > INTAKE_RUNNING_STALE_MS;
+}
+
+/**
+ * Job "đang sống" (khác INTAKE_FAILED / zombie RUNNING) đã dùng cùng video nguồn —
+ * guard server-side chống tạo job trùng (vd bấm "Lấy mới nhất" 2 lần với cache
+ * client cũ; cặp trùng thật: ent_fishing_20260626_232632/232656).
+ *
+ * Guard này trả 409 HARD BLOCK nên chỉ khớp bằng khoá MẠNH: aweme_id từ
+ * `/video/<id>` hoặc share link đã resolve trong id-cache (sync, không network).
+ * Khoá yếu origin+path VỨT QUERY — 2 video `discover?modal_id=<id>` khác nhau
+ * sẽ va key → chặn nhầm; với khoá yếu chỉ chặn khi URL trùng nguyên văn.
+ */
+export function findLivingJobBySourceKey(url: string): EntJob | null {
+  const cache = readIdCache();
+  const strongKey = (u: string): string | null => {
+    const k = canonicalVideoKey(u);
+    if (/^\d+$/.test(k)) return k;
+    if (SHORT_LINK_RE.test(u) && cache[u]) return cache[u] as string;
+    return null;
+  };
+  const inputStrong = strongKey(url);
+  const inputRaw = (url ?? '').trim();
+  for (const j of listJobs()) {
+    if (j.state === 'INTAKE_FAILED' || isDeadIntakeRunning(j)) continue;
+    const u = j.source?.url;
+    if (!u) continue;
+    if (inputStrong !== null) {
+      if (strongKey(u) === inputStrong) return j;
+    } else if (u.trim() === inputRaw) {
+      return j;
+    }
+  }
+  return null;
 }
 
 /**
