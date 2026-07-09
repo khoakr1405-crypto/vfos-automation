@@ -3170,6 +3170,26 @@ Pipeline anchors chạy đầy đủ (từ log): cắt 4 money-shot → vision h
 
 ---
 
+### ✅ Phần 70 — Round Hygiene: pop stash ent lane + hoàn thiện + commit `2571d97` (2026-07-09)
+
+> Operator ra lệnh 3 bước: (1) push docs `aab852f` ✅ (origin sync); (2) pop `stash@{0}` lấy 4 file fix outage lane Giải trí, phân tích-hoàn thiện-commit tách biệt; (3) `growth:smoke` phải PASS.
+
+1. **POP STASH ✅**: `git stash pop` sạch không conflict, đúng 4 file (intake-panel, ent jobs.ts, jobs route, source-videos route). Stash list giờ RỖNG.
+2. **PHÂN TÍCH + HOÀN THIỆN ✅**: adversarial review (2 lăng kính integration/regression + refute-verify) 5/7 finding sống + 1 finding tự verify (verifier chết session limit). 3 hardening áp thêm TRƯỚC commit:
+   - **[MAJOR] Zombie INTAKE_RUNNING**: intake chạy SYNC (spawnSync 240s) — process bị kill giữa chừng thì manifest kẹt RUNNING vĩnh viễn → giữ khoá dedup + chặn 409 mãi (fix C gốc còn đóng nốt lối thoát dán-tay). Fix: `isDeadIntakeRunning` (RUNNING quá `FETCH_TIMEOUT_MS+60s` theo updatedAt = chết) — skip ở cả `reusedSourceKeys` lẫn `findLivingJobBySourceKey`.
+   - **[FALSE-POSITIVE 409]** `canonicalVideoKey` vứt query → 2 video `discover?modal_id=` khác nhau va key. Fix: guard 409 chỉ khớp khoá MẠNH (aweme_id `/video/<id>` hoặc share-link đã resolve trong `.source_id_cache.json` — đọc sync, vá luôn asymmetry share-link); khoá yếu đòi URL trùng nguyên văn.
+   - **Cache client 409-loop**: `latestUnreused` giờ clear cả nhánh fail/catch — "Lấy mới nhất" không POST lặp vô hạn đúng target hỏng.
+3. **COMMIT ✅**: `2571d97` "fix(ent-lane): resolve outage issues" — 4 file, tách biệt khỏi mọi round khác, LOCAL chưa push (chờ GO). Verify: typecheck 0 lỗi · test 40/40 · **409 test THẬT** trên dev server với cặp trùng lịch sử `232632/232656` → `DUPLICATE_SOURCE` nêu đích danh job sống, không tạo job, không gọi mạng, không side-effect (15 job dir giữ nguyên).
+4. **`growth:smoke` ✅ SMOKE PASS** (fix `1b09d0e` round trước vẫn giữ, không cần sửa gì thêm; **G2 Gate nguyên vẹn** — không đụng).
+
+**Finding ghi nhận KHÔNG fix (ngoài scope, cần quyết định Operator):** job INTAKE_FAILED mồ côi tích luỹ (retry tạo job mới, job FAILED cũ thành rác + phồng đếm "Nguy cấp" Dashboard) — chưa có route DELETE/dọn; đề xuất round dọn rác riêng. Test guard DUPLICATE_SOURCE dạng unit chưa viết được: ent jobs.ts import `@vfos/facebook` không chạy standalone dưới tsx (pre-existing, cùng gotcha test-infra ent).
+
+**Trạng thái git:** local ahead origin **2 commit** (`2571d97` ent fix + commit docs Phần 70 này) — chờ GO push. Working tree CLEAN, stash RỖNG.
+
+**Bước tiếp theo duy nhất:** Operator GO push 2 commit → việc tay còn treo của lane Giải trí: `pnpm ent:douyin-login` làm tươi session Douyin rồi bấm lại "Tải link" (cookie đóng băng 26/06 là root cause vận hành, code fix xong không thay được bước này); job `232632` đang PREVIEW_PENDING chờ Duyệt video GATE 2.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
