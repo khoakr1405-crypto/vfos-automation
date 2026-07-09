@@ -12,6 +12,7 @@ import { cmdIntakeClean } from './job-manager/commands/intake-clean.js';
 import { cmdList } from './job-manager/commands/list.js';
 import { cmdPackage } from './job-manager/commands/package.js';
 import { cmdReject } from './job-manager/commands/reject.js';
+import { cmdRenderPlan } from './job-manager/commands/render-plan.js';
 import { cmdRunReview } from './job-manager/commands/run-review.js';
 import { cmdScript } from './job-manager/commands/script.js';
 import { cmdSourceInbox } from './job-manager/commands/source-inbox.js';
@@ -25,6 +26,7 @@ const COMMANDS: Record<string, (args: string[]) => number | Promise<number>> = {
   'approve-cleanliness': cmdApproveCleanliness,
   'run-review': cmdRunReview,
   script: cmdScript,
+  'render-plan': cmdRenderPlan,
   approve: cmdApprove,
   reject: cmdReject,
   package: cmdPackage,
@@ -40,6 +42,7 @@ const USAGE = `Usage:
   pnpm source:approve-cleanliness --job <jobId> --status pass|fail --notes "<notes>"
   pnpm job:run-review    --job <jobId> --file <path|inbox-filename> [--confirm-ai]
   pnpm job:script        --job <jobId> [--dry-run]
+  pnpm job:render-plan   --job <jobId> [--confirm-tts] [--voice male|female] [--force] [--dry-run]
   pnpm job:approve       --job <jobId> [--notes "..."] [--dry-run]
   pnpm job:reject        --job <jobId> --notes "..." [--dry-run]
   pnpm job:package       --job <jobId> [--dry-run]
