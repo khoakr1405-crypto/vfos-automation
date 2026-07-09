@@ -1,6 +1,7 @@
 'use client';
 
 import { GateCheckButton } from '@/components/gate-check/gate-check-modal';
+import { UtilIcon } from '@/components/icons';
 import {
   TODO_BUCKET_ACCENT,
   TODO_BUCKET_LABEL,
@@ -29,6 +30,9 @@ import { useEffect, useState } from 'react';
  * Phase 2B-2 (UI-only polish): gom count theo 3 severity tier (Nguy cấp / Cần thao
  * tác / Thiếu nguồn) để nhấn mức ưu tiên; dòng nguy cấp (BLOCKED/FAILED) nổi bật hơn.
  * KHÔNG đổi data model / count logic — tổng tier derive từ `counts` sẵn có.
+ *
+ * Taste polish (UI-only): skeleton loading đúng hình khối, UtilIcon thay glyph
+ * unicode (⚠/⛔), hover transition 300ms, tabular-nums cho số — KHÔNG đổi logic.
  *
  * KHÔNG nút produce/render/package/publish (Dashboard = report, không phải make).
  * Chỉ 2 tương tác: "Vào lane" (điều hướng) + "Kiểm tra gate" (drawer read-only sẵn có).
@@ -114,23 +118,34 @@ export function OperatorTodo() {
         <div className="flex items-center gap-3">
           <span className="h-3.5 w-1 shrink-0 rounded-full bg-current text-accent-blue" />
           <div>
-            <h2 className="text-sm font-semibold text-neutral-100">Việc Operator cần làm</h2>
+            <h2 className="text-sm font-semibold tracking-tight text-neutral-100">
+              Việc Operator cần làm
+            </h2>
             <p className="mt-0.5 text-xs text-neutral-500">
               Chỉ đọc — gom job cần hành động từ cả 2 lane, xếp theo mức ưu tiên. Bấm "Vào lane" để
               xử lý.
             </p>
           </div>
         </div>
-        <span className="shrink-0 text-xs text-neutral-500">
+        <span className="shrink-0 text-xs text-neutral-500 tabular-nums">
           Cần xử lý: <strong className="text-neutral-300">{todo?.totalActionable ?? 0}</strong> job
         </span>
       </div>
 
       <div className="px-5 py-4">
         {load === 'loading' ? (
-          <div className="flex items-center gap-2 text-xs text-neutral-500">
-            <span className="h-2 w-2 animate-pulse rounded-full bg-neutral-600" />
-            Đang tải việc cần làm…
+          <div className="space-y-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" aria-hidden>
+              {['sk-1', 'sk-2', 'sk-3'].map((k) => (
+                <div
+                  key={k}
+                  className="h-14 animate-pulse rounded-xl border border-hairline/40 bg-raised/20"
+                />
+              ))}
+            </div>
+            <div className="h-9 animate-pulse rounded-lg bg-raised/15" aria-hidden />
+            <div className="h-9 animate-pulse rounded-lg bg-raised/10" aria-hidden />
+            <span className="sr-only">Đang tải việc cần làm…</span>
           </div>
         ) : load === 'error' || !todo ? (
           <div className="rounded-lg border border-accent-rose/25 bg-accent-rose/5 px-3 py-2 text-xs text-accent-rose">
@@ -138,9 +153,14 @@ export function OperatorTodo() {
             trang.
           </div>
         ) : todo.totalActionable === 0 ? (
-          <div className="text-xs">
-            <p className="font-medium text-neutral-300">Không có việc cần xử lý.</p>
-            <p className="mt-0.5 text-neutral-500">Mọi job đang chạy hoặc đã hoàn tất.</p>
+          <div className="flex items-center gap-3 py-2">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-accent-green/25 bg-accent-green/5 text-accent-green">
+              <UtilIcon name="check" width={14} height={14} />
+            </span>
+            <div className="text-xs">
+              <p className="font-medium text-neutral-300">Không có việc cần xử lý.</p>
+              <p className="mt-0.5 text-neutral-500">Mọi job đang chạy hoặc đã hoàn tất.</p>
+            </div>
           </div>
         ) : (
           <>
@@ -152,13 +172,13 @@ export function OperatorTodo() {
                 return (
                   <div
                     key={sev}
-                    className={`rounded-xl border px-3 py-2 ${
+                    className={`rounded-xl border px-3 py-2.5 transition-colors duration-300 ease-in-out ${
                       active ? SEVERITY_CARD_TONE[tone] : 'border-hairline/40 bg-raised/5'
                     }`}
                   >
                     <div className="flex items-center justify-between">
                       <span
-                        className={`flex items-center gap-1.5 text-[11px] font-semibold ${
+                        className={`flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] ${
                           active ? TEXT_TONE[tone] : 'text-neutral-600'
                         }`}
                       >
@@ -168,7 +188,9 @@ export function OperatorTodo() {
                         {TODO_SEVERITY_LABEL[sev]}
                       </span>
                       <span
-                        className={`font-mono text-base font-bold ${active ? TEXT_TONE[tone] : 'text-neutral-600'}`}
+                        className={`font-mono text-lg font-bold leading-none tabular-nums ${
+                          active ? TEXT_TONE[tone] : 'text-neutral-600'
+                        }`}
                       >
                         {total}
                       </span>
@@ -182,7 +204,9 @@ export function OperatorTodo() {
                             className={`text-[10px] ${n > 0 ? 'text-neutral-400' : 'text-neutral-600'}`}
                           >
                             {TODO_BUCKET_LABEL[b]}{' '}
-                            <span className="font-mono font-semibold text-neutral-300">{n}</span>
+                            <span className="font-mono font-semibold text-neutral-300 tabular-nums">
+                              {n}
+                            </span>
                           </span>
                         );
                       })}
@@ -194,75 +218,89 @@ export function OperatorTodo() {
 
             {todo.gateCapped && todo.capNote && (
               <p className="mb-3 flex items-center gap-1.5 rounded-lg border border-accent-amber/25 bg-accent-amber/5 px-3 py-1.5 text-[10px] text-accent-amber">
-                <span aria-hidden>⚠</span>
+                <UtilIcon name="bell" width={12} height={12} className="shrink-0" />
                 {todo.capNote}
               </p>
             )}
 
-            {/* Danh sách ưu tiên — mỗi dòng read-only + "Vào lane" + gate-check drawer. */}
-            <ul className="space-y-1.5">
-              {todo.items.map((it) => {
-                const tone = TODO_BUCKET_ACCENT[it.bucket];
-                const isCritical = TODO_BUCKET_SEVERITY[it.bucket] === 'critical';
-                return (
-                  <li
-                    key={`${it.lane}:${it.jobId}`}
-                    className={`rounded-lg border px-3 py-2 text-[11px] ${
-                      isCritical
-                        ? 'border-accent-rose/30 bg-accent-rose/[0.06]'
-                        : 'border-hairline/50 bg-raised/10'
-                    }`}
-                  >
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                      <span
-                        className={`inline-flex items-center gap-1.5 font-semibold ${TEXT_TONE[tone]}`}
-                      >
-                        <span className={`h-2 w-2 rounded-full ${DOT_TONE[tone]}`} />
-                        {TODO_BUCKET_LABEL[it.bucket]}
-                      </span>
-                      <span className="font-mono text-neutral-200">{it.jobId}</span>
-                      <span className="rounded border border-hairline/60 px-1.5 py-0.5 text-[10px] text-neutral-400">
-                        {it.laneLabel}
-                      </span>
-                      <span
-                        className="font-mono text-[10px] text-neutral-500"
-                        title="state gốc của job"
-                      >
-                        state: {it.state}
-                      </span>
-                      <span className="max-w-[220px] truncate text-neutral-400" title={it.label}>
-                        {it.label}
-                      </span>
-                      <span className="font-mono text-[10px] text-neutral-600">
-                        {fmtTime(it.updatedAt)}
-                      </span>
-                      <span className="ml-auto flex items-center gap-2">
-                        <Link
-                          href={it.laneHref}
-                          className="rounded-md border border-hairline px-2 py-1 text-[10px] font-semibold text-neutral-300 transition hover:bg-raised/40 hover:text-neutral-100"
-                        >
-                          Vào lane →
-                        </Link>
-                        <GateCheckButton jobId={it.jobId} />
-                      </span>
-                    </div>
-                    {it.blocker && isCritical && (
-                      <p
-                        className="mt-1 truncate text-[10px] text-accent-rose/90"
-                        title={it.blocker}
-                      >
-                        ⛔ {it.blocker}
-                      </p>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
+            {/* Danh sách chi tiết GẬP — tile phía trên đã tóm tắt; mở khi cần thao tác.
+                <details> native, không thêm state. */}
+            <details className="group">
+              <summary className="flex cursor-pointer list-none items-center gap-1.5 rounded-md border border-hairline/60 px-2.5 py-1.5 text-[10px] font-semibold text-neutral-300 transition-colors duration-300 ease-in-out hover:bg-raised/30 hover:text-neutral-100 [&::-webkit-details-marker]:hidden">
+                <UtilIcon
+                  name="chevron"
+                  width={11}
+                  height={11}
+                  className="transition-transform duration-300 ease-in-out group-open:rotate-90"
+                />
+                <span className="group-open:hidden">Xem {todo.totalActionable} việc chi tiết</span>
+                <span className="hidden group-open:inline">Ẩn danh sách chi tiết</span>
+              </summary>
 
-            <p className="mt-3 text-[10px] text-neutral-600">
-              Bucket "Bị chặn" tính từ gate-check thật (tối đa 30 job/lần load); chi tiết gate xem
-              per-job qua "Kiểm tra gate". Read-only: không có nút sản xuất/đăng ở đây.
-            </p>
+              <ul className="mt-2 space-y-1.5">
+                {todo.items.map((it) => {
+                  const tone = TODO_BUCKET_ACCENT[it.bucket];
+                  const isCritical = TODO_BUCKET_SEVERITY[it.bucket] === 'critical';
+                  return (
+                    <li
+                      key={`${it.lane}:${it.jobId}`}
+                      className={`rounded-lg border px-3 py-2 text-[11px] transition-colors duration-300 ease-in-out ${
+                        isCritical
+                          ? 'border-accent-rose/30 bg-accent-rose/[0.06] hover:bg-accent-rose/[0.1]'
+                          : 'border-hairline/50 bg-raised/10 hover:border-hairline hover:bg-raised/25'
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <span
+                          className={`inline-flex items-center gap-1.5 font-semibold ${TEXT_TONE[tone]}`}
+                        >
+                          <span className={`h-2 w-2 rounded-full ${DOT_TONE[tone]}`} />
+                          {TODO_BUCKET_LABEL[it.bucket]}
+                        </span>
+                        <span className="font-mono text-neutral-200">{it.jobId}</span>
+                        <span className="rounded border border-hairline/60 px-1.5 py-0.5 text-[10px] text-neutral-400">
+                          {it.laneLabel}
+                        </span>
+                        <span
+                          className="font-mono text-[10px] text-neutral-500"
+                          title="state gốc của job"
+                        >
+                          state: {it.state}
+                        </span>
+                        <span className="max-w-[220px] truncate text-neutral-400" title={it.label}>
+                          {it.label}
+                        </span>
+                        <span className="font-mono text-[10px] text-neutral-600 tabular-nums">
+                          {fmtTime(it.updatedAt)}
+                        </span>
+                        <span className="ml-auto flex items-center gap-2">
+                          <Link
+                            href={it.laneHref}
+                            className="rounded-md border border-hairline px-2 py-1 text-[10px] font-semibold text-neutral-300 transition-all duration-300 ease-in-out hover:bg-raised/40 hover:text-neutral-100 active:scale-[0.98]"
+                          >
+                            Vào lane →
+                          </Link>
+                          <GateCheckButton jobId={it.jobId} />
+                        </span>
+                      </div>
+                      {it.blocker && isCritical && (
+                        <p className="mt-1.5 flex items-center gap-1.5 text-[10px] text-accent-rose/90">
+                          <UtilIcon name="x" width={11} height={11} className="shrink-0" />
+                          <span className="truncate" title={it.blocker}>
+                            {it.blocker}
+                          </span>
+                        </p>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+
+              <p className="mt-3 text-[10px] leading-relaxed text-neutral-600">
+                Bucket "Bị chặn" tính từ gate-check thật (tối đa 30 job/lần load); chi tiết gate xem
+                per-job qua "Kiểm tra gate". Read-only: không có nút sản xuất/đăng ở đây.
+              </p>
+            </details>
           </>
         )}
       </div>
