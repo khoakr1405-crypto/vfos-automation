@@ -57,5 +57,20 @@ export {
   chunkForSubtitles,
   MAX_SUBTITLE_WORDS,
 } from './script-claim-safety/subtitle-chunker.js';
+
+// Render-prep — pure logic (no fs/API): subtitle timing + render plan builder
+export type {
+  EdgeWord,
+  RenderAudio,
+  RenderCanvas,
+  RenderOutput,
+  RenderOverlay,
+  RenderPlan,
+  RenderVideoSource,
+  SubtitleCue,
+  SubtitleStyle,
+} from './render-prep/types.js';
+export { alignSubtitles } from './render-prep/align-subtitles.js';
+export { buildRenderPlan } from './render-prep/build-render-plan.js';
 // Phase 2/3 — skeleton (implement sau)
 export { generateSafeScript } from './script-claim-safety/agent.js';
