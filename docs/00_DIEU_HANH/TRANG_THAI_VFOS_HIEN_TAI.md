@@ -3190,6 +3190,27 @@ Pipeline anchors chạy đầy đủ (từ log): cắt 4 money-shot → vision h
 
 ---
 
+### ✅ Phần 71 — Giải phẫu God-file & Thức tỉnh Script Claim & Safety Agent (2026-07-09, commit `bfc1d40` — CHỜ PUSH)
+
+> Chiến dịch kép kiến trúc: (1) đại phẫu God-file `vfos-job-manager.ts`; (2) tách Đặc vụ AI đầu tiên thành package độc lập `@vfos/ai-agents` theo bản vẽ RFC.
+
+1. **ĐẠI PHẪU GOD-FILE ✅**: `scripts/vfos-job-manager.ts` **3163 → ~68 dòng dispatcher thuần**. Tách toàn bộ logic sang `scripts/job-manager/` = **9 `core/`** (infra: manifest-io, media-probe, paths, product-card, validation, channels, inbox, registry-io, types) + **12 `commands/`**. Kiến trúc **1 chiều** `dispatcher → commands → core` (anti-spaghetti, không cross-command import). Byte-identical move, zero behavior change; smoke đủ 12 lệnh.
+
+2. **THỨC TỈNH `script-claim-safety-agent` → `@vfos/ai-agents` ✅** (RFC `docs/RFC_SCRIPT_SAFETY_AGENT.md`, 3 Phase):
+   - **Phase 1** — package mới (ESM, dep `@vfos/script-writer`, test=vitest): di trú verbatim `product-card-facts` + `prompt-builder` (prompt VI) + `openai-caller` (fetch + 429 leo thang 15/30/60/75s trần 180s + 5xx backoff).
+   - **Phase 2** — **Hybrid Validation Engine**: `claim-blocklist` = `PHRASE_RULES` (9 cụm literal: tốt nhất, an toàn tuyệt đối, chữa bách bệnh…) + `PATTERN_RULES` (4 regex claim số: cam kết N%, giảm N kg…). `validation-engine` = `normalizeVi` (NFC → strip zero-width → lowercase, chống né dấu/ký tự tàng hình) + `scanClaims` (verdict safe/warn/blocked) + `enforceWordBudget` (tái dùng `countWords`, không vỡ câu chứa giá "10.000đ"). **vitest 11/11** gồm 5 Test Vàng (zero-width evasion · NFD/NFC · phrase · pattern · price-split).
+   - **Phase 3** — `agent.ts generateSafeScript`: vòng lặp `prompt(+feedback lỗi) → OpenAI → scanClaims + enforceWordBudget + structuralValidate(DI) → retry ≤ 3 → safe-fallback template`. **SAFETY-FIX**: bỏ superlative "lựa chọn đỉnh nhất" khỏi template. `commands/script.ts` gọt **703 → 485 dòng** (cắt sạch ~450 dòng prompt+OpenAI inline), thêm **exit 8 = CLAIM_SAFETY_BLOCKED** + artifact `claim_safety_report.json`. Giữ nguyên exit 1–7/20/21.
+
+3. **QUYẾT ĐỊNH exit-code (Operator khen "sắc bén")**: `--confirm-openai` fail vẫn trả **exit 6 (API chết) / 7 (validate fail)** — KHÔNG âm thầm đăng script chưa duyệt; "safe fallback template" thoả ở nhánh `confirmAi=false`. Layering: `packages/` KHÔNG import `scripts/` (structuralValidate truyền qua **DI callback**); `scripts/ → packages/` dùng relative path.
+
+**Gate:** `@vfos/ai-agents` typecheck sạch · biome 2 file sửa = 0 lỗi · vitest 11/11. `pnpm -r typecheck` fail ở `@vfos/shopee` (nợ `exactOptionalPropertyTypes` CÓ SẴN, KHÔNG đụng); `biome check .` 2559 lỗi repo-wide có sẵn (2 file mình = 0). Smoke OpenAI-free: job không tồn tại → exit 2; confirmAi=false full → ghi template + report exit 0 ("đỉnh nhất" đã biến mất, price 89K, verdict safe).
+
+**Trạng thái git:** commit `bfc1d40` (40 file, +4624/−3147) trên `feat/ent-multichannel`, staging đích danh (KHÔNG `git add .`), secret scan sạch, working tree CLEAN. Commit docs Phần 71 này + push cả 3 commit lên origin.
+
+**Bước tiếp theo duy nhất:** Test sức mạnh Đặc vụ mới trên video THẬT — chạy `pnpm job:script --job <jobId> --confirm-openai` trên 1 job đã có product card + source sạch để verify vòng generate → claim-scan → retry → artifact end-to-end với OpenAI thật (No-Go #2: cần lệnh rõ + `--confirm-openai`).
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
@@ -3385,12 +3406,12 @@ docs/
 
 | Thông tin | Giá trị |
 |---|---|
-| Branch | `fix/shopee-modal-read` |
-| HEAD local | `43ab827` `feat(captions): PaddleOCR text-detection engine for subtitle scrub (auto width)` (2026-06-16) + commit doc Phần 36 ngay sau |
+| Branch | `feat/ent-multichannel` |
+| HEAD local | `bfc1d40` `feat(ai-agents): awaken script-claim-safety agent with hybrid validation engine and migrate orchestrator to modular dispatcher` (2026-07-09) + commit docs Phần 71 ngay sau |
 | Remote | `origin` (GitHub) |
-| origin/fix/shopee-modal-read | `43ab827` — đã push (chuỗi `74fc0c2` → `ca39051` docs → `43ab827`) |
-| Sync status | **0 / 0** sau push `43ab827` (commit doc Phần 36 này sẽ push tiếp). |
-| Working tree | Còn mở (NGOÀI scope, KHÔNG commit): `source-intake/route.ts`, `source-url/` (Phần 34 chưa chốt), `production/_media/bgm_library.json` (runtime media), `implementation_plan.md`. Runtime PaddleOCR (`tools/subtitle-detect-paddle/.venv`, model cache, `_install*.log`) đã gitignore. |
+| origin/feat/ent-multichannel | sau push chứa `3ce22f2` (dashboard Concept C) → `bfc1d40` (ai-agents + god-file anatomy) → `<docs Phần 71>` |
+| Sync status | **0 / 0** sau push 3 commit (`3ce22f2` + `bfc1d40` + docs Phần 71). |
+| Working tree | **CLEAN** — không file untracked/dirty thuộc scope. `packages/ai-agents/{dist,node_modules,*.tsbuildinfo}` đã gitignore, KHÔNG commit; job smoke `__wiring_smoke__` (data/temp gitignored) đã xoá. |
 | Dev server | Port 3002 (bật khi review). Dừng bằng `pnpm studio:dev:clean --no-start`. |
 
 **Trạng thái artifacts production** (tính đến 2026-05-29 phiên sync):
