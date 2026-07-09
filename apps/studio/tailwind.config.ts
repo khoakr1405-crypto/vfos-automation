@@ -9,11 +9,13 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        canvas: '#0a0c12',
-        panel: '#0f121a',
-        card: '#141823',
-        raised: '#1b2030',
-        hairline: '#232a3a',
+        // Deep navy theme (redesign concept 07/2026) — surfaces mang sắc xanh
+        // navy rõ thay vì xám đen; hairline ngả xanh để viền card "sáng nhẹ".
+        canvas: '#070b16',
+        panel: '#0b1121',
+        card: '#0d1526',
+        raised: '#152036',
+        hairline: '#1e2b4a',
         accent: {
           blue: '#3b82f6',
           violet: '#8b5cf6',

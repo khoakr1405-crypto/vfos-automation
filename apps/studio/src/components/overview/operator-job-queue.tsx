@@ -418,16 +418,9 @@ export function OperatorJobQueue() {
         </div>
       )}
 
-      {load === 'ready' &&
-        jobs.length > 0 &&
-        (() => {
-          // UI polish (Cách 1): hiện tối đa 4 job đầu (đã sort ưu tiên); phần còn lại
-          // gập vào <details> native để trang không dài vô hạn. CHỈ slice mảng + bọc
-          // wrapper — KHÔNG đụng fetch / useState / sortJobsForQueue / action trong card.
-          const sortedQueue = sortJobsForQueue(jobs);
-          const headJobs = sortedQueue.slice(0, 4);
-          const restJobs = sortedQueue.slice(4);
-          const renderJobCard = (job: OperatorJobDTO) => (
+      {load === 'ready' && jobs.length > 0 && (
+        <div className="grid gap-5">
+          {sortJobsForQueue(jobs).map((job) => (
             <Card
               key={job.id}
               className={`transition border ${
@@ -601,41 +594,40 @@ export function OperatorJobQueue() {
                       doanh thu cần revenueSource (manual có tiền / Shopee); engagement cần
                       ≥1 snapshot tay. Job chỉ có tiền Shopee KHÔNG hiện "0 clicks · 0 đơn"
                       giả (không "0 đ" gây hiểu nhầm). */}
-                  {job.evidence &&
-                    (job.evidence.revenueSource || job.evidence.snapshotCount > 0) && (
-                      <div className="rounded-xl border border-accent-green/20 bg-accent-green/5 p-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
-                        <span className="inline-flex items-center gap-1.5 text-xs font-bold text-accent-green">
-                          <UtilIcon name="check" width={12} height={12} />
-                          Đã đo
-                        </span>
-                        {job.evidence.revenueSource && (
-                          <span className="text-xs text-neutral-200">
-                            Doanh thu{' '}
-                            <span className="font-bold text-accent-green">
-                              {formatVnd(job.evidence.revenue)} đ
+                  {job.evidence && (job.evidence.revenueSource || job.evidence.snapshotCount > 0) && (
+                    <div className="rounded-xl border border-accent-green/20 bg-accent-green/5 p-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                      <span className="inline-flex items-center gap-1.5 text-xs font-bold text-accent-green">
+                        <UtilIcon name="check" width={12} height={12} />
+                        Đã đo
+                      </span>
+                      {job.evidence.revenueSource && (
+                        <span className="text-xs text-neutral-200">
+                          Doanh thu{' '}
+                          <span className="font-bold text-accent-green">
+                            {formatVnd(job.evidence.revenue)} đ
+                          </span>
+                          {(job.evidence.revenueSource === 'manual_csv' ||
+                            job.evidence.revenueSource === 'shopee_affiliate_api') && (
+                            <span className="ml-1 text-[9px] uppercase text-accent-green/70">
+                              Shopee
                             </span>
-                            {(job.evidence.revenueSource === 'manual_csv' ||
-                              job.evidence.revenueSource === 'shopee_affiliate_api') && (
-                              <span className="ml-1 text-[9px] uppercase text-accent-green/70">
-                                Shopee
-                              </span>
-                            )}
-                          </span>
-                        )}
-                        {job.evidence.snapshotCount > 0 && (
-                          <span className="text-[11px] text-neutral-400">
-                            {formatVnd(job.evidence.clicks)} clicks ·{' '}
-                            {formatVnd(job.evidence.conversions)} đơn
-                          </span>
-                        )}
-                        <span className="text-[10px] text-neutral-500">
-                          {job.evidence.snapshotCount > 0
-                            ? `${job.evidence.snapshotCount} snapshot tay`
-                            : 'tiền từ Shopee import'}{' '}
-                          · đo {formatMeasuredAt(job.evidence.lastMeasuredAt)}
+                          )}
                         </span>
-                      </div>
-                    )}
+                      )}
+                      {job.evidence.snapshotCount > 0 && (
+                        <span className="text-[11px] text-neutral-400">
+                          {formatVnd(job.evidence.clicks)} clicks ·{' '}
+                          {formatVnd(job.evidence.conversions)} đơn
+                        </span>
+                      )}
+                      <span className="text-[10px] text-neutral-500">
+                        {job.evidence.snapshotCount > 0
+                          ? `${job.evidence.snapshotCount} snapshot tay`
+                          : 'tiền từ Shopee import'}{' '}
+                        · đo {formatMeasuredAt(job.evidence.lastMeasuredAt)}
+                      </span>
+                    </div>
+                  )}
 
                   {/* Technical error log — chỉ hiện khi state = FAILED */}
                   {job.errorLog && (
@@ -824,31 +816,9 @@ export function OperatorJobQueue() {
                 </div>
               </CardBody>
             </Card>
-          );
-          return (
-            <div className="space-y-5">
-              {/* Tối đa 4 job hiện trực tiếp (đã sort ưu tiên: chờ duyệt / lỗi lên đầu). */}
-              <div className="grid gap-5">{headJobs.map(renderJobCard)}</div>
-              {restJobs.length > 0 && (
-                <details className="group">
-                  <summary className="flex cursor-pointer list-none items-center justify-center gap-1.5 rounded-xl border border-hairline/60 bg-raised/10 px-4 py-2.5 text-xs font-semibold text-neutral-300 transition-colors duration-300 ease-in-out hover:bg-raised/30 hover:text-neutral-100 [&::-webkit-details-marker]:hidden">
-                    <span className="group-open:hidden">
-                      Xem tất cả {restJobs.length} job còn lại
-                    </span>
-                    <span className="hidden group-open:inline">Thu gọn danh sách job</span>
-                    <UtilIcon
-                      name="chevron"
-                      width={12}
-                      height={12}
-                      className="transition-transform duration-300 ease-in-out group-open:rotate-90"
-                    />
-                  </summary>
-                  <div className="mt-3 grid gap-5">{restJobs.map(renderJobCard)}</div>
-                </details>
-              )}
-            </div>
-          );
-        })()}
+          ))}
+        </div>
+      )}
     </div>
   );
 }

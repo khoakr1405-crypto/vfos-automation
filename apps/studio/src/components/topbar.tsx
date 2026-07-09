@@ -1,12 +1,19 @@
 import { SHOPEE_OWNER } from '@/lib/mock-data';
 import { UtilIcon } from './icons';
 
+/**
+ * Topbar (redesign concept 07/2026) — search + bộ lọc + owner.
+ *
+ * Các <select> là shell trình bày (CHƯA nối filter logic), nên chỉ để option
+ * TRUNG THỰC "Tất cả …" — KHÔNG bịa danh sách sản phẩm/cụm giả (No-Go #6). Owner
+ * ID là data THẬT (an_17376660568).
+ */
 export function Topbar() {
   return (
-    <header className="flex flex-col border-b border-hairline bg-canvas/80 px-5 py-3 backdrop-blur lg:flex-row lg:items-center gap-4">
+    <header className="flex flex-col gap-4 border-b border-hairline bg-canvas/80 px-5 py-3 backdrop-blur lg:flex-row lg:items-center">
       {/* Search & Filters */}
-      <div className="flex min-w-0 flex-1 flex-col sm:flex-row sm:items-center gap-3">
-        <div className="flex w-full max-w-xs items-center gap-2 rounded-lg border border-hairline bg-panel/80 px-3 py-2 text-neutral-500 focus-within:border-neutral-500 transition">
+      <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex w-full max-w-xs items-center gap-2 rounded-lg border border-hairline bg-panel/80 px-3 py-2 text-neutral-500 transition-colors duration-300 focus-within:border-accent-violet/50">
           <UtilIcon name="search" />
           <input
             type="text"
@@ -15,62 +22,42 @@ export function Topbar() {
           />
         </div>
 
-        {/* Filter Dropdowns */}
+        {/* Filter Dropdowns — chỉ option trung thực, chưa nối logic filter. */}
         <div className="flex flex-wrap items-center gap-2">
-          {/* Time Filter */}
-          <div className="flex items-center gap-1.5 bg-raised/40 border border-hairline rounded-lg px-2.5 py-1 text-xs">
-            <span className="text-neutral-500 font-medium">Khoảng thời gian:</span>
-            <select className="bg-transparent text-[11px] text-neutral-300 font-medium focus:outline-none cursor-pointer border-0 p-0">
+          <div className="flex items-center gap-1.5 rounded-lg border border-hairline bg-raised/40 px-2.5 py-1 text-xs transition-colors duration-300 hover:border-hairline">
+            <span className="font-medium text-neutral-500">Khoảng thời gian:</span>
+            <select className="cursor-pointer border-0 bg-transparent p-0 text-[11px] font-medium text-neutral-300 focus:outline-none">
               <option value="7d">7 ngày qua</option>
               <option value="30d">30 ngày qua</option>
-              <option value="today">Hôm nay</option>
+              <option value="90d">90 ngày qua</option>
             </select>
           </div>
 
-          {/* Cluster Filter */}
-          <div className="flex items-center gap-1.5 bg-raised/40 border border-hairline rounded-lg px-2.5 py-1 text-xs">
-            <span className="text-neutral-500 font-medium">Cụm kênh:</span>
-            <select className="bg-transparent text-[11px] text-neutral-300 font-medium focus:outline-none cursor-pointer border-0 p-0">
+          <div className="flex items-center gap-1.5 rounded-lg border border-hairline bg-raised/40 px-2.5 py-1 text-xs transition-colors duration-300 hover:border-hairline">
+            <span className="font-medium text-neutral-500">Cụm kênh:</span>
+            <select className="cursor-pointer border-0 bg-transparent p-0 text-[11px] font-medium text-neutral-300 focus:outline-none">
               <option value="all">Tất cả cụm</option>
-              <option value="review">Review Sản Phẩm</option>
-              <option value="cau-ca">Câu Cá</option>
-              <option value="rua-xe">Rửa Xe & Đồ Chơi Xe</option>
             </select>
           </div>
 
-          {/* Platform Filter */}
-          <div className="flex items-center gap-1.5 bg-raised/40 border border-hairline rounded-lg px-2.5 py-1 text-xs">
-            <span className="text-neutral-500 font-medium">Nền tảng:</span>
-            <select className="bg-transparent text-[11px] text-neutral-300 font-medium focus:outline-none cursor-pointer border-0 p-0">
-              <option value="all">Tất cả mạng</option>
-              <option value="facebook">Facebook Reels</option>
-              <option value="tiktok">TikTok</option>
-              <option value="youtube">YouTube Shorts</option>
-            </select>
-          </div>
-
-          {/* Product Filter */}
-          <div className="flex items-center gap-1.5 bg-raised/40 border border-hairline rounded-lg px-2.5 py-1 text-xs">
-            <span className="text-neutral-500 font-medium">Sản phẩm:</span>
-            <select className="bg-transparent text-[11px] text-neutral-300 font-medium focus:outline-none cursor-pointer border-0 p-0">
+          <div className="flex items-center gap-1.5 rounded-lg border border-hairline bg-raised/40 px-2.5 py-1 text-xs transition-colors duration-300 hover:border-hairline">
+            <span className="font-medium text-neutral-500">Sản phẩm:</span>
+            <select className="cursor-pointer border-0 bg-transparent p-0 text-[11px] font-medium text-neutral-300 focus:outline-none">
               <option value="all">Tất cả SP</option>
-              <option value="P-1001">Zukul mini</option>
-              <option value="P-1002">Cần câu Carbon</option>
-              <option value="P-1003">Xay sinh tố mini</option>
             </select>
           </div>
         </div>
       </div>
 
       {/* Notifications & Account info */}
-      <div className="flex items-center justify-end gap-3 shrink-0">
+      <div className="flex shrink-0 items-center justify-end gap-3">
         <button
           type="button"
-          className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-hairline bg-panel/80 text-neutral-400 transition hover:text-neutral-100"
+          className="relative flex h-9 w-9 items-center justify-center rounded-lg border border-hairline bg-panel/80 text-neutral-400 transition-all duration-300 ease-in-out hover:text-neutral-100 active:scale-95"
           aria-label="Thông báo"
         >
           <UtilIcon name="bell" />
-          <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-accent-rose" />
+          <span className="absolute right-2 top-2 h-1.5 w-1.5 rounded-full bg-accent-rose shadow-[0_0_6px_rgba(244,63,94,0.9)]" />
         </button>
 
         <div className="flex items-center gap-2.5 rounded-lg border border-hairline bg-panel/80 px-2.5 py-1.5">

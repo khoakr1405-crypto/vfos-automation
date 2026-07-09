@@ -2,6 +2,8 @@
 
 import { GateCheckButton } from '@/components/gate-check/gate-check-modal';
 import { UtilIcon } from '@/components/icons';
+import { PanelBadge, PanelShell } from '@/components/overview/panel-shell';
+import { PipelineStepCards, type PipelineStep } from '@/components/overview/pipeline-step-cards';
 import type { OperatorJobDTO, VfosJobState } from '@/lib/studio-data/types';
 import { useEffect, useState } from 'react';
 
@@ -51,6 +53,29 @@ const STATE_ACCENT: Record<VfosJobState, string> = {
   WAITING_FOR_SOURCE_VIDEO: 'text-neutral-400',
   CREATED: 'text-neutral-400',
 };
+
+// 6 BƯỚC pipeline hiển thị cho Operator (redesign concept — khối "Trạng thái
+// lane"): gom count THẬT từ state máy theo khung 5 bước STATE_TO_STEP, tách
+// bước 5 thành Đóng gói / Đã đăng cho khớp cổng đăng. FAILED tách thành chip
+// lỗi riêng (không phải bước pipeline).
+const PIPELINE_STEPS: Array<{
+  label: string;
+  accent: PipelineStep['accent'];
+  states: VfosJobState[];
+  sub: string;
+}> = [
+  { label: 'Sản phẩm', accent: 'green', states: ['CREATED', 'WAITING_FOR_SOURCE_VIDEO'], sub: 'chờ nguồn' },
+  { label: 'Nguồn sẵn sàng', accent: 'blue', states: ['SOURCE_READY', 'READY_TO_RENDER'], sub: 'sẵn sàng' },
+  { label: 'Sản xuất + QA', accent: 'violet', states: ['RENDERING'], sub: 'đang chạy' },
+  {
+    label: 'Duyệt preview',
+    accent: 'amber',
+    states: ['READY_FOR_OPERATOR_REVIEW', 'REJECTED'],
+    sub: 'chờ duyệt',
+  },
+  { label: 'Đóng gói', accent: 'cyan', states: ['APPROVED', 'PACKAGED'], sub: 'sẵn sàng đăng' },
+  { label: 'Đã đăng', accent: 'green', states: ['PUBLISHED'], sub: 'đã publish' },
+];
 
 const DASH = '—';
 const dash = (v: string | null | undefined): string => (v == null || v === '' ? DASH : v);
@@ -108,28 +133,28 @@ export function ProductReviewStatusPanel() {
     acc[j.state] = (acc[j.state] ?? 0) + 1;
     return acc;
   }, {});
-  const countEntries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+  // Gom count thật theo 6 bước pipeline + lỗi tách riêng.
+  const steps: PipelineStep[] = PIPELINE_STEPS.map((s, i) => ({
+    no: i + 1,
+    label: s.label,
+    accent: s.accent,
+    count: s.states.reduce((sum, st) => sum + (counts[st] ?? 0), 0),
+    sub: s.sub,
+  }));
+  const failedCount = counts.FAILED ?? 0;
 
   return (
-    <div className="rounded-2xl border border-hairline bg-card/80 shadow-[0_1px_0_0_rgba(255,255,255,0.03)_inset]">
-      <div className="flex items-center justify-between gap-3 border-b border-hairline px-5 py-4">
-        <div className="flex items-center gap-3">
-          <span className="h-3.5 w-1 shrink-0 rounded-full bg-current text-accent-amber" />
-          <div>
-            <h2 className="text-sm font-semibold tracking-tight text-neutral-100">
-              Trạng thái Product Review
-            </h2>
-            <p className="mt-0.5 text-xs text-neutral-500">
-              Chỉ đọc — tổng quan job lane Review Sản phẩm. Không phải cửa hành động.
-            </p>
-          </div>
-        </div>
-        <span className="shrink-0 text-xs text-neutral-500 tabular-nums">
-          Tổng: <strong className="text-neutral-300">{rows.length}</strong> job
-        </span>
-      </div>
-
-      <div className="px-5 py-4">
+    <PanelShell
+      accent="amber"
+      title="Trạng thái lane — Review Sản phẩm"
+      subtitle="Chỉ đọc — job thật gom theo bước pipeline. Không phải cửa hành động."
+      right={
+        <PanelBadge>
+          Tổng: <strong className="font-mono text-sm text-neutral-100">{rows.length}</strong> job
+        </PanelBadge>
+      }
+    >
+      <>
         {loading ? (
           <div className="space-y-2">
             <div className="flex gap-1.5" aria-hidden>
@@ -154,32 +179,30 @@ export function ProductReviewStatusPanel() {
             <p className="text-xs text-neutral-500">Chưa có job nào trong lane.</p>
           </div>
         ) : (
-          <details className="group">
-            {/* Summary luôn hiện: chip state (tóm tắt) + nút mở bảng. Bảng gập mặc định. */}
-            <summary className="flex cursor-pointer list-none flex-wrap items-center gap-1.5 [&::-webkit-details-marker]:hidden">
-              {countEntries.map(([state, n]) => (
-                <span
-                  key={state}
-                  className="inline-flex items-center gap-1.5 rounded-md border border-hairline bg-raised/30 px-2 py-1 font-mono text-[10px] text-neutral-300 transition-colors duration-300 ease-in-out hover:bg-raised/50"
-                >
-                  <span
-                    className={`h-1.5 w-1.5 rounded-full bg-current ${STATE_ACCENT[state as VfosJobState]}`}
+          <div className="space-y-3">
+            {/* 6 thẻ BƯỚC pipeline — count thật gom từ state (thay chip state máy). */}
+            <PipelineStepCards steps={steps} />
+
+            <details className="group">
+              <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2 [&::-webkit-details-marker]:hidden">
+                {failedCount > 0 && (
+                  <span className="inline-flex items-center gap-1.5 rounded-lg border border-accent-rose/30 bg-accent-rose/10 px-2.5 py-1 text-[10px] font-semibold text-accent-rose">
+                    <UtilIcon name="x" width={11} height={11} />
+                    Lỗi (FAILED){' '}
+                    <span className="font-mono text-xs font-bold tabular-nums">{failedCount}</span>
+                  </span>
+                )}
+                <span className="ml-auto flex shrink-0 items-center gap-1 text-[10px] font-semibold text-neutral-400 transition-colors duration-300 hover:text-neutral-200">
+                  <span className="group-open:hidden">Xem bảng chi tiết theo state</span>
+                  <span className="hidden group-open:inline">Ẩn bảng</span>
+                  <UtilIcon
+                    name="chevron"
+                    width={12}
+                    height={12}
+                    className="transition-transform duration-300 ease-in-out group-open:rotate-90"
                   />
-                  {state}
-                  <span className="font-semibold text-neutral-100 tabular-nums">{n}</span>
                 </span>
-              ))}
-              <span className="ml-auto flex shrink-0 items-center gap-1 text-[10px] font-semibold text-neutral-400 transition-colors duration-300 hover:text-neutral-200">
-                <span className="group-open:hidden">Xem bảng</span>
-                <span className="hidden group-open:inline">Ẩn bảng</span>
-                <UtilIcon
-                  name="chevron"
-                  width={12}
-                  height={12}
-                  className="transition-transform duration-300 ease-in-out group-open:rotate-90"
-                />
-              </span>
-            </summary>
+              </summary>
 
             <div className="mt-3 overflow-x-auto">
               <table className="w-full text-left text-[11px]">
@@ -234,9 +257,10 @@ export function ProductReviewStatusPanel() {
                 </tbody>
               </table>
             </div>
-          </details>
+            </details>
+          </div>
         )}
-      </div>
-    </div>
+      </>
+    </PanelShell>
   );
 }

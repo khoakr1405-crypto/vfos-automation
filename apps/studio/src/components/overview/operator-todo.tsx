@@ -2,6 +2,7 @@
 
 import { GateCheckButton } from '@/components/gate-check/gate-check-modal';
 import { UtilIcon } from '@/components/icons';
+import { PanelBadge, PanelShell } from '@/components/overview/panel-shell';
 import {
   TODO_BUCKET_ACCENT,
   TODO_BUCKET_LABEL,
@@ -57,13 +58,31 @@ const TEXT_TONE: Record<TodoAccent, string> = {
   neutral: 'text-neutral-400',
 };
 
-// Viền + nền nhấn cho card severity khi tier có job (>0). Neutral khi rỗng.
-const SEVERITY_CARD_TONE: Record<TodoAccent, string> = {
-  rose: 'border-accent-rose/30 bg-accent-rose/5',
-  amber: 'border-accent-amber/25 bg-accent-amber/5',
-  cyan: 'border-accent-cyan/25 bg-accent-cyan/5',
-  green: 'border-accent-green/25 bg-accent-green/5',
-  neutral: 'border-hairline bg-raised/10',
+// Icon tile vuông bo tròn (redesign concept): nền tô màu đậm + glow theo tone.
+const TILE_TONE: Record<TodoAccent, string> = {
+  rose: 'border-accent-rose/40 bg-accent-rose/20 text-accent-rose shadow-[0_0_18px_-4px_rgba(244,63,94,0.6)]',
+  amber:
+    'border-accent-amber/40 bg-accent-amber/20 text-accent-amber shadow-[0_0_18px_-4px_rgba(245,158,11,0.6)]',
+  cyan: 'border-accent-cyan/40 bg-accent-cyan/20 text-accent-cyan shadow-[0_0_18px_-4px_rgba(34,211,238,0.6)]',
+  green:
+    'border-accent-green/40 bg-accent-green/20 text-accent-green shadow-[0_0_18px_-4px_rgba(34,197,94,0.6)]',
+  neutral: 'border-hairline bg-raised/40 text-neutral-500',
+};
+
+// Viền row đặc theo tone khi tier có job (>0) — viền sáng rõ như ảnh concept.
+const ROW_ACTIVE_BORDER: Record<TodoAccent, string> = {
+  rose: 'border-accent-rose/25',
+  amber: 'border-accent-amber/25',
+  cyan: 'border-accent-cyan/25',
+  green: 'border-accent-green/25',
+  neutral: 'border-hairline/60',
+};
+
+// Icon đại diện tier (Nguy cấp / Cần thao tác / Thiếu nguồn).
+const SEVERITY_ICON: Record<string, 'x' | 'clock' | 'download'> = {
+  critical: 'x',
+  action: 'clock',
+  missing: 'download',
 };
 
 function fmtTime(iso: string | null): string {
@@ -113,38 +132,30 @@ export function OperatorTodo() {
   });
 
   return (
-    <div className="rounded-2xl border border-hairline bg-card/80 shadow-[0_1px_0_0_rgba(255,255,255,0.03)_inset]">
-      <div className="flex items-center justify-between gap-3 border-b border-hairline px-5 py-4">
-        <div className="flex items-center gap-3">
-          <span className="h-3.5 w-1 shrink-0 rounded-full bg-current text-accent-blue" />
-          <div>
-            <h2 className="text-sm font-semibold tracking-tight text-neutral-100">
-              Việc Operator cần làm
-            </h2>
-            <p className="mt-0.5 text-xs text-neutral-500">
-              Chỉ đọc — gom job cần hành động từ cả 2 lane, xếp theo mức ưu tiên. Bấm "Vào lane" để
-              xử lý.
-            </p>
-          </div>
-        </div>
-        <span className="shrink-0 text-xs text-neutral-500 tabular-nums">
-          Cần xử lý: <strong className="text-neutral-300">{todo?.totalActionable ?? 0}</strong> job
-        </span>
-      </div>
-
-      <div className="px-5 py-4">
+    <PanelShell
+      accent="blue"
+      title="Công việc ưu tiên"
+      subtitle='Chỉ đọc — gom job cần hành động từ cả 2 lane, xếp theo mức ưu tiên. Bấm "Vào lane" để xử lý.'
+      right={
+        <PanelBadge>
+          Cần xử lý:{' '}
+          <strong className="font-mono text-sm text-neutral-100">
+            {todo?.totalActionable ?? 0}
+          </strong>{' '}
+          job
+        </PanelBadge>
+      }
+    >
+      <>
         {load === 'loading' ? (
           <div className="space-y-2">
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3" aria-hidden>
-              {['sk-1', 'sk-2', 'sk-3'].map((k) => (
-                <div
-                  key={k}
-                  className="h-14 animate-pulse rounded-xl border border-hairline/40 bg-raised/20"
-                />
-              ))}
-            </div>
-            <div className="h-9 animate-pulse rounded-lg bg-raised/15" aria-hidden />
-            <div className="h-9 animate-pulse rounded-lg bg-raised/10" aria-hidden />
+            {['sk-1', 'sk-2', 'sk-3'].map((k) => (
+              <div
+                key={k}
+                aria-hidden
+                className="h-[62px] animate-pulse rounded-xl border border-white/[0.04] bg-white/[0.02]"
+              />
+            ))}
             <span className="sr-only">Đang tải việc cần làm…</span>
           </div>
         ) : load === 'error' || !todo ? (
@@ -164,53 +175,60 @@ export function OperatorTodo() {
           </div>
         ) : (
           <>
-            {/* Severity band — 3 tier ưu tiên, tier "Nguy cấp" (BLOCKED/FAILED) nổi bật nhất. */}
-            <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+            {/* Danh sách ưu tiên (redesign concept) — mỗi tier = 1 row PANEL đặc:
+                icon tile vuông bo tròn tô màu + nhãn + breakdown bucket, SỐ TO
+                canh phải theo tone. Data = severityGroups thật, không mock. */}
+            <div className="mb-3 space-y-2.5">
               {severityGroups.map(({ sev, buckets, total }) => {
                 const tone = TODO_SEVERITY_ACCENT[sev];
                 const active = total > 0;
                 return (
                   <div
                     key={sev}
-                    className={`rounded-xl border px-3 py-2.5 transition-colors duration-300 ease-in-out ${
-                      active ? SEVERITY_CARD_TONE[tone] : 'border-hairline/40 bg-raised/5'
+                    className={`flex items-center gap-4 rounded-xl border bg-panel/70 px-4 py-3.5 transition-colors duration-300 ease-in-out ${
+                      active
+                        ? `${ROW_ACTIVE_BORDER[tone]} hover:bg-panel`
+                        : 'border-hairline/60 hover:border-hairline'
                     }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <span
-                        className={`flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] ${
-                          active ? TEXT_TONE[tone] : 'text-neutral-600'
+                    <span
+                      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border ${
+                        active ? TILE_TONE[tone] : TILE_TONE.neutral
+                      }`}
+                    >
+                      <UtilIcon name={SEVERITY_ICON[sev] ?? 'bell'} width={18} height={18} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p
+                        className={`text-sm font-semibold tracking-tight ${
+                          active ? 'text-neutral-50' : 'text-neutral-500'
                         }`}
                       >
-                        <span
-                          className={`h-1.5 w-1.5 rounded-full ${active ? DOT_TONE[tone] : 'bg-neutral-700'}`}
-                        />
                         {TODO_SEVERITY_LABEL[sev]}
-                      </span>
-                      <span
-                        className={`font-mono text-lg font-bold leading-none tabular-nums ${
-                          active ? TEXT_TONE[tone] : 'text-neutral-600'
-                        }`}
-                      >
-                        {total}
-                      </span>
-                    </div>
-                    <div className="mt-1.5 flex flex-wrap gap-x-2 gap-y-0.5">
-                      {buckets.map((b) => {
-                        const n = todo.counts[b];
-                        return (
-                          <span
-                            key={b}
-                            className={`text-[10px] ${n > 0 ? 'text-neutral-400' : 'text-neutral-600'}`}
-                          >
+                      </p>
+                      <p className="mt-1 truncate text-[11px] text-neutral-500">
+                        {buckets.map((b, i) => (
+                          <span key={b}>
+                            {i > 0 && <span className="text-neutral-700"> · </span>}
                             {TODO_BUCKET_LABEL[b]}{' '}
-                            <span className="font-mono font-semibold text-neutral-300 tabular-nums">
-                              {n}
+                            <span
+                              className={`font-mono font-semibold tabular-nums ${
+                                todo.counts[b] > 0 ? 'text-neutral-200' : 'text-neutral-600'
+                              }`}
+                            >
+                              {todo.counts[b]}
                             </span>
                           </span>
-                        );
-                      })}
+                        ))}
+                      </p>
                     </div>
+                    <span
+                      className={`shrink-0 font-mono text-[2rem] font-bold leading-none tabular-nums ${
+                        active ? TEXT_TONE[tone] : 'text-neutral-700'
+                      }`}
+                    >
+                      {total}
+                    </span>
                   </div>
                 );
               })}
@@ -303,7 +321,7 @@ export function OperatorTodo() {
             </details>
           </>
         )}
-      </div>
-    </div>
+      </>
+    </PanelShell>
   );
 }
