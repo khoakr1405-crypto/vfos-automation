@@ -9,11 +9,15 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import {
-  alignSubtitles,
+  alignSubtitlesResilient,
   buildRenderPlan,
   chunkForSubtitles,
 } from '../../../packages/ai-agents/src/index.js';
-import type { EdgeWord, SubtitleCue } from '../../../packages/ai-agents/src/index.js';
+import type {
+  EdgeWord,
+  SubtitleCue,
+  SubtitleTiming,
+} from '../../../packages/ai-agents/src/index.js';
 import {
   EDGE_FEMALE_VOICE,
   EDGE_MALE_VOICE,
@@ -147,20 +151,37 @@ export function cmdRenderPlan(args: string[]): number {
     durationSec = last ? last.offsetSec + last.durationSec : 0;
   }
 
-  // ---- 3) chunk + align (PURE @vfos/ai-agents) ----
+  // ---- 3) chunk + align (PURE @vfos/ai-agents, chống-lệch 2 tầng) ----
   const chunks = chunkForSubtitles(voiceoverText);
   let subtitles: SubtitleCue[];
+  let subtitleTiming: SubtitleTiming;
   try {
-    subtitles = alignSubtitles(chunks, words);
+    const aligned = alignSubtitlesResilient(chunks, words);
+    subtitles = aligned.cues;
+    subtitleTiming = aligned.timing;
   } catch (e) {
+    // Chỉ còn lỗi THẬT (audio rỗng), không phải lệch số từ.
     console.error(`🛑 SUBTITLE_ALIGN_FAILED: ${(e as Error).message}`);
-    console.error('  edge-tts word boundaries lệch số từ với chunker → cần round chuẩn hoá token.');
     return 8;
+  }
+  if (subtitleTiming === 'proportional_fallback') {
+    console.log(
+      '⚠️  Subtitle timing:  proportional_fallback (số từ TTS lệch chunker sau chuẩn hoá token → chia theo tỉ lệ, timing xấp xỉ).',
+    );
+  } else {
+    console.log('   Subtitle timing:  perfect_match (khớp từng từ).');
   }
 
   // ---- 4) build render_plan + write ----
   const videoSourcePath = manifest.source.sourceVideoPath ?? '';
-  const plan = buildRenderPlan(jobId, durationSec, subtitles, videoSourcePath, voiceMp3Rel);
+  const plan = buildRenderPlan(
+    jobId,
+    durationSec,
+    subtitles,
+    videoSourcePath,
+    voiceMp3Rel,
+    subtitleTiming,
+  );
 
   if (dryRun) {
     console.log(

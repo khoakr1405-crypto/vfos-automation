@@ -17,6 +17,13 @@ export interface SubtitleCue {
   endSec: number;
 }
 
+/**
+ * Chất lượng khớp thời gian phụ đề trong render_plan:
+ *   - 'perfect_match'        = Tầng A khớp từng từ (chính xác tuyệt đối).
+ *   - 'proportional_fallback'= Tầng B chia theo tỉ lệ (TTS lệch số từ; timing xấp xỉ).
+ */
+export type SubtitleTiming = 'perfect_match' | 'proportional_fallback';
+
 export interface RenderCanvas {
   width: number;
   height: number;
@@ -72,6 +79,8 @@ export interface RenderPlan {
   audio: RenderAudio;
   subtitles: SubtitleCue[];
   subtitleStyle: SubtitleStyle;
+  /** Ghi nhận khớp-từng-từ hay đã rơi về chia-tỉ-lệ (downstream biết timing xấp xỉ). */
+  subtitleTiming: SubtitleTiming;
   overlays: RenderOverlay[];
   output: RenderOutput;
 }

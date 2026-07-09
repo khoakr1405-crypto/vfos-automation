@@ -69,8 +69,14 @@ export type {
   RenderVideoSource,
   SubtitleCue,
   SubtitleStyle,
+  SubtitleTiming,
 } from './render-prep/types.js';
-export { alignSubtitles } from './render-prep/align-subtitles.js';
+export type { ResilientAlignment } from './render-prep/align-subtitles.js';
+export {
+  alignSubtitles,
+  alignSubtitlesResilient,
+  ttsWordCount,
+} from './render-prep/align-subtitles.js';
 export { buildRenderPlan } from './render-prep/build-render-plan.js';
 // Phase 2/3 — skeleton (implement sau)
 export { generateSafeScript } from './script-claim-safety/agent.js';

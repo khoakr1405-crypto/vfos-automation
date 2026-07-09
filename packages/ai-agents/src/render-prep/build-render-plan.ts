@@ -3,7 +3,13 @@
 // KHÔNG đọc/ghi file, KHÔNG probe media — chỉ dựng object.
 
 import { MAX_SUBTITLE_WORDS } from '../script-claim-safety/subtitle-chunker.js';
-import type { RenderCanvas, RenderPlan, SubtitleCue, SubtitleStyle } from './types.js';
+import type {
+  RenderCanvas,
+  RenderPlan,
+  SubtitleCue,
+  SubtitleStyle,
+  SubtitleTiming,
+} from './types.js';
 
 const DEFAULT_CANVAS: RenderCanvas = { width: 1080, height: 1920, fps: 30 };
 
@@ -30,6 +36,7 @@ export function buildRenderPlan(
   subtitles: SubtitleCue[],
   videoSourcePath: string,
   audioPath: string,
+  subtitleTiming: SubtitleTiming = 'perfect_match',
 ): RenderPlan {
   return {
     renderPlanVersion: 'v1',
@@ -51,6 +58,7 @@ export function buildRenderPlan(
     },
     subtitles,
     subtitleStyle: { ...DEFAULT_SUBTITLE_STYLE },
+    subtitleTiming,
     overlays: [],
     output: { path: deriveOutputPath(audioPath) },
   };
