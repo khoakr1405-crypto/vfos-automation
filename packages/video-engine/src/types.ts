@@ -5,6 +5,8 @@
 
 export type VideoFit = 'cover' | 'contain';
 
+export type SubtitleTiming = 'perfect_match' | 'proportional_fallback';
+
 export interface RenderCanvas {
   width: number;
   height: number;
@@ -59,6 +61,8 @@ export interface RenderPlanInput {
   subtitles: SubtitleCueInput[];
   subtitleStyle: SubtitleStyleInput;
   output: { path: string };
+  /** Nhãn khớp thời gian (từ render_plan.json). Mặc định 'perfect_match'. */
+  subtitleTiming?: SubtitleTiming;
 }
 
 /** 1 đầu vào `-i` cho ffmpeg. */
@@ -95,13 +99,25 @@ export interface BuildOptions {
   assFileName?: string;
 }
 
-/** Kết quả render (contract cho runner R2 — R1 chỉ khai báo, chưa dựng). */
+/** Tuỳ chọn cho runner I/O (R2). */
+export interface RenderOptions {
+  /** Thư mục làm việc (tuyệt đối) — cwd của ffmpeg + nơi ghi render_subs.ass. */
+  jobDir: string;
+  /** Gốc để resolve path input/output trong plan (mặc định process.cwd()). */
+  baseDir?: string;
+  /** Ghi đè tên file .ass (mặc định 'render_subs.ass'). */
+  assFileName?: string;
+  /** Ghi đè binary ffmpeg (mặc định 'ffmpeg' trên PATH). */
+  ffmpegPath?: string;
+}
+
+/** Kết quả render (runner R2 trả về khi thành công; fail thì ném lỗi). */
 export interface RenderResult {
   ok: boolean;
   outputPath: string;
   exitCode: number;
   durationSec: number;
-  subtitleTiming: 'perfect_match' | 'proportional_fallback';
+  subtitleTiming: SubtitleTiming;
   warnings: string[];
   stderrTail?: string;
 }
