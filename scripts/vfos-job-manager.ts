@@ -13,6 +13,7 @@ import { cmdList } from './job-manager/commands/list.js';
 import { cmdPackage } from './job-manager/commands/package.js';
 import { cmdReject } from './job-manager/commands/reject.js';
 import { cmdRenderPlan } from './job-manager/commands/render-plan.js';
+import { cmdRenderVideo } from './job-manager/commands/render-video.js';
 import { cmdRunReview } from './job-manager/commands/run-review.js';
 import { cmdScript } from './job-manager/commands/script.js';
 import { cmdSourceInbox } from './job-manager/commands/source-inbox.js';
@@ -27,6 +28,7 @@ const COMMANDS: Record<string, (args: string[]) => number | Promise<number>> = {
   'run-review': cmdRunReview,
   script: cmdScript,
   'render-plan': cmdRenderPlan,
+  'render-video': cmdRenderVideo,
   approve: cmdApprove,
   reject: cmdReject,
   package: cmdPackage,
@@ -43,6 +45,7 @@ const USAGE = `Usage:
   pnpm job:run-review    --job <jobId> --file <path|inbox-filename> [--confirm-ai]
   pnpm job:script        --job <jobId> [--dry-run]
   pnpm job:render-plan   --job <jobId> [--confirm-tts] [--voice male|female] [--force] [--dry-run]
+  pnpm job:render-video  --job <jobId> [--confirm-render] [--dry-run]
   pnpm job:approve       --job <jobId> [--notes "..."] [--dry-run]
   pnpm job:reject        --job <jobId> --notes "..." [--dry-run]
   pnpm job:package       --job <jobId> [--dry-run]

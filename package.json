@@ -81,6 +81,7 @@
     "job:source-inbox": "tsx scripts/vfos-job-manager.ts source-inbox",
     "job:script": "tsx scripts/vfos-job-manager.ts script",
     "job:render-plan": "tsx scripts/vfos-job-manager.ts render-plan",
+    "job:render-video": "tsx scripts/vfos-job-manager.ts render-video",
     "job:approve": "tsx scripts/vfos-job-manager.ts approve",
     "job:reject": "tsx scripts/vfos-job-manager.ts reject",
     "job:package": "tsx scripts/vfos-job-manager.ts package",
