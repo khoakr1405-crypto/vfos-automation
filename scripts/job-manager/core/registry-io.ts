@@ -59,6 +59,28 @@ export function entryFromManifest(
   };
 }
 
+/**
+ * Cập nhật entry registry theo manifest (partial update — KHÔNG upsert; job chưa
+ * có trong registry thì bỏ qua). Behavior-preserving move từ
+ * review-video-orchestrator (N1): giữ nguyên field set + early-return.
+ */
+export function updateRegistryFromManifest(manifest: JobManifest): void {
+  const reg = loadRegistry();
+  const idx = reg.jobs.findIndex((j) => j.jobId === manifest.jobId);
+  if (idx < 0) return;
+  const existing = reg.jobs[idx];
+  if (!existing) return;
+  reg.jobs[idx] = {
+    ...existing,
+    state: manifest.state,
+    sourceVideoPath: manifest.source.sourceVideoPath,
+    captionedPreviewPath: manifest.artifacts.captionedPreviewPath,
+    operatorDecision: manifest.review.operatorDecision,
+    updatedAt: manifest.updatedAt,
+  };
+  saveRegistry(reg);
+}
+
 export function productNameFromManifest(manifest: JobManifest): string | null {
   const cardPath = resolve(manifest.source.productCardPath);
   if (!existsSync(cardPath)) return null;

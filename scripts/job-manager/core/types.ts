@@ -29,6 +29,18 @@ export interface JobManifest {
   source: {
     productCardPath: string;
     sourceVideoPath: string | null;
+    // ---- Trace fields (pipeline review ghi khi resolve clean source) ----
+    // Trước đây orchestrator ghi qua `(source as any)` — model hoá để hết cast.
+    cleanlinessStatus?: string | null;
+    provider?: string | null;
+    localPath?: string | null;
+    approvedSourceVideoPath?: string | null;
+    sourceVideoPathUsedByPipeline?: string | null;
+    requestedProvider?: string | null;
+    actualProvider?: string | null;
+    sourceVideoProvider?: string | null;
+    cleanlinessReportPath?: string | null;
+    sourceResolvedAt?: string | null;
   };
   artifacts: {
     scriptArtifactPath: string | null;
@@ -60,6 +72,17 @@ export interface JobManifest {
   updatedAt: string;
   lastError?: string | null;
   qaStatus?: 'PASS' | 'FAIL' | 'PENDING' | null;
+  // ---- Review pipeline fields (trước đây chỉ có trong JobManifest cục bộ của
+  // review-video-orchestrator — hợp nhất về SSOT khi giải phẫu god-file) ----
+  /** Source-subtitle scrub: mặc định BẬT (undefined/true). false = tắt cho job này. */
+  scrubSourceSubtitle?: boolean;
+  bgmPolicy?: 'BGM_REQUIRED' | 'ALLOW_NO_BGM_OPERATOR_OVERRIDE' | null;
+  duration?: {
+    sourceVideoDurationSec: number;
+    voiceDurationSec: number;
+    captionedPreviewDurationSec: number | null;
+    durationMatchStatus: 'PASS' | 'FAIL';
+  } | null;
 }
 
 export interface RegistryEntry {
