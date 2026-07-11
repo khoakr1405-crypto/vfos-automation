@@ -3211,11 +3211,33 @@ Pipeline anchors chạy đầy đủ (từ log): cắt 4 money-shot → vision h
 
 ---
 
+### ✅ Phần 72 — Siêu chiến dịch Xây dựng Cỗ máy Render Video & Đóng Loop UI Sản xuất (2026-07-11, ĐÃ PUSH)
+
+> Chiến dịch dài nhiều nhịp: biến `render_plan.json` thành `preview.mp4` 9:16 hoàn chỉnh, rồi đưa nút Render lên Web — Operator ra video bằng chuột, KHÔNG cần terminal. (Operator gọi "Phần 66"; số thực tế kế tiếp = **72** để giữ thứ tự log.)
+
+1. **Subtitle Chunker ✅** (`@vfos/ai-agents/subtitle-chunker.ts`): `chunkForSubtitles` băm phụ đề ≤ 12 từ/dòng theo atomization + glue — **không cắt rời số tiền/đơn vị** ("10.000đ") và cặp nhãn↔giá trị (UPF 50+); ngắt ở phẩy/chấm phẩy/liên từ. Thuần string, KHÔNG AI. Commit `7d7bd38`.
+
+2. **Alignment 2 Tầng ✅** (`render-prep/align-subtitles.ts`): **Tầng A** khớp từng từ qua `ttsWordCount` (chẻ thêm dấu ngăn trong-từ `/ - – —` để khớp cách edge-tts tokenize — vá gốc lỗi "hàng/bio" nhả 2 token). **Tầng B** Proportional Fallback: TTS lệch số từ vẫn KHÔNG throw, chia span theo tỉ lệ ký tự → gắn cờ `subtitleTiming`. Pure + vitest (ca slash + ca lệch nghiêm trọng). Commit `6f88c0d` (schema+pure) → `27bd46d` (CLI render-plan + edge-tts) → `60fce32` (nâng resilient 2 tầng).
+
+3. **Lò nướng `@vfos/video-engine` ✅** (package mới, `dependencies: {}`, mô phỏng khuôn ai-agents): tách đôi **PURE core** (`filter-graph.ts` dựng `filter_complex` gánh cùng lúc scale/crop cover 1080×1920 + burn ASS + audio ducking `sidechaincompress` tái dùng recipe lane Giải trí; `ass-writer.ts` sinh ASS V4+) **+ I/O runner** (`ffmpeg-runner.ts`: preflight `ffmpeg -version` fail-fast → ghi `render_subs.ass` UTF-8 BOM → `spawnSync` với `cwd=jobDir` → parse exit/stderr → `RenderResult`). Engine = **FFmpeg CLI thuần** (không fluent-ffmpeg), theo RFC `docs/RFC_VIDEO_RENDERER.md`. vitest 10/10. Commit `5569387` (core) + `4a06ba7` (runner).
+
+4. **Trạm CLI + Bắn đạn thật ✅**: `scripts/job-manager/commands/render-video.ts` (gate `--confirm-render`, exit 1/2/3/5/6, chuyển state → `READY_FOR_OPERATOR_REVIEW`, ghi `render_report.json`) — đăng ký dispatcher + `pnpm job:render-video`. **Live-fire `job_20260616_001`**: `render_plan.json` → **`preview.mp4` 1080×1920 h264+aac, 47.40s, 27.5 MB, 24 dòng phụ đề burn, perfect_match, warnings []** (Exit 0, verify ffprobe). Commit `1f5a227`.
+
+5. **Đóng Loop UI — Giải phóng Operator khỏi Terminal ✅**: route MỚI `POST /api/studio/jobs/[jobId]/run-render-video` (tách biệt route `run-production` cũ đang chạy pipeline `run-review` — additive, không phá lane Product Review) — gate server-side **SOURCE_READY + WATERMARK_NOT_DETECTED + render_plan tồn tại**, side-effect duy nhất `runRepoScript(job:render-video --confirm-render)`. Nút **"Sản xuất video (Render)"** trên `operator-job-queue.tsx` (spinner → POST → thẻ tự đổi + player 9:16). DTO thêm `hasRenderPlan` + preview fallback `previewVideoPath`. Operator DUYỆT UI trực quan → **bấm chuột trên web ra video thật** (`job_20260616_001` render qua nút → xem preview → Approve → `APPROVED`). Commit `76c2d4c`.
+
+**Gate tổng:** `@vfos/video-engine` typecheck + biome + vitest 10/10 sạch; studio typecheck + build Exit 0; biome UI = 0 lỗi mới (đo stash-baseline). API live-test gate: job chưa sạch → 409, jobId bậy → 404 (chặn đúng, 0 side-effect). No-Go: KHÔNG đụng `scripts/vfos-job-manager.ts`; KHÔNG auto-publish (dừng `READY_FOR_OPERATOR_REVIEW`).
+
+**Trạng thái git:** 8 commit `7d7bd38 · 6f88c0d · 27bd46d · 60fce32 · 5569387 · 4a06ba7 · 1f5a227 · 76c2d4c` — **TẤT CẢ đã push** origin `feat/ent-multichannel` (sync 0/0). `job_20260616_001` giữ state `APPROVED` làm vật liệu test Publish sau (manifest gốc backup ở scratchpad).
+
+**Bước tiếp theo duy nhất:** **Ưu tiên 2 — Giải phẫu God-files & Dọn dẹp Phân xưởng `scripts/`.** `vfos-job-manager.ts` ĐÃ gỡ bom (74 dòng, Phần 71) → mục tiêu kế = 2 god-file lớn nhất còn lại: **`scripts/review-video-orchestrator.ts` (1938 dòng)** + **`scripts/kinetic-caption-renderer.ts` (1057 dòng)**. Theo No-Go #9: **lập Step Inventory (6 cột) TRƯỚC khi băm**, tách theo khuôn `job-manager/` (dispatcher → commands → core, 1 chiều), byte-identical move + smoke từng bước; KHÔNG đổi hành vi.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
 |---|---|
-| BGM dynamic ducking (sidechain) | Chưa làm (v0 dùng fixed volume) |
+| BGM dynamic ducking (sidechain) | ✅ Có trong `@vfos/video-engine` (filter-graph `sidechaincompress`, Phần 72); lane render cũ vẫn fixed volume |
 | Watermark detection tự động | Chưa làm (spec có, code không) |
 | Text overlay tự động | Chưa làm (thủ công CapCut) |
 | Publish workflow tự động | Chưa làm (thủ công) |
