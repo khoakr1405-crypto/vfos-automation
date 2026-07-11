@@ -42,9 +42,15 @@ function buildScriptSys(subject: string): string {
   return `Bạn viết LỜI BÌNH (voiceover) tiếng Việt cho một vlog đi câu/giải trí ngoài trời (nguồn Trung Quốc) để đăng TikTok Việt.
 ĐỐI TƯỢNG đang quay: ${subject.toUpperCase()} (theo VISION khung hình). Gọi ĐÚNG con vật đang thấy; TUYỆT ĐỐI KHÔNG đổi loài.
 
+BẢN ĐỊA HÓA THEO BỐI CẢNH (LUẬT CỨNG — chống dịch máy):
+- Bạn là CHUYÊN GIA BẢN ĐỊA HÓA: PHẢI hiệu chỉnh từ vựng theo bối cảnh THẬT của video (nhìn VISION/BỐI CẢNH THẬT + đọc lời gốc), TUYỆT ĐỐI KHÔNG dịch word-by-word.
+- Xác định VÙNG NƯỚC trước khi viết: biển / hồ / sông / suối / ao — suy từ VISION (bờ đất, thuyền nhỏ, nước đục, loài cá nước ngọt như chép/trắm/rô…) và lời gốc. KHÔNG mặc định là biển.
+- 海/大海 trong lời gốc KHÔNG tự động = "biển": bối cảnh nước ngọt thì phải nói "hồ/sông/vùng nước này". Loài cá nước ngọt mà kể "ngoài biển" là SAI NGỮ CẢNH — cấm.
+- Nguyên tắc: nghĩa đúng bối cảnh > chữ đúng mặt chữ.
+
 GIỌNG & NHÂN VẬT:
 - Một nhân vật xưng "tôi/anh", tự tin, lầy, hài duyên — KHÔNG nhạt, KHÔNG xàm.
-- Bám PERSONA & câu chuyện gốc (đọc STORY CONTEXT): tay câu tự nhận là nhanh nhất vùng biển, cố tình đi câu giữa trưa cho khác người, rồi cá lên liên tục như trúng số.
+- Bám PERSONA & câu chuyện gốc (đọc STORY CONTEXT của CHÍNH video này): rút cách tự xưng, kiểu chém gió, mục tiêu buổi câu từ lời gốc — mỗi video một persona riêng, KHÔNG bê persona của video khác vào.
 
 LUẬT VIẾT CÂU (BẮT BUỘC):
 - MỖI beat là MỘT CÂU TIẾNG VIỆT HOÀN CHỈNH, tự nhiên, có chủ-vị, dài 8–14 từ, KẾT bằng dấu câu (. ! ?). Có thể dùng dấu phẩy giữa câu.
@@ -57,7 +63,7 @@ HUMOR REACTION LAYER (BẮT BUỘC, vừa phải):
 - KHÔNG thêm vào mọi beat; KHÔNG lặp một kiểu quá 2 lần; KHÔNG làm câu >16 từ; KHÔNG mất nghĩa gốc/meme; KHÔNG lố/kịch.
 
 MEME/LÓNG TRUNG — GIỮ & VIỆT HÓA (đừng xóa, đừng dịch khô):
-- 这片海最快的男人 → "tay câu nhanh nhất cái vùng biển này".
+- 这片海最快的男人 → "tay câu nhanh nhất cái vùng nước này" (thay "vùng nước" bằng biển/hồ/sông ĐÚNG bối cảnh thật).
 - 跟拔萝卜一样 → "câu cá mà cứ như nhổ củ cải".
 - 快到碗里来 → "mau chui vào thùng cho anh nào".
 - 葫芦娃救爷爷 / 七娃八娃九娃 / 大娃 → đếm cá kiểu anh em Hồ Lô cho vui: "đứa thứ bảy", "thứ tám lên luôn", "tới đứa thứ chín", con to nhất = "anh cả".
@@ -338,7 +344,10 @@ async function main(): Promise<void> {
   const baseUser = (
     story
       ? [
-          `Đây là VIDEO KỂ CHUYỆN câu ${subject} ngoài biển, dài ${Math.round(montageTotal)}s, dựng theo MẠCH: setup → buildup → escalation → climax → resolution.`,
+          `Đây là VIDEO KỂ CHUYỆN câu ${subject}, dài ${Math.round(montageTotal)}s, dựng theo MẠCH: setup → buildup → escalation → climax → resolution. VÙNG NƯỚC (biển/hồ/sông/suối): TỰ XÁC ĐỊNH từ BỐI CẢNH THẬT + lời gốc bên dưới — KHÔNG mặc định biển.`,
+          visionWhat.length > 0
+            ? `BỐI CẢNH THẬT (vision từng money-shot — dùng để chọn đúng vùng nước + gọi đúng loài): ${visionWhat.slice(0, 6).join(' | ')}`
+            : `ĐỐI TƯỢNG THẬT: ${subject}.`,
           `Các đoạn (montage time → vai): ${segs
             .filter((s) => storyRoleByIdx.get(s.idx) !== 'teaser')
             .map((s) => `${Math.round(s.montageStart)}s ${storyRoleByIdx.get(s.idx) ?? 'catch'}`)
@@ -358,7 +367,7 @@ async function main(): Promise<void> {
           `Yêu cầu: ${beatLo}–${beatHi} beat, mỗi câu 8–13 từ có dấu câu, TỔNG đọc ≤ ${Math.max(20, Math.round(montageTotal - 9))}s (thà ít/gọn hơn voice tràn). 3–4 reaction whitelist ("Ha ha,"/"He he,"/"Ơ kìa,"/"Trời ơi,"/"Đúng bài rồi,") — CHỈ ghép Ở CẢNH CÁ LÊN (money-shot, t ≥ ${reactFloor}s); TUYỆT ĐỐI KHÔNG đặt reaction trong đoạn setup/persona mở đầu (giữ setup là lời kể nhân vật, không reo). Trả JSON {"beats":[...]}.`,
         ]
       : [
-          `Montage câu ${subject} ngoài biển, dài ${Math.round(montageTotal)}s, có ${segs.length - 1} cú ${subject} lên (money-shot).`,
+          `Montage câu ${subject}, dài ${Math.round(montageTotal)}s, có ${segs.length - 1} cú ${subject} lên (money-shot). VÙNG NƯỚC (biển/hồ/sông/suối): tự xác định từ ĐỐI TƯỢNG THẬT + lời gốc — KHÔNG mặc định biển.`,
           visionWhat.length > 0
             ? `ĐỐI TƯỢNG THẬT (vision — gọi đúng, KHÔNG đổi loài): ${visionWhat.slice(0, 6).join(' | ')}`
             : `ĐỐI TƯỢNG THẬT: ${subject}.`,

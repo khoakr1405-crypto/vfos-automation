@@ -7,7 +7,7 @@
 //   pnpm tsx scripts/ent-vlog/10-montage-v2.ts --id ent_squid_001
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { readAnchorPlan } from './lib/anchors.js';
@@ -18,12 +18,12 @@ import { EDGE_MALE_VOICE, synthesizeChunk } from './lib/tts-provider.js';
 
 const BGM_LIBRARY = 'production/_media/bgm_library.json';
 
-const VISION_SYS = `Bạn xem các khung hình MONEY-SHOT của 1 video đi câu trên biển.
+const VISION_SYS = `Bạn xem các khung hình MONEY-SHOT của 1 video đi câu (biển/hồ/sông — TỰ nhận diện vùng nước từ khung hình, KHÔNG mặc định biển).
 Viết: (1) 1 HOOK 0–3s cực cuốn, ngắn (≤9 từ), ĐÚNG cảnh đang thấy (con vật vừa câu lên, kéo căng…), KHÔNG bịa.
 (2) Mô tả CỰC NGẮN mỗi khung (con gì đang thấy, đang làm gì) — GỌI ĐÚNG con vật, KHÔNG đoán loài khác.
 Trả JSON {"hook":"...","scenes":[{"idx":<number>,"desc":"..."}]}.`;
 
-const NARRATE_SYS = `Bạn viết LỜI THUYẾT MINH tiếng Việt cho montage đi câu trên biển, dùng CHUNG cho cả giọng đọc lẫn phụ đề.
+const NARRATE_SYS = `Bạn viết LỜI THUYẾT MINH tiếng Việt cho montage đi câu (vùng nước theo cảnh THẬT — biển/hồ/sông, KHÔNG mặc định biển), dùng CHUNG cho cả giọng đọc lẫn phụ đề.
 Quy tắc: mỗi cú = 1 CÂU NGẮN, đời thường, đúng cảnh đang thấy, năng lượng. GỌI ĐÚNG con vật đang thấy, KHÔNG đổi loài. KHÔNG lảm nhảm, KHÔNG dịch máy, KHÔNG bịa quá cảnh.
 Mỗi câu kết thúc bằng dấu (. ! ?). Trả JSON {"lines":[{"idx":<number>,"vi":"<1 câu>"}]}.`;
 
@@ -215,7 +215,9 @@ async function main(): Promise<void> {
           '-r',
           '30',
           '-vf',
-          'scale=720:1280',
+          // CENTER CROP 9:16 — KHÔNG scale cứng (nguồn quay ngang bị bẹp hình).
+          // Giữ tỷ lệ gốc, phóng phủ khung rồi cắt tâm (cùng công thức 10s-story-cut).
+          'scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1',
           '-c:v',
           'libx264',
           '-preset',
@@ -253,6 +255,11 @@ async function main(): Promise<void> {
     )
   )
     process.exit(3);
+
+  // Montage MỚI → mask scrub chữ Hán cũ VÔ HIỆU (tọa độ dải bám geometry/timeline
+  // của bản montage trước — vd đổi scale bẹp → center-crop là lệch vùng delogo).
+  // Xóa để 12-voice-render tự dò lại STABLE-BAND trên đúng bản montage này.
+  rmSync(join(clipDir, 'source_subtitle_mask.json'), { force: true });
 
   // 2) VO TEXT (single source for voice + caption). Cached in vo_text.json so
   // re-runs do NOT repeat the vision/gpt-4o calls (operator: 1 vision call only).
@@ -318,7 +325,7 @@ async function main(): Promise<void> {
     const nar = await chatJson<{ lines?: Array<{ idx: number; vi: string }> }>(apiKey, {
       system: NARRATE_SYS,
       user: [
-        'Bối cảnh: montage đi câu trên biển — gọi ĐÚNG con vật đang thấy, KHÔNG đổi loài.',
+        'Bối cảnh: montage đi câu — vùng nước (biển/hồ/sông) suy từ mô tả cảnh(vision) bên dưới, KHÔNG mặc định biển; gọi ĐÚNG con vật đang thấy, KHÔNG đổi loài.',
         ...catchSegs.map(
           (s) =>
             `idx=${s.idx} | cảnh(vision): ${sceneDesc.get(s.idx) ?? 'con vật vừa lên'} | lời gốc(ASR): ${asrFor(s) || '(ít/không lời)'}`,

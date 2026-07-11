@@ -46,10 +46,10 @@ export const HOOK_STYLES: readonly HookStyle[] = [
     id: 'persona',
     label: 'Persona / người kể',
     guidance:
-      'Nhân vật TỰ DẪN: xưng tôi/anh, khẳng định chất riêng (đi câu giữa trưa, tay quen vùng biển này…). Tự tin, lầy duyên, bám persona gốc, KHÔNG khoác lác thành tích bịa.',
+      'Nhân vật TỰ DẪN: xưng tôi/anh, khẳng định chất riêng rút từ persona GỐC của video (vd đi câu giữa trưa, quen vùng nước này…). Gọi đúng vùng nước theo bối cảnh thật (biển/hồ/sông) — KHÔNG mặc định biển. Tự tin, lầy duyên, KHÔNG khoác lác thành tích bịa.',
     examples: [
       'Trưa nắng vầy mà tôi vẫn ra, có lý do cả.',
-      'Vùng biển này tôi câu quen tay tới mức nào để coi.',
+      'Khúc nước này tôi câu quen tay tới mức nào để coi.',
     ],
   },
   {
