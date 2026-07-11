@@ -328,6 +328,12 @@ async function main(): Promise<void> {
     `[13] HOOK STYLE = "${hookStyle.label}" (${hookStyle.id}); né ${recentHooks.length} hook gần đây.`,
   );
 
+  // Số beat gợi ý scale theo thời lượng montage (calibrate gốc: 60s → 14–18 beat).
+  // Trần cut đã nâng lên ~87s cho FB Reels → beat phải giãn theo, kẹp trong QA gate
+  // beatCount [14,34]; giữ mật độ đọc ~như cũ để voice không thưa cũng không tràn.
+  const beatLo = Math.max(14, Math.round(montageTotal * 0.23));
+  const beatHi = Math.min(30, Math.max(18, Math.round(montageTotal * 0.3)));
+
   // 2) Prompt nền (lần sinh đầu). Self-repair sẽ nối thêm khối "sửa cổng fail" vào sau.
   const baseUser = (
     story
@@ -349,7 +355,7 @@ async function main(): Promise<void> {
           'LỜI GỐC TỪNG ĐOẠN (theo montage time — Việt hóa TRUNG THỰC, giữ/Việt hóa meme, KHÔNG bịa):',
           ...srcLines.map((l) => `[t=${l.mStart}s | id${l.id}] ${l.zh}`),
           '',
-          `Yêu cầu: 14–18 beat, mỗi câu 8–13 từ có dấu câu, TỔNG đọc ≤ ${Math.max(20, Math.round(montageTotal - 9))}s (thà ít/gọn hơn voice tràn). 3–4 reaction whitelist ("Ha ha,"/"He he,"/"Ơ kìa,"/"Trời ơi,"/"Đúng bài rồi,") — CHỈ ghép Ở CẢNH CÁ LÊN (money-shot, t ≥ ${reactFloor}s); TUYỆT ĐỐI KHÔNG đặt reaction trong đoạn setup/persona mở đầu (giữ setup là lời kể nhân vật, không reo). Trả JSON {"beats":[...]}.`,
+          `Yêu cầu: ${beatLo}–${beatHi} beat, mỗi câu 8–13 từ có dấu câu, TỔNG đọc ≤ ${Math.max(20, Math.round(montageTotal - 9))}s (thà ít/gọn hơn voice tràn). 3–4 reaction whitelist ("Ha ha,"/"He he,"/"Ơ kìa,"/"Trời ơi,"/"Đúng bài rồi,") — CHỈ ghép Ở CẢNH CÁ LÊN (money-shot, t ≥ ${reactFloor}s); TUYỆT ĐỐI KHÔNG đặt reaction trong đoạn setup/persona mở đầu (giữ setup là lời kể nhân vật, không reo). Trả JSON {"beats":[...]}.`,
         ]
       : [
           `Montage câu ${subject} ngoài biển, dài ${Math.round(montageTotal)}s, có ${segs.length - 1} cú ${subject} lên (money-shot).`,
@@ -389,7 +395,7 @@ async function main(): Promise<void> {
     reactMin:
       'Thiếu reaction: thêm cụm whitelist ("Ha ha,"/"He he,"/"Ơ kìa,"/"Trời ơi,"/"Đúng bài rồi,") ghép đầu câu money-shot cho đủ.',
     reactMisplaced:
-      'Reaction sai chỗ: CHỈ ghép cụm cảm thán vào câu money-shot CÓ srcIds, gần cảnh cá lên (±7s).',
+      'Reaction sai chỗ: CHỈ ghép cụm cảm thán vào câu money-shot CÓ srcIds, bám sát cú cá lên gần nhất.',
     reactRepeat: 'Lặp 1 kiểu reaction quá 2 lần: đa dạng cụm cảm thán.',
     totalSpeech: 'Đọc tràn video: cắt bớt/viết gọn để tổng đọc ≤ tổng độ dài video.',
   };
@@ -485,7 +491,15 @@ async function main(): Promise<void> {
     const moneyShotTimes = segs.filter((s) => isMS(s)).map((s) => msMontage(s.idx));
     const reactionBeats = beats.filter((b) => b.role !== 'hook' && reactionPrefix(b.text) != null);
     const reactionCount = reactionBeats.length;
-    const REACT_NEAR = 7; // s — reaction phải gần 1 money-shot (cao trào thật)
+    // REACT_NEAR động: floor 7s (calibrate cut ~60s), tự giãn theo NỬA khoảng cách
+    // lớn nhất giữa 2 money-shot kề nhau — diệt "khe chết" khi budget 87s (FB Reels)
+    // kéo các cú cách nhau 15–16s (>2×7) khiến vị trí reaction hợp lệ không phủ kín trục thời gian.
+    const msSorted = [...moneyShotTimes].sort((a, b) => a - b);
+    const maxGap = msSorted.reduce(
+      (g, t, i) => (i > 0 ? Math.max(g, t - (msSorted[i - 1] ?? t)) : g),
+      0,
+    );
+    const REACT_NEAR = Math.max(7, Math.ceil(maxGap / 2)); // s — reaction phải gần 1 money-shot (cao trào thật)
     const reactMisplaced = reactionBeats.filter(
       (b) =>
         b.srcId == null || !moneyShotTimes.some((mt) => Math.abs(b.montageTime - mt) <= REACT_NEAR),

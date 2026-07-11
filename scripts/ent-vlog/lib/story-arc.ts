@@ -367,13 +367,17 @@ export interface StoryArc {
 // (chốt). Thứ tự = thời gian gốc. KHÔNG VO/audio/teaser ở R2 — chỉ kiểm cấu trúc.
 // ===========================================================================
 
+// Budget calibrate cho Facebook Reels (max 90s): tổng tối đa khi đủ act/cú =
+// hook ~5.2 + setup 9 + buildup 14 + escalation 2×14 + climax 23 + resolution 8
+// = ~87s (chừa margin dưới trần 90s). Cắt dài hơn bản TikTok cũ (~60-65s) để giữ
+// mạch kể chuyện + tiếng động tự nhiên; video thiếu cú thì tự ngắn lại (emergent).
 export const STORY_BUDGET = {
-  setupSec: 7,
-  resolutionSec: 6,
-  bodyLead: 6,
-  bodyReaction: 4,
-  climaxLead: 7,
-  climaxReaction: 10,
+  setupSec: 9,
+  resolutionSec: 8,
+  bodyLead: 8,
+  bodyReaction: 6,
+  climaxLead: 9,
+  climaxReaction: 14,
   escalationCatches: 2,
   // RV1.5 HOOK HÌNH 0–5s: mở thẳng bằng money-shot SẠCH/MẠNH nhất (cá lên), KHÔNG
   // setup/title đầu video. Chọn cú mạnh nhất có tSec ≥ guard (tránh vùng title/intro
