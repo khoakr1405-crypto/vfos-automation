@@ -105,7 +105,20 @@ export async function POST(req: Request) {
   try {
     const job = createJob({ url, niche, channelId });
     const ok = job.state === 'INTAKE_DONE';
-    return Response.json({ ok, job }, { status: ok ? 200 : 502 });
+    // Intake fail: surface lỗi thật từ manifest (vd DOUYIN_SETUP_REQUIRED captcha)
+    // — thiếu message là UI chỉ hiện được "Tạo job thất bại" chung chung.
+    if (!ok) {
+      return Response.json(
+        {
+          ok: false,
+          job,
+          code: job.error?.code ?? 'INTAKE_FAILED',
+          message: job.error?.message ?? 'Tải source thất bại (không rõ nguyên nhân).',
+        },
+        { status: 502 },
+      );
+    }
+    return Response.json({ ok, job }, { status: 200 });
   } catch (e) {
     return Response.json(
       {

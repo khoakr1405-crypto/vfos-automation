@@ -10,7 +10,6 @@
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { publishReelToPage } from '@vfos/facebook';
 import { resolveInsideRepo } from '@/lib/studio-data/paths';
 import { runRepoScript, runRepoScriptDetached } from '@/lib/studio-data/run-command';
 import {
@@ -23,15 +22,16 @@ import {
   createTikTokPublishClient,
   queryCreatorUsername,
 } from '@/lib/tiktok/tiktok-publish-client';
+import { publishReelToPage } from '@vfos/facebook';
 import { type EntChannel, getChannel, listChannels, resolveChannelForJob } from './channels';
 import {
-  computeFacebookReadiness,
   type EntFacebookPublishSummary,
   type EntFacebookReadiness,
   type FacebookPublishClient,
   type FacebookPublishDeps,
   type FacebookPublishJobView,
   type ResolveFbClientResult,
+  computeFacebookReadiness,
 } from './facebook-publish';
 import { computeReadiness } from './publish';
 import type {
@@ -923,6 +923,15 @@ export function jobStoryEngineFor(
   channel: Pick<EntChannel, 'storyEngine'> | null,
 ): 'story' | 'anchors' {
   return channel?.storyEngine === 'anchors' ? 'anchors' : 'story';
+}
+
+/**
+ * Có step pipeline nào đang chạy không? (read-only wrapper của findRunningStep
+ * cho Trend Scout — scout dùng chung Douyin browser profile với intake/fetch nên
+ * không được chạy song song với step).
+ */
+export function anyEntStepRunning(): { jobId: string; step: EntStepName } | null {
+  return findRunningStep();
 }
 
 /**

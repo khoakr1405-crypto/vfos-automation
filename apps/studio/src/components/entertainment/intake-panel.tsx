@@ -12,6 +12,7 @@
 
 import { useEffect, useState } from 'react';
 import { useEntLane } from './ent-lane-context';
+import { ScoutPanel } from './scout-panel';
 
 const STATE_META: Record<string, { label: string; cls: string }> = {
   INTAKE_RUNNING: { label: 'Đang tải…', cls: 'bg-accent-amber/15 text-accent-amber' },
@@ -322,6 +323,9 @@ export function IntakePanel() {
           </div>
         </div>
       )}
+
+      {/* Trend Scout — kho ứng viên Douyin sắp viral (thu gọn mặc định). */}
+      <ScoutPanel />
 
       {jobs.length > 0 && (
         <div className="space-y-1.5 border-t border-hairline/40 pt-3">
