@@ -3407,10 +3407,10 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `feat/ent-multichannel` |
-| HEAD local | `3384f40` `feat(ent-lane): add Douyin Trend Scout CLI core and JSON capture` (2026-07-11) |
+| HEAD local | `081c6a5` `docs: update project state after Trend Scout R1+R2 (CLI + UI panel)` (2026-07-11) |
 | Remote | `origin` (GitHub) |
-| origin/feat/ent-multichannel | push trước: `bfc1d40` (ai-agents + god-file anatomy). LOCAL +1 commit `3384f40` CHƯA PUSH. |
-| Sync status | **ahead 1** — `3384f40` commit local CHƯA PUSH (Operator chưa ra lệnh push). |
+| origin/feat/ent-multichannel | **ĐÃ PUSH origin 2026-07-11**: 3 commit Trend Scout — `3384f40` (R1 CLI), `e0788dc` (R2 UI), `081c6a5` (docs state). Local == origin. |
+| Sync status | **in sync** — local == origin/feat/ent-multichannel sau push 2026-07-11. |
 | Working tree | **Còn Round 2 WIP** — `apps/studio/src/` (intake-panel.tsx + jobs.ts modified; scout/ route + scout-panel.tsx + scout.ts untracked); `pnpm-lock.yaml` M; `docs/RFC_VIDEO_RENDERER.md` + `packages/video-engine/` untracked (video-engine WIP). Các file này thuộc round chưa duyệt — KHÔNG stage/commit. |
 | Dev server | Port 3002 (bật khi review). Dừng bằng `pnpm studio:dev:clean --no-start`. |
 
