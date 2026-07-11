@@ -1,0 +1,33 @@
+{
+  "_doc": "VFOS Trend Scout — bộ từ khóa ngách Nấu ăn. Keywords lấy từ bài chia sẻ quy trình 10 phút/ngày của cộng đồng reup (nguồn Operator cung cấp 2026-07-10). Ngách này CHƯA có channel bind trong lane Giải trí — dùng để thăm dò nguồn.",
+  "niche": "cooking",
+  "label": "Nấu ăn / Ẩm thực",
+  "keywords": [
+    "美食",
+    "家常菜",
+    "下饭菜",
+    "美食教程",
+    "厨房",
+    "做饭",
+    "一人食",
+    "早餐",
+    "晚餐",
+    "甜品",
+    "烘焙",
+    "小吃"
+  ],
+  "thresholds": {
+    "ageMinMinutes": 30,
+    "ageMaxMinutes": 360,
+    "refLikesPerMinute": 400,
+    "floorLikesPerMinute": 15,
+    "commentRatioRef": 0.02,
+    "commentBoostMax": 0.5
+  },
+  "search": {
+    "targetPerKeyword": 30,
+    "scrollBudgetMs": 15000,
+    "keywordDelayMsMin": 3000,
+    "keywordDelayMsMax": 7000
+  }
+}

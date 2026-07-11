@@ -1,0 +1,34 @@
+{
+  "_doc": "VFOS Trend Scout — bộ từ khóa ngách Câu cá (lane Giải trí). Operator tự thêm/bớt keywords, KHÔNG cần sửa code. Bộ khởi điểm này CHƯA verify hiệu quả trên Douyin thật (verification_status: unverified) — tinh chỉnh sau smoke run đầu tiên.",
+  "niche": "fishing",
+  "label": "Vlog Câu cá",
+  "channelId": "ch_fishing",
+  "keywords": [
+    "钓鱼",
+    "野钓",
+    "路亚",
+    "钓鱼佬",
+    "巨物",
+    "黑坑",
+    "海钓",
+    "夜钓",
+    "钓大鱼",
+    "渔获",
+    "爆护",
+    "台钓"
+  ],
+  "thresholds": {
+    "ageMinMinutes": 30,
+    "ageMaxMinutes": 360,
+    "refLikesPerMinute": 400,
+    "floorLikesPerMinute": 15,
+    "commentRatioRef": 0.02,
+    "commentBoostMax": 0.5
+  },
+  "search": {
+    "targetPerKeyword": 30,
+    "scrollBudgetMs": 15000,
+    "keywordDelayMsMin": 3000,
+    "keywordDelayMsMax": 7000
+  }
+}
