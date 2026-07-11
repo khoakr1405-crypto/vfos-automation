@@ -3233,6 +3233,26 @@ Pipeline anchors chạy đầy đủ (từ log): cắt 4 money-shot → vision h
 
 ---
 
+### ✅ Phần 73 — Giải phẫu God-file `review-video-orchestrator.ts` → kiến trúc Pipeline (2026-07-11, commit `902f99e` — CHỜ PUSH)
+
+> Tiếp nối Ưu tiên 2 (Phần 72). God-file thứ 2 (`review-video-orchestrator.ts`) từ **1939 → 75 dòng** (−96%), băm thành **23 module mới** theo khuôn `job-manager/` (entry → pipeline → steps → core, layering 1 chiều). KHÔNG đổi hành vi (trừ 1 desync fix có chủ đích).
+
+1. **N1 — Dọn khối nền (`core/`) ✅**: dedupe helper về `core/`; tạo mới `core/clean-source.ts` (`resolveApprovedCleanSource` + `CleanSourceGateError`, 7 mã lỗi verbatim); `validateAudioStream` → `core/media-probe.ts` (typed `FfprobeStream`, bỏ `any`); `updateRegistryFromManifest` → `core/registry-io.ts`; `core/types.ts` bổ sung trace fields + `duration` + `bgmPolicy` (hết `as any`).
+
+2. **N2 — Băm 21 trạm → `pipeline/steps/` ✅**: 18 file step (clean-source-gate → dry-run → sanity → vision → script → script-quality → fixture → bgm-preselect → voice → duration → bgm → render → audio-guard → bgm-mix-guard → caption → verify-fixture → qa → finalize) + hạ tầng `context.ts` (`PipelineContext` + `reloadManifest()`), `status-artifact.ts` (vá union thiếu 12 state THẬT), `run-step.ts`. **Giữ 100% exit code** (2/3/4/5/6/8/9/10/11/12/13/14/15/19/20/21/22/23/24 — kể cả các collision cũ).
+
+3. **N3 — `run-review-pipeline.ts` + entrypoint mỏng ✅**: `runReviewPipeline(ctx)` gọi tuần tự đúng thứ tự gốc; `review-video-orchestrator.ts` còn **75 dòng** (parseArgs → `createPipelineContext` → `runReviewPipeline`).
+
+4. **N4 — Sửa Desync Manifest (bug nguy hiểm) ✅**: `ctx.reloadManifest()` sau **7 điểm subprocess** (vision · script · voice · voice-regen BGM · render · subtitle-detect · caption) — diệt lỗi ghi-đè-ngược manifest bằng bản in-memory cũ (root cause tự-ghi ở orchestrator gốc). An toàn vì mọi mutation trước subprocess đều đã `saveManifest`.
+
+**Gate tổng:** file của em = **0 lỗi tsc** + **biome sạch** (27 file); **🔒 BEHAVIOR LOCK T1–T4 byte-IDENTICAL** với baseline chụp trước khi mổ (exit `0/0/0/5`). BGM Selection Gate (khối phức tạp nhất) bọc verbatim, logic/thứ tự/exit không đổi. `validateScript` (Vision Grounding) giữ private trong `script-quality-gate.ts` — CỐ Ý không gộp `core/validation.ts` để tránh rủi ro hành vi. `job_20260616_001` vẫn `APPROVED`.
+
+**Trạng thái git:** commit `902f99e` (27 file, +2369/−1891) trên `feat/ent-multichannel`, staging đích danh (KHÔNG `git add .`), secret scan sạch, 2 file Douyin out-of-scope KHÔNG đụng. Commit docs Phần 73 này riêng → chờ Operator GO push.
+
+**Bước tiếp theo duy nhất:** **God-file cuối trong Ưu tiên 2 — `scripts/kinetic-caption-renderer.ts` (1057 dòng).** Theo No-Go #9: Step Inventory (6 cột) TRƯỚC khi băm, tách theo khuôn `pipeline/` vừa dựng, byte-identical move + behavior-lock từng nhịp; KHÔNG đổi hành vi.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
