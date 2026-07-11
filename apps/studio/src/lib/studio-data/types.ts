@@ -82,6 +82,9 @@ export interface OperatorJobDTO {
   operatorDecision: 'PENDING' | 'APPROVED' | 'REJECTED';
   qaStatus: 'PASS' | 'FAIL' | 'PENDING' | null;
   canReview: boolean;
+  /** render_plan.json đã tồn tại trong job dir → nút "Sản xuất video (Render)" chạy
+   * được thật (job:render-video cần plan; thiếu = Exit 3). */
+  hasRenderPlan: boolean;
   pipeline: {
     source: GateState;
     script: GateState;

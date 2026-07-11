@@ -286,6 +286,49 @@ export function OperatorJobQueue() {
     }
   };
 
+  // Đóng Loop Sản Xuất: gọi cỗ máy render mới (job:render-video qua API, server-side
+  // gate + --confirm-render). Render xong job tự chuyển READY_FOR_OPERATOR_REVIEW.
+  const handleRenderVideo = async (jobId: string) => {
+    setLoadingJobs((prev) => ({ ...prev, [jobId]: true }));
+    setErrorJobs((prev) => ({ ...prev, [jobId]: null }));
+
+    try {
+      const res = await fetch(`/api/studio/jobs/${encodeURIComponent(jobId)}/run-render-video`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        setErrorJobs((prev) => ({
+          ...prev,
+          [jobId]: {
+            code: data.reasonCode || `RENDER_FAILED_EXIT_${data.exitCode ?? '?'}`,
+            message: data.message || 'Render video thất bại.',
+            details: data.reportSummary ? [String(data.reportSummary).slice(-400)] : [],
+          },
+        }));
+        // Gate/exit lỗi vẫn có thể kèm job snapshot mới → đồng bộ nếu có.
+        if (data.job) {
+          setJobs((prev) => prev.map((j) => (j.id === jobId ? data.job : j)));
+        }
+      } else {
+        // Exit 0: job đã READY_FOR_OPERATOR_REVIEW + có preview.mp4 → thẻ tự đổi.
+        setJobs((prev) => prev.map((j) => (j.id === jobId && data.job ? data.job : j)));
+      }
+    } catch (err) {
+      setErrorJobs((prev) => ({
+        ...prev,
+        [jobId]: {
+          code: 'NETWORK_ERROR',
+          message: err instanceof Error ? err.message : 'Lỗi mạng khi chạy render video.',
+        },
+      }));
+    } finally {
+      setLoadingJobs((prev) => ({ ...prev, [jobId]: false }));
+    }
+  };
+
   const getPipeIcon = (state: 'pass' | 'fail' | 'warn') => {
     if (state === 'pass') {
       return (
@@ -669,6 +712,37 @@ export function OperatorJobQueue() {
                       )}
                     </div>
                   )}
+
+                  {/* Đóng Loop Sản Xuất: nút render cho job nguồn sạch đã có render_plan.
+                      Gate hiển thị = gate server (SOURCE_READY + WATERMARK_NOT_DETECTED);
+                      thiếu render_plan → disable + chỉ dẫn bước trước, không bấm mù. */}
+                  {job.state === 'SOURCE_READY' &&
+                    job.cleanlinessStatus === 'WATERMARK_NOT_DETECTED' && (
+                      <div className="space-y-1.5 pt-2">
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="primary"
+                            onClick={() => handleRenderVideo(job.id)}
+                            disabled={!job.hasRenderPlan || loadingJobs[job.id]}
+                            className="text-white font-bold px-4 py-1.5 flex items-center gap-1.5 disabled:opacity-50"
+                          >
+                            {loadingJobs[job.id] ? (
+                              <span className="h-3.5 w-3.5 animate-spin border-2 border-white/30 border-t-white rounded-full" />
+                            ) : (
+                              <UtilIcon name="sparkle" width={12} height={12} />
+                            )}
+                            {loadingJobs[job.id]
+                              ? 'Đang render (1–2 phút)…'
+                              : 'Sản xuất video (Render)'}
+                          </Button>
+                        </div>
+                        <p className="text-[10px] text-neutral-500">
+                          {job.hasRenderPlan
+                            ? '* Render chạy cỗ máy video-engine (FFmpeg) — xong sẽ chuyển sang Chờ duyệt, KHÔNG publish.'
+                            : '* Chưa có render_plan.json — chạy trước: pnpm job:script → pnpm job:render-plan --confirm-tts.'}
+                        </p>
+                      </div>
+                    )}
 
                   {/* UI-03: Operator Actions row */}
                   {job.state === 'READY_FOR_OPERATOR_REVIEW' && (

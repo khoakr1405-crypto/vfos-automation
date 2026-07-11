@@ -297,11 +297,18 @@ function buildJobDTO(entry: RegistryEntry): OperatorJobDTO {
     statusAccent = 'amber';
   }
 
-  // Preview: chỉ dựng URL media route khi file thật tồn tại trên đĩa.
+  // Preview: chỉ dựng URL media route khi file thật tồn tại trên đĩa. Fallback
+  // previewVideoPath (render-video engine mới ghi preview.mp4 TRƯỚC bước caption).
   const previewRel =
-    manifest?.artifacts?.captionedPreviewPath ?? entry.captionedPreviewPath ?? null;
+    manifest?.artifacts?.captionedPreviewPath ??
+    entry.captionedPreviewPath ??
+    manifest?.artifacts?.previewVideoPath ??
+    null;
   const hasPreview = fileExistsInside(previewRel);
   const previewUrl = hasPreview ? `/api/studio/jobs/${encodeURIComponent(id)}/preview` : null;
+
+  // render_plan.json sẵn sàng → cho phép nút render UI gọi job:render-video.
+  const hasRenderPlan = fileExistsInside(`${JOBS_ROOT_REL}/${id}/render_plan.json`);
 
   // Duration: ưu tiên manifest.duration, fallback ffprobe report của clean source.
   let durationSec =
@@ -401,6 +408,7 @@ function buildJobDTO(entry: RegistryEntry): OperatorJobDTO {
     operatorDecision: manifest?.review?.operatorDecision ?? entry.operatorDecision ?? 'PENDING',
     qaStatus,
     canReview,
+    hasRenderPlan,
     pipeline,
     previewUrl,
     hasPreview,
@@ -534,7 +542,12 @@ export function getJobPreviewAbsPath(jobId: string): string | null {
   if (!/^[A-Za-z0-9_-]+$/.test(jobId)) return null;
   const manifest = readJson<Manifest>(`${JOBS_ROOT_REL}/${jobId}/job_manifest.json`);
   const entry = loadRegistryEntries().find((j) => j.jobId === jobId);
-  const rel = manifest?.artifacts?.captionedPreviewPath ?? entry?.captionedPreviewPath ?? null;
+  // Cùng thứ tự fallback với buildJobDTO: captioned trước, preview render-engine sau.
+  const rel =
+    manifest?.artifacts?.captionedPreviewPath ??
+    entry?.captionedPreviewPath ??
+    manifest?.artifacts?.previewVideoPath ??
+    null;
   if (!rel || !rel.toLowerCase().endsWith('.mp4')) return null;
   const abs = resolveInsideRepo(rel);
   if (!abs || !existsSync(abs)) return null;
