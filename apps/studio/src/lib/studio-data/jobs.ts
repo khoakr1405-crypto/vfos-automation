@@ -19,8 +19,8 @@ import {
   loadNichesWithSource,
 } from '@/lib/growth-data/load';
 import { readRuntimeStore, readShopeeRevenueStore } from '@/lib/growth-data/runtime-store';
-import { foldEvidence } from './evidence-fold';
 import type { Channel as GrowthChannel } from '@/lib/growth-data/types';
+import { foldEvidence } from './evidence-fold';
 import { repoRoot, resolveInsideRepo } from './paths';
 import {
   compareProductBinding,
@@ -245,6 +245,7 @@ function fmtDuration(sec?: number | null): string {
 
 const STATE_META: Record<VfosJobState, { label: string; accent: StatusAccent }> = {
   CREATED: { label: 'Mới tạo', accent: 'blue' },
+  WAITING_FOR_PRODUCT: { label: 'Chờ gắn sản phẩm (video-first)', accent: 'amber' },
   WAITING_FOR_SOURCE_VIDEO: { label: 'Chờ Operator chọn nguồn', accent: 'amber' },
   SOURCE_READY: { label: 'Nguồn sạch · sẵn sàng render', accent: 'blue' },
   READY_TO_RENDER: { label: 'Đang sản xuất', accent: 'cyan' },
@@ -447,7 +448,9 @@ function evidenceByJob(): Map<string, JobEvidenceSummary> {
 export function loadOperatorJobs(): OperatorJobDTO[] {
   const entries = loadRegistryEntries();
   const evidence = evidenceByJob();
-  const jobs = entries.map(buildJobDTO).map((j) => ({ ...j, evidence: evidence.get(j.id) ?? null }));
+  const jobs = entries
+    .map(buildJobDTO)
+    .map((j) => ({ ...j, evidence: evidence.get(j.id) ?? null }));
   jobs.sort((x, y) => (y.updatedAt ?? '').localeCompare(x.updatedAt ?? ''));
   return jobs;
 }
@@ -476,6 +479,7 @@ export function loadJobById(jobId: string): OperatorJobDTO | null {
 
 const PRODUCT_STATE_MAP: Record<VfosJobState, ProductRowDTO['jobStatus']> = {
   CREATED: 'RUNNING',
+  WAITING_FOR_PRODUCT: 'WAITING_SOURCE',
   WAITING_FOR_SOURCE_VIDEO: 'WAITING_SOURCE',
   SOURCE_READY: 'RUNNING',
   READY_TO_RENDER: 'RUNNING',
@@ -682,7 +686,9 @@ export function evaluateLivePublishGates(
       key: 'not_fallback_source',
       label: 'Không phải fallback/demo source',
       passed: !sourceIsFallback,
-      detail: !sourceIsFallback ? 'Nguồn video sạch thật.' : 'Nguồn video hiện tại là fallback mẫu.',
+      detail: !sourceIsFallback
+        ? 'Nguồn video sạch thật.'
+        : 'Nguồn video hiện tại là fallback mẫu.',
     },
     {
       key: 'product_matches_selected',

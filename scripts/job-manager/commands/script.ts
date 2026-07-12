@@ -92,6 +92,12 @@ export async function cmdScript(args: string[]): Promise<number> {
     return 20;
   }
 
+  if (!manifest.source.productCardPath) {
+    console.error(
+      '🛑 MISSING_PRODUCT_CARD: job video-first chưa gắn Product Card (job:attach-product).',
+    );
+    return 3;
+  }
   const productCardPath = resolve(manifest.source.productCardPath);
   if (!existsSync(productCardPath)) {
     console.error(`🛑 MISSING_PRODUCT_CARD: ${manifest.source.productCardPath}`);

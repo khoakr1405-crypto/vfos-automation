@@ -3,6 +3,9 @@
 
 export type JobState =
   | 'CREATED'
+  // Video-first (Trend Scout POV): job tạo từ sourceVideoUrl, CHƯA có Product Card.
+  // Production bị CHẶN (PRODUCT_CARD_MISSING) tới khi job:attach-product.
+  | 'WAITING_FOR_PRODUCT'
   | 'WAITING_FOR_SOURCE_VIDEO'
   | 'SOURCE_READY'
   | 'READY_TO_RENDER'
@@ -27,8 +30,11 @@ export interface JobManifest {
   // Douyin/Taobao). KHÔNG phải productBinding, KHÔNG gate gì — chỉ tiện tham chiếu.
   chineseSearchName?: string | null;
   source: {
-    productCardPath: string;
+    // null = job video-first (Trend Scout) chưa gắn Product Card (WAITING_FOR_PRODUCT).
+    productCardPath: string | null;
     sourceVideoPath: string | null;
+    // URL video nguồn (Douyin/TikTok) — trước đây route source-url ghi untyped.
+    sourceVideoUrl?: string | null;
     // ---- Trace fields (pipeline review ghi khi resolve clean source) ----
     // Trước đây orchestrator ghi qua `(source as any)` — model hoá để hết cast.
     cleanlinessStatus?: string | null;
@@ -90,7 +96,7 @@ export interface RegistryEntry {
   runId: string;
   state: JobState;
   productName: string | null;
-  productCardPath: string;
+  productCardPath: string | null;
   sourceVideoPath: string | null;
   captionedPreviewPath: string | null;
   operatorDecision: 'PENDING' | 'APPROVED' | 'REJECTED';

@@ -3,7 +3,7 @@
 import { GateCheckButton } from '@/components/gate-check/gate-check-modal';
 import { UtilIcon } from '@/components/icons';
 import { PanelBadge, PanelShell } from '@/components/overview/panel-shell';
-import { PipelineStepCards, type PipelineStep } from '@/components/overview/pipeline-step-cards';
+import { type PipelineStep, PipelineStepCards } from '@/components/overview/pipeline-step-cards';
 import type { OperatorJobDTO, VfosJobState } from '@/lib/studio-data/types';
 import { useEffect, useState } from 'react';
 
@@ -28,6 +28,7 @@ import { useEffect, useState } from 'react';
 // Mirror mapping của /review-status; KHÔNG định nghĩa lại workflow.
 const STATE_TO_STEP: Record<VfosJobState, string> = {
   CREATED: '1',
+  WAITING_FOR_PRODUCT: '1',
   WAITING_FOR_SOURCE_VIDEO: '1',
   SOURCE_READY: '2',
   READY_TO_RENDER: '2',
@@ -51,6 +52,7 @@ const STATE_ACCENT: Record<VfosJobState, string> = {
   READY_TO_RENDER: 'text-accent-blue',
   SOURCE_READY: 'text-accent-blue',
   WAITING_FOR_SOURCE_VIDEO: 'text-neutral-400',
+  WAITING_FOR_PRODUCT: 'text-accent-amber',
   CREATED: 'text-neutral-400',
 };
 
@@ -64,8 +66,18 @@ const PIPELINE_STEPS: Array<{
   states: VfosJobState[];
   sub: string;
 }> = [
-  { label: 'Sản phẩm', accent: 'green', states: ['CREATED', 'WAITING_FOR_SOURCE_VIDEO'], sub: 'chờ nguồn' },
-  { label: 'Nguồn sẵn sàng', accent: 'blue', states: ['SOURCE_READY', 'READY_TO_RENDER'], sub: 'sẵn sàng' },
+  {
+    label: 'Sản phẩm',
+    accent: 'green',
+    states: ['CREATED', 'WAITING_FOR_SOURCE_VIDEO'],
+    sub: 'chờ nguồn',
+  },
+  {
+    label: 'Nguồn sẵn sàng',
+    accent: 'blue',
+    states: ['SOURCE_READY', 'READY_TO_RENDER'],
+    sub: 'sẵn sàng',
+  },
   { label: 'Sản xuất + QA', accent: 'violet', states: ['RENDERING'], sub: 'đang chạy' },
   {
     label: 'Duyệt preview',
@@ -204,59 +216,59 @@ export function ProductReviewStatusPanel() {
                 </span>
               </summary>
 
-            <div className="mt-3 overflow-x-auto">
-              <table className="w-full text-left text-[11px]">
-                <thead>
-                  <tr className="border-b border-hairline font-mono text-[10px] text-neutral-500">
-                    <th className="py-2 pr-4 font-medium">jobId</th>
-                    <th className="py-2 pr-4 font-medium">state</th>
-                    <th className="py-2 pr-4 font-medium">bước</th>
-                    <th className="py-2 pr-4 font-medium">product</th>
-                    <th className="py-2 pr-4 font-medium">operatorDecision</th>
-                    <th className="py-2 pr-4 font-medium">qaStatus</th>
-                    <th className="py-2 pr-4 font-medium">publish</th>
-                    <th className="py-2 pr-4 font-medium">updatedAt</th>
-                    <th className="py-2 pr-4 font-medium">gate</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rows.map((j) => (
-                    <tr
-                      key={j.id}
-                      className="border-b border-hairline/40 text-neutral-300 transition-colors duration-300 ease-in-out hover:bg-raised/20"
-                    >
-                      <td className="py-2 pr-4 font-mono text-neutral-200">{j.id}</td>
-                      <td className={`py-2 pr-4 font-semibold ${STATE_ACCENT[j.state]}`}>
-                        {j.state}
-                      </td>
-                      <td className="py-2 pr-4 tabular-nums">{STATE_TO_STEP[j.state]}</td>
-                      <td className="max-w-[220px] truncate py-2 pr-4" title={j.product}>
-                        {dash(j.product)}
-                      </td>
-                      <td className={`py-2 pr-4 ${decisionAccent(j.operatorDecision)}`}>
-                        {dash(j.operatorDecision)}
-                      </td>
-                      <td className={`py-2 pr-4 ${qaAccent(j.qaStatus)}`}>{dash(j.qaStatus)}</td>
-                      <td
-                        className={`py-2 pr-4 ${
-                          j.state === 'PUBLISHED'
-                            ? 'font-semibold text-accent-green'
-                            : 'text-neutral-600'
-                        }`}
-                      >
-                        {j.state === 'PUBLISHED' ? 'PUBLISHED' : DASH}
-                      </td>
-                      <td className="py-2 pr-4 font-mono text-neutral-500 tabular-nums">
-                        {fmtTime(j.updatedAt)}
-                      </td>
-                      <td className="py-2 pr-4">
-                        <GateCheckButton jobId={j.id} />
-                      </td>
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full text-left text-[11px]">
+                  <thead>
+                    <tr className="border-b border-hairline font-mono text-[10px] text-neutral-500">
+                      <th className="py-2 pr-4 font-medium">jobId</th>
+                      <th className="py-2 pr-4 font-medium">state</th>
+                      <th className="py-2 pr-4 font-medium">bước</th>
+                      <th className="py-2 pr-4 font-medium">product</th>
+                      <th className="py-2 pr-4 font-medium">operatorDecision</th>
+                      <th className="py-2 pr-4 font-medium">qaStatus</th>
+                      <th className="py-2 pr-4 font-medium">publish</th>
+                      <th className="py-2 pr-4 font-medium">updatedAt</th>
+                      <th className="py-2 pr-4 font-medium">gate</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {rows.map((j) => (
+                      <tr
+                        key={j.id}
+                        className="border-b border-hairline/40 text-neutral-300 transition-colors duration-300 ease-in-out hover:bg-raised/20"
+                      >
+                        <td className="py-2 pr-4 font-mono text-neutral-200">{j.id}</td>
+                        <td className={`py-2 pr-4 font-semibold ${STATE_ACCENT[j.state]}`}>
+                          {j.state}
+                        </td>
+                        <td className="py-2 pr-4 tabular-nums">{STATE_TO_STEP[j.state]}</td>
+                        <td className="max-w-[220px] truncate py-2 pr-4" title={j.product}>
+                          {dash(j.product)}
+                        </td>
+                        <td className={`py-2 pr-4 ${decisionAccent(j.operatorDecision)}`}>
+                          {dash(j.operatorDecision)}
+                        </td>
+                        <td className={`py-2 pr-4 ${qaAccent(j.qaStatus)}`}>{dash(j.qaStatus)}</td>
+                        <td
+                          className={`py-2 pr-4 ${
+                            j.state === 'PUBLISHED'
+                              ? 'font-semibold text-accent-green'
+                              : 'text-neutral-600'
+                          }`}
+                        >
+                          {j.state === 'PUBLISHED' ? 'PUBLISHED' : DASH}
+                        </td>
+                        <td className="py-2 pr-4 font-mono text-neutral-500 tabular-nums">
+                          {fmtTime(j.updatedAt)}
+                        </td>
+                        <td className="py-2 pr-4">
+                          <GateCheckButton jobId={j.id} />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </details>
           </div>
         )}

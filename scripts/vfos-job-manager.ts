@@ -6,6 +6,7 @@
 
 import { cmdApproveCleanliness } from './job-manager/commands/approve-cleanliness.js';
 import { cmdApprove } from './job-manager/commands/approve.js';
+import { cmdAttachProduct } from './job-manager/commands/attach-product.js';
 import { cmdAttachSource } from './job-manager/commands/attach-source.js';
 import { cmdCreate } from './job-manager/commands/create.js';
 import { cmdIntakeClean } from './job-manager/commands/intake-clean.js';
@@ -21,6 +22,7 @@ import { cmdStatus } from './job-manager/commands/status.js';
 
 const COMMANDS: Record<string, (args: string[]) => number | Promise<number>> = {
   create: cmdCreate,
+  'attach-product': cmdAttachProduct,
   'attach-source': cmdAttachSource,
   'source-inbox': cmdSourceInbox,
   'intake-clean': cmdIntakeClean,
@@ -37,7 +39,8 @@ const COMMANDS: Record<string, (args: string[]) => number | Promise<number>> = {
 };
 
 const USAGE = `Usage:
-  pnpm job:create        --from-product <path> [--channel <id>] [--batch <id>] [--dry-run]
+  pnpm job:create        (--from-product <path> | --from-video-url <url>) [--channel <id>] [--batch <id>] [--dry-run]
+  pnpm job:attach-product --job <jobId> --from-product <card.json> [--dry-run]
   pnpm job:attach-source --job <jobId> [--file <path|inbox-filename>] [--dry-run]
   pnpm job:source-inbox  [--job <jobId>]
   pnpm source:intake-clean --job <jobId> (--video-url "<url>" | --file "<path|inbox-filename>") [--provider unduhtiktok] [--dry-run]

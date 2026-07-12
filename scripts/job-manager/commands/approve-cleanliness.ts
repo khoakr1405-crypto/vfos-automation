@@ -165,10 +165,16 @@ export async function cmdApproveCleanliness(args: string[]): Promise<number> {
   saveManifest(manifest);
 
   const reg = loadRegistry();
-  const productCardRaw = JSON.parse(
-    readFileSync(resolve(manifest.source.productCardPath), 'utf8'),
-  ) as Record<string, unknown>;
-  upsertRegistryEntry(reg, entryFromManifest(manifest, extractProductName(productCardRaw)));
+  // Video-first job (Trend Scout) có thể chưa gắn card → productName null.
+  const productName = manifest.source.productCardPath
+    ? extractProductName(
+        JSON.parse(readFileSync(resolve(manifest.source.productCardPath), 'utf8')) as Record<
+          string,
+          unknown
+        >,
+      )
+    : null;
+  upsertRegistryEntry(reg, entryFromManifest(manifest, productName));
   saveRegistry(reg);
 
   // 7. Output Result

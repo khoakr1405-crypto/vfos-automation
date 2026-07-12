@@ -54,7 +54,9 @@ export function cmdPackage(args: string[]): number {
   const voiceAbs = voiceRel ? resolve(voiceRel) : null;
   const visionRel = manifest.artifacts.videoVisualAnalysisPath ?? null;
   const visionAbs = visionRel ? resolve(visionRel) : null;
-  const productCardAbs = resolve(manifest.source.productCardPath);
+  const productCardAbs = manifest.source.productCardPath
+    ? resolve(manifest.source.productCardPath)
+    : null;
 
   const qaStatus = readFinalQaStatus(manifest);
   const audioPresent = captionedAbs ? hasAudioStream(captionedAbs) : false;
@@ -66,7 +68,7 @@ export function cmdPackage(args: string[]): number {
   const qaPresent = qaStatus !== 'MISSING';
   const qaPassed = qaStatus === 'PASS';
   const scriptPresent = Boolean(scriptAbs && existsSync(scriptAbs));
-  const productCardPresent = existsSync(productCardAbs);
+  const productCardPresent = Boolean(productCardAbs && existsSync(productCardAbs));
   const voicePresent = Boolean(voiceAbs && existsSync(voiceAbs));
   const notPublished = !manifest.safety.uploaded && !manifest.safety.published;
 
@@ -148,7 +150,10 @@ export function cmdPackage(args: string[]): number {
 
   // ---- build package (all gates green) ----
   // Read content sources for caption/hashtags/affiliate link.
-  const productCard = JSON.parse(readFileSync(productCardAbs, 'utf8')) as Record<string, unknown>;
+  const productCard = JSON.parse(readFileSync(productCardAbs as string, 'utf8')) as Record<
+    string,
+    unknown
+  >;
   const scriptArtifact = JSON.parse(readFileSync(scriptAbs as string, 'utf8')) as Record<
     string,
     unknown
@@ -170,7 +175,7 @@ export function cmdPackage(args: string[]): number {
   // Copy artifacts (only the secret-free job artifacts; never .env/token/cookie).
   const copyPairs: Array<[string | null, string]> = [
     [captionedAbs, basename(captionedAbs as string)],
-    [productCardAbs, 'product_card.json'],
+    [productCardAbs as string, 'product_card.json'],
     [scriptAbs, 'script_artifact.json'],
     [voiceAbs, 'voice_artifact.json'],
     [visionAbs, 'video_visual_analysis.json'],

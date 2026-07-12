@@ -20,6 +20,7 @@ import { Icon, UtilIcon } from '@/components/icons';
 import { MockBanner } from '@/components/mock-banner';
 import { PageHeader } from '@/components/page-header';
 import { ReviewTikTokPublishPanel } from '@/components/product-review/review-tiktok-publish-panel';
+import { TrendScoutReviewPanel } from '@/components/product-review/trend-scout-review-panel';
 import { Button } from '@/components/ui';
 import { ACCENT_BG_SOFT, ACCENT_TEXT, type AccentKey } from '@/lib/nav';
 import type { GateState, OperatorJobDTO } from '@/lib/studio-data/types';
@@ -237,6 +238,9 @@ function friendlyPrepareError(code: string | undefined): PrepareError {
       };
   }
 }
+
+// ĐÓNG BĂNG UI Product-First (Action 1 cũ) — backend Shopee giữ nguyên 100%.
+const FROZEN_PRODUCT_FIRST_ACTION1 = false;
 
 // biome-ignore lint/style/noDefaultExport: Next.js page requires default export
 export default function ProductReviewLanePage() {
@@ -1554,406 +1558,428 @@ export default function ProductReviewLanePage() {
         );
       })()}
 
-      {/* ===================== HÀNH ĐỘNG 1 ===================== */}
+      {/* ===================== HÀNH ĐỘNG 1 (MỚI — Video-First / Trend Scout POV) ===================== */}
       <ActionPanel
         no={1}
         icon="products"
-        accent="amber"
-        title="Lấy / chọn sản phẩm"
-        desc="Chọn sản phẩm affiliate đúng owner, hoặc lấy link Shopee mới — sẵn sàng thành Product Card."
-        status={
-          loading
-            ? { label: 'Đang tải…', accent: 'blue' }
-            : cardReady
-              ? { label: 'Product Card sẵn sàng', accent: 'green' }
-              : card
-                ? { label: 'Sai owner', accent: 'rose' }
-                : { label: 'Chưa có Product Card', accent: 'amber' }
-        }
+        accent="cyan"
+        title="Tìm video POV (Trend Scout) → Gắn sản phẩm"
+        desc="Video-First: quét Douyin ngách POV Review (đập hộp/nhập vai) → tạo job từ video → gắn Product Card từ kho link ngay sau đó."
+        status={{ label: 'Video-First intake', accent: 'cyan' }}
       >
-        {card ? (
-          <div className="space-y-3">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
-              <div className="flex shrink-0 flex-col items-center gap-1">
-                <div className="flex aspect-square w-24 items-center justify-center overflow-hidden rounded-lg border border-hairline bg-gradient-to-br from-raised to-panel">
-                  {card.productImageUrl && !imgError ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={card.productImageUrl}
-                      alt={card.name}
-                      className="h-full w-full object-contain"
-                      onError={() => setImgError(true)}
-                    />
-                  ) : (
-                    <div className="flex flex-col items-center gap-1 text-neutral-500">
-                      <Icon name="rawvisual" width={24} height={24} />
-                      <span className="text-[9px] font-semibold text-accent-amber">
-                        ảnh chưa có
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="min-w-0 flex-1 space-y-1.5">
-                <p className="text-sm font-semibold text-neutral-100">{card.name}</p>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <StatusChip accent={ownerOk ? 'green' : 'rose'}>
-                    owner {ownerOk ? 'OK' : 'mismatch'}
-                  </StatusChip>
-                  {typeof card.score === 'number' && (
-                    <StatusChip accent="cyan">score {card.score}/10</StatusChip>
-                  )}
-                  {card.commissionRate && (
-                    <StatusChip accent="violet">hoa hồng {card.commissionRate}</StatusChip>
-                  )}
-                  {card.price && <StatusChip accent="blue">{card.price}</StatusChip>}
-                </div>
-                <p className="font-mono text-[10px] text-accent-blue break-all">{card.shortLink}</p>
-              </div>
-            </div>
+        <TrendScoutReviewPanel />
+      </ActionPanel>
 
-            {/* Product Card Enrichment — Operator hiểu sản phẩm trước khi tạo job.
+      {/* ĐÓNG BĂNG (2026-07-12, chiến dịch Trend Scout POV): khối "Lấy / chọn sản
+          phẩm" Product-First cũ — GIỮ NGUYÊN code + backend, chỉ ẨN render bằng
+          {false && ...}. Mở lại: đổi FROZEN_PRODUCT_FIRST_ACTION1 = true. */}
+      {FROZEN_PRODUCT_FIRST_ACTION1 && (
+        <ActionPanel
+          no={1}
+          icon="products"
+          accent="amber"
+          title="Lấy / chọn sản phẩm"
+          desc="Chọn sản phẩm affiliate đúng owner, hoặc lấy link Shopee mới — sẵn sàng thành Product Card."
+          status={
+            loading
+              ? { label: 'Đang tải…', accent: 'blue' }
+              : cardReady
+                ? { label: 'Product Card sẵn sàng', accent: 'green' }
+                : card
+                  ? { label: 'Sai owner', accent: 'rose' }
+                  : { label: 'Chưa có Product Card', accent: 'amber' }
+          }
+        >
+          {card ? (
+            <div className="space-y-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
+                <div className="flex shrink-0 flex-col items-center gap-1">
+                  <div className="flex aspect-square w-24 items-center justify-center overflow-hidden rounded-lg border border-hairline bg-gradient-to-br from-raised to-panel">
+                    {card.productImageUrl && !imgError ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={card.productImageUrl}
+                        alt={card.name}
+                        className="h-full w-full object-contain"
+                        onError={() => setImgError(true)}
+                      />
+                    ) : (
+                      <div className="flex flex-col items-center gap-1 text-neutral-500">
+                        <Icon name="rawvisual" width={24} height={24} />
+                        <span className="text-[9px] font-semibold text-accent-amber">
+                          ảnh chưa có
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <p className="text-sm font-semibold text-neutral-100">{card.name}</p>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <StatusChip accent={ownerOk ? 'green' : 'rose'}>
+                      owner {ownerOk ? 'OK' : 'mismatch'}
+                    </StatusChip>
+                    {typeof card.score === 'number' && (
+                      <StatusChip accent="cyan">score {card.score}/10</StatusChip>
+                    )}
+                    {card.commissionRate && (
+                      <StatusChip accent="violet">hoa hồng {card.commissionRate}</StatusChip>
+                    )}
+                    {card.price && <StatusChip accent="blue">{card.price}</StatusChip>}
+                  </div>
+                  <p className="font-mono text-[10px] text-accent-blue break-all">
+                    {card.shortLink}
+                  </p>
+                </div>
+              </div>
+
+              {/* Product Card Enrichment — Operator hiểu sản phẩm trước khi tạo job.
                 Display-only: KHÔNG đổi nguồn sự thật cho binding (vẫn shopId/itemId/shortLink). */}
-            <div className="space-y-2 rounded-lg border border-hairline/70 bg-panel/30 p-3 text-[11px] leading-relaxed">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
-                Thông tin sản phẩm (Việt hóa)
-              </p>
-              <div className="grid grid-cols-[88px_1fr] gap-x-2 gap-y-1.5">
-                <span className="text-neutral-500">Tên (VI):</span>
-                <span className="text-neutral-200">{card.name}</span>
+              <div className="space-y-2 rounded-lg border border-hairline/70 bg-panel/30 p-3 text-[11px] leading-relaxed">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
+                  Thông tin sản phẩm (Việt hóa)
+                </p>
+                <div className="grid grid-cols-[88px_1fr] gap-x-2 gap-y-1.5">
+                  <span className="text-neutral-500">Tên (VI):</span>
+                  <span className="text-neutral-200">{card.name}</span>
 
-                <span className="text-neutral-500">Mô tả:</span>
-                <span className={card.description ? 'text-neutral-300' : 'italic text-neutral-600'}>
-                  {card.description ?? 'Chưa có mô tả — sẽ bổ sung khi trích xuất chi tiết.'}
-                </span>
+                  <span className="text-neutral-500">Mô tả:</span>
+                  <span
+                    className={card.description ? 'text-neutral-300' : 'italic text-neutral-600'}
+                  >
+                    {card.description ?? 'Chưa có mô tả — sẽ bổ sung khi trích xuất chi tiết.'}
+                  </span>
 
-                {cardNeedsTranslation && (
-                  <>
-                    <span className="text-neutral-500">Bản dịch VI:</span>
-                    <span className="italic text-accent-amber">
-                      Chưa có bản dịch — metadata nguồn tiếng Trung, cần Việt hóa trước khi tạo job.
-                    </span>
-                  </>
-                )}
-              </div>
+                  {cardNeedsTranslation && (
+                    <>
+                      <span className="text-neutral-500">Bản dịch VI:</span>
+                      <span className="italic text-accent-amber">
+                        Chưa có bản dịch — metadata nguồn tiếng Trung, cần Việt hóa trước khi tạo
+                        job.
+                      </span>
+                    </>
+                  )}
+                </div>
 
-              {/* Từ khóa tìm source: rút gọn lõi VI → dịch cụm lõi sang tiếng Trung (AI).
+                {/* Từ khóa tìm source: rút gọn lõi VI → dịch cụm lõi sang tiếng Trung (AI).
                   Copy đi tìm trên Douyin/Taobao/1688. Display-only: KHÔNG ảnh hưởng job
                   binding. Không cho feature-only (vd 防晒) lọt ra. */}
-              <div className="flex flex-col gap-1 border-t border-hairline/50 pt-2">
-                {vietnameseCoreKeyword && (
+                <div className="flex flex-col gap-1 border-t border-hairline/50 pt-2">
+                  {vietnameseCoreKeyword && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-[10px] font-medium text-neutral-500">
+                        Từ khóa lõi (VI):
+                      </span>
+                      <span className="font-medium text-neutral-200">{vietnameseCoreKeyword}</span>
+                    </div>
+                  )}
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-[10px] font-medium text-neutral-500">
-                      Từ khóa lõi (VI):
+                      Tên tìm kiếm tiếng Trung:
                     </span>
-                    <span className="font-medium text-neutral-200">{vietnameseCoreKeyword}</span>
-                  </div>
-                )}
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-[10px] font-medium text-neutral-500">
-                    Tên tìm kiếm tiếng Trung:
-                  </span>
-                  {chineseSearchName ? (
-                    <>
-                      <span lang="zh" className="font-medium text-neutral-100">
-                        {chineseSearchName}
+                    {chineseSearchName ? (
+                      <>
+                        <span lang="zh" className="font-medium text-neutral-100">
+                          {chineseSearchName}
+                        </span>
+                        <Button
+                          variant="outline"
+                          className="!py-0.5 !px-1.5 text-[9px]"
+                          onClick={() => handleCopyChineseName(chineseSearchName)}
+                        >
+                          {copiedCn ? '✓ Đã copy' : 'Copy từ khóa Trung'}
+                        </Button>
+                      </>
+                    ) : (
+                      <span className="text-[10px] italic text-neutral-600">
+                        Chưa có tên Trung sát nghĩa
                       </span>
-                      <Button
-                        variant="outline"
-                        className="!py-0.5 !px-1.5 text-[9px]"
-                        onClick={() => handleCopyChineseName(chineseSearchName)}
+                    )}
+                    {chineseNeedsAi && (
+                      <>
+                        <Button
+                          variant="outline"
+                          className="!py-0.5 !px-1.5 text-[9px]"
+                          onClick={handleEnrichChineseName}
+                          disabled={enrichingCn}
+                        >
+                          {enrichingCn
+                            ? 'Đang tạo…'
+                            : chineseSearchName
+                              ? 'Hoàn thiện bằng AI'
+                              : 'Tạo từ khóa Trung (AI)'}
+                        </Button>
+                        {enrichCnError && (
+                          <span className="text-[9px] text-accent-rose">{enrichCnError}</span>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {!card.productImageUrl && (
+                  <p className="text-[10px] text-accent-amber">
+                    ⚠ Ảnh minh họa chưa có. Bấm “Lấy link Shopee mới” để trích xuất lại kèm ảnh —
+                    hoặc vẫn tạo job được (ảnh không bắt buộc cho binding).
+                  </p>
+                )}
+              </div>
+            </div>
+          ) : (
+            <NoticeBox accent="amber">
+              Chưa có Product Card hiện tại. Vui lòng chọn bên dưới hoặc trích xuất link mới.
+            </NoticeBox>
+          )}
+
+          {/* Success / Error alerts */}
+          {successMessage && (
+            <div className="rounded-lg border border-accent-green/30 bg-accent-green/10 p-3 text-xs text-accent-green flex items-start gap-2">
+              <UtilIcon name="check" width={14} height={14} className="mt-0.5" />
+              <span>{successMessage}</span>
+            </div>
+          )}
+          {errorMessage && (
+            <div className="rounded-lg border border-accent-rose/30 bg-accent-rose/10 p-3 text-xs text-accent-rose flex items-start gap-2">
+              <UtilIcon name="clock" width={14} height={14} className="mt-0.5 rotate-45" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+
+          {/* Compact Registry Picker */}
+          {showRegistry && (
+            <div className="space-y-3 rounded-lg border border-hairline bg-panel/60 p-3">
+              <div className="flex items-center justify-between border-b border-hairline/60 pb-2">
+                <span className="text-xs font-semibold text-neutral-200">
+                  Kho link Shopee (Verified)
+                </span>
+                <span className="text-[10px] text-neutral-400">
+                  Hiển thị {verifiedRegistryItems.length} link gần đây
+                </span>
+              </div>
+              {verifiedRegistryItems.length === 0 ? (
+                <p className="text-xs text-neutral-500 py-2">
+                  Không tìm thấy link verified nào trong registry.
+                </p>
+              ) : (
+                <div className="divide-y divide-hairline/40 max-h-60 overflow-y-auto pr-1">
+                  {verifiedRegistryItems.map((item) => {
+                    const isNew =
+                      highlightShortLink !== '' && item.shortLink === highlightShortLink;
+                    return (
+                      <div
+                        key={item.shortLink}
+                        className={`flex items-start justify-between py-2.5 gap-3 ${
+                          isNew
+                            ? 'rounded-md border border-accent-green/40 bg-accent-green/10 px-2'
+                            : ''
+                        }`}
                       >
-                        {copiedCn ? '✓ Đã copy' : 'Copy từ khóa Trung'}
-                      </Button>
-                    </>
-                  ) : (
-                    <span className="text-[10px] italic text-neutral-600">
-                      Chưa có tên Trung sát nghĩa
-                    </span>
-                  )}
-                  {chineseNeedsAi && (
-                    <>
-                      <Button
-                        variant="outline"
-                        className="!py-0.5 !px-1.5 text-[9px]"
-                        onClick={handleEnrichChineseName}
-                        disabled={enrichingCn}
-                      >
-                        {enrichingCn
-                          ? 'Đang tạo…'
-                          : chineseSearchName
-                            ? 'Hoàn thiện bằng AI'
-                            : 'Tạo từ khóa Trung (AI)'}
-                      </Button>
-                      {enrichCnError && (
-                        <span className="text-[9px] text-accent-rose">{enrichCnError}</span>
-                      )}
-                    </>
-                  )}
+                        <div className="flex gap-2.5 min-w-0 flex-1">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded border border-hairline bg-gradient-to-br from-raised to-panel">
+                            {item.productImageUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={item.productImageUrl}
+                                alt={item.productName}
+                                className="h-full w-full object-contain"
+                              />
+                            ) : (
+                              <Icon name="rawvisual" width={16} height={16} />
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <p className="text-xs font-medium text-neutral-200 truncate">
+                              {isNew && (
+                                <span className="mr-1 rounded border border-accent-green/30 bg-accent-green/20 px-1 text-[9px] align-middle text-accent-green">
+                                  Mới
+                                </span>
+                              )}
+                              {item.productName}
+                            </p>
+                            <div className="flex flex-wrap gap-1 items-center">
+                              {item.score !== undefined && (
+                                <span className="rounded bg-cyan-950/40 text-cyan-400 border border-cyan-500/20 px-1 text-[9px]">
+                                  score {item.score}
+                                </span>
+                              )}
+                              {item.commissionRate && (
+                                <span className="rounded bg-violet-950/40 text-violet-400 border border-violet-500/20 px-1 text-[9px]">
+                                  {item.commissionRate}
+                                </span>
+                              )}
+                              {item.price && (
+                                <span className="rounded bg-blue-950/40 text-blue-400 border border-blue-500/20 px-1 text-[9px]">
+                                  {item.price}
+                                </span>
+                              )}
+                              <span className="font-mono text-[9px] text-neutral-400 truncate max-w-[120px]">
+                                {item.shortLink}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <Button
+                          variant={isPromoting === item.shortLink ? 'primary' : 'outline'}
+                          disabled={isPromoting !== '' || isExtracting}
+                          onClick={() => handlePromote(item.shortLink)}
+                          className="shrink-0 !py-1 !px-2 text-[10px]"
+                        >
+                          {isPromoting === item.shortLink ? 'Đang chọn...' : 'Dùng sản phẩm này'}
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Shopee Link Extraction Intake Confirm Panel */}
+          {showExtractor && (
+            <div className="space-y-3 rounded-lg border border-accent-amber/20 bg-accent-amber/5 p-3">
+              <div className="flex items-start gap-2 text-xs text-accent-amber">
+                <span className="mt-0.5">⚠️</span>
+                <div>
+                  <p className="font-semibold mb-1">Xác nhận trích xuất link Shopee mới qua CDP</p>
+                  <p className="text-[11px] text-neutral-300 leading-relaxed">
+                    Hành động này sẽ attach vào Cốc Cốc/Shopee Affiliate đã đăng nhập và click đúng
+                    1 nút “Lấy link”. Nếu gặp login/CAPTCHA/OTP, hệ thống sẽ dừng{' '}
+                    <strong>SUSPENDED</strong> để Operator xử lý thủ công. Không tạo job, không
+                    render, không publish.
+                  </p>
                 </div>
               </div>
 
-              {!card.productImageUrl && (
-                <p className="text-[10px] text-accent-amber">
-                  ⚠ Ảnh minh họa chưa có. Bấm “Lấy link Shopee mới” để trích xuất lại kèm ảnh — hoặc
-                  vẫn tạo job được (ảnh không bắt buộc cho binding).
-                </p>
+              <form
+                onSubmit={handleExtract}
+                className="flex flex-col gap-2.5 sm:flex-row sm:items-end"
+              >
+                <div className="flex-1 min-w-0">
+                  <label
+                    htmlFor="confirmPhraseInput"
+                    className="block text-[10px] text-neutral-400 font-medium mb-1"
+                  >
+                    Nhập cụm xác nhận để chạy:{' '}
+                    <code className="bg-neutral-800 px-1 py-0.5 rounded text-neutral-200">
+                      GET 1 SHOPEE LINK
+                    </code>
+                    <span className="ml-1 text-neutral-500">
+                      (đây là ô xác nhận, không phải ô link)
+                    </span>
+                  </label>
+                  <input
+                    id="confirmPhraseInput"
+                    type="text"
+                    required
+                    disabled={isExtracting}
+                    value={confirmPhrase}
+                    onChange={(e) => setConfirmPhrase(e.target.value)}
+                    placeholder="GET 1 SHOPEE LINK"
+                    className="w-full rounded-lg border border-hairline bg-panel px-3 py-1.5 text-xs text-neutral-200 focus:outline-none focus:border-accent-amber/50 disabled:opacity-50"
+                  />
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    disabled={isExtracting}
+                    onClick={() => {
+                      setShowExtractor(false);
+                      setConfirmPhrase('');
+                      setExtractionResult(null);
+                      setHighlightShortLink('');
+                    }}
+                    className="!py-1.5 !px-2.5 text-[11px]"
+                  >
+                    Hủy
+                  </Button>
+                  <Button
+                    type="submit"
+                    variant="success"
+                    disabled={isExtracting || confirmPhrase !== 'GET 1 SHOPEE LINK'}
+                    className="!py-1.5 !px-2.5 text-[11px] bg-accent-amber/80 hover:bg-accent-amber text-neutral-900 border-none font-semibold disabled:opacity-30 disabled:bg-accent-amber/20 disabled:text-neutral-500"
+                  >
+                    {isExtracting ? (
+                      <span className="flex items-center gap-1.5">
+                        <span className="h-3 w-3 animate-spin rounded-full border border-neutral-900 border-t-transparent" />
+                        Đang trích xuất...
+                      </span>
+                    ) : (
+                      'Xác nhận & Chạy'
+                    )}
+                  </Button>
+                </div>
+              </form>
+
+              {/* ===== Khu kết quả lấy link mới (tách riêng khỏi ô xác nhận) ===== */}
+              {extractionResult && (
+                <ExtractionResultBox
+                  result={extractionResult}
+                  inRegistry={
+                    !!extractionResult.shortLink &&
+                    registry.some((i) => i.shortLink === extractionResult.shortLink)
+                  }
+                  isPromoting={isPromoting === extractionResult.shortLink}
+                  promoteDisabled={isPromoting !== '' || isExtracting}
+                  onUseProduct={() => {
+                    if (extractionResult.shortLink) handlePromote(extractionResult.shortLink);
+                  }}
+                />
               )}
             </div>
-          </div>
-        ) : (
-          <NoticeBox accent="amber">
-            Chưa có Product Card hiện tại. Vui lòng chọn bên dưới hoặc trích xuất link mới.
-          </NoticeBox>
-        )}
+          )}
 
-        {/* Success / Error alerts */}
-        {successMessage && (
-          <div className="rounded-lg border border-accent-green/30 bg-accent-green/10 p-3 text-xs text-accent-green flex items-start gap-2">
-            <UtilIcon name="check" width={14} height={14} className="mt-0.5" />
-            <span>{successMessage}</span>
-          </div>
-        )}
-        {errorMessage && (
-          <div className="rounded-lg border border-accent-rose/30 bg-accent-rose/10 p-3 text-xs text-accent-rose flex items-start gap-2">
-            <UtilIcon name="clock" width={14} height={14} className="mt-0.5 rotate-45" />
-            <span>{errorMessage}</span>
-          </div>
-        )}
-
-        {/* Compact Registry Picker */}
-        {showRegistry && (
-          <div className="space-y-3 rounded-lg border border-hairline bg-panel/60 p-3">
-            <div className="flex items-center justify-between border-b border-hairline/60 pb-2">
-              <span className="text-xs font-semibold text-neutral-200">
-                Kho link Shopee (Verified)
-              </span>
-              <span className="text-[10px] text-neutral-400">
-                Hiển thị {verifiedRegistryItems.length} link gần đây
-              </span>
-            </div>
-            {verifiedRegistryItems.length === 0 ? (
-              <p className="text-xs text-neutral-500 py-2">
-                Không tìm thấy link verified nào trong registry.
-              </p>
-            ) : (
-              <div className="divide-y divide-hairline/40 max-h-60 overflow-y-auto pr-1">
-                {verifiedRegistryItems.map((item) => {
-                  const isNew = highlightShortLink !== '' && item.shortLink === highlightShortLink;
-                  return (
-                    <div
-                      key={item.shortLink}
-                      className={`flex items-start justify-between py-2.5 gap-3 ${
-                        isNew
-                          ? 'rounded-md border border-accent-green/40 bg-accent-green/10 px-2'
-                          : ''
-                      }`}
-                    >
-                      <div className="flex gap-2.5 min-w-0 flex-1">
-                        <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded border border-hairline bg-gradient-to-br from-raised to-panel">
-                          {item.productImageUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={item.productImageUrl}
-                              alt={item.productName}
-                              className="h-full w-full object-contain"
-                            />
-                          ) : (
-                            <Icon name="rawvisual" width={16} height={16} />
-                          )}
-                        </div>
-                        <div className="min-w-0 flex-1 space-y-1">
-                          <p className="text-xs font-medium text-neutral-200 truncate">
-                            {isNew && (
-                              <span className="mr-1 rounded border border-accent-green/30 bg-accent-green/20 px-1 text-[9px] align-middle text-accent-green">
-                                Mới
-                              </span>
-                            )}
-                            {item.productName}
-                          </p>
-                          <div className="flex flex-wrap gap-1 items-center">
-                            {item.score !== undefined && (
-                              <span className="rounded bg-cyan-950/40 text-cyan-400 border border-cyan-500/20 px-1 text-[9px]">
-                                score {item.score}
-                              </span>
-                            )}
-                            {item.commissionRate && (
-                              <span className="rounded bg-violet-950/40 text-violet-400 border border-violet-500/20 px-1 text-[9px]">
-                                {item.commissionRate}
-                              </span>
-                            )}
-                            {item.price && (
-                              <span className="rounded bg-blue-950/40 text-blue-400 border border-blue-500/20 px-1 text-[9px]">
-                                {item.price}
-                              </span>
-                            )}
-                            <span className="font-mono text-[9px] text-neutral-400 truncate max-w-[120px]">
-                              {item.shortLink}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                      <Button
-                        variant={isPromoting === item.shortLink ? 'primary' : 'outline'}
-                        disabled={isPromoting !== '' || isExtracting}
-                        onClick={() => handlePromote(item.shortLink)}
-                        className="shrink-0 !py-1 !px-2 text-[10px]"
-                      >
-                        {isPromoting === item.shortLink ? 'Đang chọn...' : 'Dùng sản phẩm này'}
-                      </Button>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Shopee Link Extraction Intake Confirm Panel */}
-        {showExtractor && (
-          <div className="space-y-3 rounded-lg border border-accent-amber/20 bg-accent-amber/5 p-3">
-            <div className="flex items-start gap-2 text-xs text-accent-amber">
-              <span className="mt-0.5">⚠️</span>
-              <div>
-                <p className="font-semibold mb-1">Xác nhận trích xuất link Shopee mới qua CDP</p>
-                <p className="text-[11px] text-neutral-300 leading-relaxed">
-                  Hành động này sẽ attach vào Cốc Cốc/Shopee Affiliate đã đăng nhập và click đúng 1
-                  nút “Lấy link”. Nếu gặp login/CAPTCHA/OTP, hệ thống sẽ dừng{' '}
-                  <strong>SUSPENDED</strong> để Operator xử lý thủ công. Không tạo job, không
-                  render, không publish.
-                </p>
-              </div>
-            </div>
-
-            <form
-              onSubmit={handleExtract}
-              className="flex flex-col gap-2.5 sm:flex-row sm:items-end"
+          <PanelActions>
+            <Button
+              onClick={() => {
+                setShowRegistry(!showRegistry);
+                setShowExtractor(false);
+              }}
+              className={
+                showRegistry
+                  ? 'bg-accent-amber/20 text-accent-amber border-accent-amber/40 font-semibold'
+                  : ''
+              }
             >
-              <div className="flex-1 min-w-0">
-                <label
-                  htmlFor="confirmPhraseInput"
-                  className="block text-[10px] text-neutral-400 font-medium mb-1"
-                >
-                  Nhập cụm xác nhận để chạy:{' '}
-                  <code className="bg-neutral-800 px-1 py-0.5 rounded text-neutral-200">
-                    GET 1 SHOPEE LINK
-                  </code>
-                  <span className="ml-1 text-neutral-500">
-                    (đây là ô xác nhận, không phải ô link)
-                  </span>
-                </label>
-                <input
-                  id="confirmPhraseInput"
-                  type="text"
-                  required
-                  disabled={isExtracting}
-                  value={confirmPhrase}
-                  onChange={(e) => setConfirmPhrase(e.target.value)}
-                  placeholder="GET 1 SHOPEE LINK"
-                  className="w-full rounded-lg border border-hairline bg-panel px-3 py-1.5 text-xs text-neutral-200 focus:outline-none focus:border-accent-amber/50 disabled:opacity-50"
-                />
-              </div>
-              <div className="flex gap-2 shrink-0">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  disabled={isExtracting}
-                  onClick={() => {
-                    setShowExtractor(false);
-                    setConfirmPhrase('');
-                    setExtractionResult(null);
-                    setHighlightShortLink('');
-                  }}
-                  className="!py-1.5 !px-2.5 text-[11px]"
-                >
-                  Hủy
-                </Button>
-                <Button
-                  type="submit"
-                  variant="success"
-                  disabled={isExtracting || confirmPhrase !== 'GET 1 SHOPEE LINK'}
-                  className="!py-1.5 !px-2.5 text-[11px] bg-accent-amber/80 hover:bg-accent-amber text-neutral-900 border-none font-semibold disabled:opacity-30 disabled:bg-accent-amber/20 disabled:text-neutral-500"
-                >
-                  {isExtracting ? (
-                    <span className="flex items-center gap-1.5">
-                      <span className="h-3 w-3 animate-spin rounded-full border border-neutral-900 border-t-transparent" />
-                      Đang trích xuất...
-                    </span>
-                  ) : (
-                    'Xác nhận & Chạy'
-                  )}
-                </Button>
-              </div>
-            </form>
+              <Icon name="products" width={12} height={12} className="mr-1" />
+              {showRegistry ? 'Ẩn kho link' : 'Chọn từ kho link (no-click)'}
+            </Button>
+            <Button
+              onClick={() => {
+                setShowExtractor(!showExtractor);
+                setShowRegistry(false);
+              }}
+              className={
+                showExtractor
+                  ? 'bg-accent-amber/20 text-accent-amber border-accent-amber/40 font-semibold'
+                  : ''
+              }
+            >
+              <UtilIcon name="sparkle" width={12} height={12} />
+              {showExtractor ? 'Ẩn trích xuất' : 'Lấy link Shopee mới'}
+            </Button>
+            <DebugLink href="/products?lane=product-review">Mở kho sản phẩm (debug)</DebugLink>
+          </PanelActions>
 
-            {/* ===== Khu kết quả lấy link mới (tách riêng khỏi ô xác nhận) ===== */}
-            {extractionResult && (
-              <ExtractionResultBox
-                result={extractionResult}
-                inRegistry={
-                  !!extractionResult.shortLink &&
-                  registry.some((i) => i.shortLink === extractionResult.shortLink)
-                }
-                isPromoting={isPromoting === extractionResult.shortLink}
-                promoteDisabled={isPromoting !== '' || isExtracting}
-                onUseProduct={() => {
-                  if (extractionResult.shortLink) handlePromote(extractionResult.shortLink);
-                }}
-              />
-            )}
-          </div>
-        )}
-
-        <PanelActions>
-          <Button
-            onClick={() => {
-              setShowRegistry(!showRegistry);
-              setShowExtractor(false);
-            }}
-            className={
-              showRegistry
-                ? 'bg-accent-amber/20 text-accent-amber border-accent-amber/40 font-semibold'
-                : ''
-            }
-          >
-            <Icon name="products" width={12} height={12} className="mr-1" />
-            {showRegistry ? 'Ẩn kho link' : 'Chọn từ kho link (no-click)'}
-          </Button>
-          <Button
-            onClick={() => {
-              setShowExtractor(!showExtractor);
-              setShowRegistry(false);
-            }}
-            className={
-              showExtractor
-                ? 'bg-accent-amber/20 text-accent-amber border-accent-amber/40 font-semibold'
-                : ''
-            }
-          >
-            <UtilIcon name="sparkle" width={12} height={12} />
-            {showExtractor ? 'Ẩn trích xuất' : 'Lấy link Shopee mới'}
-          </Button>
-          <DebugLink href="/products?lane=product-review">Mở kho sản phẩm (debug)</DebugLink>
-        </PanelActions>
-
-        {cardReady && cardJobMismatch ? (
-          <NoticeBox accent="rose">
-            Product Card hợp lệ nhưng KHÁC sản phẩm của job hiện tại ở Hành động 2 (
-            <strong>{latestJob?.product}</strong>). Tạo job mới cho sản phẩm này, hoặc chọn lại sản
-            phẩm khớp job — sản xuất đang khoá để tránh chạy nhầm.
-          </NoticeBox>
-        ) : (
-          <GateHint
-            ok={cardReady}
-            okText={
-              latestJob && cardMatchesJob
-                ? 'Product Card khớp job hiện tại → Hành động 2 sẵn sàng'
-                : 'Product Card hợp lệ → tạo job ở Hành động 2'
-            }
-            waitText="Cần Product Card đúng owner để mở Hành động 2"
-          />
-        )}
-      </ActionPanel>
+          {cardReady && cardJobMismatch ? (
+            <NoticeBox accent="rose">
+              Product Card hợp lệ nhưng KHÁC sản phẩm của job hiện tại ở Hành động 2 (
+              <strong>{latestJob?.product}</strong>). Tạo job mới cho sản phẩm này, hoặc chọn lại
+              sản phẩm khớp job — sản xuất đang khoá để tránh chạy nhầm.
+            </NoticeBox>
+          ) : (
+            <GateHint
+              ok={cardReady}
+              okText={
+                latestJob && cardMatchesJob
+                  ? 'Product Card khớp job hiện tại → Hành động 2 sẵn sàng'
+                  : 'Product Card hợp lệ → tạo job ở Hành động 2'
+              }
+              waitText="Cần Product Card đúng owner để mở Hành động 2"
+            />
+          )}
+        </ActionPanel>
+      )}
 
       {/* ===================== HÀNH ĐỘNG 2 ===================== */}
       <ActionPanel
@@ -2251,9 +2277,7 @@ export default function ProductReviewLanePage() {
                   <StatusChip accent={latestJob.statusAccent}>{latestJob.statusLabel}</StatusChip>
                   {/* Phase 1 — kênh bind của job (từ manifest, không floating state) */}
                   <StatusChip accent={latestJob.channelId ? 'blue' : 'amber'}>
-                    {latestJob.channelId
-                      ? `kênh: ${latestJob.suggestedChannel}`
-                      : 'chưa gán kênh'}
+                    {latestJob.channelId ? `kênh: ${latestJob.suggestedChannel}` : 'chưa gán kênh'}
                   </StatusChip>
                   {isFallbackSource && (
                     <StatusChip accent="rose">Demo / Fallback Source</StatusChip>
@@ -2357,8 +2381,8 @@ export default function ProductReviewLanePage() {
             {latestJob.cleanlinessStatus === 'WATERMARK_NOT_DETECTED' && (
               <div className="space-y-2">
                 <p className="text-xs text-accent-green flex items-center gap-1 font-semibold">
-                  <span>✓</span> Nguồn đã tải & clean (provider no-watermark). Hình ảnh được Operator
-                  duyệt ở bước preview.
+                  <span>✓</span> Nguồn đã tải & clean (provider no-watermark). Hình ảnh được
+                  Operator duyệt ở bước preview.
                 </p>
                 {isFallbackSource && (
                   <NoticeBox accent="rose">
@@ -3028,104 +3052,106 @@ export default function ProductReviewLanePage() {
             Facebook (bản cũ — giữ để rollback)
           </summary>
           <div className="space-y-3 px-3 pb-3">
-        {/* Flow chính Action 3 chỉ có 1 CTA cuối: "Đăng bài Facebook" (Phase C, gate cứng).
+            {/* Flow chính Action 3 chỉ có 1 CTA cuối: "Đăng bài Facebook" (Phase C, gate cứng).
             Phase C UX: bấm nút khi gate xanh → đăng luôn, KHÔNG modal confirm phrase.
             Server vẫn evaluateLivePublishGates trước khi đăng. Retry kín đáo ở "Chi tiết kỹ thuật". */}
-        <PanelActions>
-          {latestJob?.state === 'PUBLISHED' ||
-          publishPreflight?.alreadyPublished ||
-          publishResult?.ok ? (
-            (() => {
-              // publishVisibility: ưu tiên kết quả POST mới nhất, fallback preflight (reload).
-              const pubStatus = publishResult?.result ?? publishPreflight?.publishStatus ?? null;
-              const publicConfirmed = pubStatus?.publishVisibility === 'PUBLIC_CONFIRMED';
-              const permalink = pubStatus?.permalinkUrl ?? null;
-              return (
-                <div className="flex w-full flex-col gap-1.5">
-                  {publicConfirmed ? (
+            <PanelActions>
+              {latestJob?.state === 'PUBLISHED' ||
+              publishPreflight?.alreadyPublished ||
+              publishResult?.ok ? (
+                (() => {
+                  // publishVisibility: ưu tiên kết quả POST mới nhất, fallback preflight (reload).
+                  const pubStatus =
+                    publishResult?.result ?? publishPreflight?.publishStatus ?? null;
+                  const publicConfirmed = pubStatus?.publishVisibility === 'PUBLIC_CONFIRMED';
+                  const permalink = pubStatus?.permalinkUrl ?? null;
+                  return (
+                    <div className="flex w-full flex-col gap-1.5">
+                      {publicConfirmed ? (
+                        <Button
+                          variant="success"
+                          disabled
+                          className="!py-1.5 !px-3 text-xs font-semibold"
+                        >
+                          ✓ Đã đăng thành công — public đã xác nhận
+                        </Button>
+                      ) : (
+                        <>
+                          <Button
+                            variant="success"
+                            disabled
+                            className="!py-1.5 !px-3 text-xs font-semibold"
+                          >
+                            ✓ Đã đăng thành công (API — Graph readback)
+                          </Button>
+                          <p className="text-[10px] leading-relaxed text-neutral-500">
+                            Graph readback đã xác nhận publish ở mức API — đây là điều kiện PASS kỹ
+                            thuật của VFOS. <strong>Kiểm tra bổ sung</strong> (Operator/nền tảng):
+                            mở permalink bằng tài khoản KHÔNG phải admin để xác nhận hiển thị công
+                            khai — việc này không gate trạng thái PASS, dùng để theo dõi
+                            distribution.
+                          </p>
+                        </>
+                      )}
+                      {permalink && (
+                        <a
+                          href={permalink}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-[11px] text-accent-green underline hover:text-accent-green/80"
+                        >
+                          Xem bài đăng trên Facebook (đã verify qua Graph readback) ↗
+                        </a>
+                      )}
+                    </div>
+                  );
+                })()
+              ) : (
+                <div className="flex w-full flex-col gap-2">
+                  <div className="flex flex-wrap items-center gap-3">
                     <Button
-                      variant="success"
-                      disabled
+                      variant={canPublish ? 'danger' : 'outline'}
+                      disabled={!canPublish || submittingPublish}
+                      onClick={() => handleLivePublish(selectedJobId)}
                       className="!py-1.5 !px-3 text-xs font-semibold"
                     >
-                      ✓ Đã đăng thành công — public đã xác nhận
+                      {submittingPublish ? (
+                        <span className="flex items-center gap-1.5">
+                          <span className="animate-spin">
+                            <UtilIcon name="clock" width={13} height={13} />
+                          </span>
+                          Đang đăng...
+                        </span>
+                      ) : (
+                        'Đăng bài Facebook'
+                      )}
                     </Button>
-                  ) : (
-                    <>
-                      <Button
-                        variant="success"
-                        disabled
-                        className="!py-1.5 !px-3 text-xs font-semibold"
-                      >
-                        ✓ Đã đăng thành công (API — Graph readback)
-                      </Button>
-                      <p className="text-[10px] leading-relaxed text-neutral-500">
-                        Graph readback đã xác nhận publish ở mức API — đây là điều kiện PASS kỹ
-                        thuật của VFOS. <strong>Kiểm tra bổ sung</strong> (Operator/nền tảng): mở
-                        permalink bằng tài khoản KHÔNG phải admin để xác nhận hiển thị công khai —
-                        việc này không gate trạng thái PASS, dùng để theo dõi distribution.
-                      </p>
-                    </>
-                  )}
-                  {permalink && (
-                    <a
-                      href={permalink}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-[11px] text-accent-green underline hover:text-accent-green/80"
-                    >
-                      Xem bài đăng trên Facebook (đã verify qua Graph readback) ↗
-                    </a>
-                  )}
-                </div>
-              );
-            })()
-          ) : (
-            <div className="flex w-full flex-col gap-2">
-              <div className="flex flex-wrap items-center gap-3">
-                <Button
-                  variant={canPublish ? 'danger' : 'outline'}
-                  disabled={!canPublish || submittingPublish}
-                  onClick={() => handleLivePublish(selectedJobId)}
-                  className="!py-1.5 !px-3 text-xs font-semibold"
-                >
-                  {submittingPublish ? (
-                    <span className="flex items-center gap-1.5">
-                      <span className="animate-spin">
-                        <UtilIcon name="clock" width={13} height={13} />
+                    {!canPublish && !submittingPublish && (
+                      <span className="text-[10px] text-neutral-500 font-medium">
+                        {getPublishDisabledReason()}
                       </span>
-                      Đang đăng...
-                    </span>
-                  ) : (
-                    'Đăng bài Facebook'
-                  )}
-                </Button>
-                {!canPublish && !submittingPublish && (
-                  <span className="text-[10px] text-neutral-500 font-medium">
-                    {getPublishDisabledReason()}
-                  </span>
-                )}
-              </div>
-              {publishError && (
-                <div className="rounded-lg border border-accent-rose/30 bg-accent-rose/5 px-3 py-2 space-y-1 text-[11px]">
-                  <div className="flex items-center gap-2 font-semibold text-accent-rose">
-                    <UtilIcon name="x" width={13} height={13} />
-                    <span>Đăng bài thất bại</span>
+                    )}
                   </div>
-                  <p className="text-neutral-300">{publishError}</p>
-                  {publishStderr && (
-                    <pre className="mt-1 max-h-32 overflow-auto rounded bg-neutral-950/80 p-2 text-[10px] text-neutral-500 font-mono whitespace-pre-wrap">
-                      {publishStderr}
-                    </pre>
+                  {publishError && (
+                    <div className="rounded-lg border border-accent-rose/30 bg-accent-rose/5 px-3 py-2 space-y-1 text-[11px]">
+                      <div className="flex items-center gap-2 font-semibold text-accent-rose">
+                        <UtilIcon name="x" width={13} height={13} />
+                        <span>Đăng bài thất bại</span>
+                      </div>
+                      <p className="text-neutral-300">{publishError}</p>
+                      {publishStderr && (
+                        <pre className="mt-1 max-h-32 overflow-auto rounded bg-neutral-950/80 p-2 text-[10px] text-neutral-500 font-mono whitespace-pre-wrap">
+                          {publishStderr}
+                        </pre>
+                      )}
+                      <p className="text-[10px] text-neutral-500">
+                        Bấm lại nút để thử đăng lại nếu gate vẫn xanh — VFOS không tự động đăng lại.
+                      </p>
+                    </div>
                   )}
-                  <p className="text-[10px] text-neutral-500">
-                    Bấm lại nút để thử đăng lại nếu gate vẫn xanh — VFOS không tự động đăng lại.
-                  </p>
                 </div>
               )}
-            </div>
-          )}
-        </PanelActions>
+            </PanelActions>
           </div>
         </details>
 

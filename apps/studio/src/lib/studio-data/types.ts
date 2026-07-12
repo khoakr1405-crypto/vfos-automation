@@ -13,6 +13,8 @@ export type AffiliateGate = 'pass' | 'fail' | 'warn';
 
 export type VfosJobState =
   | 'CREATED'
+  // Video-first (Trend Scout POV): job có URL video nhưng CHƯA gắn Product Card.
+  | 'WAITING_FOR_PRODUCT'
   | 'WAITING_FOR_SOURCE_VIDEO'
   | 'SOURCE_READY'
   | 'READY_TO_RENDER'

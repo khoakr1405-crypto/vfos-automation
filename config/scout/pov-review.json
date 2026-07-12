@@ -1,0 +1,33 @@
+{
+  "_doc": "VFOS Trend Scout — ngách POV Review (Đập hộp/Nhập vai) cho lane Review Sản phẩm (Video-First intake). Operator tự thêm/bớt keywords, KHÔNG cần sửa code. Bộ khởi điểm CHƯA verify hiệu quả trên Douyin thật — tinh chỉnh sau smoke run đầu tiên. KHÔNG có channelId: job Review bind kênh qua job:create (resolveChannelForCreate), không qua scout.",
+  "niche": "pov-review",
+  "label": "POV Review (Đập hộp/Nhập vai)",
+  "keywords": [
+    "沉浸式开箱",
+    "第一视角测评",
+    "开箱测评",
+    "好物开箱",
+    "居家好物",
+    "好物推荐",
+    "沉浸式体验",
+    "良心测评",
+    "真实测评",
+    "平价好物",
+    "家居好物",
+    "开箱视频"
+  ],
+  "thresholds": {
+    "ageMinMinutes": 30,
+    "ageMaxMinutes": 360,
+    "refLikesPerMinute": 400,
+    "floorLikesPerMinute": 15,
+    "commentRatioRef": 0.02,
+    "commentBoostMax": 0.5
+  },
+  "search": {
+    "targetPerKeyword": 30,
+    "scrollBudgetMs": 15000,
+    "keywordDelayMsMin": 3000,
+    "keywordDelayMsMax": 7000
+  }
+}

@@ -82,6 +82,7 @@ export function updateRegistryFromManifest(manifest: JobManifest): void {
 }
 
 export function productNameFromManifest(manifest: JobManifest): string | null {
+  if (!manifest.source.productCardPath) return null;
   const cardPath = resolve(manifest.source.productCardPath);
   if (!existsSync(cardPath)) return null;
   try {

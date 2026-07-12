@@ -473,10 +473,16 @@ export async function cmdIntakeClean(args: string[]): Promise<number> {
     saveManifest(manifest);
 
     const reg = loadRegistry();
-    const productCardRaw = JSON.parse(
-      readFileSync(resolve(manifest.source.productCardPath), 'utf8'),
-    ) as Record<string, unknown>;
-    upsertRegistryEntry(reg, entryFromManifest(manifest, extractProductName(productCardRaw)));
+    // Video-first job (Trend Scout) có thể chưa gắn card → productName null.
+    const productName = manifest.source.productCardPath
+      ? extractProductName(
+          JSON.parse(readFileSync(resolve(manifest.source.productCardPath), 'utf8')) as Record<
+            string,
+            unknown
+          >,
+        )
+      : null;
+    upsertRegistryEntry(reg, entryFromManifest(manifest, productName));
     saveRegistry(reg);
 
     console.log(
@@ -489,10 +495,16 @@ export async function cmdIntakeClean(args: string[]): Promise<number> {
     saveManifest(manifest);
 
     const reg = loadRegistry();
-    const productCardRaw = JSON.parse(
-      readFileSync(resolve(manifest.source.productCardPath), 'utf8'),
-    ) as Record<string, unknown>;
-    upsertRegistryEntry(reg, entryFromManifest(manifest, extractProductName(productCardRaw)));
+    // Video-first job (Trend Scout) có thể chưa gắn card → productName null.
+    const productName = manifest.source.productCardPath
+      ? extractProductName(
+          JSON.parse(readFileSync(resolve(manifest.source.productCardPath), 'utf8')) as Record<
+            string,
+            unknown
+          >,
+        )
+      : null;
+    upsertRegistryEntry(reg, entryFromManifest(manifest, productName));
     saveRegistry(reg);
 
     console.error(`\n❌ Clean Source Intake FAILED: ${errorCode} - ${errorMessage}`);

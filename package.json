@@ -78,6 +78,7 @@
     "job:run-review": "tsx scripts/vfos-job-manager.ts run-review",
     "job:create": "tsx scripts/vfos-job-manager.ts create",
     "job:status": "tsx scripts/vfos-job-manager.ts status",
+    "job:attach-product": "tsx scripts/vfos-job-manager.ts attach-product",
     "job:attach-source": "tsx scripts/vfos-job-manager.ts attach-source",
     "job:source-inbox": "tsx scripts/vfos-job-manager.ts source-inbox",
     "job:script": "tsx scripts/vfos-job-manager.ts script",

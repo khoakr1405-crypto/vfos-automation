@@ -19,6 +19,7 @@ import { useEffect, useState } from 'react';
 // state (10-state) → 1 trong 6 bước pipeline concept. FAILED/REJECTED = null (loại).
 const STATE_TO_STEP: Record<VfosJobState, number | null> = {
   CREATED: 1,
+  WAITING_FOR_PRODUCT: 1,
   WAITING_FOR_SOURCE_VIDEO: 2,
   SOURCE_READY: 2,
   READY_TO_RENDER: 3,

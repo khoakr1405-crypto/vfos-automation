@@ -25,9 +25,11 @@ export function cmdStatus(args: string[]): number {
     console.error(`🛑 UNKNOWN_JOB: ${jobId}`);
     return 2;
   }
-  const productCardPath = resolve(manifest.source.productCardPath);
+  const productCardPath = manifest.source.productCardPath
+    ? resolve(manifest.source.productCardPath)
+    : null;
   let productName: string | null = null;
-  if (existsSync(productCardPath)) {
+  if (productCardPath && existsSync(productCardPath)) {
     try {
       const card = JSON.parse(readFileSync(productCardPath, 'utf8')) as Record<string, unknown>;
       productName = extractProductName(card);
