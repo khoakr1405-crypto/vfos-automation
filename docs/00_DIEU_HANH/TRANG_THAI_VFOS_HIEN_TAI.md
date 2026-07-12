@@ -3273,6 +3273,26 @@ Pipeline anchors chạy đầy đủ (từ log): cắt 4 money-shot → vision h
 
 ---
 
+### ✅ Phần 75 — Thay máu Intake Xưởng Review: Trend Scout POV / Video-First (2026-07-12, commit `67d9633`)
+
+> Chuyển trục Xưởng Review Sản phẩm từ **Product-First → Content-Led / Video-First**: quét video "POV Review / Đập hộp nhập vai" từ Douyin TRƯỚC (Trend Scout), gắn sản phẩm Shopee SAU — video kéo view dẫn sản phẩm, khớp North Star reup→affiliate.
+
+1. **Backend `vfos-job-manager` nới đầu vào, KHÔNG nới cổng an toàn ✅**: `job:create --from-video-url <url>` (loại trừ lẫn nhau với `--from-product`, nhánh cũ byte-identical) → job sinh ở state MỚI **`WAITING_FOR_PRODUCT`** (`productCardPath: null` + `sourceVideoUrl`); lệnh MỚI **`job:attach-product`** copy card vào job + điền productId/chineseSearchName + transition → `WAITING_FOR_SOURCE_VIDEO` (guard re-attach exit 4). Widening `productCardPath: string|null` ép rà **9 call site** null-guard đúng ngữ nghĩa.
+
+2. **2 lớp bảo vệ chống production khi thiếu Product Card ✅** (verify sống): lớp 1 = clean-source gate chặn từ vòng ngoài (**exit 20** — test thật); lớp 2 = gate MỚI `PRODUCT_CARD_MISSING` **exit 26** trong `job-sanity-gate.ts` (chặn cả kịch bản job lách tới SOURCE_READY mà chưa có card).
+
+3. **Trend Scout ngách POV ✅**: `config/scout/pov-review.json` (12 keyword Trung: 沉浸式开箱 · 第一视角测评 · 好物开箱 · 居家好物…) — scout tự phát hiện config, 0 code; GET scout trả `niches: cooking, fishing, pov-review` (verify sống).
+
+4. **UI thay máu Action 1 ✅**: component MỚI `TrendScoutReviewPanel` (quét POV → shortlist 8 ứng viên → "+ Tạo job POV" → khối gắn sản phẩm từ kho link VERIFIED ngay dưới job vừa tạo) thay vị trí Action 1; khối "Lấy / chọn sản phẩm" cũ **ĐÓNG BĂNG bằng cờ `FROZEN_PRODUCT_FIRST_ACTION1`** (`{false && …}` — code + backend Shopee giữ 100%, vẫn typecheck, mở lại = đổi 1 cờ); 2 route MỚI `POST /api/studio/jobs/create-from-video` + `POST /api/studio/jobs/[jobId]/attach-product` (server verify owner + VERIFIED, spawn CLI single-writer).
+
+**Gate tổng:** studio typecheck exit 0 (5 lần, sau từng nhịp) + tsc strict toàn cây job-manager exit 0 + biome 0 lỗi mới (page giữ đúng 4 lỗi baseline). **Live-fire:** create/block/attach/re-attach-guard CLI + 2 route + scout niches — 3 job test dọn sạch (registry 42→39). Operator duyệt UI trực quan 100%. Luồng 5 bước cũ nguyên vẹn — chỉ đảo Bước 1 (video POV) ↔ Bước 2 (gắn link Shopee).
+
+**Trạng thái git:** commit `67d9633` (25 file, +1478/−581) trên `feat/ent-multichannel`, staging đích danh, secret scan sạch. Edge-case ghi nhận: job FAILED trước khi gắn card → attach giữ FAILED (Operator intake lại như job fail thường).
+
+**Bước tiếp theo duy nhất:** GIỮ NGUYÊN chờ nạp Quota OpenAI (mục Phần 74) + Operator quét Douyin POV lần đầu (cần đăng nhập Douyin, No-Go #4) để có shortlist thật cho lane Review.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
