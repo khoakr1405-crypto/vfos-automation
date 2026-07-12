@@ -55,14 +55,17 @@ interface CreatedJob {
   attachedProduct: string | null;
 }
 
-export function TrendScoutReviewPanel() {
+export function TrendScoutReviewPanel({ onJobMutated }: { onJobMutated?: () => void }) {
   const [runState, setRunState] = useState<ScoutRunState | null>(null);
   const [snapshotAt, setSnapshotAt] = useState<string | null>(null);
   const [candidates, setCandidates] = useState<ScoutCandidate[]>([]);
   const [createdJob, setCreatedJob] = useState<CreatedJob | null>(null);
   const [pickerItems, setPickerItems] = useState<RegistryPickItem[] | null>(null);
-  const [busy, setBusy] = useState<string | null>(null); // awemeId đang tạo / 'scan' / 'attach:<link>'
+  const [busy, setBusy] = useState<string | null>(null); // awemeId đang tạo / 'scan' / 'attach:<link>' / 'intake'
   const [msg, setMsg] = useState<string | null>(null);
+  // Tải & clean nguồn ngay tại Action 1 (UX liền mạch — tái dùng route source-intake).
+  const [intake, setIntake] = useState<'idle' | 'running' | 'done' | 'failed'>('idle');
+  const [intakeMsg, setIntakeMsg] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(async () => {
@@ -139,7 +142,10 @@ export function TrendScoutReviewPanel() {
       };
       if (j.ok && j.jobId) {
         setCreatedJob({ jobId: j.jobId, videoUrl: c.url, desc: c.desc, attachedProduct: null });
+        setIntake('idle');
+        setIntakeMsg(null);
         setMsg(`✅ Đã tạo job ${j.jobId} (WAITING_FOR_PRODUCT) — gắn sản phẩm ở bước dưới.`);
+        onJobMutated?.();
       } else {
         setMsg(`🛑 ${j.message ?? j.code ?? 'Tạo job lỗi.'}`);
       }
@@ -189,8 +195,9 @@ export function TrendScoutReviewPanel() {
       if (aj.ok) {
         setCreatedJob({ ...createdJob, attachedProduct: item.productName });
         setMsg(
-          `✅ Đã gắn "${item.productName}" vào ${createdJob.jobId} → WAITING_FOR_SOURCE_VIDEO. Tiếp: Hành động 2 (nguồn sạch → sản xuất).`,
+          `✅ Đã gắn "${item.productName}" vào ${createdJob.jobId} → WAITING_FOR_SOURCE_VIDEO. Bấm "Tải & Clean nguồn video POV" ngay bên dưới.`,
         );
+        onJobMutated?.();
       } else {
         setMsg(`🛑 Gắn sản phẩm lỗi: ${aj.message ?? aj.code ?? '?'}`);
       }
@@ -198,6 +205,39 @@ export function TrendScoutReviewPanel() {
       setMsg(`🛑 ${e instanceof Error ? e.message : 'Lỗi mạng.'}`);
     } finally {
       setBusy(null);
+    }
+  }
+
+  // Tải & clean nguồn TẠI CHỖ — tái dùng y hệt contract nút Action 2:
+  // POST source-intake {confirmPhrase} KHÔNG kèm sourceUrl → server tự dùng
+  // sourceVideoUrl đã lưu trong manifest lúc tạo job từ Scout.
+  async function onIntake() {
+    if (!createdJob || busy || intake === 'running') return;
+    setBusy('intake');
+    setIntake('running');
+    setIntakeMsg('Đang tải & clean nguồn (có thể mất ~30s)…');
+    try {
+      const r = await fetch(`/api/studio/jobs/${createdJob.jobId}/source-intake`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirmPhrase: 'RUN SOURCE INTAKE' }),
+      });
+      const j = (await r.json()) as { ok: boolean; message?: string; code?: string };
+      if (j.ok) {
+        setIntake('done');
+        setIntakeMsg(
+          '✅ Nguồn đã tải & clean (SOURCE_READY) — sang Hành động 2 bấm "Chạy sản xuất video".',
+        );
+      } else {
+        setIntake('failed');
+        setIntakeMsg(`🛑 FAILED: ${j.message ?? j.code ?? 'Tải / clean nguồn thất bại.'}`);
+      }
+    } catch (e) {
+      setIntake('failed');
+      setIntakeMsg(`🛑 FAILED: ${e instanceof Error ? e.message : 'Lỗi kết nối API.'}`);
+    } finally {
+      setBusy(null);
+      onJobMutated?.();
     }
   }
 
@@ -320,6 +360,41 @@ export function TrendScoutReviewPanel() {
                   </button>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Bước 3 tại chỗ: đã gắn sản phẩm (WAITING_FOR_SOURCE_VIDEO) + có
+              sourceVideoUrl từ Scout → tải & clean nguồn NGAY, khỏi cuộn xuống
+              Action 2. Tái dùng y hệt route/confirmPhrase của nút Action 2. */}
+          {createdJob.attachedProduct && (
+            <div className="space-y-1.5 border-t border-hairline/30 pt-2">
+              <button
+                type="button"
+                onClick={() => void onIntake()}
+                disabled={busy != null || intake === 'running' || intake === 'done'}
+                className="rounded-xl border border-accent-violet/40 bg-accent-violet/15 px-4 py-2 text-sm font-bold text-accent-violet transition hover:bg-accent-violet/25 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {intake === 'running'
+                  ? 'Đang tải & clean nguồn…'
+                  : intake === 'done'
+                    ? '✓ Nguồn đã sẵn sàng'
+                    : intake === 'failed'
+                      ? 'Thử tải lại nguồn'
+                      : '⬇ Tải & Clean nguồn video POV'}
+              </button>
+              {intakeMsg && (
+                <p
+                  className={`text-[11px] ${
+                    intake === 'failed'
+                      ? 'font-semibold text-accent-rose'
+                      : intake === 'done'
+                        ? 'text-accent-green'
+                        : 'text-accent-cyan'
+                  }`}
+                >
+                  {intakeMsg}
+                </p>
+              )}
             </div>
           )}
         </div>

@@ -1312,7 +1312,23 @@ export default function ProductReviewLanePage() {
   const sourceUrlWasExtracted =
     !!extractedSourceUrl && extractedSourceUrl !== sourceUrlInput.trim();
   // Đã có job khớp Product Card chưa (không phụ thuộc job đang chọn ở dropdown).
-  const cardHasMatchingJob = !!card && findJobForCard(jobs, card) !== null;
+  const cardMatchedJob = card ? findJobForCard(jobs, card) : null;
+  const cardHasMatchingJob = cardMatchedJob !== null;
+  // Video-First (Trend Scout): job đã mang sẵn sourceVideoUrl từ lúc tạo → Action 2
+  // KHÔNG cần ô dán link nữa (chỉ hiển thị read-only). Job đã qua bước tải
+  // (SOURCE_READY trở lên) → ẩn luôn nút tải để tránh bấm nhầm.
+  const scoutUrlLocked = Boolean(cardMatchedJob?.sourceVideoUrl);
+  const SOURCE_INGESTED_STATES = new Set([
+    'SOURCE_READY',
+    'READY_TO_RENDER',
+    'RENDERING',
+    'READY_FOR_OPERATOR_REVIEW',
+    'APPROVED',
+    'PACKAGED',
+    'PUBLISHED',
+  ]);
+  const sourceAlreadyIngested =
+    cardMatchedJob != null && SOURCE_INGESTED_STATES.has(cardMatchedJob.state);
 
   // Draft only counts if it belongs to the CURRENT Product Card.
   const draftMatchesCard =
@@ -1567,7 +1583,7 @@ export default function ProductReviewLanePage() {
         desc="Video-First: quét Douyin ngách POV Review (đập hộp/nhập vai) → tạo job từ video → gắn Product Card từ kho link ngay sau đó."
         status={{ label: 'Video-First intake', accent: 'cyan' }}
       >
-        <TrendScoutReviewPanel />
+        <TrendScoutReviewPanel onJobMutated={() => void load()} />
       </ActionPanel>
 
       {/* ĐÓNG BĂNG (2026-07-12, chiến dịch Trend Scout POV): khối "Lấy / chọn sản
@@ -2030,21 +2046,34 @@ export default function ProductReviewLanePage() {
           </div>
 
           <div className="space-y-2">
-            <input
-              type="text"
-              disabled={savingSource || creatingJob || preparingSource}
-              value={sourceUrlInput}
-              onChange={(e) => setSourceUrlInput(e.target.value)}
-              placeholder="Dán link hoặc nguyên đoạn share (TikTok, Douyin, ...) — tự trích URL"
-              className="w-full rounded-lg border border-hairline bg-panel/80 px-3 py-2 text-xs text-neutral-100 outline-none focus:border-accent-violet disabled:opacity-50"
-            />
-            {sourceInputHasText && !extractedSourceUrl && (
+            {/* Video-First: job từ Scout đã có URL trong manifest → read-only, khỏi dán lại. */}
+            {scoutUrlLocked && (
+              <div className="space-y-0.5 rounded-md border border-hairline/60 bg-panel/40 px-2.5 py-1.5">
+                <span className="text-[9px] font-medium uppercase tracking-wider text-neutral-500">
+                  URL nguồn (từ Trend Scout — đã lưu vào job)
+                </span>
+                <p className="break-all font-mono text-[10px] text-accent-blue">
+                  {cardMatchedJob?.sourceVideoUrl}
+                </p>
+              </div>
+            )}
+            {!scoutUrlLocked && (
+              <input
+                type="text"
+                disabled={savingSource || creatingJob || preparingSource}
+                value={sourceUrlInput}
+                onChange={(e) => setSourceUrlInput(e.target.value)}
+                placeholder="Dán link hoặc nguyên đoạn share (TikTok, Douyin, ...) — tự trích URL"
+                className="w-full rounded-lg border border-hairline bg-panel/80 px-3 py-2 text-xs text-neutral-100 outline-none focus:border-accent-violet disabled:opacity-50"
+              />
+            )}
+            {!scoutUrlLocked && sourceInputHasText && !extractedSourceUrl && (
               <p className="text-[10px] text-accent-rose">
                 Không tìm thấy URL trong đoạn văn bản — cần một link bắt đầu bằng http:// hoặc
                 https:// (có thể nằm giữa text).
               </p>
             )}
-            {extractedSourceUrl && (
+            {!scoutUrlLocked && extractedSourceUrl && (
               <div className="space-y-0.5 rounded-md border border-hairline/60 bg-panel/40 px-2.5 py-1.5">
                 <span className="text-[9px] font-medium uppercase tracking-wider text-neutral-500">
                   {sourceUrlWasExtracted ? 'URL trích xuất từ text đã dán' : 'URL nguồn sẽ lưu'}
@@ -2059,29 +2088,38 @@ export default function ProductReviewLanePage() {
                 → mở thẳng Bước 3 (Option A, không còn human gate duyệt nguồn).
                 "Lưu nháp" chỉ là phụ (auto-save thủ công), không còn là CTA chính. */}
             <div className="flex flex-wrap items-center gap-2">
-              <Button
-                variant="primary"
-                className="!py-1.5 !px-3 text-[11px] font-semibold bg-accent-violet hover:bg-accent-violet text-white border-none disabled:opacity-30"
-                onClick={handlePrepareSource}
-                disabled={
-                  preparingSource ||
-                  savingSource ||
-                  creatingJob ||
-                  !cardReady ||
-                  (!extractedSourceUrl && !cardHasMatchingJob)
-                }
-              >
-                {preparingSource ? 'Đang chuẩn bị nguồn…' : 'Tải & clean nguồn'}
-              </Button>
-              <Button
-                variant="ghost"
-                className="!py-1 !px-2 text-[10px]"
-                onClick={handleSaveSource}
-                disabled={savingSource || creatingJob || preparingSource || !extractedSourceUrl}
-                title="Chỉ lưu URL nháp (phụ/debug) — không tải/clean."
-              >
-                {savingSource ? 'Đang lưu…' : 'Lưu nháp'}
-              </Button>
+              {/* Job đã qua bước tải (SOURCE_READY+) → ẩn nút, chống bấm nhầm tải lại. */}
+              {sourceAlreadyIngested ? (
+                <span className="text-[10px] font-semibold text-accent-green">
+                  ✓ Nguồn đã tải & clean — sang "Chạy sản xuất video".
+                </span>
+              ) : (
+                <Button
+                  variant="primary"
+                  className="!py-1.5 !px-3 text-[11px] font-semibold bg-accent-violet hover:bg-accent-violet text-white border-none disabled:opacity-30"
+                  onClick={handlePrepareSource}
+                  disabled={
+                    preparingSource ||
+                    savingSource ||
+                    creatingJob ||
+                    !cardReady ||
+                    (!extractedSourceUrl && !cardHasMatchingJob)
+                  }
+                >
+                  {preparingSource ? 'Đang chuẩn bị nguồn…' : 'Tải & clean nguồn'}
+                </Button>
+              )}
+              {!scoutUrlLocked && (
+                <Button
+                  variant="ghost"
+                  className="!py-1 !px-2 text-[10px]"
+                  onClick={handleSaveSource}
+                  disabled={savingSource || creatingJob || preparingSource || !extractedSourceUrl}
+                  title="Chỉ lưu URL nháp (phụ/debug) — không tải/clean."
+                >
+                  {savingSource ? 'Đang lưu…' : 'Lưu nháp'}
+                </Button>
+              )}
               {draftMatchesCard && (
                 <Button
                   variant="outline"
