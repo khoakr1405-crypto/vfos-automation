@@ -166,6 +166,22 @@ export interface EntPackageSummary {
   generatedAt?: string;
 }
 
+/**
+ * Affiliate Content-Led (Shopee) — gắn ở khâu ĐÓNG GÓI, không phải intake.
+ * Additive: job cũ không có block này (null/undefined). CHỈ lưu short link
+ * s.shopee.vn — TUYỆT ĐỐI không canonical_url (mang credential_token/gads_t_sig).
+ */
+export interface EntAffiliateSummary {
+  /** Repo-relative path tới snapshot Product Card job-local (sanitized). */
+  shopeeProductCardPath: string | null;
+  /** Link affiliate an toàn (https://s.shopee.vn/...). */
+  shopeeAffiliateUrl: string | null;
+  productName?: string | null;
+  affiliateOwnerId?: string | null;
+  ownerVerified?: boolean;
+  attachedAt?: string | null;
+}
+
 /** Story classification surface từ story_arc.json (03d-source-classify) cho UI/manifest. */
 export interface EntStorySummary {
   confidence?: string;
@@ -199,6 +215,8 @@ export interface EntJob {
   tiktok?: EntTikTokPublishSummary | null;
   /** Tóm tắt đăng Facebook (lane Giải trí đổi target sang FB). Additive — job cũ null. */
   facebook?: EntFacebookPublishSummary | null;
+  /** Sản phẩm Shopee gắn ở khâu Đóng gói (Content-Led). Additive — job cũ null. */
+  affiliate?: EntAffiliateSummary | null;
   reviewGates?: { scriptApproved: boolean; previewApproved: boolean };
   error?: { code: string; message: string } | null;
 }
@@ -1504,6 +1522,84 @@ export function saveCaptionToPackage(id: string, caption: string, hashtags: stri
   } catch {
     /* giữ nguyên nếu lỗi đọc/ghi */
   }
+}
+
+/** Short link Shopee an toàn — chặn canonical_url (credential_token) ngay tầng ghi. */
+const SAFE_SHOPEE_SHORT_LINK = /^https:\/\/s\.shopee\.vn\/[A-Za-z0-9]+$/;
+
+export interface AttachAffiliateInput {
+  shortLink: string;
+  productName: string;
+  affiliateOwnerId: string;
+  ownerVerified: boolean;
+  shopid?: string;
+  itemid?: string;
+  score?: number;
+  commissionRate?: string;
+  price?: string;
+}
+
+/**
+ * Gắn sản phẩm Shopee vào job (Content-Led — khâu Đóng gói). Snapshot Product
+ * Card SANITIZED vào job dir (bind cứng theo job, không phụ thuộc card global
+ * mutable) + ghi block affiliate vào ent_job.json. KHÔNG đổi state/gate.
+ */
+export function attachJobAffiliate(
+  id: string,
+  input: AttachAffiliateInput,
+): { ok: true; job: EntJob } | { ok: false; code: string; message: string } {
+  const job = readManifest(id);
+  if (!job) return { ok: false, code: 'NOT_FOUND', message: 'Job không tồn tại.' };
+  if (!SAFE_SHOPEE_SHORT_LINK.test(input.shortLink)) {
+    return {
+      ok: false,
+      code: 'UNSAFE_LINK',
+      message: 'Chỉ chấp nhận short link https://s.shopee.vn/... (không canonical URL).',
+    };
+  }
+  const cardRel = `${ENT_DIR_REL}/${id}/product_card.json`;
+  const cardAbs = entFile(id, 'product_card.json');
+  if (!cardAbs) return { ok: false, code: 'NOT_FOUND', message: 'jobId không hợp lệ.' };
+  const snapshot = {
+    name: input.productName,
+    shortLink: input.shortLink,
+    affiliateOwnerId: input.affiliateOwnerId,
+    ownerVerified: input.ownerVerified,
+    ...(input.shopid ? { shopid: input.shopid } : {}),
+    ...(input.itemid ? { itemid: input.itemid } : {}),
+    ...(typeof input.score === 'number' ? { score: input.score } : {}),
+    ...(input.commissionRate ? { commissionRate: input.commissionRate } : {}),
+    ...(input.price ? { price: input.price } : {}),
+    attachedAt: nowIso(),
+    // KHÔNG bao giờ lưu canonical_url/credential ở đây (sanitized snapshot).
+  };
+  writeFileSync(cardAbs, JSON.stringify(snapshot, null, 2));
+  const affiliate: EntAffiliateSummary = {
+    shopeeProductCardPath: cardRel,
+    shopeeAffiliateUrl: input.shortLink,
+    productName: input.productName,
+    affiliateOwnerId: input.affiliateOwnerId,
+    ownerVerified: input.ownerVerified,
+    attachedAt: snapshot.attachedAt,
+  };
+  writeManifest(id, { ...job, affiliate, updatedAt: nowIso() });
+  const detail = getJobDetail(id);
+  return detail
+    ? { ok: true, job: detail }
+    : { ok: false, code: 'BAD_STATE', message: 'Không đọc lại được job.' };
+}
+
+/** Gỡ sản phẩm khỏi job (affiliate = null). Giữ file snapshot làm trace — vô hại. */
+export function detachJobAffiliate(
+  id: string,
+): { ok: true; job: EntJob } | { ok: false; code: string; message: string } {
+  const job = readManifest(id);
+  if (!job) return { ok: false, code: 'NOT_FOUND', message: 'Job không tồn tại.' };
+  writeManifest(id, { ...job, affiliate: null, updatedAt: nowIso() });
+  const detail = getJobDetail(id);
+  return detail
+    ? { ok: true, job: detail }
+    : { ok: false, code: 'BAD_STATE', message: 'Không đọc lại được job.' };
 }
 
 /** Deps thật cho publishToTikTok (publish.ts là pure/DI). */

@@ -11,6 +11,8 @@
  * ========================================================================== */
 
 import { checkAffiliateLinkOwner } from '@/lib/entertainment/affiliate-owner';
+// import type = chỉ lấy type, erase lúc compile — KHÔNG kéo node:fs vào client.
+import type { EntAffiliateSummary } from '@/lib/entertainment/jobs';
 import { useCallback, useEffect, useState } from 'react';
 import { useEntLane } from './ent-lane-context';
 
@@ -41,6 +43,17 @@ interface ReadinessResp {
   caption?: string;
   hashtags?: string[];
   facebook?: FacebookSummary | null;
+}
+
+/** 1 dòng sản phẩm từ kho link Shopee (GET /api/studio/commerce/shopee-registry — sanitized). */
+interface RegistryPickItem {
+  shortLink: string;
+  productName: string;
+  ownerVerified: boolean;
+  score?: number;
+  commissionRate?: string;
+  price?: string;
+  lastSeenAt?: string;
 }
 
 function Light({ on, label }: { on: boolean; label: string }) {
@@ -87,11 +100,17 @@ export function PackagePanel() {
   const [contextualCta, setContextualCta] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  // Content-Led: sản phẩm Shopee gắn vào job (đọc/ghi ent_job qua API entertainment).
+  const [attached, setAttached] = useState<EntAffiliateSummary | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerItems, setPickerItems] = useState<RegistryPickItem[] | null>(null);
+  const [affBusy, setAffBusy] = useState(false);
 
   const load = useCallback(async (id: string) => {
     if (!id) {
       setData(null);
       setCaption('');
+      setAttached(null);
       return;
     }
     try {
@@ -108,11 +127,90 @@ export function PackagePanel() {
     } catch {
       setData(null);
     }
+    try {
+      const r = await fetch(`/api/studio/entertainment/jobs/${id}/affiliate`);
+      const j = (await r.json()) as { ok: boolean; affiliate?: EntAffiliateSummary | null };
+      setAttached(j.ok ? (j.affiliate ?? null) : null);
+    } catch {
+      setAttached(null);
+    }
   }, []);
 
   useEffect(() => {
     void load(selectedId);
   }, [selectedId, load]);
+
+  async function openPicker() {
+    setPickerOpen(true);
+    if (pickerItems) return;
+    try {
+      // Kho link Shopee = commerce API dùng chung (sanitized, read-only) — KHÔNG
+      // phải job API lane Review; ghi vào ent_job vẫn qua API entertainment.
+      const r = await fetch('/api/studio/commerce/shopee-registry');
+      const j = (await r.json()) as { ok: boolean; items?: RegistryPickItem[] };
+      const verified = (j.items ?? [])
+        .filter((i) => i.ownerVerified)
+        .sort((a, b) => String(b.lastSeenAt ?? '').localeCompare(String(a.lastSeenAt ?? '')))
+        .slice(0, 10);
+      setPickerItems(verified);
+    } catch {
+      setPickerItems([]);
+    }
+  }
+
+  async function onAttach(item: RegistryPickItem) {
+    if (!selectedId || affBusy) return;
+    setAffBusy(true);
+    setMsg(null);
+    try {
+      const r = await fetch(`/api/studio/entertainment/jobs/${selectedId}/affiliate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ shortLink: item.shortLink }),
+      });
+      const j = (await r.json()) as {
+        ok: boolean;
+        affiliate?: EntAffiliateSummary | null;
+        message?: string;
+        code?: string;
+      };
+      if (j.ok) {
+        setAttached(j.affiliate ?? null);
+        setPickerOpen(false);
+        // Prefill link đăng FB + nhắc đóng gói lại để caption nhận link.
+        setAffiliateLink(j.affiliate?.shopeeAffiliateUrl ?? '');
+        setMsg('✅ Đã gắn sản phẩm — bấm "Tạo caption" để chèn link vào cuối caption.');
+      } else {
+        setMsg(`🛑 ${j.message ?? j.code ?? 'Gắn sản phẩm lỗi.'}`);
+      }
+    } catch (e) {
+      setMsg(`🛑 ${e instanceof Error ? e.message : 'Lỗi mạng.'}`);
+    } finally {
+      setAffBusy(false);
+    }
+  }
+
+  async function onDetach() {
+    if (!selectedId || affBusy) return;
+    setAffBusy(true);
+    try {
+      const r = await fetch(`/api/studio/entertainment/jobs/${selectedId}/affiliate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'detach' }),
+      });
+      const j = (await r.json()) as { ok: boolean };
+      if (j.ok) {
+        setAttached(null);
+        setAffiliateLink('');
+        setMsg('Đã gỡ sản phẩm — đóng gói lại nếu caption cũ còn chứa link.');
+      }
+    } catch {
+      /* giữ nguyên state khi lỗi mạng */
+    } finally {
+      setAffBusy(false);
+    }
+  }
 
   const rd = data?.readiness ?? null;
   const fb = data?.facebook ?? null;
@@ -127,7 +225,9 @@ export function PackagePanel() {
         method: 'POST',
       });
       const j = (await r.json()) as { ok: boolean; message?: string; code?: string };
-      setMsg(j.ok ? '✅ Đã tạo caption — xem/sửa rồi đăng.' : `🛑 ${j.message ?? j.code ?? 'Lỗi.'}`);
+      setMsg(
+        j.ok ? '✅ Đã tạo caption — xem/sửa rồi đăng.' : `🛑 ${j.message ?? j.code ?? 'Lỗi.'}`,
+      );
     } catch (e) {
       setMsg(`🛑 ${e instanceof Error ? e.message : 'Lỗi mạng.'}`);
     } finally {
@@ -220,10 +320,97 @@ export function PackagePanel() {
         )}
       </div>
 
-      {/* Contextual affiliate (tuỳ chọn) */}
+      {/* Sản phẩm Shopee — Content-Led: chọn ở khâu ĐÓNG GÓI (ghi vào ent_job.json) */}
+      <div className="space-y-2 rounded-xl border border-hairline/40 bg-panel/20 p-3">
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] font-semibold text-neutral-400">
+            🛒 Sản phẩm Shopee gắn vào video (tuỳ chọn — link tự chèn cuối caption khi đóng gói)
+          </span>
+          {attached ? (
+            <button
+              type="button"
+              onClick={onDetach}
+              disabled={affBusy}
+              className="rounded-lg border border-hairline/50 px-2 py-0.5 text-[10px] text-neutral-400 transition hover:border-accent-rose/40 hover:text-accent-rose disabled:opacity-50"
+            >
+              Gỡ sản phẩm
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => (pickerOpen ? setPickerOpen(false) : void openPicker())}
+              disabled={affBusy}
+              className="rounded-lg border border-hairline/50 px-2 py-0.5 text-[10px] text-neutral-300 transition hover:border-accent-cyan/40 disabled:opacity-50"
+            >
+              {pickerOpen ? 'Đóng kho link' : 'Chọn từ kho link (no-click)'}
+            </button>
+          )}
+        </div>
+        {attached && (
+          <div className="space-y-1 rounded-lg border border-accent-green/25 bg-accent-green/5 p-2">
+            <p className="text-[11px] font-semibold text-neutral-200">
+              {attached.productName ?? '(không tên)'}
+            </p>
+            <p className="font-mono text-[10px] text-accent-blue">{attached.shopeeAffiliateUrl}</p>
+            <p className="text-[10px] text-neutral-500">
+              owner <span className="font-mono">{attached.affiliateOwnerId ?? '—'}</span>{' '}
+              {attached.ownerVerified ? (
+                <span className="font-bold text-accent-green">✓ VERIFIED</span>
+              ) : (
+                <span className="font-bold text-accent-amber">chưa verify</span>
+              )}
+              {attached.attachedAt ? ` · gắn lúc ${attached.attachedAt}` : ''}
+            </p>
+          </div>
+        )}
+        {!attached && pickerOpen && (
+          <div className="space-y-1">
+            {pickerItems === null && (
+              <p className="text-[10px] text-neutral-500">Đang tải kho link…</p>
+            )}
+            {pickerItems?.length === 0 && (
+              <p className="text-[10px] text-neutral-500">
+                Kho link chưa có sản phẩm VERIFIED — lấy link ở lane Review Sản phẩm trước.
+              </p>
+            )}
+            {pickerItems?.map((item) => (
+              <div
+                key={item.shortLink}
+                className="flex items-center justify-between gap-2 rounded-lg border border-hairline/40 bg-panel/40 px-2 py-1.5"
+              >
+                <div className="min-w-0">
+                  <p className="truncate text-[11px] text-neutral-200">{item.productName}</p>
+                  <p className="font-mono text-[9px] text-neutral-500">
+                    {item.shortLink}
+                    {item.commissionRate ? ` · hoa hồng ${item.commissionRate}` : ''}
+                    {item.price ? ` · ${item.price}` : ''}
+                    {typeof item.score === 'number' ? ` · score ${item.score}/10` : ''}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void onAttach(item)}
+                  disabled={affBusy}
+                  className="shrink-0 rounded-lg border border-accent-cyan/40 bg-accent-cyan/10 px-2.5 py-1 text-[10px] font-bold text-accent-cyan transition hover:bg-accent-cyan/20 disabled:opacity-50"
+                >
+                  {affBusy ? '…' : 'Gắn vào job'}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        {!attached && !pickerOpen && (
+          <p className="text-[10px] text-neutral-600">
+            Chưa gắn sản phẩm. Content-Led: video giải trí kéo view, sản phẩm gắn ở khâu đóng gói —
+            không bắt buộc.
+          </p>
+        )}
+      </div>
+
+      {/* Contextual affiliate (fallback nhập TAY — giữ nguyên, tuỳ chọn) */}
       <div className="space-y-1.5 rounded-xl border border-hairline/40 bg-panel/20 p-3">
         <span className="text-[11px] font-semibold text-neutral-400">
-          Affiliate link theo ngữ cảnh (tuỳ chọn — vd video câu cá gắn link đồ câu)
+          Affiliate link theo ngữ cảnh (nhập tay, tuỳ chọn — tự điền khi gắn sản phẩm ở trên)
         </span>
         <input
           type="text"
