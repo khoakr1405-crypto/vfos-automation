@@ -3253,6 +3253,26 @@ Pipeline anchors chạy đầy đủ (từ log): cắt 4 money-shot → vision h
 
 ---
 
+### ✅ Phần 74 — Siêu chiến dịch Tích hợp Shopee Affiliate vào Xưởng Giải trí (Content-Led) (2026-07-12, commit `edc7a11` — ĐÃ PUSH)
+
+> Mang "chọn sản phẩm Shopee" từ lane Review sang lane Giải trí theo triết lý **Content-Led: video kéo view, sản phẩm gắn ở khâu ĐÓNG GÓI** (không phải intake). Đóng loop UI sản xuất giải trí kèm affiliate ra tiền thật — nửa-phải của North Star (video → link → hoa hồng).
+
+1. **N1 — Data contract ✅** (`lib/entertainment/jobs.ts`): `EntAffiliateSummary` (`shopeeProductCardPath` + `shopeeAffiliateUrl`) + `EntJob.affiliate?` additive (job cũ null, KHÔNG đổi state/gate); `attachJobAffiliate` snapshot Product Card **sanitized per-job** vào `data/temp/ent/<id>/product_card.json` (bind cứng theo job, không phụ thuộc card global mutable) + `detachJobAffiliate`.
+
+2. **N2 — Script đóng gói ✅** (`scripts/ent-vlog/16-package.ts`): đọc block affiliate từ `ent_job.json` (ưu tiên card snapshot) → **chèn short link vào CUỐI caption** khi xuất `package.json`/`package.md`; postingNotes + console phản ánh trạng thái gắn/chưa gắn.
+
+3. **N3 — UI + API đúng ngữ cảnh lane ✅**: route MỚI `GET/POST /api/studio/entertainment/jobs/[jobId]/affiliate` (đúng namespace Giải trí — job I/O KHÔNG đụng API lane Review; kho link chỉ ĐỌC qua commerce API sanitized dùng chung); server tự tra registry + **đòi owner `an_17376660568` + `VERIFIED_FROM_LONG_LINK`** (chưa verify → 409). UI picker trong **panel Đóng gói** `/lanes/content` (mount `lanes/content/page.tsx`): "Chọn từ kho link (no-click)" 10 sản phẩm VERIFIED → Gắn/Gỡ → card sản phẩm + tự prefill link đăng FB; ô nhập tay cũ giữ làm fallback contextual.
+
+4. **Guard 3 lớp chống leak canonical token ✅**: regex `^https://s\.shopee\.vn/[A-Za-z0-9]+$` ở CẢ route + lib + 16-package — `canonical_url` (mang `credential_token`/`gads_t_sig`) không có đường vào ent_job/snapshot/caption. Live-test guard: POST link canonical → **400 UNSAFE_LINK**.
+
+**Gate tổng:** studio typecheck exit 0 (sau TỪNG nhịp) + build exit 0 + biome 4 file sạch + tsc ad-hoc 16-package 0 lỗi. **Live-fire API thật** trên vật tế thần `232632`: attach → manifest + snapshot đúng (assert 0 canonical/credential) → 16-package chèn link cuối caption (fallback caption vì quota OpenAI vẫn chết) → detach sạch, residue dọn hết, job giữ `PREVIEW_PENDING`. Operator duyệt UI trực quan 100%. KHÔNG auto-publish, luồng 5 bước lane Review nguyên vẹn.
+
+**Trạng thái git:** commit `edc7a11` (4 file, +530/−9) ĐÃ PUSH origin `feat/ent-multichannel`, staging đích danh, secret scan sạch.
+
+**Bước tiếp theo duy nhất:** **Chờ Operator nạp Quota OpenAI** (429 `insufficient_quota` xác nhận bằng probe 1-token; key project-scoped `sk-proj-…` — kiểm tra đúng project + monthly budget limit) để kích hoạt lại live-fire toàn hệ thống: (1) script 15/15 job 87s `232632`, (2) caption gpt thật cho package affiliate, (3) nghiệm thu 3 tầng fix Reels job `ent_fishing_20260711_154233`.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
