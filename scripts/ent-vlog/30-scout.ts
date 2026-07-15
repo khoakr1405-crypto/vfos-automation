@@ -22,9 +22,12 @@ import { findWorkspaceRoot } from './lib/env.js';
 import {
   type KeywordItem,
   type ScoutConfig,
+  type ScoutProductGate,
   type ScoutSnapshot,
+  type ScoutSubNiche,
   buildCandidates,
   renderReportMd,
+  resolveComboKeywords,
 } from './lib/scout-core.js';
 import { collectJobbedAwemeIds } from './lib/scout-jobs-index.js';
 
@@ -47,6 +50,42 @@ function isNum(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v);
 }
 
+function strList(v: unknown): string[] {
+  return Array.isArray(v)
+    ? v.filter((k): k is string => typeof k === 'string' && k.trim() !== '')
+    : [];
+}
+
+function parseSubNiches(v: unknown, path: string): ScoutSubNiche[] {
+  if (!Array.isArray(v)) return [];
+  const out: ScoutSubNiche[] = [];
+  for (const raw of v) {
+    const s = raw as Partial<ScoutSubNiche>;
+    if (typeof s?.id !== 'string' || !/^[a-z0-9-]+$/.test(s.id)) {
+      fail(`Config ${path}: subNiche có id không hợp lệ (chỉ [a-z0-9-]).`);
+    }
+    const productTerms = strList(s.productTerms);
+    if (productTerms.length === 0)
+      fail(`Config ${path}: subNiche "${s.id}" không có productTerms.`);
+    out.push({ id: s.id, label: typeof s.label === 'string' ? s.label : s.id, productTerms });
+  }
+  return out;
+}
+
+function parseProductGate(v: unknown, path: string): ScoutProductGate | null {
+  if (v == null) return null;
+  const g = v as Partial<ScoutProductGate>;
+  const productEvidence = strList(g.productEvidence);
+  const strongProductActions = strList(g.strongProductActions);
+  const garbageMarkers = strList(g.garbageMarkers);
+  if (productEvidence.length === 0) {
+    fail(
+      `Config ${path}: productGate.productEvidence rỗng — gate vô nghĩa, bỏ block hoặc điền term.`,
+    );
+  }
+  return { productEvidence, strongProductActions, garbageMarkers };
+}
+
 function loadScoutConfig(path: string): ScoutConfig {
   let raw: unknown;
   try {
@@ -55,10 +94,22 @@ function loadScoutConfig(path: string): ScoutConfig {
     fail(`Không đọc được config scout ${path}: ${e instanceof Error ? e.message : String(e)}`);
   }
   const c = raw as Partial<ScoutConfig> & { keywords?: unknown };
-  const keywords = Array.isArray(c.keywords)
-    ? c.keywords.filter((k): k is string => typeof k === 'string' && k.trim() !== '')
-    : [];
-  if (keywords.length === 0) fail(`Config ${path} không có keywords.`);
+  const keywords = strList(c.keywords);
+  const formats = strList(c.formats);
+  const subNiches = parseSubNiches(c.subNiches, path);
+  const productGate = parseProductGate(c.productGate, path);
+  // KHÓA keyword thả nổi: schema combo (subNiches) và keywords phẳng loại trừ lẫn nhau.
+  // Query hợp lệ của schema combo LUÔN là [format] + [productTerm] — không có đường tắt.
+  if (subNiches.length > 0) {
+    if (keywords.length > 0) {
+      fail(
+        `Config ${path}: CONFIG_CONFLICT — có cả subNiches lẫn keywords phẳng. Schema combo cấm keyword định dạng thả nổi; xóa mảng "keywords".`,
+      );
+    }
+    if (formats.length === 0) fail(`Config ${path}: có subNiches nhưng thiếu formats.`);
+  } else if (keywords.length === 0) {
+    fail(`Config ${path} không có keywords.`);
+  }
   const t = c.thresholds;
   if (
     !t ||
@@ -89,6 +140,9 @@ function loadScoutConfig(path: string): ScoutConfig {
     label: typeof c.label === 'string' ? c.label : c.niche,
     ...(typeof c.channelId === 'string' ? { channelId: c.channelId } : {}),
     keywords,
+    ...(formats.length > 0 ? { formats } : {}),
+    ...(subNiches.length > 0 ? { subNiches } : {}),
+    ...(productGate ? { productGate } : {}),
     thresholds: t,
     search: s,
   };
@@ -122,6 +176,7 @@ async function main(): Promise<void> {
   const { values } = parseArgs({
     options: {
       niche: { type: 'string' },
+      'sub-niche': { type: 'string' },
       'keywords-file': { type: 'string' },
       'max-videos': { type: 'string' },
       'age-min': { type: 'string' },
@@ -135,7 +190,9 @@ async function main(): Promise<void> {
 
   const niche = values.niche ?? '';
   if (!NICHE_RE.test(niche)) {
-    fail('Usage: pnpm ent:scout --niche <fishing|cooking|...> [--max-videos 50] [--headful]');
+    fail(
+      'Usage: pnpm ent:scout --niche <fishing|pov-review|...> [--sub-niche <id>] [--max-videos 50] [--headful]',
+    );
   }
   const root = findWorkspaceRoot(process.cwd());
   const configPath = values['keywords-file']
@@ -143,10 +200,41 @@ async function main(): Promise<void> {
     : join(root, 'config', 'scout', `${niche}.json`);
   const config = loadScoutConfig(configPath);
 
+  // Schema combo: BẮT BUỘC chọn ngách con — query luôn là [format] + [productTerm].
+  let subNiche: ScoutSubNiche | null = null;
+  if (config.subNiches && config.subNiches.length > 0) {
+    const requested = values['sub-niche'] ?? '';
+    subNiche = config.subNiches.find((s) => s.id === requested) ?? null;
+    if (!subNiche) {
+      const ids = config.subNiches.map((s) => s.id).join(' | ');
+      fail(
+        `SUB_NICHE_REQUIRED: niche "${niche}" dùng schema combo — chạy với --sub-niche <${ids}>.`,
+      );
+    }
+  } else if (values['sub-niche']) {
+    fail(`Config ${configPath} không có subNiches — bỏ cờ --sub-niche.`);
+  }
+
+  // Combo: query = [format] + [productTerm] của ngách con; phẳng: giữ nguyên hành vi cũ.
+  const allKeywords = subNiche
+    ? resolveComboKeywords(config.formats ?? [], subNiche)
+    : config.keywords;
+  if (allKeywords.length === 0) fail('Không resolve được keyword nào từ config.');
+
+  // VOE gate: productTerms của ngách con được tính là bằng chứng sản phẩm hợp lệ.
+  const gate: ScoutProductGate | null = config.productGate
+    ? {
+        ...config.productGate,
+        productEvidence: [
+          ...new Set([...config.productGate.productEvidence, ...(subNiche?.productTerms ?? [])]),
+        ],
+      }
+    : null;
+
   const maxVideos = values['max-videos'] ? Number.parseInt(values['max-videos'], 10) : 50;
   const maxKeywords = values['max-keywords']
     ? Number.parseInt(values['max-keywords'], 10)
-    : config.keywords.length;
+    : allKeywords.length;
   const headful = values.headful === true || process.env.DOUYIN_HEADFUL === '1';
   const thresholds = {
     ...config.thresholds,
@@ -170,10 +258,18 @@ async function main(): Promise<void> {
   };
   writeRunState(scoutDir, { state: 'running', ...baseRunState });
 
-  const keywords = config.keywords.slice(0, Math.max(maxKeywords, 1));
+  const keywords = allKeywords.slice(0, Math.max(maxKeywords, 1));
   console.log(
     `[scout] ${config.label} — ${keywords.length} keyword, cửa sổ ${thresholds.ageMinMinutes}–${thresholds.ageMaxMinutes} phút, headful=${headful}`,
   );
+  if (subNiche) {
+    console.log(`[scout] ngách con: ${subNiche.label} (${subNiche.id}) — query combo bắt buộc.`);
+  }
+  if (gate) {
+    console.log(
+      `[scout] VOE product gate BẬT — ${gate.productEvidence.length} evidence / ${gate.garbageMarkers.length} garbage marker.`,
+    );
+  }
 
   // Cờ alreadyJobbed: đối chiếu job đang sống (read-only, không network).
   const jobbedIds = collectJobbedAwemeIds(join(root, 'data', 'temp', 'ent'));
@@ -244,7 +340,7 @@ async function main(): Promise<void> {
     await closeScoutSession(session);
   }
 
-  const { candidates, rejected } = buildCandidates(items, Date.now(), thresholds, jobbedIds);
+  const { candidates, rejected } = buildCandidates(items, Date.now(), thresholds, jobbedIds, gate);
   const capped = candidates.slice(0, Math.max(maxVideos, 1));
 
   const snapshot: ScoutSnapshot = {
@@ -255,6 +351,8 @@ async function main(): Promise<void> {
     finishedAt: new Date().toISOString(),
     keywords,
     keywordsCompleted,
+    subNiche: subNiche ? { id: subNiche.id, label: subNiche.label } : null,
+    productGateApplied: gate !== null,
     filters: {
       ageMinMinutes: thresholds.ageMinMinutes,
       ageMaxMinutes: thresholds.ageMaxMinutes,

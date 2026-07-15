@@ -23,15 +23,19 @@ import {
   type KeywordItem,
   type RawSearchItem,
   type ScoutCandidate,
+  type ScoutProductGate,
   type ScoutSnapshot,
   type ScoutThresholds,
   buildCandidates,
+  computeFitScore,
   computeRescanDeltas,
   computeScore,
   dedupeByAwemeId,
+  evaluateProductGate,
   filterByAge,
   parseSearchResponse,
   renderReportMd,
+  resolveComboKeywords,
 } from '../scripts/ent-vlog/lib/scout-core.ts';
 import {
   collectJobbedAwemeIds,
@@ -346,7 +350,14 @@ function snapshot(cands: ScoutCandidate[]): ScoutSnapshot {
     filters: { ageMinMinutes: 30, ageMaxMinutes: 360, sortHint: 'newest' },
     thresholds: T,
     status: 'OK',
-    rejectedCounts: { tooOld: 0, tooNew: 0, noTimestamp: 0, belowFloor: 0 },
+    rejectedCounts: {
+      tooOld: 0,
+      tooNew: 0,
+      noTimestamp: 0,
+      belowFloor: 0,
+      noProductEvidence: 0,
+      garbageContent: 0,
+    },
     domOnlyIds: [],
     candidates: cands,
   };
@@ -384,6 +395,178 @@ describe('computeRescanDeltas', () => {
   });
 });
 
+// --- VOE product gate + combo keywords (chống rác Trend Scout POV) -----------------
+
+const GATE: ScoutProductGate = {
+  productEvidence: ['开箱', '测评', '好物', '神器', '推荐', '3c好物'],
+  strongProductActions: ['开箱', '测评'],
+  garbageMarkers: ['旅行', '风景', '钓鱼', '搞笑'],
+};
+
+describe('evaluateProductGate — Test Vàng chống rác', () => {
+  test('phong cảnh thuần (không bằng chứng sản phẩm) → NO_PRODUCT_EVIDENCE', () => {
+    const v = evaluateProductGate('海边日落太美了,治愈系风光', GATE);
+    assert.deepEqual(v, { pass: false, rejectCode: 'NO_PRODUCT_EVIDENCE' });
+  });
+
+  test('đập hộp sản phẩm thật → pass kèm matchedEvidence minh bạch', () => {
+    const v = evaluateProductGate('厨房神器开箱,这个真的好用', GATE);
+    assert.ok(v.pass);
+    assert.ok(v.matchedEvidence.includes('开箱'));
+    assert.ok(v.matchedEvidence.includes('神器'));
+  });
+
+  test('listicle du lịch có chữ 好物 nhưng KHÔNG có strong action → GARBAGE_CONTENT', () => {
+    const v = evaluateProductGate('旅行好物推荐,一起去看世界', GATE);
+    assert.deepEqual(v, { pass: false, rejectCode: 'GARBAGE_CONTENT' });
+  });
+
+  test('đồ du lịch được ĐẬP HỘP thật (strong action cứu) → pass', () => {
+    const v = evaluateProductGate('旅行好物开箱测评,收纳神器', GATE);
+    assert.ok(v.pass);
+  });
+
+  test('né bằng fullwidth/hoa-thường: NFKC + lowercase vẫn bắt được term', () => {
+    // "３ｃ好物" fullwidth + hoa — NFKC gộp về "3c好物".
+    const v = evaluateProductGate('３Ｃ好物分享', GATE);
+    assert.ok(v.pass);
+  });
+
+  test('video câu cá (content lane Giải trí) là rác với lane Review → loại', () => {
+    const v = evaluateProductGate('钓鱼佬的快乐,爆护了', GATE);
+    assert.deepEqual(v, { pass: false, rejectCode: 'NO_PRODUCT_EVIDENCE' });
+    const v2 = evaluateProductGate('钓鱼好物大推荐', GATE);
+    assert.deepEqual(v2, { pass: false, rejectCode: 'GARBAGE_CONTENT' });
+  });
+});
+
+describe('resolveComboKeywords — khóa keyword thả nổi', () => {
+  test('cross product [format] × [productTerm], không trùng lặp', () => {
+    const out = resolveComboKeywords(['沉浸式开箱', '第一视角测评'], {
+      id: 'kitchen-clean',
+      label: 'Đồ bếp',
+      productTerms: ['厨房神器', '清洁神器'],
+    });
+    assert.deepEqual(out, [
+      '沉浸式开箱 厨房神器',
+      '第一视角测评 厨房神器',
+      '沉浸式开箱 清洁神器',
+      '第一视角测评 清洁神器',
+    ]);
+    // Mọi query đều chứa product term — KHÔNG còn format đứng một mình.
+    assert.ok(out.every((k) => /神器/.test(k)));
+  });
+});
+
+describe('buildCandidates + VOE gate', () => {
+  test('gate chạy TRƯỚC sàn số liệu: rác viral cỡ nào cũng bị loại + đếm đúng lý do', () => {
+    const good = kw(
+      item({ awemeId: '61', ageMin: 60, diggCount: 6000, desc: '厨房神器开箱' }),
+      'k',
+    );
+    const garbage = kw(
+      item({ awemeId: '62', ageMin: 60, diggCount: 60_000, desc: '旅行好物推荐' }),
+      'k',
+    );
+    const scenery = kw(
+      item({ awemeId: '63', ageMin: 60, diggCount: 90_000, desc: '海边风景航拍' }),
+      'k',
+    );
+    const { candidates, rejected } = buildCandidates(
+      [good, garbage, scenery],
+      NOW_MS,
+      T,
+      new Set(),
+      GATE,
+    );
+    assert.deepEqual(
+      candidates.map((c) => c.awemeId),
+      ['61'],
+    );
+    assert.equal(rejected.garbageContent, 1);
+    assert.equal(rejected.noProductEvidence, 1);
+    assert.ok(candidates[0]?.gateEvidence?.includes('开箱'));
+  });
+
+  test('không truyền gate → hành vi cũ nguyên vẹn (lane fishing không bị ảnh hưởng)', () => {
+    const scenery = kw(item({ awemeId: '64', ageMin: 60, diggCount: 6000, desc: '风景' }), 'k');
+    const { candidates, rejected } = buildCandidates([scenery], NOW_MS, T, new Set());
+    assert.equal(candidates.length, 1);
+    assert.equal(rejected.noProductEvidence, 0);
+    assert.equal(rejected.garbageContent, 0);
+    assert.equal(candidates[0]?.gateEvidence, undefined);
+    // Fit scoring KHÔNG rò sang chế độ cũ: điểm vẫn thuần viral, không có FIT signal.
+    assert.equal(candidates[0]?.monetizationFit, undefined);
+    assert.ok(!candidates[0]?.signals.some((s) => s.startsWith('FIT_')));
+    assert.equal(candidates[0]?.score, 25); // 100 * (100lpm/400ref) — công thức viral cũ
+  });
+});
+
+// --- Monetization Fit scoring (vanity metrics KHÔNG quyết định thứ hạng) -----------
+
+describe('Monetization Fit — ưu tiên tuyệt đối video review đồ vật', () => {
+  test('review đồ vật ít viral LUÔN xếp trên video bằng chứng yếu mega-viral', () => {
+    // Review thật: 2 strong action (开箱+测评) + 神器 → fit 85; chỉ 20 l/ph (viral bonus 1).
+    const review = kw(
+      item({ awemeId: '71', ageMin: 60, diggCount: 1200, desc: '厨房神器开箱测评' }),
+      'k',
+    );
+    // Bằng chứng yếu nhưng MEGA viral: 1500 l/ph (gấp 75 lần) → fit 20 + viral 20 = 40.
+    const megaViral = kw(
+      item({ awemeId: '72', ageMin: 60, diggCount: 90_000, desc: '平价好物大推荐' }),
+      'k',
+    );
+    const { candidates } = buildCandidates([megaViral, review], NOW_MS, T, new Set(), GATE);
+    assert.deepEqual(
+      candidates.map((c) => c.awemeId),
+      ['71', '72'], // review đứng trên dù thua viral 75 lần
+    );
+    const top = candidates[0];
+    assert.ok(top);
+    assert.equal(top.monetizationFit, 85);
+    assert.ok(top.signals.includes('FIT_STRONG'));
+    assert.match(top.reason, /Monetization Fit 85\/100/);
+    assert.ok(candidates[1]?.signals.includes('FIT_WEAK'));
+    // Khoảng trống thiết kế: strong (≥70) không thể bị weak (≤40) + viral (≤20) vượt mặt.
+    assert.ok((top.score ?? 0) > (candidates[1]?.score ?? 0));
+  });
+
+  test('FIT_STRONG miễn sàn likes/phút (review tốt mới nổi không bị giết); FIT_WEAK chịu sàn', () => {
+    const strongButQuiet = kw(
+      item({ awemeId: '73', ageMin: 60, diggCount: 300, desc: '收纳神器开箱' }), // 5 l/ph < sàn 15
+      'k',
+    );
+    const weakAndQuiet = kw(
+      item({ awemeId: '74', ageMin: 60, diggCount: 300, desc: '平价好物' }), // 5 l/ph < sàn 15
+      'k',
+    );
+    const { candidates, rejected } = buildCandidates(
+      [strongButQuiet, weakAndQuiet],
+      NOW_MS,
+      T,
+      new Set(),
+      GATE,
+    );
+    assert.deepEqual(
+      candidates.map((c) => c.awemeId),
+      ['73'],
+    );
+    assert.equal(rejected.belowFloor, 1);
+  });
+
+  test('computeFitScore: khoảng trống 40↔70 giữa weak và strong là bất khả xâm phạm', () => {
+    // Weak tối đa: 4+ evidence không strong → 40.
+    assert.deepEqual(computeFitScore([], ['a', 'b', 'c', 'd', 'e']), { fit: 40, tier: 'weak' });
+    // Strong tối thiểu: 1 strong, 0 phụ → 70. 70 > 40 + viral trần 20.
+    assert.deepEqual(computeFitScore(['开箱'], ['开箱']), { fit: 70, tier: 'strong' });
+    // Strong trần: 3 strong + nhiều phụ → cap 100.
+    assert.deepEqual(computeFitScore(['a', 'b', 'c'], ['a', 'b', 'c', 'd', 'e', 'f']), {
+      fit: 100,
+      tier: 'strong',
+    });
+  });
+});
+
 // --- renderReportMd ---------------------------------------------------------------
 
 describe('renderReportMd', () => {
@@ -410,5 +593,21 @@ describe('renderReportMd', () => {
     );
     assert.match(md, /\| 1 \|/);
     assert.ok(!/\| 2 \|/.test(md));
+  });
+
+  test('gate bật → report hiện ngách con + counters; gate tắt → không nhắc gate', () => {
+    const base = snapshot([]);
+    const withGate: ScoutSnapshot = {
+      ...base,
+      subNiche: { id: 'kitchen-clean', label: 'Đồ bếp & dọn nhà' },
+      productGateApplied: true,
+      rejectedCounts: { ...base.rejectedCounts, noProductEvidence: 3, garbageContent: 2 },
+    };
+    const md = renderReportMd(withGate, 20);
+    assert.match(md, /ngách con: \*\*Đồ bếp & dọn nhà\*\* \(kitchen-clean\)/);
+    assert.match(md, /🛡 không-sản-phẩm 3 · rác nội dung 2/);
+    const mdOff = renderReportMd(base, 20);
+    assert.ok(!mdOff.includes('🛡'));
+    assert.ok(!mdOff.includes('ngách con'));
   });
 });

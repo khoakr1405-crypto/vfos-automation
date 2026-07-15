@@ -1,21 +1,87 @@
 {
-  "_doc": "VFOS Trend Scout — ngách POV Review (Đập hộp/Nhập vai) cho lane Review Sản phẩm (Video-First intake). Operator tự thêm/bớt keywords, KHÔNG cần sửa code. Bộ khởi điểm CHƯA verify hiệu quả trên Douyin thật — tinh chỉnh sau smoke run đầu tiên. KHÔNG có channelId: job Review bind kênh qua job:create (resolveChannelForCreate), không qua scout.",
+  "_doc": "VFOS Trend Scout — ngách POV Review (Đập hộp/Nhập vai) cho lane Review Sản phẩm (Video-First intake). SCHEMA COMBO: KHÔNG còn 'keywords' phẳng — query tìm kiếm = [format] + [productTerm của subNiche được chọn] (bắt buộc chọn --sub-niche khi quét). Lý do: keyword định dạng đứng một mình (沉浸式体验, 第一视角) kéo về rác du lịch/phong cảnh không map được Product Card. productGate = constraint cứng lọc ứng viên không có bằng chứng sản phẩm vật lý TRƯỚC khi lên UI. Operator tự thêm/bớt subNiches/terms, KHÔNG cần sửa code. KHÔNG có channelId: job Review bind kênh qua job:create.",
   "niche": "pov-review",
   "label": "POV Review (Đập hộp/Nhập vai)",
-  "keywords": [
-    "沉浸式开箱",
-    "第一视角测评",
-    "开箱测评",
-    "好物开箱",
-    "居家好物",
-    "好物推荐",
-    "沉浸式体验",
-    "良心测评",
-    "真实测评",
-    "平价好物",
-    "家居好物",
-    "开箱视频"
+  "formats": ["沉浸式开箱", "第一视角测评", "开箱测评"],
+  "subNiches": [
+    {
+      "id": "kitchen-clean",
+      "label": "Đồ bếp & dọn nhà",
+      "productTerms": ["厨房神器", "厨房好物", "清洁神器", "收纳神器"]
+    },
+    {
+      "id": "home-gadgets",
+      "label": "Gia dụng thông minh",
+      "productTerms": ["家居好物", "居家神器", "生活小电器", "智能家居好物"]
+    },
+    {
+      "id": "beauty-care",
+      "label": "Làm đẹp & chăm sóc cá nhân",
+      "productTerms": ["美妆好物", "护肤好物", "个护神器", "美容仪"]
+    },
+    {
+      "id": "digital-3c",
+      "label": "Điện tử & phụ kiện",
+      "productTerms": ["数码好物", "手机配件", "数码神器", "3c好物"]
+    },
+    {
+      "id": "mom-baby",
+      "label": "Mẹ & bé",
+      "productTerms": ["母婴好物", "宝宝好物", "婴儿神器", "儿童玩具"]
+    }
   ],
+  "productGate": {
+    "productEvidence": [
+      "开箱",
+      "测评",
+      "评测",
+      "好物",
+      "神器",
+      "种草",
+      "上手",
+      "入手",
+      "实测",
+      "平价",
+      "性价比",
+      "好用",
+      "推荐",
+      "购入",
+      "回购",
+      "使用感受",
+      "体验感"
+    ],
+    "strongProductActions": ["开箱", "测评", "评测", "种草", "实测", "上手", "入手", "回购"],
+    "garbageMarkers": [
+      "风景",
+      "风光",
+      "航拍",
+      "旅游",
+      "旅行",
+      "景区",
+      "自驾",
+      "徒步",
+      "爬山",
+      "露营",
+      "日出",
+      "日落",
+      "海边",
+      "沙滩",
+      "打卡",
+      "演唱会",
+      "搞笑",
+      "段子",
+      "剧情",
+      "小品",
+      "游戏",
+      "电影",
+      "电视剧",
+      "动漫",
+      "街拍",
+      "跳舞",
+      "唱歌",
+      "钓鱼"
+    ]
+  },
   "thresholds": {
     "ageMinMinutes": 30,
     "ageMaxMinutes": 360,

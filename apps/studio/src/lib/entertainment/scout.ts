@@ -41,6 +41,8 @@ export interface ScoutNicheUi {
   niche: string;
   label: string;
   keywordCount: number;
+  /** Schema combo: ngách con để UI bắt buộc chọn trước khi quét (rỗng = config phẳng). */
+  subNiches: Array<{ id: string; label: string }>;
 }
 
 export interface ScoutSnapshotMetaUi {
@@ -76,7 +78,16 @@ export interface ScoutSnapshotUi {
   status: string;
   keywordsCompleted: number;
   keywordCount: number;
-  rejectedCounts: { tooOld: number; tooNew: number; noTimestamp: number; belowFloor: number };
+  subNiche: { id: string; label: string } | null;
+  productGateApplied: boolean;
+  rejectedCounts: {
+    tooOld: number;
+    tooNew: number;
+    noTimestamp: number;
+    belowFloor: number;
+    noProductEvidence: number;
+    garbageContent: number;
+  };
   domOnlyCount: number;
   candidates: ScoutCandidateUi[];
 }
@@ -106,6 +117,19 @@ interface ScoutConfigLite {
   niche?: string;
   label?: string;
   keywords?: unknown;
+  formats?: unknown;
+  subNiches?: unknown;
+}
+
+function parseSubNichesLite(v: unknown): Array<{ id: string; label: string }> {
+  if (!Array.isArray(v)) return [];
+  const out: Array<{ id: string; label: string }> = [];
+  for (const raw of v) {
+    const s = raw as { id?: unknown; label?: unknown };
+    if (typeof s?.id !== 'string' || !/^[a-z0-9-]+$/.test(s.id)) continue;
+    out.push({ id: s.id, label: typeof s.label === 'string' ? s.label : s.id });
+  }
+  return out;
 }
 
 /** Các bộ scout config khả dụng cho dropdown chọn niche. */
@@ -118,10 +142,18 @@ export function listScoutNiches(): ScoutNicheUi[] {
     const cfg = readJsonSafe<ScoutConfigLite>(join(dir, entry.name));
     const niche = typeof cfg?.niche === 'string' ? cfg.niche : null;
     if (!niche || !NICHE_RE.test(niche)) continue;
+    const subNiches = parseSubNichesLite(cfg?.subNiches);
+    // Schema combo: keywordCount = số format (mỗi lượt quét = formats × productTerms).
+    const keywordCount = Array.isArray(cfg?.keywords)
+      ? cfg.keywords.length
+      : Array.isArray(cfg?.formats)
+        ? cfg.formats.length
+        : 0;
     out.push({
       niche,
       label: typeof cfg?.label === 'string' ? cfg.label : niche,
-      keywordCount: Array.isArray(cfg?.keywords) ? cfg.keywords.length : 0,
+      keywordCount,
+      subNiches,
     });
   }
   return out.sort((a, b) => a.niche.localeCompare(b.niche));
@@ -190,7 +222,16 @@ interface ScoutSnapshotFile {
   keywords?: unknown[];
   keywordsCompleted?: number;
   status?: string;
-  rejectedCounts?: { tooOld?: number; tooNew?: number; noTimestamp?: number; belowFloor?: number };
+  subNiche?: { id?: unknown; label?: unknown } | null;
+  productGateApplied?: unknown;
+  rejectedCounts?: {
+    tooOld?: number;
+    tooNew?: number;
+    noTimestamp?: number;
+    belowFloor?: number;
+    noProductEvidence?: number;
+    garbageContent?: number;
+  };
   domOnlyIds?: unknown[];
   candidates?: Array<Record<string, unknown>>;
 }
@@ -266,6 +307,13 @@ export function readScoutSnapshotForUi(runId: string): ScoutSnapshotUi | null {
       keyword: str(c.keyword),
     });
   }
+  const subNiche =
+    snap.subNiche && typeof snap.subNiche.id === 'string'
+      ? {
+          id: snap.subNiche.id,
+          label: typeof snap.subNiche.label === 'string' ? snap.subNiche.label : snap.subNiche.id,
+        }
+      : null;
   return {
     runId,
     niche: str(snap.niche) || 'unknown',
@@ -274,11 +322,15 @@ export function readScoutSnapshotForUi(runId: string): ScoutSnapshotUi | null {
     status: str(snap.status) || 'OK',
     keywordsCompleted: num(snap.keywordsCompleted),
     keywordCount: Array.isArray(snap.keywords) ? snap.keywords.length : 0,
+    subNiche,
+    productGateApplied: snap.productGateApplied === true,
     rejectedCounts: {
       tooOld: num(snap.rejectedCounts?.tooOld),
       tooNew: num(snap.rejectedCounts?.tooNew),
       noTimestamp: num(snap.rejectedCounts?.noTimestamp),
       belowFloor: num(snap.rejectedCounts?.belowFloor),
+      noProductEvidence: num(snap.rejectedCounts?.noProductEvidence),
+      garbageContent: num(snap.rejectedCounts?.garbageContent),
     },
     domOnlyCount: Array.isArray(snap.domOnlyIds) ? snap.domOnlyIds.length : 0,
     candidates,
@@ -291,22 +343,49 @@ export type StartScoutResult =
   | { ok: true; pid: number | null }
   | {
       ok: false;
-      code: 'UNKNOWN_NICHE' | 'SCOUT_RUNNING' | 'STEP_RUNNING' | 'SPAWN_FAILED';
+      code:
+        | 'UNKNOWN_NICHE'
+        | 'SUB_NICHE_REQUIRED'
+        | 'UNKNOWN_SUB_NICHE'
+        | 'SCOUT_RUNNING'
+        | 'STEP_RUNNING'
+        | 'SPAWN_FAILED';
       message: string;
     };
 
 /**
- * Spawn `ent:scout --niche <niche>` DETACHED (mirror startStep). Ghi run-state
- * 'running' NGAY để chặn double-POST trước khi CLI kịp tự ghi (CLI sẽ ghi đè
- * bằng đúng shape đó kèm runId thật).
+ * Spawn `ent:scout --niche <niche> [--sub-niche <id>]` DETACHED (mirror startStep).
+ * Ghi run-state 'running' NGAY để chặn double-POST trước khi CLI kịp tự ghi (CLI
+ * sẽ ghi đè bằng đúng shape đó kèm runId thật). Niche schema combo (có subNiches)
+ * BẮT BUỘC subNiche hợp lệ — mirror gate của CLI, chặn sớm từ API.
  */
-export function startScoutRun(niche: string): StartScoutResult {
-  if (!NICHE_RE.test(niche) || !listScoutNiches().some((n) => n.niche === niche)) {
+export function startScoutRun(niche: string, subNiche?: string | null): StartScoutResult {
+  const nicheCfg = listScoutNiches().find((n) => n.niche === niche);
+  if (!NICHE_RE.test(niche) || !nicheCfg) {
     return {
       ok: false,
       code: 'UNKNOWN_NICHE',
       message: `Không có config scout cho niche "${niche}".`,
     };
+  }
+  let subNicheArg: string | null = null;
+  if (nicheCfg.subNiches.length > 0) {
+    const requested = typeof subNiche === 'string' ? subNiche.trim() : '';
+    if (requested === '') {
+      return {
+        ok: false,
+        code: 'SUB_NICHE_REQUIRED',
+        message: `Niche "${niche}" cần chọn ngách con (${nicheCfg.subNiches.map((s) => s.id).join(' | ')}).`,
+      };
+    }
+    if (!nicheCfg.subNiches.some((s) => s.id === requested)) {
+      return {
+        ok: false,
+        code: 'UNKNOWN_SUB_NICHE',
+        message: `Ngách con "${requested}" không có trong config "${niche}".`,
+      };
+    }
+    subNicheArg = requested;
   }
   const runState = readScoutRunState();
   if (runState.state === 'running') {
@@ -332,7 +411,11 @@ export function startScoutRun(niche: string): StartScoutResult {
   mkdirSync(scoutDirAbs, { recursive: true });
   const logAbs = join(scoutDirAbs, 'scout_run.log');
   try {
-    const { pid } = runRepoScriptDetached(SCOUT_SCRIPT_REL, ['--niche', niche], logAbs);
+    const { pid } = runRepoScriptDetached(
+      SCOUT_SCRIPT_REL,
+      ['--niche', niche, ...(subNicheArg ? ['--sub-niche', subNicheArg] : [])],
+      logAbs,
+    );
     // Ghi running NGAY (chặn double-POST trong khoảng CLI khởi động).
     writeFileSync(
       join(scoutDirAbs, 'scout_run.json'),

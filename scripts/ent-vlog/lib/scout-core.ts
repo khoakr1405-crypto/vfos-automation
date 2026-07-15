@@ -29,13 +29,49 @@ export interface ScoutSearchConfig {
   keywordDelayMsMax: number;
 }
 
+/** Ngách sản phẩm con — query = [format] + [productTerm] (chống keyword thả nổi). */
+export interface ScoutSubNiche {
+  id: string;
+  label: string;
+  productTerms: string[];
+}
+
+/**
+ * VOE product gate — constraint CỨNG trên desc, loại video không có bằng chứng
+ * sản phẩm vật lý TRƯỚC khi lên UI (rác du lịch/phong cảnh/giải trí thuần).
+ */
+export interface ScoutProductGate {
+  /** Phải khớp ≥1 (dấu vết thương mại: 开箱/测评/好物… + productTerms ngách con). */
+  productEvidence: string[];
+  /** Hành động sản phẩm mạnh — cứu video có marker rác nhưng thật sự là đập hộp. */
+  strongProductActions: string[];
+  /** Marker nội dung thuần (phong cảnh/du lịch/giải trí) — dính mà không có strong action → loại. */
+  garbageMarkers: string[];
+}
+
 export interface ScoutConfig {
   niche: string;
   label: string;
   channelId?: string;
   keywords: string[];
+  /** Schema combo (pov-review): có formats+subNiches thì keywords phẳng BỊ CẤM. */
+  formats?: string[];
+  subNiches?: ScoutSubNiche[];
+  productGate?: ScoutProductGate;
   thresholds: ScoutThresholds;
   search: ScoutSearchConfig;
+}
+
+/** Query cuối = cross product [format] × [productTerm] của ngách con đã chọn. */
+export function resolveComboKeywords(formats: string[], subNiche: ScoutSubNiche): string[] {
+  const out: string[] = [];
+  for (const term of subNiche.productTerms) {
+    for (const format of formats) {
+      const kw = `${format} ${term}`.trim();
+      if (!out.includes(kw)) out.push(kw);
+    }
+  }
+  return out;
 }
 
 /** 1 video thô parse từ JSON search API (chưa lọc, chưa chấm điểm). */
@@ -59,7 +95,10 @@ export type ScoutSignal =
   | 'WARM'
   | 'COMMENTS_HOT'
   | 'FRESH_LT_60M'
-  | 'ALREADY_JOBBED';
+  | 'ALREADY_JOBBED'
+  // Monetization Fit (chỉ khi gate bật): STRONG = có thao tác review/đập hộp rõ.
+  | 'FIT_STRONG'
+  | 'FIT_WEAK';
 
 export interface ScoutCandidate {
   awemeId: string;
@@ -90,6 +129,10 @@ export interface ScoutCandidate {
   };
   /** Round 3 (inspect-creators): format lặp của creator. */
   creator?: { recentListed: number; poolHits: number; formatHint: string | null };
+  /** VOE gate: term bằng chứng sản phẩm đã khớp trong desc (minh bạch vì sao lọt lưới). */
+  gateEvidence?: string[];
+  /** Monetization Fit 0–100 (chỉ khi gate bật) — phần QUYẾT ĐỊNH của score, tách khỏi viral. */
+  monetizationFit?: number;
 }
 
 export interface RejectedCounts {
@@ -97,6 +140,10 @@ export interface RejectedCounts {
   tooNew: number;
   noTimestamp: number;
   belowFloor: number;
+  /** VOE gate: desc không có bằng chứng sản phẩm (chỉ tăng khi gate bật). */
+  noProductEvidence: number;
+  /** VOE gate: dính marker rác (du lịch/phong cảnh/giải trí) không được strong action cứu. */
+  garbageContent: number;
 }
 
 export interface ScoutSnapshot {
@@ -111,6 +158,10 @@ export interface ScoutSnapshot {
   /** Copy đóng băng để tái lập kết quả — snapshot tự đủ, không phụ thuộc config trôi. */
   thresholds: ScoutThresholds;
   status: 'OK' | 'PARTIAL_CAPTCHA' | 'PARTIAL_NAV_FAILED';
+  /** Ngách con đã chọn khi quét (schema combo) — null/vắng = quét keyword phẳng. */
+  subNiche?: { id: string; label: string } | null;
+  /** VOE product gate có chạy trong lượt quét này không (đọc report cho đúng ngữ cảnh). */
+  productGateApplied?: boolean;
   /** Round 3: đường dẫn snapshot gốc khi đây là lượt rescan. */
   rescanOf?: string;
   rejectedCounts: RejectedCounts;
@@ -285,6 +336,64 @@ export function computeScore(
   };
 }
 
+// --- VOE product gate ----------------------------------------------------------
+
+export type ProductGateVerdict =
+  | { pass: true; matchedEvidence: string[]; matchedStrong: string[] }
+  | { pass: false; rejectCode: 'NO_PRODUCT_EVIDENCE' | 'GARBAGE_CONTENT' };
+
+/** NFKC (gộp fullwidth/halfwidth) + lowercase — khớp term ổn định cho desc Trung/latin. */
+function normForGate(s: string): string {
+  return s.normalize('NFKC').toLowerCase();
+}
+
+/**
+ * Chấm 1 desc qua VOE product gate (thuần, deterministic):
+ *  1. Không khớp term bằng chứng sản phẩm nào → NO_PRODUCT_EVIDENCE.
+ *  2. Dính marker rác mà KHÔNG có strong action (đập hộp/测评 thật) → GARBAGE_CONTENT.
+ *     (旅行好物开箱 = đồ du lịch được đập hộp → strong action cứu; vlog ngắm biển → loại.)
+ * matchedStrong trả kèm để tầng chấm điểm Monetization Fit tái dùng (không quét 2 lần).
+ */
+export function evaluateProductGate(desc: string, gate: ScoutProductGate): ProductGateVerdict {
+  const d = normForGate(desc);
+  const matchedEvidence = gate.productEvidence.filter(
+    (t) => t !== '' && d.includes(normForGate(t)),
+  );
+  if (matchedEvidence.length === 0) return { pass: false, rejectCode: 'NO_PRODUCT_EVIDENCE' };
+  const matchedStrong = gate.strongProductActions.filter(
+    (t) => t !== '' && d.includes(normForGate(t)),
+  );
+  const hasGarbage = gate.garbageMarkers.some((t) => t !== '' && d.includes(normForGate(t)));
+  if (hasGarbage && matchedStrong.length === 0) {
+    return { pass: false, rejectCode: 'GARBAGE_CONTENT' };
+  }
+  return { pass: true, matchedEvidence, matchedStrong };
+}
+
+// --- Monetization Fit scoring (thay vanity metrics khi gate bật) ---------------
+
+/**
+ * Điểm Monetization Fit 0–100 từ bằng chứng "review đồ vật" trong desc — KHÔNG
+ * dính số view/like:
+ *  - Có ≥1 strong action (开箱/测评/实测…) → tier STRONG: 70 + 10/strong-action
+ *    thêm (trần 2) + 5/evidence phụ (trần 2) → 70..100.
+ *  - Không strong action → tier WEAK: 10/evidence (trần 4) → 0..40.
+ * Thiết kế CỐ Ý tạo khoảng trống 40 ↔ 70: video STRONG luôn xếp trên video WEAK
+ * bất kể viral bonus (tối đa +20) — "ưu tiên tuyệt đối video review đồ vật".
+ */
+export function computeFitScore(
+  matchedStrong: string[],
+  matchedEvidence: string[],
+): { fit: number; tier: 'strong' | 'weak' } {
+  if (matchedStrong.length > 0) {
+    const strongSet = new Set(matchedStrong);
+    const others = matchedEvidence.filter((t) => !strongSet.has(t)).length;
+    const fit = 70 + Math.min(matchedStrong.length - 1, 2) * 10 + Math.min(others, 2) * 5;
+    return { fit: Math.min(fit, 100), tier: 'strong' };
+  }
+  return { fit: Math.min(matchedEvidence.length, 4) * 10, tier: 'weak' };
+}
+
 // --- Dedupe / assemble -------------------------------------------------------
 
 export type KeywordItem = RawSearchItem & { keyword: string };
@@ -319,27 +428,65 @@ export function dedupeByAwemeId(items: KeywordItem[]): KeywordItem[] {
   return [...seen.values()];
 }
 
-/** Toàn bộ pipeline thuần: dedupe → lọc tuổi → sàn l/ph → chấm điểm → sort desc. */
+/**
+ * Toàn bộ pipeline thuần: dedupe → lọc tuổi → VOE gate → sàn l/ph → chấm điểm → sort desc.
+ *
+ * HAI CHẾ ĐỘ CHẤM ĐIỂM:
+ *  - KHÔNG gate (fishing/cooking): điểm viral thuần (likes/phút) — hành vi cũ nguyên vẹn.
+ *  - CÓ gate (pov-review): điểm = Monetization Fit (0–100, QUYẾT ĐỊNH) + viral bonus
+ *    (0–20, chỉ xếp hạng phụ). Video review đồ vật rõ (FIT_STRONG ≥70) LUÔN đứng trên
+ *    video bằng chứng yếu (FIT_WEAK ≤40+20=60) dù view/like cao đến mấy — vanity
+ *    metrics KHÔNG còn quyết định thứ hạng. FIT_STRONG được miễn sàn likes/phút
+ *    (review tốt mới nổi không bị giết vì chưa viral); FIT_WEAK chịu sàn như cũ.
+ */
 export function buildCandidates(
   items: KeywordItem[],
   nowMs: number,
   t: ScoutThresholds,
   jobbedIds: ReadonlySet<string>,
+  gate?: ScoutProductGate | null,
 ): { candidates: ScoutCandidate[]; rejected: RejectedCounts } {
   const deduped = dedupeByAwemeId(items);
   const { inWindow, tooOld, tooNew, noTimestamp } = filterByAge(deduped, nowMs, t);
   let belowFloor = 0;
+  let noProductEvidence = 0;
+  let garbageContent = 0;
   const candidates: ScoutCandidate[] = [];
   for (const item of inWindow) {
+    // VOE gate TRƯỚC sàn số liệu: rác nội dung bị loại bất kể độ viral.
+    let gateEvidence: string[] | undefined;
+    let fitRes: { fit: number; tier: 'strong' | 'weak' } | null = null;
+    if (gate) {
+      const verdict = evaluateProductGate(item.desc, gate);
+      if (!verdict.pass) {
+        if (verdict.rejectCode === 'NO_PRODUCT_EVIDENCE') noProductEvidence += 1;
+        else garbageContent += 1;
+        continue;
+      }
+      gateEvidence = verdict.matchedEvidence;
+      fitRes = computeFitScore(verdict.matchedStrong, verdict.matchedEvidence);
+    }
     const scored = computeScore(item, nowMs, t);
-    if (scored.likesPerMinute < t.floorLikesPerMinute) {
+    // Sàn likes/phút: FIT_STRONG miễn (Monetization Fit đè vanity); còn lại như cũ.
+    if (scored.likesPerMinute < t.floorLikesPerMinute && fitRes?.tier !== 'strong') {
       belowFloor += 1;
       continue;
     }
+    let score = scored.score;
+    let reason = scored.reason;
+    let baseSignals: ScoutSignal[] = scored.signals;
+    let monetizationFit: number | undefined;
+    if (fitRes) {
+      const viralBonus =
+        Math.round(Math.min(scored.likesPerMinute / t.refLikesPerMinute, 1) * 20 * 10) / 10;
+      score = Math.round((fitRes.fit + viralBonus) * 10) / 10;
+      monetizationFit = fitRes.fit;
+      const evidenceShown = (gateEvidence ?? []).slice(0, 3).join(', ');
+      reason = `Monetization Fit ${fitRes.fit}/100 (${evidenceShown}) + viral ${viralBonus}/20 — ${scored.reason}`;
+      baseSignals = [fitRes.tier === 'strong' ? 'FIT_STRONG' : 'FIT_WEAK', ...scored.signals];
+    }
     const alreadyJobbed = jobbedIds.has(item.awemeId);
-    const signals: ScoutSignal[] = alreadyJobbed
-      ? [...scored.signals, 'ALREADY_JOBBED']
-      : scored.signals;
+    const signals: ScoutSignal[] = alreadyJobbed ? [...baseSignals, 'ALREADY_JOBBED'] : baseSignals;
     // createTimeSec non-null: filterByAge đã loại noTimestamp.
     const createdSec = item.createTimeSec ?? 0;
     candidates.push({
@@ -358,14 +505,19 @@ export function buildCandidates(
       author: item.author,
       keyword: item.keyword,
       likesPerMinute: scored.likesPerMinute,
-      score: scored.score,
+      score,
       signals,
-      reason: scored.reason,
+      reason,
       alreadyJobbed,
+      ...(gateEvidence ? { gateEvidence } : {}),
+      ...(monetizationFit !== undefined ? { monetizationFit } : {}),
     });
   }
   candidates.sort((a, b) => b.score - a.score);
-  return { candidates, rejected: { tooOld, tooNew, noTimestamp, belowFloor } };
+  return {
+    candidates,
+    rejected: { tooOld, tooNew, noTimestamp, belowFloor, noProductEvidence, garbageContent },
+  };
 }
 
 // --- Rescan delta (Round 3 — schema sẵn từ ngày 1) ---------------------------
@@ -410,16 +562,21 @@ function mdEscape(s: string): string {
 
 /** Report markdown cho Operator — KHÔNG chứa absolute path máy. */
 export function renderReportMd(snap: ScoutSnapshot, topN: number): string {
+  const gateNote = snap.productGateApplied
+    ? ` · 🛡 không-sản-phẩm ${snap.rejectedCounts.noProductEvidence} · rác nội dung ${snap.rejectedCounts.garbageContent}`
+    : '';
   const lines: string[] = [
     `# Trend Scout — ${snap.runId}`,
     '',
-    `- Niche: **${snap.niche}**`,
+    `- Niche: **${snap.niche}**${snap.subNiche ? ` · ngách con: **${snap.subNiche.label}** (${snap.subNiche.id})` : ''}`,
     `- Thời gian: ${snap.startedAt} → ${snap.finishedAt}`,
     `- Keywords: ${snap.keywordsCompleted}/${snap.keywords.length} hoàn thành (${snap.keywords.join(', ')})`,
     `- Trạng thái: ${STATUS_LABEL[snap.status]}`,
-    `- Ứng viên: **${snap.candidates.length}** (loại: quá cũ ${snap.rejectedCounts.tooOld} · quá mới ${snap.rejectedCounts.tooNew} · thiếu timestamp ${snap.rejectedCounts.noTimestamp} · dưới sàn ${snap.rejectedCounts.belowFloor}) · DOM-only không số liệu: ${snap.domOnlyIds.length}`,
+    `- Ứng viên: **${snap.candidates.length}** (loại: quá cũ ${snap.rejectedCounts.tooOld} · quá mới ${snap.rejectedCounts.tooNew} · thiếu timestamp ${snap.rejectedCounts.noTimestamp} · dưới sàn ${snap.rejectedCounts.belowFloor}${gateNote}) · DOM-only không số liệu: ${snap.domOnlyIds.length}`,
     '',
-    '> Điểm single-snapshot là ƯỚC LƯỢNG (giả định like tăng tuyến tính theo tuổi).',
+    snap.productGateApplied
+      ? '> Điểm = **Monetization Fit 0–100** (bằng chứng review đồ vật — QUYẾT ĐỊNH) + viral bonus 0–20 (xếp hạng phụ). Vanity metrics không còn quyết định thứ hạng; viral chỉ là ƯỚC LƯỢNG tuyến tính.'
+      : '> Điểm single-snapshot là ƯỚC LƯỢNG (giả định like tăng tuyến tính theo tuổi).',
     '',
     '| # | Điểm | Tuổi | Likes | L/phút | Cmt | Tín hiệu | Video |',
     '|---|---|---|---|---|---|---|---|',

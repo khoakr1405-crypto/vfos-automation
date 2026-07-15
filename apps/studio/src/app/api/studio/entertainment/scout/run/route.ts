@@ -29,15 +29,26 @@ export async function POST(req: Request) {
     return Response.json({ ok: false, code: 'NOT_LOCAL' }, { status: 403 });
   }
   let niche = '';
+  let subNiche: string | null = null;
   try {
-    const body = (await req.json()) as { niche?: unknown };
+    const body = (await req.json()) as { niche?: unknown; subNiche?: unknown };
     if (typeof body.niche === 'string') niche = body.niche.trim();
+    if (typeof body.subNiche === 'string' && body.subNiche.trim() !== '') {
+      subNiche = body.subNiche.trim();
+    }
   } catch {
     /* body hỏng → niche rỗng → UNKNOWN_NICHE bên dưới */
   }
-  const res = startScoutRun(niche);
+  const res = startScoutRun(niche, subNiche);
   if (!res.ok) {
-    const status = res.code === 'UNKNOWN_NICHE' ? 400 : res.code === 'SPAWN_FAILED' ? 500 : 409;
+    const status =
+      res.code === 'UNKNOWN_NICHE' ||
+      res.code === 'SUB_NICHE_REQUIRED' ||
+      res.code === 'UNKNOWN_SUB_NICHE'
+        ? 400
+        : res.code === 'SPAWN_FAILED'
+          ? 500
+          : 409;
     return Response.json(res, { status });
   }
   return Response.json(res, { status: 202 });
