@@ -5,9 +5,12 @@
  * .json — do Operator promote từ kho link bằng máy móc audit sẵn có) vào job
  * WAITING_FOR_PRODUCT, qua CLI `pnpm job:attach-product` (single writer).
  * Gate server-side: card phải tồn tại + đúng owner + VERIFIED. Local-only.
+ * Phần 76: card `platform: 'tiktok-shop'` (paste-link manual) đi nhánh riêng —
+ * đòi OPERATOR_CONFIRMED + re-sanitize URL; nhánh Shopee giữ nguyên.
  * ========================================================================== */
 
 import { existsSync, readFileSync } from 'node:fs';
+import { sanitizeTikTokShopUrl } from '@/lib/commerce/tiktok-shop';
 import { resolveInsideRepo } from '@/lib/studio-data/paths';
 import { runRepoScript } from '@/lib/studio-data/run-command';
 
@@ -42,13 +45,45 @@ export async function POST(req: Request, ctx: { params: Promise<{ jobId: string 
       { status: 409 },
     );
   }
-  let card: { name?: unknown; affiliateOwnerId?: unknown; validationStatus?: unknown };
+  let card: {
+    name?: unknown;
+    affiliateOwnerId?: unknown;
+    validationStatus?: unknown;
+    platform?: unknown;
+    tiktokShopUrl?: unknown;
+    shortLink?: unknown;
+  };
   try {
     card = JSON.parse(readFileSync(cardAbs, 'utf8')) as typeof card;
   } catch {
     return Response.json({ ok: false, code: 'INVALID_PRODUCT_CARD' }, { status: 500 });
   }
-  if (card.affiliateOwnerId !== EXPECTED_OWNER || card.validationStatus !== 'VERIFIED') {
+  if (card.platform === 'tiktok-shop') {
+    // Phần 76: card TikTok Shop dán tay — đòi OPERATOR_CONFIRMED (mức tin cậy
+    // THỦ CÔNG, cố ý ≠ VERIFIED của máy móc Shopee CDP) + re-sanitize URL
+    // chống card bị sửa tay sau khi ghi (host allowlist, đã strip query/hash).
+    // Card lai (mang field affiliate Shopee) bị từ chối — chặn hand-craft card
+    // gắn nhãn tiktok-shop để né owner check nhưng vẫn chở link Shopee.
+    const urlOk =
+      typeof card.tiktokShopUrl === 'string' && sanitizeTikTokShopUrl(card.tiktokShopUrl).ok;
+    const hasShopeeFields = card.affiliateOwnerId !== undefined || card.shortLink !== undefined;
+    if (
+      card.validationStatus !== 'OPERATOR_CONFIRMED' ||
+      typeof card.name !== 'string' ||
+      !urlOk ||
+      hasShopeeFields
+    ) {
+      return Response.json(
+        {
+          ok: false,
+          code: 'TIKTOK_CARD_INVALID',
+          message:
+            'Card TikTok Shop không hợp lệ (cần OPERATOR_CONFIRMED + name + URL https thuộc allowlist đã strip query/hash, KHÔNG mang field Shopee) — không gắn.',
+        },
+        { status: 409 },
+      );
+    }
+  } else if (card.affiliateOwnerId !== EXPECTED_OWNER || card.validationStatus !== 'VERIFIED') {
     return Response.json(
       {
         ok: false,
@@ -83,6 +118,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ jobId: string 
     ok: true,
     jobId,
     productName: typeof card.name === 'string' ? card.name : null,
+    platform: card.platform === 'tiktok-shop' ? 'tiktok-shop' : 'shopee',
     state: 'WAITING_FOR_SOURCE_VIDEO',
   });
 }
