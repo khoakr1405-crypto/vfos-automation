@@ -85,7 +85,6 @@ interface CreatedJob {
   desc: string;
   attachedProduct: string | null;
 }
-
 export function TrendScoutReviewPanel({ onJobMutated }: { onJobMutated?: () => void }) {
   const [runState, setRunState] = useState<ScoutRunState | null>(null);
   const [snapshotAt, setSnapshotAt] = useState<string | null>(null);
@@ -106,10 +105,29 @@ export function TrendScoutReviewPanel({ onJobMutated }: { onJobMutated?: () => v
   // Tải & clean nguồn ngay tại Action 1 (UX liền mạch — tái dùng route source-intake).
   const [intake, setIntake] = useState<'idle' | 'running' | 'done' | 'failed'>('idle');
   const [intakeMsg, setIntakeMsg] = useState<string | null>(null);
+  // Sản phẩm hiện tại (slot card) — hiển thị cho nút chuỗi "Tạo job & Tải nguồn"
+  // biết sẽ gắn gì; attach server-side vẫn re-validate, đây chỉ là nhãn.
+  const [currentCard, setCurrentCard] = useState<{ name: string; status: string } | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(async () => {
     try {
+      // Card hiện tại (best-effort — lỗi thì nút chuỗi tự khóa, không phá panel).
+      try {
+        const cr = await fetch('/api/studio/commerce/current-product-card');
+        const cj = (await cr.json()) as {
+          ok: boolean;
+          hasCard?: boolean;
+          card?: { name?: string; validationStatus?: string } | null;
+        };
+        setCurrentCard(
+          cj.ok && cj.hasCard && typeof cj.card?.name === 'string'
+            ? { name: cj.card.name, status: cj.card.validationStatus ?? '?' }
+            : null,
+        );
+      } catch {
+        setCurrentCard(null);
+      }
       const r = await fetch(`/api/studio/entertainment/scout?niche=${NICHE}`);
       const j = (await r.json()) as ScoutResp;
       if (!j.ok) return;
@@ -297,21 +315,27 @@ export function TrendScoutReviewPanel({ onJobMutated }: { onJobMutated?: () => v
     }
   }
 
-  // Tải & clean nguồn TẠI CHỖ — tái dùng y hệt contract nút Action 2:
-  // POST source-intake {confirmPhrase} KHÔNG kèm sourceUrl → server tự dùng
-  // sourceVideoUrl đã lưu trong manifest lúc tạo job từ Scout.
+  // Tải & clean nguồn TẠI CHỖ — contract chung cho mọi lối vào (job vừa tạo +
+  // danh sách job chờ): POST source-intake {confirmPhrase} KHÔNG kèm sourceUrl
+  // → server tự dùng sourceVideoUrl đã lưu trong manifest lúc tạo job từ Scout.
+  async function runSourceIntake(
+    jobId: string,
+  ): Promise<{ ok: boolean; message?: string; code?: string }> {
+    const r = await fetch(`/api/studio/jobs/${jobId}/source-intake`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirmPhrase: 'RUN SOURCE INTAKE' }),
+    });
+    return (await r.json()) as { ok: boolean; message?: string; code?: string };
+  }
+
   async function onIntake() {
     if (!createdJob || busy || intake === 'running') return;
     setBusy('intake');
     setIntake('running');
     setIntakeMsg('Đang tải & clean nguồn (có thể mất ~30s)…');
     try {
-      const r = await fetch(`/api/studio/jobs/${createdJob.jobId}/source-intake`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirmPhrase: 'RUN SOURCE INTAKE' }),
-      });
-      const j = (await r.json()) as { ok: boolean; message?: string; code?: string };
+      const j = await runSourceIntake(createdJob.jobId);
       if (j.ok) {
         setIntake('done');
         setIntakeMsg(
@@ -324,6 +348,71 @@ export function TrendScoutReviewPanel({ onJobMutated }: { onJobMutated?: () => v
     } catch (e) {
       setIntake('failed');
       setIntakeMsg(`🛑 FAILED: ${e instanceof Error ? e.message : 'Lỗi kết nối API.'}`);
+    } finally {
+      setBusy(null);
+      onJobMutated?.();
+    }
+  }
+
+  // Nút chuỗi trên TỪNG video đã quét: tạo job → gắn sản phẩm hiện tại → tải &
+  // clean nguồn — 1 click, tiến trình hiện từng bước. Bước nào gãy dừng bước đó
+  // (job vừa tạo vẫn hiện ở khối dưới để Operator xử lý tay tiếp).
+  async function onScanToSource(c: ScoutCandidate) {
+    if (busy) return;
+    setBusy(`chain:${c.awemeId}`);
+    setIntake('idle');
+    setIntakeMsg(null);
+    setMsg('⚙ (1/3) Tạo job từ video…');
+    try {
+      const r = await fetch('/api/studio/jobs/create-from-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoUrl: c.url }),
+      });
+      const j = (await r.json()) as {
+        ok: boolean;
+        jobId?: string;
+        message?: string;
+        code?: string;
+      };
+      if (!j.ok || !j.jobId) {
+        setMsg(`🛑 (1/3) Tạo job lỗi: ${j.message ?? j.code ?? '?'}`);
+        return;
+      }
+      const jobId = j.jobId;
+      setCreatedJob({ jobId, videoUrl: c.url, desc: c.desc, attachedProduct: null });
+
+      setMsg(`⚙ (2/3) Gắn sản phẩm "${currentCard?.name ?? '?'}" vào ${jobId}…`);
+      const a = await fetch(`/api/studio/jobs/${jobId}/attach-product`, { method: 'POST' });
+      const aj = (await a.json()) as { ok: boolean; message?: string; code?: string };
+      if (!aj.ok) {
+        setMsg(
+          `🛑 (2/3) Gắn sản phẩm lỗi: ${aj.message ?? aj.code ?? '?'} — job ${jobId} đã tạo, chọn sản phẩm tay ở khối dưới.`,
+        );
+        onJobMutated?.();
+        return;
+      }
+      setCreatedJob({
+        jobId,
+        videoUrl: c.url,
+        desc: c.desc,
+        attachedProduct: currentCard?.name ?? '(đã gắn)',
+      });
+
+      setMsg(`⚙ (3/3) Tải & clean nguồn ${jobId} (có thể mất ~30s)…`);
+      setIntake('running');
+      const ij = await runSourceIntake(jobId);
+      if (ij.ok) {
+        setIntake('done');
+        setIntakeMsg('✅ Nguồn đã tải & clean (SOURCE_READY).');
+        setMsg(`✅ ${jobId}: video quét đã TẢI XONG — sang Hành động 2 bấm "Chạy sản xuất video".`);
+      } else {
+        setIntake('failed');
+        setIntakeMsg(`🛑 FAILED: ${ij.message ?? ij.code ?? 'Tải / clean nguồn thất bại.'}`);
+        setMsg(`🛑 (3/3) ${jobId} tải nguồn lỗi — bấm "Thử tải lại nguồn" ở khối dưới.`);
+      }
+    } catch (e) {
+      setMsg(`🛑 ${e instanceof Error ? e.message : 'Lỗi mạng.'}`);
     } finally {
       setBusy(null);
       onJobMutated?.();
@@ -389,6 +478,22 @@ export function TrendScoutReviewPanel({ onJobMutated }: { onJobMutated?: () => v
         </p>
       ) : (
         <div className="space-y-1.5">
+          {/* Nhãn cho nút chuỗi: sản phẩm nào sẽ được gắn tự động. */}
+          <p className="text-[10px] text-neutral-500">
+            {currentCard ? (
+              <>
+                Nút <span className="font-bold text-accent-violet">⬇ Tạo job & Tải nguồn</span> sẽ
+                tự gắn sản phẩm hiện tại:{' '}
+                <span className="font-semibold text-neutral-300">{currentCard.name}</span> (
+                {currentCard.status}) — muốn sản phẩm khác thì dùng "+ Tạo job POV" rồi chọn tay.
+              </>
+            ) : (
+              <span className="text-accent-amber">
+                Chưa có sản phẩm hiện tại — nút chuỗi bị khóa. Dùng "+ Tạo job POV" rồi chọn từ kho
+                link / dán link TikTok Shop.
+              </span>
+            )}
+          </p>
           {fresh.map((c) => (
             <div
               key={c.awemeId}
@@ -420,14 +525,26 @@ export function TrendScoutReviewPanel({ onJobMutated }: { onJobMutated?: () => v
                   </a>
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => void onCreateJob(c)}
-                disabled={busy != null}
-                className="shrink-0 rounded-lg border border-accent-cyan/40 bg-accent-cyan/10 px-3 py-1.5 text-[11px] font-bold text-accent-cyan transition hover:bg-accent-cyan/20 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {busy === c.awemeId ? 'Đang tạo…' : '+ Tạo job POV'}
-              </button>
+              <div className="flex shrink-0 items-center gap-1.5">
+                {/* Nút chuỗi CHÍNH: tải video đã quét về trong 1 click (job+SP+nguồn). */}
+                <button
+                  type="button"
+                  onClick={() => void onScanToSource(c)}
+                  disabled={busy != null || !currentCard}
+                  title={currentCard ? undefined : 'Chưa có sản phẩm hiện tại — chọn trước.'}
+                  className="rounded-lg border border-accent-violet/40 bg-accent-violet/15 px-3 py-1.5 text-[11px] font-bold text-accent-violet transition hover:bg-accent-violet/25 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {busy === `chain:${c.awemeId}` ? 'Đang chạy chuỗi…' : '⬇ Tạo job & Tải nguồn'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void onCreateJob(c)}
+                  disabled={busy != null}
+                  className="rounded-lg border border-accent-cyan/40 bg-accent-cyan/10 px-3 py-1.5 text-[11px] font-bold text-accent-cyan transition hover:bg-accent-cyan/20 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {busy === c.awemeId ? 'Đang tạo…' : '+ Tạo job POV'}
+                </button>
+              </div>
             </div>
           ))}
         </div>

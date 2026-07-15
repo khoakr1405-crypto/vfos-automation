@@ -241,6 +241,12 @@ function friendlyPrepareError(code: string | undefined): PrepareError {
 
 // ĐÓNG BĂNG UI Product-First (Action 1 cũ) — backend Shopee giữ nguyên 100%.
 const FROZEN_PRODUCT_FIRST_ACTION1 = false;
+// Khối "Nguồn video" cũ của Action 2 (input URL + nút Tải & clean nguồn) — ĐÓNG BĂNG
+// theo lệnh Operator 2026-07-16: tải nguồn giờ nằm TRỌN trong panel Trend Scout
+// (Action 1: quét → tạo job → gắn SP → tải nguồn + danh sách job chờ tải).
+// Backend/route giữ nguyên; mở lại = đổi cờ true. Khối intake confirm-phrase sâu
+// trong bước sản xuất (Case 1 nguồn chưa sạch) vẫn giữ làm lưới an toàn.
+const FROZEN_ACTION2_SOURCE_BLOCK = false;
 
 // biome-ignore lint/style/noDefaultExport: Next.js page requires default export
 export default function ProductReviewLanePage() {
@@ -2026,128 +2032,130 @@ export default function ProductReviewLanePage() {
         {cardReady && !latestJob && (
           <NoticeBox accent="amber">
             Product Card <strong>{card?.name}</strong> đã hợp lệ nhưng chưa có job sản xuất khớp.
-            Dán URL video nguồn bên dưới rồi bấm <strong>"Tải & clean nguồn"</strong> — hệ thống tự
-            tạo job đúng sản phẩm, tải & clean nguồn, rồi dừng ở cổng{' '}
-            <strong>Duyệt nguồn sạch</strong>.
+            Tạo job từ video ở <strong>Hành động 1 — Tìm video POV (Trend Scout)</strong>: quét → "+
+            Tạo job POV" → gắn sản phẩm → tải & clean nguồn ngay tại đó.
           </NoticeBox>
         )}
 
-        {/* Nguồn video */}
-        <div className="rounded-lg border border-hairline bg-raised/30 p-3 space-y-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
-              Nguồn video
-            </span>
-            {draftMatchesCard && (
-              <span className="text-[10px] text-accent-green font-medium">
-                ✓ Đã khớp Product Card
+        {/* Nguồn video — ĐÓNG BĂNG (xem FROZEN_ACTION2_SOURCE_BLOCK): tải nguồn đã
+            tích hợp trọn vào panel Trend Scout ở Hành động 1. */}
+        {FROZEN_ACTION2_SOURCE_BLOCK && (
+          <div className="rounded-lg border border-hairline bg-raised/30 p-3 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-neutral-500">
+                Nguồn video
               </span>
-            )}
-          </div>
-
-          <div className="space-y-2">
-            {/* Video-First: job từ Scout đã có URL trong manifest → read-only, khỏi dán lại. */}
-            {scoutUrlLocked && (
-              <div className="space-y-0.5 rounded-md border border-hairline/60 bg-panel/40 px-2.5 py-1.5">
-                <span className="text-[9px] font-medium uppercase tracking-wider text-neutral-500">
-                  URL nguồn (từ Trend Scout — đã lưu vào job)
-                </span>
-                <p className="break-all font-mono text-[10px] text-accent-blue">
-                  {cardMatchedJob?.sourceVideoUrl}
-                </p>
-              </div>
-            )}
-            {!scoutUrlLocked && (
-              <input
-                type="text"
-                disabled={savingSource || creatingJob || preparingSource}
-                value={sourceUrlInput}
-                onChange={(e) => setSourceUrlInput(e.target.value)}
-                placeholder="Dán link hoặc nguyên đoạn share (TikTok, Douyin, ...) — tự trích URL"
-                className="w-full rounded-lg border border-hairline bg-panel/80 px-3 py-2 text-xs text-neutral-100 outline-none focus:border-accent-violet disabled:opacity-50"
-              />
-            )}
-            {!scoutUrlLocked && sourceInputHasText && !extractedSourceUrl && (
-              <p className="text-[10px] text-accent-rose">
-                Không tìm thấy URL trong đoạn văn bản — cần một link bắt đầu bằng http:// hoặc
-                https:// (có thể nằm giữa text).
-              </p>
-            )}
-            {!scoutUrlLocked && extractedSourceUrl && (
-              <div className="space-y-0.5 rounded-md border border-hairline/60 bg-panel/40 px-2.5 py-1.5">
-                <span className="text-[9px] font-medium uppercase tracking-wider text-neutral-500">
-                  {sourceUrlWasExtracted ? 'URL trích xuất từ text đã dán' : 'URL nguồn sẽ lưu'}
-                </span>
-                <p className="break-all font-mono text-[10px] text-accent-blue">
-                  {extractedSourceUrl}
-                </p>
-              </div>
-            )}
-
-            {/* Nút CHÍNH của Operator — 1 click điều phối prep an toàn: tải & clean nguồn
-                → mở thẳng Bước 3 (Option A, không còn human gate duyệt nguồn).
-                "Lưu nháp" chỉ là phụ (auto-save thủ công), không còn là CTA chính. */}
-            <div className="flex flex-wrap items-center gap-2">
-              {/* Job đã qua bước tải (SOURCE_READY+) → ẩn nút, chống bấm nhầm tải lại. */}
-              {sourceAlreadyIngested ? (
-                <span className="text-[10px] font-semibold text-accent-green">
-                  ✓ Nguồn đã tải & clean — sang "Chạy sản xuất video".
-                </span>
-              ) : (
-                <Button
-                  variant="primary"
-                  className="!py-1.5 !px-3 text-[11px] font-semibold bg-accent-violet hover:bg-accent-violet text-white border-none disabled:opacity-30"
-                  onClick={handlePrepareSource}
-                  disabled={
-                    preparingSource ||
-                    savingSource ||
-                    creatingJob ||
-                    !cardReady ||
-                    (!extractedSourceUrl && !cardHasMatchingJob)
-                  }
-                >
-                  {preparingSource ? 'Đang chuẩn bị nguồn…' : 'Tải & clean nguồn'}
-                </Button>
-              )}
-              {!scoutUrlLocked && (
-                <Button
-                  variant="ghost"
-                  className="!py-1 !px-2 text-[10px]"
-                  onClick={handleSaveSource}
-                  disabled={savingSource || creatingJob || preparingSource || !extractedSourceUrl}
-                  title="Chỉ lưu URL nháp (phụ/debug) — không tải/clean."
-                >
-                  {savingSource ? 'Đang lưu…' : 'Lưu nháp'}
-                </Button>
-              )}
               {draftMatchesCard && (
-                <Button
-                  variant="outline"
-                  className="!py-1 !px-2.5 text-[10px] font-semibold"
-                  onClick={handleDeleteSource}
-                  disabled={savingSource || creatingJob || preparingSource}
-                >
-                  Xóa nháp
-                </Button>
+                <span className="text-[10px] text-accent-green font-medium">
+                  ✓ Đã khớp Product Card
+                </span>
               )}
             </div>
 
-            {/* Trạng thái prep tuyến tính: chưa job → tạo job → tải/clean → chờ duyệt. */}
-            {preparingSource && prepStage && (
-              <p className="flex items-center gap-1.5 text-[10px] text-accent-cyan">
-                <span className="h-2.5 w-2.5 animate-spin rounded-full border border-accent-cyan border-t-transparent" />
-                {prepStage}
-              </p>
-            )}
-            {sourceNotice && <p className="text-[10px] text-accent-green">{sourceNotice}</p>}
-            {sourceError && <p className="text-[10px] text-accent-rose">{sourceError}</p>}
-            {!draftMatchesCard && draft?.source?.url && (
-              <NoticeBox accent="amber">
-                Có draft nguồn của sản phẩm khác — không áp cho Product Card hiện tại.
-              </NoticeBox>
-            )}
+            <div className="space-y-2">
+              {/* Video-First: job từ Scout đã có URL trong manifest → read-only, khỏi dán lại. */}
+              {scoutUrlLocked && (
+                <div className="space-y-0.5 rounded-md border border-hairline/60 bg-panel/40 px-2.5 py-1.5">
+                  <span className="text-[9px] font-medium uppercase tracking-wider text-neutral-500">
+                    URL nguồn (từ Trend Scout — đã lưu vào job)
+                  </span>
+                  <p className="break-all font-mono text-[10px] text-accent-blue">
+                    {cardMatchedJob?.sourceVideoUrl}
+                  </p>
+                </div>
+              )}
+              {!scoutUrlLocked && (
+                <input
+                  type="text"
+                  disabled={savingSource || creatingJob || preparingSource}
+                  value={sourceUrlInput}
+                  onChange={(e) => setSourceUrlInput(e.target.value)}
+                  placeholder="Dán link hoặc nguyên đoạn share (TikTok, Douyin, ...) — tự trích URL"
+                  className="w-full rounded-lg border border-hairline bg-panel/80 px-3 py-2 text-xs text-neutral-100 outline-none focus:border-accent-violet disabled:opacity-50"
+                />
+              )}
+              {!scoutUrlLocked && sourceInputHasText && !extractedSourceUrl && (
+                <p className="text-[10px] text-accent-rose">
+                  Không tìm thấy URL trong đoạn văn bản — cần một link bắt đầu bằng http:// hoặc
+                  https:// (có thể nằm giữa text).
+                </p>
+              )}
+              {!scoutUrlLocked && extractedSourceUrl && (
+                <div className="space-y-0.5 rounded-md border border-hairline/60 bg-panel/40 px-2.5 py-1.5">
+                  <span className="text-[9px] font-medium uppercase tracking-wider text-neutral-500">
+                    {sourceUrlWasExtracted ? 'URL trích xuất từ text đã dán' : 'URL nguồn sẽ lưu'}
+                  </span>
+                  <p className="break-all font-mono text-[10px] text-accent-blue">
+                    {extractedSourceUrl}
+                  </p>
+                </div>
+              )}
+
+              {/* Nút CHÍNH của Operator — 1 click điều phối prep an toàn: tải & clean nguồn
+                → mở thẳng Bước 3 (Option A, không còn human gate duyệt nguồn).
+                "Lưu nháp" chỉ là phụ (auto-save thủ công), không còn là CTA chính. */}
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Job đã qua bước tải (SOURCE_READY+) → ẩn nút, chống bấm nhầm tải lại. */}
+                {sourceAlreadyIngested ? (
+                  <span className="text-[10px] font-semibold text-accent-green">
+                    ✓ Nguồn đã tải & clean — sang "Chạy sản xuất video".
+                  </span>
+                ) : (
+                  <Button
+                    variant="primary"
+                    className="!py-1.5 !px-3 text-[11px] font-semibold bg-accent-violet hover:bg-accent-violet text-white border-none disabled:opacity-30"
+                    onClick={handlePrepareSource}
+                    disabled={
+                      preparingSource ||
+                      savingSource ||
+                      creatingJob ||
+                      !cardReady ||
+                      (!extractedSourceUrl && !cardHasMatchingJob)
+                    }
+                  >
+                    {preparingSource ? 'Đang chuẩn bị nguồn…' : 'Tải & clean nguồn'}
+                  </Button>
+                )}
+                {!scoutUrlLocked && (
+                  <Button
+                    variant="ghost"
+                    className="!py-1 !px-2 text-[10px]"
+                    onClick={handleSaveSource}
+                    disabled={savingSource || creatingJob || preparingSource || !extractedSourceUrl}
+                    title="Chỉ lưu URL nháp (phụ/debug) — không tải/clean."
+                  >
+                    {savingSource ? 'Đang lưu…' : 'Lưu nháp'}
+                  </Button>
+                )}
+                {draftMatchesCard && (
+                  <Button
+                    variant="outline"
+                    className="!py-1 !px-2.5 text-[10px] font-semibold"
+                    onClick={handleDeleteSource}
+                    disabled={savingSource || creatingJob || preparingSource}
+                  >
+                    Xóa nháp
+                  </Button>
+                )}
+              </div>
+
+              {/* Trạng thái prep tuyến tính: chưa job → tạo job → tải/clean → chờ duyệt. */}
+              {preparingSource && prepStage && (
+                <p className="flex items-center gap-1.5 text-[10px] text-accent-cyan">
+                  <span className="h-2.5 w-2.5 animate-spin rounded-full border border-accent-cyan border-t-transparent" />
+                  {prepStage}
+                </p>
+              )}
+              {sourceNotice && <p className="text-[10px] text-accent-green">{sourceNotice}</p>}
+              {sourceError && <p className="text-[10px] text-accent-rose">{sourceError}</p>}
+              {!draftMatchesCard && draft?.source?.url && (
+                <NoticeBox accent="amber">
+                  Có draft nguồn của sản phẩm khác — không áp cho Product Card hiện tại.
+                </NoticeBox>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Chuẩn bị job sản xuất / Xác nhận */}
         {draftMatchesCard && (
