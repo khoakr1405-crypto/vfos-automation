@@ -1042,6 +1042,8 @@ Vòng này sửa skill + docs để `/chay` tự quyết định + tự retry + 
 
 ### ✅ Phần 22 — Pivot Product-First → Shopee-First Only v0 (TikTok Shop defer): ĐÃ CHỐT (2026-05-22)
 
+> ⚠️ **Điểm 3 & 4 (TikTok Shop defer) SUPERSEDED bởi Phần 76 (2026-07-16)** — Operator ra lệnh trực tiếp mở lại TikTok-Shop-First: ACTIVE R1 (paste-link manual). Shopee-First vẫn ACTIVE song song.
+
 **Quyết định user**:
 1. HỦY hướng làm song song Shopee + TikTok Shop.
 2. Chỉ làm **1 hướng trước: Shopee**.
@@ -3290,6 +3292,33 @@ Pipeline anchors chạy đầy đủ (từ log): cắt 4 money-shot → vision h
 **Trạng thái git:** commit `67d9633` (25 file, +1478/−581) trên `feat/ent-multichannel`, staging đích danh, secret scan sạch. Edge-case ghi nhận: job FAILED trước khi gắn card → attach giữ FAILED (Operator intake lại như job fail thường).
 
 **Bước tiếp theo duy nhất:** GIỮ NGUYÊN chờ nạp Quota OpenAI (mục Phần 74) + Operator quét Douyin POV lần đầu (cần đăng nhập Douyin, No-Go #4) để có shortlist thật cho lane Review.
+
+---
+
+### ✅ Phần 76 — Trend Scout Monetization Fit + TikTok-Shop-First ACTIVE R1 (đảo Phần 22) (2026-07-15/16, commit `28e4560` + `2b9befe` — CHƯA PUSH theo lệnh Operator)
+
+> Quota OpenAI đã nạp lại (probe 200 OK; ASR 154233 + script 87s 15/15 live PASS — đóng blocker Phần 74). Round kép theo lệnh trực tiếp Operator: **diệt rác Trend Scout POV** rồi **tái cấu trúc chấm điểm bỏ vanity metrics** + **mở lại TikTok Shop**.
+
+1. **VOE Product Gate + khóa keyword thả nổi ✅** (2026-07-15): `pov-review.json` bỏ 12 keyword phẳng → **formats (3) × subNiches (5 ngách con, mỗi ngách 4 productTerms)** — query LUÔN = [Định dạng]+[Ngách sản phẩm], loader `30-scout.ts` fail loud `CONFIG_CONFLICT` nếu config combo còn keywords phẳng, CLI đòi `--sub-niche` (mirror API 400 `SUB_NICHE_REQUIRED`). Gate thuần trong `scout-core.ts` (`evaluateProductGate`: NFKC+lowercase, evidence-first → garbage-unless-strong-action; counters `noProductEvidence`/`garbageContent` vào snapshot/report/UI). UI panel: dropdown "Ngách con" bắt buộc + dòng 🛡 thống kê chặn rác. A/B trên desc Douyin thật (snapshot 12/07 config cũ): giữ đúng video đập hộp Honor, loại đúng video bungee + rafting du lịch dùng chính keyword "第一视角".
+
+2. **Monetization Fit scoring — vanity metrics hết quyết định thứ hạng ✅** (2026-07-16): khi gate bật, điểm = **Fit 0–100 (QUYẾT ĐỊNH)** + viral bonus 0–20 (xếp hạng phụ). `computeFitScore`: ≥1 strong action (开箱/测评/实测…) → tier STRONG 70–100; không strong → WEAK 0–40. **Khoảng trống 40↔70 bất khả xâm phạm**: video review đồ vật LUÔN trên video bằng chứng yếu dù thua viral 75 lần (test khóa). FIT_STRONG **miễn sàn likes/phút** (review tốt mới nổi không bị giết); lane fishing/cooking không gate → công thức viral cũ nguyên vẹn (test calibration khóa `score 25`). Signals mới `FIT_STRONG`/`FIT_WEAK` + field `monetizationFit` + badge FIT trên UI. Unit 38/38 PASS.
+
+3. **TikTok-Shop-First: DEFER → ACTIVE R1 ✅** (2026-07-16, lệnh trực tiếp Operator — đảo điểm 3 & 4 Phần 22): mức R1 = **Operator dán link thủ công**, KHÔNG scraper/CDP/API thật (HARD CONSTRAINT scraper của Phần 22 GIỮ tới round riêng). Lib MỚI `apps/studio/src/lib/commerce/tiktok-shop.ts`: card `platform: 'tiktok-shop'` với `validationStatus: 'OPERATOR_CONFIRMED'` (cố ý ≠ VERIFIED máy móc Shopee CDP) + `dataConfidence: 'low'`; sanitize URL = https + host allowlist tuyệt đối (vt/vm/www.tiktok.com, shop-vn/shop.tiktok.com) + **CẮT SẠCH query/hash** (tracking token — quy tắc như cấm canonicalUrl Shopee). Route MỚI `POST /api/studio/commerce/tiktok-card-from-link` ghi slot card hiện tại (ghi đè chủ đích); `attach-product` route thêm nhánh platform (409 `TIKTOK_CARD_INVALID`, từ chối cả card lai mang field Shopee; **đường reject Shopee giữ nguyên semantics**, response success thêm field `platform` additive). UI: khối "dán link TikTok Shop" trong TrendScoutReviewPanel.
+
+**Bảng LANE TYPES sau Phần 76** (thay bảng Phần 22):
+
+| Lane | Platform affiliate | Platform publish | Trạng thái |
+|---|---|---|---|
+| Video-First (Trend Scout POV, lane Review) | Shopee VN + TikTok Shop VN | Facebook Reels / TikTok | **ACTIVE (lane chính)** |
+| Shopee-First (MODE 4 /chay) | Shopee VN | Facebook Reels | ACTIVE |
+| Content-Led affiliate (triết lý nền) | — | — | ACTIVE |
+| TikTok-Shop-First (gắn link TikTok Shop) | TikTok Shop VN | TikTok Việt Nam | **ACTIVE R1 (manual paste — Phần 76)** |
+
+**Step Inventory (No-Go #9) cho TikTok-Shop-First R1**: spec = Phần 76 này · scripts = KHÔNG cần sửa (CLI `job:attach-product` generic, readers name/id null-safe từ Phần 75) · API = route `tiktok-card-from-link` MỚI + nhánh platform trong `attach-product` · UI = khối dán link trong TrendScoutReviewPanel · artifacts = `data/temp/selected_product_card.json` (platform tiktok-shop) · test evidence = typecheck + live-fire round này. Còn thiếu cho R2+ (ngoài scope R1, ghi nhận trung thực): registry TikTok riêng, verify owner tự động, caption/publish plan gắn link TikTok Shop ở khâu đóng gói.
+
+**Trạng thái chốt:** Operator đã duyệt UI trực quan ĐẠT (dropdown Ngách con + badge FIT + khối TikTok Shop tại `/lanes/product-review`). Self-review reviewer độc lập: SHIP — KHÔNG BLOCKER (3 nit đã vá + smoke lại: card lai 409, card sạch tới CLI 404). Tách 2 commit theo đề xuất: `28e4560` (scout VOE gate + combo + fit scoring, 7 file +822/−53) + `2b9befe` (TikTok Shop paste-link R1, 3 file +264/−2). **CHƯA PUSH — chờ lệnh Operator.**
+
+**Bước tiếp theo duy nhất:** Chạy job POV end-to-end đầu tiên (FIRST BLOOD POV): quét → tạo job → gắn sản phẩm (Shopee hoặc TikTok Shop) → tải nguồn → sản xuất (quota OpenAI đã sống) → duyệt → đăng tay.
 
 ---
 
