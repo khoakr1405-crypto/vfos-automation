@@ -3322,6 +3322,24 @@ Pipeline anchors chạy đầy đủ (từ log): cắt 4 money-shot → vision h
 
 ---
 
+### ✅ Phần 77 — Vision verdict gate + Hardsub text-density gate (2 lane, bài học video lỗi FIRST BLOOD) (2026-07-16, commit `33fbdf5` — CHƯA PUSH)
+
+> Operator chạy FIRST BLOOD POV qua chain 1-click → `job_20260715_002` sản xuất xong nhưng **video lỗi kép**: (1) chữ Trung to nguyên GIỮA khung hình suốt video (detector zone `y=[0.45,0.96]` tune cho phụ đề đáy lane câu cá → chữ giữa khung bị vứt, `Raw segments: 1 → bands: 0`, caption step skip che im lặng); (2) **sai sản phẩm** — card máy xay tỏi nhưng video là đồ organize bếp; vision ĐÃ BÁO `PRODUCT_NOT_VISIBLE` + `sourceVideoUsable:false` nhưng `visionGate` chỉ check artifact TỒN TẠI, không đọc verdict → đốt tiền script/voice/render/Whisper vô ích, QA cuối chỉ so audio↔script nên PASS. Operator duyệt cả 2 phương án fix + lệnh áp dụng luôn cho lane Giải trí.
+
+1. **Fix (a) — Vision VERDICT gate (lane Review) ✅**: `vision-gate.ts` giờ đọc `quality.blockingIssues` + `quality.sourceVideoUsable` ở CẢ 2 nhánh (artifact mới sinh lẫn cache) → chặn **exit 27 `VISION_SOURCE_UNUSABLE`** TRƯỚC scriptGate (chưa tốn API), manifest → FAILED + lastError, status artifact state mới. Override duy nhất: cờ CLI `--force-vision-unusable` (Operator gõ tay; UI không bao giờ truyền). Đúng chuẩn No-Go #8 "gate chặn thật khi fail".
+
+2. **Fix (b) — Hardsub TEXT DENSITY gate tại intake (CẢ 2 LANE) ✅**: module chung MỚI `scripts/subtitle-mask/text-density.ts` — PP-OCR (cùng venv detector, không network) đo **chữ CJK NGOÀI vùng che được** (midY < 0.70 — trên dải delogo đáy); ≥40% frame dính → `TEXT_HEAVY`. Verdict thuần `assessTextDensity` tách khỏi IO, unit 7/7. Chữ phụ đề đáy (fishing) vẫn pass — scrub cứu được. Cắm: **Review** = `intake-clean.ts` (đo trên 5 frame intake sẵn có; TEXT_HEAVY → intake FAIL `HARDSUB_TEXT_HEAVY`, manifest ghi verdict typed `source.textDensityStatus/textDensity`) + gate phòng thủ `run-review.ts` exit 22; **Giải trí** = `01-fetch-source.ts` trích 5 frame + đo → exit 8 `TEXT_HEAVY`, `jobs.ts` map code lỗi cho UI. SSOT `PADDLE_PY/PADDLE_SCRIPT` dời về text-density.ts (detector import lại).
+
+3. **Live evidence (không fake)**: density trên frame thật — `job_20260715_002` **TEXT_HEAVY 5/5** (sample đúng câu "清空婆婆用了六年的厨房"); đối chứng âm tính `job_20260617_002` (video đã publish FB) **OK 1/5**, `job_20260618_003` **OK 0/5** — không chặn nhầm nguồn tốt. Intake gate live trên `job_20260715_001`: exit 3 `HARDSUB_TEXT_HEAVY` + manifest stamped; run-review defense gate: exit 22; vision verdict gate live trên `job_20260715_002`: exit 27, 0 API call (artifact cache). Unit: text-density 7/7 + subtitle-mask regression 16/16. Typecheck: 0 lỗi mới trong file đụng (ad-hoc tsc strict) + studio typecheck PASS. Biome: 0 lỗi mới (2 file command giữ nợ pre-existing).
+
+4. **PHÁT HIỆN QUAN TRỌNG**: `job_20260715_001` (FIRST BLOOD) và `job_20260715_002` trỏ **CÙNG 1 video nguồn** (bếp 婆婆, 12.8MB) — cả hai giờ FAILED đúng sự thật (001 `HARDSUB_TEXT_HEAVY`, 002 `VISION_SOURCE_UNUSABLE`). FIRST BLOOD phải chọn video nguồn khác.
+
+**Chưa live-fire**: nhánh ent `01-fetch-source` đầy đủ (cần lần intake Douyin thật kế tiếp — module + pattern trích frame đã proven ở lane Review); ngưỡng 0.70/0.40 là calibration đầu, chỉnh khi có false positive/negative thật.
+
+**Bước tiếp theo duy nhất:** FIRST BLOOD POV lại từ đầu với nguồn sạch: quét ngách con → chọn candidate KHÔNG dính TEXT_HEAVY → gắn card ĐÚNG sản phẩm trong video → sản xuất (giờ có 2 tầng gate bảo vệ tiền API) → duyệt → đăng tay.
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
