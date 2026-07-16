@@ -1,6 +1,8 @@
 // Shared data types for the VFOS job-manager (extracted from
 // scripts/vfos-job-manager.ts — God-file anatomy Nhịp 1).
 
+import type { TextDensityAssessment } from '../../subtitle-mask/text-density.js';
+
 export type JobState =
   | 'CREATED'
   // Video-first (Trend Scout POV): job tạo từ sourceVideoUrl, CHƯA có Product Card.
@@ -47,6 +49,9 @@ export interface JobManifest {
     sourceVideoProvider?: string | null;
     cleanlinessReportPath?: string | null;
     sourceResolvedAt?: string | null;
+    // ---- Phần 77: hardsub text-density gate (intake ghi; run-review đọc) ----
+    textDensityStatus?: string | null;
+    textDensity?: TextDensityAssessment | null;
   };
   artifacts: {
     scriptArtifactPath: string | null;

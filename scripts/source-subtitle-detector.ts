@@ -24,21 +24,22 @@
  * ========================================================================== */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { createWorker, OEM, PSM } from 'tesseract.js';
+import { OEM, PSM, createWorker } from 'tesseract.js';
 import {
-  clusterFramesToSegments,
-  cjkRatio,
-  consolidateBands,
   type FrameDetection,
+  type PixelBox,
+  type SubtitleSegment,
+  cjkRatio,
+  clusterFramesToSegments,
+  consolidateBands,
   isCjk,
   mergeBoxesToLines,
   stabilizeBands,
-  type PixelBox,
-  type SubtitleSegment,
 } from './subtitle-mask/detect-core.js';
+import { PADDLE_PY, PADDLE_SCRIPT } from './subtitle-mask/text-density.js';
 
 const JOBS_ROOT = 'data/temp/jobs';
 const TESS_CACHE = 'data/temp/tesseract-cache';
@@ -71,9 +72,6 @@ function ffprobe(video: string): ProbeInfo {
   const durationSec = Number(out.match(/duration=([\d.]+)/)?.[1] ?? 0);
   return { width, height, durationSec };
 }
-
-const PADDLE_PY = 'tools/subtitle-detect-paddle/.venv/Scripts/python.exe';
-const PADDLE_SCRIPT = 'tools/subtitle-detect-paddle/detect.py';
 
 interface PaddleRegion {
   box: [number, number, number, number];
@@ -286,7 +284,9 @@ async function main(): Promise<void> {
       frameDetections = paddle.dets;
       firstSampleText = paddle.sampleText;
     } else {
-      console.warn('⚠️ PaddleOCR không khả dụng (venv/script thiếu hoặc lỗi) → fallback tesseract.js');
+      console.warn(
+        '⚠️ PaddleOCR không khả dụng (venv/script thiếu hoặc lỗi) → fallback tesseract.js',
+      );
       engineUsed = 'tesseract';
     }
   }
@@ -299,51 +299,51 @@ async function main(): Promise<void> {
     await worker.setParameters({ tessedit_pageseg_mode: PSM.SPARSE_TEXT });
 
     for (let i = 0; i < frameFiles.length; i++) {
-    const timeSec = i / fps;
-    const fpath = join(framesDir, frameFiles[i]!);
-    let words: Array<{
-      text?: string;
-      confidence?: number;
-      bbox?: { x0: number; y0: number; x1: number; y1: number };
-    }> = [];
-    try {
-      const { data } = await worker.recognize(fpath, {}, { blocks: true });
-      const collected: typeof words = [];
-      const anyData = data as unknown as {
-        words?: typeof words;
-        blocks?: Array<{ paragraphs?: Array<{ lines?: Array<{ words?: typeof words }> }> }>;
-      };
-      if (Array.isArray(anyData.words) && anyData.words.length > 0) {
-        collected.push(...anyData.words);
-      } else {
-        for (const blk of anyData.blocks ?? []) {
-          for (const par of blk.paragraphs ?? []) {
-            for (const ln of par.lines ?? []) {
-              collected.push(...(ln.words ?? []));
+      const timeSec = i / fps;
+      const fpath = join(framesDir, frameFiles[i]!);
+      let words: Array<{
+        text?: string;
+        confidence?: number;
+        bbox?: { x0: number; y0: number; x1: number; y1: number };
+      }> = [];
+      try {
+        const { data } = await worker.recognize(fpath, {}, { blocks: true });
+        const collected: typeof words = [];
+        const anyData = data as unknown as {
+          words?: typeof words;
+          blocks?: Array<{ paragraphs?: Array<{ lines?: Array<{ words?: typeof words }> }> }>;
+        };
+        if (Array.isArray(anyData.words) && anyData.words.length > 0) {
+          collected.push(...anyData.words);
+        } else {
+          for (const blk of anyData.blocks ?? []) {
+            for (const par of blk.paragraphs ?? []) {
+              for (const ln of par.lines ?? []) {
+                collected.push(...(ln.words ?? []));
+              }
             }
           }
         }
+        words = collected;
+      } catch {
+        continue;
       }
-      words = collected;
-    } catch {
-      continue;
-    }
 
-    const boxes: PixelBox[] = [];
-    for (const w of words) {
-      const text = (w.text ?? '').trim();
-      const conf = w.confidence ?? 0;
-      const bb = w.bbox;
-      if (!bb || !text) continue;
-      if (conf < minConf) continue;
-      if (!isCjk(text) || cjkRatio(text) < 0.5) continue;
-      const midY = (bb.y0 + bb.y1) / 2;
-      if (midY < yTop || midY > yBot) continue;
-      const box: PixelBox = { x: bb.x0, y: bb.y0, w: bb.x1 - bb.x0, h: bb.y1 - bb.y0 };
-      if (box.w < fW * 0.03 || box.h < fH * 0.012) continue; // bỏ noise quá nhỏ
-      boxes.push(box);
-      if (!firstSampleText) firstSampleText = text;
-    }
+      const boxes: PixelBox[] = [];
+      for (const w of words) {
+        const text = (w.text ?? '').trim();
+        const conf = w.confidence ?? 0;
+        const bb = w.bbox;
+        if (!bb || !text) continue;
+        if (conf < minConf) continue;
+        if (!isCjk(text) || cjkRatio(text) < 0.5) continue;
+        const midY = (bb.y0 + bb.y1) / 2;
+        if (midY < yTop || midY > yBot) continue;
+        const box: PixelBox = { x: bb.x0, y: bb.y0, w: bb.x1 - bb.x0, h: bb.y1 - bb.y0 };
+        if (box.w < fW * 0.03 || box.h < fH * 0.012) continue; // bỏ noise quá nhỏ
+        boxes.push(box);
+        if (!firstSampleText) firstSampleText = text;
+      }
       const lines = mergeBoxesToLines(boxes);
       if (lines.length > 0) frameDetections.push({ timeSec, lines });
     }

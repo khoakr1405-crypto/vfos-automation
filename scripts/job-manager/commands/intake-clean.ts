@@ -13,6 +13,11 @@ import {
 } from 'node:fs';
 import { basename, extname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import {
+  DEFAULT_TEXT_DENSITY,
+  type TextDensityAssessment,
+  measureTextDensityOnFrames,
+} from '../../subtitle-mask/text-density.js';
 import { isoNow, loadManifest, saveManifest } from '../core/manifest-io.js';
 import { getVideoDuration, hasAudioStream, hasVideoStream } from '../core/media-probe.js';
 import { OPERATOR_VIDEO_INBOX, VALID_VIDEO_EXTS } from '../core/paths.js';
@@ -324,6 +329,7 @@ export async function cmdIntakeClean(args: string[]): Promise<number> {
 
   // 3.5. Frame extraction and cleanliness check
   let cleanlinessPassed = false;
+  let textDensity: TextDensityAssessment | null = null;
   const framesDir = join(jobSourceDir, 'frames');
   const cleanlinessReportPath = join(jobSourceDir, 'source_cleanliness_report.json');
   const framePaths: string[] = [];
@@ -403,6 +409,29 @@ export async function cmdIntakeClean(args: string[]): Promise<number> {
       console.warn('⚠️ [Cleanliness QA] Frame extraction failed or incomplete.');
     }
 
+    // Phần 77 — HARDSUB TEXT DENSITY GATE (bài học job_20260715_002): chữ CJK
+    // nằm TRÊN vùng che được (midY < 0.70) thì scrub/delogo không cứu được →
+    // nguồn dính ≥40% frame như vậy bị LOẠI ngay tại intake, trước khi tốn
+    // vision/script/voice/render. Chữ ở dải đáy (phụ đề thường) vẫn pass —
+    // scrub hiện có xử lý được. Không đo được (thiếu venv) → warn, KHÔNG chặn.
+    if (cleanlinessPassed) {
+      console.log('[Text Density] Đo mật độ chữ CJK ngoài vùng che được (PP-OCR)...');
+      textDensity = measureTextDensityOnFrames(framesDir);
+      if (textDensity.status === 'TEXT_HEAVY') {
+        console.error(
+          `🛑 [Text Density] HARDSUB_TEXT_HEAVY: ${textDensity.framesWithUnscrubbableCjk}/${textDensity.framesSampled} frame có chữ CJK trên vùng che được (midY < ${DEFAULT_TEXT_DENSITY.scrubbableYMin}) — scrub không xử lý được, nguồn bị loại.`,
+        );
+      } else if (textDensity.status === 'OK') {
+        console.log(
+          `[Text Density] OK — unscrubbable ${textDensity.framesWithUnscrubbableCjk}/${textDensity.framesSampled} frame (chỉ-dải-đáy: ${textDensity.framesWithScrubbableOnlyCjk}).`,
+        );
+      } else {
+        console.warn(
+          `⚠️ [Text Density] ${textDensity.status} — không đo được, KHÔNG chặn intake (kiểm tra venv tools/subtitle-detect-paddle).`,
+        );
+      }
+    }
+
     // Generate source_cleanliness_report.json
     // Option A — a real download via the no-watermark provider IS the technical
     // clean gate; the frames are REFERENCE ONLY for the Operator preview (Step 4).
@@ -416,6 +445,8 @@ export async function cmdIntakeClean(args: string[]): Promise<number> {
       videoPath: `runs/${jobId}/source/clean_source_video.mp4`,
       framePaths,
       frameExtractionOk: cleanlinessPassed,
+      // Phần 77 — evidence density gate (verdict SSOT nằm ở manifest.source).
+      textDensity,
       status: 'WATERMARK_NOT_DETECTED',
       checkedAreas: ['top-left', 'top-right', 'bottom-left', 'bottom-right', 'center'],
       notes:
@@ -430,7 +461,14 @@ export async function cmdIntakeClean(args: string[]): Promise<number> {
   // cleanliness relies on the no-watermark download provider; visual confirmation
   // is deferred to the Operator preview (Step 4), NOT a separate approval gate.
   // Frame extraction is best-effort reference only — it must NOT block intake.
-  const finalStatus = downloadSuccess && ffprobePassed ? 'SOURCE_READY' : 'SOURCE_FAILED';
+  // Phần 77 — TEXT_HEAVY = intake FAIL (nguồn không cứu được bằng scrub).
+  const textHeavy = textDensity?.status === 'TEXT_HEAVY';
+  if (textHeavy && !errorCode) {
+    errorCode = 'HARDSUB_TEXT_HEAVY';
+    errorMessage = `Chữ CJK cứng ngoài vùng che được ở ${textDensity?.framesWithUnscrubbableCjk}/${textDensity?.framesSampled} frame — scrub không xử lý được, chọn video nguồn khác.`;
+  }
+  const finalStatus =
+    downloadSuccess && ffprobePassed && !textHeavy ? 'SOURCE_READY' : 'SOURCE_FAILED';
   const report = {
     jobId,
     requestedProvider: provider,
@@ -468,6 +506,9 @@ export async function cmdIntakeClean(args: string[]): Promise<number> {
     // công). Không còn nhánh fallback demo → nguồn luôn là 'direct'.
     (manifest.source as any).sourceMode = 'direct';
     (manifest.source as any).productionAllowed = true;
+    // Phần 77 — verdict density gate (SSOT cho run-review defense gate).
+    manifest.source.textDensityStatus = textDensity?.status ?? 'UNKNOWN';
+    manifest.source.textDensity = textDensity;
     manifest.state = 'SOURCE_READY';
     manifest.lastError = null;
     saveManifest(manifest);
@@ -492,6 +533,11 @@ export async function cmdIntakeClean(args: string[]): Promise<number> {
   } else {
     manifest.state = 'FAILED';
     manifest.lastError = `${errorCode}: ${errorMessage}`;
+    if (textDensity) {
+      // Ghi evidence cả nhánh fail — TEXT_HEAVY phải đọc được từ manifest/UI.
+      manifest.source.textDensityStatus = textDensity.status;
+      manifest.source.textDensity = textDensity;
+    }
     saveManifest(manifest);
 
     const reg = loadRegistry();

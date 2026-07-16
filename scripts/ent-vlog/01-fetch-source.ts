@@ -2,9 +2,10 @@
 // CLI-only, no API key needed. Writes <workdir>/source.mp4 + source_meta.json.
 //   pnpm tsx scripts/ent-vlog/01-fetch-source.ts --id ent_squid_001 --url <url>
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
+import { DEFAULT_TEXT_DENSITY, measureTextDensityOnFrames } from '../subtitle-mask/text-density.js';
 import { fetchDouyinSource, isDouyinUrl } from './lib/douyin-fetch.js';
 import { workDir } from './lib/env.js';
 
@@ -129,6 +130,53 @@ async function main(): Promise<void> {
   };
   writeFileSync(join(dir, 'source_meta.json'), JSON.stringify(sourceMeta, null, 2));
 
+  // Phần 77 — HARDSUB TEXT DENSITY GATE (đồng bộ với intake lane Review): chữ
+  // CJK nằm TRÊN vùng che được (midY < 0.70) thì scrub dải đáy không cứu được →
+  // ≥40% frame dính = loại nguồn ngay tại intake (exit 8), trước khi tốn
+  // ASR/montage/script. Không đo được (thiếu venv paddle) → warn, KHÔNG chặn.
+  const densityFramesDir = join(dir, 'text_density_frames');
+  rmSync(densityFramesDir, { recursive: true, force: true });
+  mkdirSync(densityFramesDir, { recursive: true });
+  const densityTs = Array.from(
+    new Set(
+      [
+        1.0,
+        durationSec * 0.25,
+        durationSec * 0.5,
+        durationSec * 0.75,
+        Math.max(durationSec - 1.0, durationSec * 0.9),
+      ]
+        .map((t) => Math.round(t * 100) / 100)
+        .filter((t) => t >= 0 && t <= durationSec),
+    ),
+  ).sort((a, b) => a - b);
+  for (let i = 0; i < densityTs.length; i++) {
+    run('ffmpeg', [
+      '-y',
+      '-ss',
+      String(densityTs[i]),
+      '-i',
+      srcPath,
+      '-frames:v',
+      '1',
+      '-q:v',
+      '2',
+      join(densityFramesDir, `frame_${i + 1}.jpg`),
+    ]);
+  }
+  const density = measureTextDensityOnFrames(densityFramesDir);
+  writeFileSync(join(dir, 'text_density_report.json'), JSON.stringify(density, null, 2));
+  if (density.status === 'TEXT_HEAVY') {
+    console.error('🛑 TEXT_HEAVY');
+    console.error(
+      `Chữ CJK cứng ngoài vùng che được ở ${density.framesWithUnscrubbableCjk}/${density.framesSampled} frame (midY < ${DEFAULT_TEXT_DENSITY.scrubbableYMin}) — scrub dải đáy không cứu được, chọn video nguồn khác.`,
+    );
+    process.exit(8);
+  }
+  if (density.status !== 'OK') {
+    console.warn(`     ⚠ text-density: ${density.status} — không đo được, không chặn.`);
+  }
+
   const mins = Math.floor(durationSec / 60);
   const secs = Math.round(durationSec % 60);
   console.log('------------------------------------------------------');
@@ -136,6 +184,11 @@ async function main(): Promise<void> {
   console.log(`     duration : ${mins}m${secs}s (${sourceMeta.durationSec}s)`);
   console.log(`     video    : ${sourceMeta.width}x${sourceMeta.height} @ ${sourceMeta.fps}fps`);
   console.log(`     audio    : ${hasAudio ? 'present ✅' : 'MISSING ❌ (no speech to translate)'}`);
+  if (density.status === 'OK') {
+    console.log(
+      `     text-density: OK (unscrubbable ${density.framesWithUnscrubbableCjk}/${density.framesSampled} frame)`,
+    );
+  }
   if (durationSec < 60) {
     console.log(
       '     ⚠ NOTE: video < 1 phút — ngắn hơn kỳ vọng 5-10 phút, clip-mining ít tác dụng.',

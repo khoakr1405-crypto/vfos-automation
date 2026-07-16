@@ -511,13 +511,16 @@ export function createJob(input: { url: string; niche: string; channelId?: strin
     }
   } else {
     const stderr = run.stderr ?? '';
-    const code = /DOWNLOAD_FAILED/.test(stderr)
-      ? 'DOWNLOAD_FAILED'
-      : /PROBE_FAILED/.test(stderr)
-        ? 'PROBE_FAILED'
-        : run.status === null
-          ? 'TIMEOUT'
-          : 'INTAKE_FAILED';
+    // Phần 77: TEXT_HEAVY = nguồn chữ CJK ngoài vùng che được (gate 01-fetch exit 8).
+    const code = /TEXT_HEAVY/.test(stderr)
+      ? 'TEXT_HEAVY'
+      : /DOWNLOAD_FAILED/.test(stderr)
+        ? 'DOWNLOAD_FAILED'
+        : /PROBE_FAILED/.test(stderr)
+          ? 'PROBE_FAILED'
+          : run.status === null
+            ? 'TIMEOUT'
+            : 'INTAKE_FAILED';
     job = {
       ...job,
       state: 'INTAKE_FAILED',

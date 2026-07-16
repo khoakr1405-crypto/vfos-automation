@@ -94,6 +94,18 @@ export async function cmdRunReview(args: string[]): Promise<number> {
     return 20;
   }
 
+  // Gate check (Phần 77): Block pipeline if source is hardsub text-heavy —
+  // chữ CJK ngoài vùng che được, scrub không cứu → cấm production tuyệt đối.
+  if (manifest.source.textDensityStatus === 'TEXT_HEAVY') {
+    console.error('======================================================');
+    console.error('🛑 PIPELINE_GATE_BLOCKED: Source video is HARDSUB_TEXT_HEAVY.');
+    console.error(`Job ID:             ${jobId}`);
+    console.error('Chữ CJK cứng nằm ngoài vùng che được (giữa/trên khung hình) —');
+    console.error('scrub/delogo không xử lý được. Chọn video nguồn khác cho job mới.');
+    console.error('======================================================');
+    return 22;
+  }
+
   if (!file) {
     console.error('Error: --file <video> is required');
     return 3;

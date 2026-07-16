@@ -43,6 +43,9 @@ export interface PipelineFlags {
   confirmElevenLabs: boolean;
   allowNoBgm: boolean;
   skipScrubSubtitle: boolean;
+  /** Override Operator-only (CLI, UI KHÔNG truyền): chạy tiếp dù vision phán
+   * nguồn không dùng được. Mặc định false — gate chặn thật (Phần 77). */
+  forceVisionUnusable: boolean;
   requestedVoice: 'female' | 'male' | null;
 }
 

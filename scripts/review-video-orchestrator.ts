@@ -37,6 +37,9 @@ async function main(): Promise<void> {
       // Source-subtitle scrub MẶC ĐỊNH BẬT cho job mới. Guard tắt: cờ này HOẶC
       // manifest scrubSourceSubtitle=false.
       'skip-scrub-subtitle': { type: 'boolean', default: false },
+      // Operator-only: vượt vision verdict gate (VISION_SOURCE_UNUSABLE). UI
+      // không bao giờ truyền cờ này — chỉ Operator gõ tay khi xác nhận vision sai.
+      'force-vision-unusable': { type: 'boolean', default: false },
       // Voice picker: female=HoaiMy / male=NamMinh cho bước sinh voiceover.
       voice: { type: 'string' },
     },
@@ -63,6 +66,7 @@ async function main(): Promise<void> {
     confirmElevenLabs: Boolean(values['confirm-elevenlabs']) || confirmAi,
     allowNoBgm: Boolean(values['allow-no-bgm']),
     skipScrubSubtitle: Boolean(values['skip-scrub-subtitle']),
+    forceVisionUnusable: Boolean(values['force-vision-unusable']),
     requestedVoice,
   });
 
