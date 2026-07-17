@@ -20,7 +20,7 @@ const RUNNING_STATES = new Set<VfosJobState>([
 
 const UNKNOWN = '__unknown__';
 
-interface BatchRow {
+export interface BatchRow {
   key: string;
   label: string;
   /** Mốc thời gian đại diện (max createdAt trong cohort) để sắp xếp mới nhất trước. '' = không rõ. */
@@ -64,8 +64,9 @@ function cohortOf(j: OperatorJobDTO): { key: string; label: string } {
 }
 
 // Gom theo cohort (batchId hoặc ngày). Cohort mới nhất (max createdAt) trước; nhóm
-// không rõ thời gian xuống cuối.
-function buildBatches(jobs: OperatorJobDTO[]): BatchRow[] {
+// không rõ thời gian xuống cuối. Export để DailyRhythmStrip (Tổng quan) tái dùng
+// CÙNG logic → số liệu nhịp hôm nay khớp panel batch chi tiết (single source).
+export function buildBatches(jobs: OperatorJobDTO[]): BatchRow[] {
   const map = new Map<string, BatchRow>();
   for (const j of jobs) {
     const { key, label } = cohortOf(j);

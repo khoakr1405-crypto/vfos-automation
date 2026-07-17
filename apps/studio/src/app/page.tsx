@@ -2,6 +2,7 @@ import { Card, CardBody, CardHeader } from '@/components/card';
 import { EntertainmentStatusPanel } from '@/components/entertainment/status-panel';
 import { UtilIcon } from '@/components/icons';
 import { MockBanner } from '@/components/mock-banner';
+import { DailyRhythmStrip } from '@/components/overview/daily-rhythm-strip';
 import { LaneStatusTiles } from '@/components/overview/lane-status-tiles';
 import { OperatorJobQueue } from '@/components/overview/operator-job-queue';
 import { OperatorTodo } from '@/components/overview/operator-todo';
@@ -100,6 +101,13 @@ export default function OverviewPage() {
       <section className="space-y-4">
         <SectionLabel>Quy trình vận hành chuẩn</SectionLabel>
         <ProcessStrip />
+      </section>
+
+      {/* Nhịp sản xuất hôm nay (Phase 2 Slice A) — kéo nhịp batch cohort mới nhất
+          lên màn chính, always-visible; lịch sử đầy đủ vẫn trong <details> dưới. */}
+      <section className="space-y-4">
+        <SectionLabel>Nhịp sản xuất hôm nay</SectionLabel>
+        <DailyRhythmStrip />
       </section>
 
       {/* Gom chi tiết (P3) — hàng đợi job · panel trạng thái chi tiết · nguồn SP ·
