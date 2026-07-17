@@ -2,7 +2,7 @@
 // ---------------------------------------------------------------------------
 // MỤC TIÊU: hook nghe như NGƯỜI THẬT dẫn chuyện, KHÔNG bị cảm giác máy chép 1 câu
 // mẫu. Trước đây prompt nhét sẵn ví dụ "Con đầu đã vậy…" → GPT lặp y hệt nhiều job.
-// Bank này cấp 6 NHÓM GIỌNG + xoay vòng style theo job (tránh job gần dùng trùng) +
+// Bank này cấp 9 NHÓM GIỌNG + xoay vòng style theo job (tránh job gần dùng trùng) +
 // danh sách hook gần đây để né. VÍ DỤ trong bank chỉ MINH HOẠ GIỌNG — buộc viết MỚI
 // bám footage thật, KHÔNG copy, KHÔNG bịa số/loài/thành tích, KHÔNG nói quá.
 //
@@ -20,7 +20,7 @@ export interface HookStyle {
   examples: string[];
 }
 
-// 6 nhóm theo yêu cầu Operator. Ví dụ bám lane câu cá/mực, trung thực (không số/loài bịa).
+// 9 nhóm theo yêu cầu Operator. Ví dụ bám lane câu cá/mực, trung thực (không số/loài bịa).
 export const HOOK_STYLES: readonly HookStyle[] = [
   {
     id: 'bat_ngo',
@@ -79,7 +79,37 @@ export const HOOK_STYLES: readonly HookStyle[] = [
       'HỨA khúc sau đáng coi: con bự nhất chưa lên, cao trào còn ở cuối. Gợi tò mò để giữ chân tới hết, nhưng KHÔNG hứa điều không có trong clip.',
     examples: [
       'Coi tới cuối đi, con bự nhất còn chưa lên đâu.',
-      'Mới mở màn nhiêu đó thôi, khúc sau mới đã.',
+      'Mới mở màn nhiêu đó thôi, đoạn cuối mới đã.',
+    ],
+  },
+  {
+    id: 'canh_bao',
+    label: 'Cảnh báo / sai lầm',
+    guidance:
+      'Mở bằng CẢNH BÁO hoặc sai lầm người câu hay mắc, dẫn thẳng vào cảnh thật để chứng minh. Cảnh báo phải xuất phát từ tình huống CÓ THẬT trong clip — KHÔNG hù dọa vô căn cứ, không dạy đời gắt.',
+    examples: [
+      'Đừng vội kéo mạnh, sai một nhịp là mất ăn ngay.',
+      'Ghì cần kiểu này dễ mất con to lắm đấy.',
+    ],
+  },
+  {
+    id: 'nguoc_chieu',
+    label: 'Ngược đám đông',
+    guidance:
+      'Mở bằng QUAN ĐIỂM NGƯỢC số đông (giờ giấc, chỗ câu, cách làm…) rồi để footage tự chứng minh. Tự tin, thách nhẹ cho vui, KHÔNG chê bai cá nhân, KHÔNG gây war. Khác persona: trọng tâm là cái NGƯỢC, không phải chất riêng người kể.',
+    examples: [
+      'Người ta bảo khúc này khó ăn, để xem có đúng không.',
+      'Nhiều người chê cách này cũ, tôi vẫn dùng nó đều.',
+    ],
+  },
+  {
+    id: 'bi_mat',
+    label: 'Tiết lộ ít ai biết',
+    guidance:
+      'Mở bằng một ĐIỀU ÍT NGƯỜI ĐỂ Ý về vùng nước/cách câu trong CHÍNH clip, gợi tò mò muốn xem tận mắt. Điều tiết lộ phải CÓ THẬT trong footage — KHÔNG dựng chuyện, KHÔNG chế "bí kíp" ảo.',
+    examples: [
+      'Ít ai để ý khúc nước này có một điểm lạ.',
+      'Chỗ này có cái mẹo nhỏ mà ít người chịu kể.',
     ],
   },
 ] as const;

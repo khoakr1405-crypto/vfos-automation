@@ -28,7 +28,7 @@ Editing đã kể chuyện thì voice + chữ phải đi **cùng mạch truyện
 ## 1. Lớp ① — Voice/script (người kể)
 
 - Theo trọn [CAPTION_STYLE_V1](VFOS_ENTERTAINMENT_CAPTION_STYLE_V1.md) (câu 8–14 từ, dấu câu cho TTS, bám ASR, Việt hóa meme, **đúng loài theo vision**).
-- **Hook 0–5s:** 1 câu **8–13 từ**, voice bắt đầu **<1.5s**, bám money-shot SẠCH (đã qua title-gate), xoay **6 nhóm Hook Style Bank**, KHÔNG lặp mô-típ giữa các job *(engine: `hook-style-bank.ts`)*.
+- **Hook 0–5s:** 1 câu **8–13 từ**, voice bắt đầu **<1.5s**, bám money-shot SẠCH (đã qua title-gate), xoay **9 nhóm Hook Style Bank**, KHÔNG lặp mô-típ giữa các job *(engine: `hook-style-bank.ts`)*.
 - **Cung truyện:** hook → persona/setup → buildup/escalation → climax (con to nhất, gần cuối) → resolution + **CTA mềm** ("Theo dõi xem buổi sau…").
 - **Reaction layer** (`Ha ha,`/`Đúng bài rồi,`…): GIỮ **ÍT (3–5)**, chỉ ở money-shot thật — không để lấn giọng kể.
 
