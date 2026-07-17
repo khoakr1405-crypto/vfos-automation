@@ -129,6 +129,8 @@ export async function generateSafeScript(input: AgentInput): Promise<AgentResult
       sourceVideoDurationSec: input.sourceVideoDurationSec,
       targetVoiceDurationSec: input.targetVoiceDurationSec,
       targetWordCount: input.targetWordCount,
+      // exactOptionalPropertyTypes: chỉ set khi có giá trị (else prompt-builder ?? 2.5).
+      ...(input.wordsPerSec !== undefined ? { wordsPerSec: input.wordsPerSec } : {}),
       visionArtifact: input.visionArtifact ?? null,
     });
 

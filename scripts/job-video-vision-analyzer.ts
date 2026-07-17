@@ -24,6 +24,12 @@ import {
 } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import {
+  MAX_RATE_LIMIT_WAITS,
+  MAX_TOTAL_RATE_LIMIT_WAIT_MS,
+  rateLimitWaitMs,
+  sleep,
+} from '../packages/ai-agents/src/script-claim-safety/openai-caller.js';
 import { loadDotEnv } from '../packages/voice/src/load-env.js';
 import { syncManifestArtifacts } from './job-manifest-helper.js';
 
@@ -386,7 +392,8 @@ async function main(): Promise<void> {
       };
     });
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const VISION_API_URL = 'https://api.openai.com/v1/chat/completions';
+    const visionRequest: RequestInit = {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -430,7 +437,40 @@ Format the response strictly as a JSON object with the following fields:
         ],
         temperature: 0.2,
       }),
-    });
+    };
+
+    // Retry-on-429 (token TPM): STEP 0 (product-from-video) + STEP 1 (vision này)
+    // gọi sát nhau dễ đốt trần token/phút của org. Tái dùng chính sách backoff leo
+    // thang của packages/ai-agents openai-caller (sàn 15→30→60→75s, tôn trọng
+    // Retry-After + x-ratelimit-reset, trần tổng 180s). Hết trần → rơi xuống nhánh
+    // !response.ok bên dưới → throw → exit 6 như cũ (KHÔNG nuốt lỗi, No-Go).
+    let response = await fetch(VISION_API_URL, visionRequest);
+    let rateLimitWaits = 0;
+    let totalWaitedMs = 0;
+    while (response.status === 429 && rateLimitWaits < MAX_RATE_LIMIT_WAITS) {
+      let bodyMsg: string | null = null;
+      try {
+        const peek = (await response.clone().json()) as { error?: { message?: string } };
+        bodyMsg = peek?.error?.message ?? null;
+      } catch {
+        /* body không phải JSON → dùng sàn leo thang */
+      }
+      const nextWait = rateLimitWaits + 1;
+      const { ms: waitMs, source } = rateLimitWaitMs(response.headers, bodyMsg, nextWait);
+      if (totalWaitedMs + waitMs > MAX_TOTAL_RATE_LIMIT_WAIT_MS) {
+        console.warn(
+          `⚠️  OpenAI Vision 429 — đã chờ tổng ~${Math.round(totalWaitedMs / 1000)}s, lần kế (${Math.round(waitMs / 1000)}s) sẽ vượt trần → dừng retry.`,
+        );
+        break;
+      }
+      rateLimitWaits = nextWait;
+      console.warn(
+        `⚠️  OpenAI Vision 429 (token TPM) — lần ${rateLimitWaits}/${MAX_RATE_LIMIT_WAITS}: chờ ${Math.round(waitMs / 1000)}s [${source}]`,
+      );
+      await sleep(waitMs);
+      totalWaitedMs += waitMs;
+      response = await fetch(VISION_API_URL, visionRequest);
+    }
 
     if (!response.ok) {
       const detail = await response.text();

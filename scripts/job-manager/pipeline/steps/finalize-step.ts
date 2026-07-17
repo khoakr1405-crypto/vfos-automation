@@ -19,6 +19,9 @@ export function finalizeStep(ctx: PipelineContext): void {
     ctx.jobManifest.artifacts.previewVideoPath = previewRel;
     ctx.jobManifest.artifacts.captionedPreviewPath = captionedRel;
     ctx.jobManifest.state = 'READY_FOR_OPERATOR_REVIEW';
+    // Success finalize: mọi gate đã PASS → xoá vệt lỗi FAILED cũ (vd VOICE_LONGER_
+    // THAN_VIDEO của run trước) để state READY không mang lastError lạc.
+    ctx.jobManifest.lastError = null;
     saveManifest(ctx.jobManifest);
     updateRegistryFromManifest(ctx.jobManifest);
   }

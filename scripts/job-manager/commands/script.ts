@@ -17,6 +17,7 @@ import type { SafetyReport, VisionArtifact } from '../../../packages/ai-agents/s
 import { loadDotEnv } from '../../../packages/voice/src/load-env.js';
 import { isoNow, loadManifest, saveManifest } from '../core/manifest-io.js';
 import { getVideoDuration } from '../core/media-probe.js';
+import { computeWordBudget, resolveVoiceProvider, wordsPerSecondFor } from '../core/pace.js';
 import { JOBS_ROOT } from '../core/paths.js';
 import { extractProductName } from '../core/product-card.js';
 import { validateScript } from '../core/validation.js';
@@ -146,10 +147,14 @@ export async function cmdScript(args: string[]): Promise<number> {
     return 5;
   }
 
-  // Duration planning
+  // Duration planning — word budget PACE-AWARE theo TTS provider (Phase 1):
+  // ElevenLabs đọc chậm hơn edge nên cùng thời lượng phải ít từ hơn, tránh
+  // VOICE_LONGER_THAN_VIDEO ở video ngắn. Nguồn từ/giây = core/pace.ts (SSOT).
   const safetyBufferSec = 1.5;
   const targetVoiceDurationSec = Math.max(5, sourceVideoDurationSec - safetyBufferSec);
-  const targetWordCount = Math.floor(targetVoiceDurationSec * 2.5);
+  const voiceProvider = resolveVoiceProvider();
+  const wordsPerSec = wordsPerSecondFor(voiceProvider);
+  const targetWordCount = computeWordBudget(targetVoiceDurationSec, voiceProvider);
 
   const scriptPath = resolve(JOBS_ROOT, jobId, 'script_artifact.json');
   const claimSafetyPath = resolve(JOBS_ROOT, jobId, 'claim_safety_report.json');
@@ -174,6 +179,7 @@ export async function cmdScript(args: string[]): Promise<number> {
   console.log(`Source Video:      ${manifest.source.sourceVideoPath ?? 'None'}`);
   console.log(`Video duration:    ${sourceVideoDurationSec.toFixed(2)}s`);
   console.log(`Target voice dur:  ${targetVoiceDurationSec.toFixed(2)}s`);
+  console.log(`Voice provider:    ${voiceProvider} (${wordsPerSec} từ/giây)`);
   console.log(`Target word count: ${targetWordCount} words`);
   console.log(`Output:            ${JOBS_ROOT}/${jobId}/script_artifact.json`);
 
@@ -319,6 +325,7 @@ export async function cmdScript(args: string[]): Promise<number> {
         sourceVideoDurationSec,
         targetVoiceDurationSec,
         targetWordCount,
+        wordsPerSec,
         visionArtifact,
       });
       console.log('🔍 [Dry-Run Plan Only]');
@@ -333,6 +340,7 @@ export async function cmdScript(args: string[]): Promise<number> {
       sourceVideoDurationSec,
       targetVoiceDurationSec,
       targetWordCount,
+      wordsPerSec,
       visionArtifact,
       confirmAi: true,
       openAiApiKey: apiKey,

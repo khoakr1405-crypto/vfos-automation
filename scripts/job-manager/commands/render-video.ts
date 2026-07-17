@@ -107,6 +107,8 @@ export function cmdRenderVideo(args: string[]): number {
   // Cập nhật manifest: trỏ preview + chuyển state chờ Operator duyệt.
   manifest.artifacts.previewVideoPath = plan.output.path;
   manifest.state = 'READY_FOR_OPERATOR_REVIEW';
+  // Render thành công → xoá vệt lỗi cũ (cùng convention với finalize-step).
+  manifest.lastError = null;
   saveManifest(manifest);
 
   console.log(`✅ preview.mp4 rendered — ${result.durationSec.toFixed(2)}s.`);

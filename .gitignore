@@ -65,9 +65,12 @@ production/**/*.jpg
 production/**/*.jpeg
 production/**/*.png
 
-# VFOS runtime commerce artifacts (root-level only — selected_products/ subdir
-# stays tracked as canonical product card references)
-production/_commerce/*.json
+# VFOS runtime commerce artifacts. Ignore ALL JSON recursively — extraction có
+# thể ghi registry/candidates nhạy cảm (credential_token, mmp_pid...) vào subdir,
+# mà `*.json` chỉ bắt root nên còn kẽ hở. NEGATE selected_products/ để canonical
+# product card vẫn tracked làm reference.
+production/_commerce/**/*.json
+!production/_commerce/selected_products/*.json
 
 # VFOS-dedicated Cốc Cốc CDP profile (repo-fallback location only; normally
 # lives under %LOCALAPPDATA%). Never commit a browser profile.

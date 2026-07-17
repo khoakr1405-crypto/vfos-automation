@@ -30,6 +30,8 @@ export interface PromptInput {
   sourceVideoDurationSec: number;
   targetVoiceDurationSec: number;
   targetWordCount: number;
+  /** Từ/giây của TTS provider (pace-aware). Mặc định 2.5 (edge) nếu không truyền. */
+  wordsPerSec?: number;
   visionArtifact?: VisionArtifact | null;
 }
 
@@ -155,6 +157,8 @@ export interface AgentInput {
   sourceVideoDurationSec: number;
   targetVoiceDurationSec: number;
   targetWordCount: number;
+  /** Từ/giây của TTS provider (pace-aware). Mặc định 2.5 (edge) nếu không truyền. */
+  wordsPerSec?: number;
   visionArtifact?: VisionArtifact | null;
   /** Gate No-Go #2 — false ⇒ đi thẳng safe-fallback (không gọi API). */
   confirmAi: boolean;

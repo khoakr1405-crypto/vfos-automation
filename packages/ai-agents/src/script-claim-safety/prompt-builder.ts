@@ -6,6 +6,8 @@ import type { PromptInput, VisionAnalysis } from './types.js';
 
 export function buildScriptPrompt(input: PromptInput): string {
   const { productName, sourceVideoDurationSec, targetVoiceDurationSec, targetWordCount } = input;
+  // Pace-aware: từ/giây theo provider (mặc định 2.5 = edge, giữ hành vi cũ).
+  const wordsPerSec = input.wordsPerSec ?? 2.5;
 
   let visionPromptContext = '';
   const analysis: VisionAnalysis | undefined = input.visionArtifact?.analysis;
@@ -67,7 +69,7 @@ Yêu cầu kịch bản bắt buộc:
 2. Không nói quá sự thật, không mang tính phản cảm.
 3. Không lặp hook hoặc các câu nói/cụm từ lặp lại.
 4. Tránh lặp lại tên sản phẩm đầy đủ quá nhiều lần. Thay vào đó hãy đặt ra một tên ngắn thông minh (shortProductName) và dùng tên ngắn này trong lời thoại.
-5. Số từ của toàn bộ lời thoại (hook + voiceoverText) PHẢI khớp với mục tiêu targetWordCount (khoảng ${targetWordCount} từ), sao cho khi đọc lên ở tốc độ bình thường (khoảng 2.5 từ mỗi giây), tổng thời lượng đọc (estimatedSpeechDurationSec) sẽ dưới targetDurationSec (${targetVoiceDurationSec.toFixed(1)} giây) để không bị cắt video.
+5. Số từ của toàn bộ lời thoại (hook + voiceoverText) PHẢI khớp với mục tiêu targetWordCount (khoảng ${targetWordCount} từ), sao cho khi đọc lên ở tốc độ bình thường (khoảng ${wordsPerSec} từ mỗi giây), tổng thời lượng đọc (estimatedSpeechDurationSec) sẽ dưới targetDurationSec (${targetVoiceDurationSec.toFixed(1)} giây) để không bị cắt video.
 6. Lời thoại kết thúc bằng một câu kêu gọi hành động (CTA) nhẹ nhàng, tự nhiên (ví dụ: "link bio nha", "ghé giỏ hàng/bio mình nhé").
 7. Tránh dùng emoji trong văn bản lời thoại.
 
