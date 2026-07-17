@@ -36,6 +36,20 @@ Sau khi khởi chạy thành công, Claude phải đưa ra chỉ dẫn rõ ràng
 
 Nếu tiến trình dev server gặp lỗi và không thể chạy được, Claude phải báo cáo rõ ràng nguyên nhân (lỗi compile, thiếu dependencies, xung đột cổng) và **không được xin phép commit**.
 
+### 2b. Automated pre-check (bắt buộc trước khi mời Operator)
+
+Sau khi dev server chạy, Claude phải chạy tiền kiểm tự động:
+
+```bash
+pnpm ui:verify
+```
+
+Script `scripts/ui-verify.ts` (Playwright, Chrome headless — không đụng profile Cốc Cốc của Shopee CDP) tự mở các route chính, check HTTP status / JS pageerror / Next.js error overlay / body render, chụp screenshot full-page vào `data/ui-verify/<runId>/` (gitignored) và xuất `report.json`. Route tùy chỉnh: `pnpm ui:verify -- --routes /lanes/product-review`.
+
+* **FAIL bất kỳ route nào → sửa trước, KHÔNG mời Operator review UI lỗi.**
+* **PASS ≠ duyệt**: đây chỉ là tiền kiểm kỹ thuật; Operator visual approval vẫn bắt buộc (Core Rule §1 không đổi).
+* Screenshot trong `data/ui-verify/` có thể đính kèm báo cáo cho Operator xem nhanh, nhưng tuyệt đối không commit (§9).
+
 ## 3. Required Review URLs
 
 Tùy thuộc vào phạm vi thay đổi giao diện, Claude phải cung cấp chính xác các đường dẫn URL để Operator truy cập trực tiếp:
@@ -139,7 +153,7 @@ Báo cáo cuối turn cho mọi task UI phải tuân thủ khuôn mẫu:
 3. **URL cần mở**: Danh sách URL cụ thể để Operator kiểm duyệt.
 4. **Mô tả thay đổi**: Tóm tắt ngắn gọn giao diện đã đổi những gì.
 5. **Operator cần check gì**: Danh sách các điểm Operator cần tương tác kiểm thử.
-6. **Kết quả kiểm tra kỹ thuật**: Trạng thái typecheck, build, biome check.
+6. **Kết quả kiểm tra kỹ thuật**: Trạng thái typecheck, build, biome check, và kết quả `pnpm ui:verify` (PASS/FAIL từng route + đường dẫn screenshot).
 7. **Trạng thái Visual Review**: Ghi rõ Operator đã duyệt UI hay chưa.
 8. **Git status cuối**: Đảm bảo sạch sẽ và không leak file cấm.
 9. **Trạng thái commit**: YES/NO (mặc định là NO nếu Operator chưa duyệt UI).
