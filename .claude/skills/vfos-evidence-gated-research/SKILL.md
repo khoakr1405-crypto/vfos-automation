@@ -1,6 +1,6 @@
 ---
 name: vfos-evidence-gated-research
-description: Use this skill whenever VFOS work makes a claim that needs a source — external URLs/videos/products/metrics/citations, or internal repo files/paths/logs/artifacts. Forbids fabricated evidence, enforces verification_status tagging, and blocks unverified data from going downstream.
+description: Use this skill whenever VFOS work states or relies on a fact that needs a source — BEFORE asserting any URL, video, product, price, metric, statistic, quote, transcript, caption, competitor/trend/case-study claim, or 'X exists / works / passed / is available'. Covers external evidence (web URLs/videos/products/metrics/citations, summarizing or transcribing outside content, answering factual questions about tools/APIs/vendors from memory) and internal evidence (repo files/paths, logs, manifests, artifacts, commits, test results). Also triggers when building a candidate batch for Market Validation / VOE or reporting numbers into docs. When unsure whether a statement needs a source, trigger — an unsourced claim presented as fact is the exact failure this prevents. Forbids fabricated evidence, enforces verification_status tagging, and blocks unverified data from going downstream.
 ---
 
 # VFOS Evidence-Gated Research Skill
@@ -59,6 +59,19 @@ Mỗi item quan trọng kèm: `verification_status` + `verification_note` (cách
 5. **What Is Unverified / Invalid**.
 6. **Can Use Downstream?** — `YES` / `NO` / `YES WITH WARNINGS`.
 7. **Safe Next Step**.
+
+## Quy tắc quyết định downstream (bàn giao VOE / Market Validation / Revenue Experiment)
+| Tình huống | Quyết định |
+|---|---|
+| Phần lớn item `UNVERIFIED`, dùng cho quyết định quan trọng | **KHÔNG** bàn giao downstream |
+| Một số `VERIFIED`, một số thiếu nhẹ | Bàn giao **một phần** — tách batch rõ ràng |
+| Chỉ là ý tưởng sơ bộ, không phải đầu vào quyết định | Được trình bày nhưng **bắt buộc gắn nhãn `exploratory, not decision-ready`** |
+
+## Ví dụ output trung thực (mẫu)
+> "Tôi chỉ xác minh được 4/10 video có URL thật; 6 video còn lại chỉ là gợi ý chủ đề, CHƯA đủ đưa vào Market Validation. Batch này chưa nên chuyển sang VOE."
+> "Môi trường hiện tại không mở/xác minh được URL TikTok/Douyin — đề xuất Operator tự thu thập link thật rồi nạp."
+
+`verification_note` ví dụ đúng: "URL mở qua WebFetch, title khớp video dụng cụ cắt rau" · "chỉ thấy blog nhắc sản phẩm, chưa mở được video gốc" · "không tìm được bằng chứng công khai xác nhận URL tồn tại".
 
 ## Pre-handoff checklist (tự soi trước khi báo done)
 - [ ] Có item nào là dữ liệu tự dựng không?

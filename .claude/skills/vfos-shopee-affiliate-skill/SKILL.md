@@ -1,6 +1,6 @@
 ---
 name: vfos-shopee-affiliate-skill
-description: Use this skill whenever working on VFOS Shopee Affiliate integration, Product Card, Shopee registry, affiliate owner validation, CDP link extraction, “Lấy link Shopee mới”, productImageUrl capture, Shopee modal link reading, or any API/CLI/UI that touches Shopee affiliate links. Enforces owner ID validation (an_17376660568), single-link CDP extraction (target-count=1, max-clicks=5), SUSPENDED handling for CAPTCHA/login/OTP, and sanitized responses with no credential leakage (cookie, token, session).
+description: Use this skill whenever working on VFOS Shopee Affiliate integration, Product Card, Shopee registry, affiliate owner validation, CDP link extraction, "Lấy link Shopee mới", productImageUrl capture, Shopee modal link reading, or any API/CLI/UI that touches Shopee affiliate links. Enforces owner ID validation (an_17376660568), single-link CDP extraction (target-count=1, max-clicks=5), SUSPENDED handling for CAPTCHA/login/OTP, and sanitized responses with no credential leakage (cookie, token, session).
 ---
 
 # VFOS Shopee Affiliate Skill
@@ -52,7 +52,7 @@ Kịch bản này thực hiện:
 
 Trong Panel 1 của giao diện `/lanes/product-review`, Operator tương tác qua các thành phần:
 * **Current Product Card**: Thẻ thông tin sản phẩm đang được chọn.
-* **Compact Registry Picker**: Danh sách 10 sản phẩmverified gần nhất từ registry.
+* **Compact Registry Picker**: Danh sách 10 sản phẩm verified gần nhất từ registry.
 * **Dùng sản phẩm này**: Nút chọn sản phẩm inline.
 * **Lấy link Shopee mới**: Nút kích hoạt luồng CDP.
 

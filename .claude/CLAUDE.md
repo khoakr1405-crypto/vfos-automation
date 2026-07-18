@@ -37,10 +37,15 @@ Gọi bằng `Agent(subagent_type: "researcher", ...)`.
 ## 5. Skills tái sử dụng
 
 Khai báo trong `.claude/skills/`:
-- `shop-amazon` — workflow đặt hàng Amazon affiliate.
+- `vfos-command-center-skill` — kiến trúc Workflow Command Center cho Studio UI / lane / sidebar / panel.
+- `vfos-ui-review-skill` — bắt chạy dev server + `pnpm ui:verify` + Operator duyệt mắt trước khi commit UI.
+- `vfos-product-review-workflow-skill` — chuẩn 3-action lane Product Review, chống tách module kỹ thuật.
+- `vfos-shopee-affiliate-skill` — validate owner `an_17376660568`, CDP single-link, SUSPENDED khi CAPTCHA/login/OTP.
+- `vfos-git-safety-skill` — scoped staging, commit-before-push, chống lộ runtime/secret.
+- `vfos-evidence-gated-research` — cấm bịa nguồn, gắn `verification_status`, chặn dữ liệu chưa verify đi downstream.
 
 ## 6. Tham chiếu external
 
-- Memory cá nhân (cross-session): `C:\Users\Admin\.claude\projects\d--Ai-Automantion-workflow\memory\`
+- Memory cá nhân (cross-session): `C:\Users\Admin\.claude\projects\c--Users-Admin-Desktop-vfos-automation\memory\`
 - Memory dự án (commit được): `./MEMORY.md` ở root project
 - Settings runtime: `.claude/settings.json` (public) + `settings.local.json` (private)

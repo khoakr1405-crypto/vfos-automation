@@ -1,6 +1,6 @@
 ---
 name: vfos-ui-review-skill
-description: Use this skill whenever modifying VFOS Studio UI, React components, pages, layout, sidebar, Command Center panels, buttons, labels, forms, navigation, lane banners, or any Operator-facing screen. Ensures the dev server is run, review URLs are provided (localhost:3002), and Operator visually approves the UI before commit.
+description: Use this skill whenever ANY change could alter what the Operator sees in VFOS Studio — modifying React components, pages, page routes (NOT API `route.ts` backend handlers), layout, styling (CSS/Tailwind, colors, spacing, sizing), sidebar, navigation, Command Center panels, lane banners, buttons, icons, badges, chips, pills, modals, dialogs, tooltips, toasts, tables, cards, forms, inputs, labels, on-screen UI copy/wording (including a single Vietnamese label tweak), and status/error/empty/loading states. Trigger even for small or cosmetic tweaks, and whenever unsure whether a change is Operator-visible. Ensures the dev server is run, the `pnpm ui:verify` pre-check passes, review URLs are provided (localhost:3002), and the Operator visually approves the UI before commit. Does NOT apply to pure backend/lib/script logic that renders no Studio UI — including API `route.ts` handlers, pipeline gates, and Vietnamese copy that renders into videos/captions (hook/script text, TTS, log/report strings) rather than the Studio screen.
 ---
 
 # VFOS UI Review Skill
@@ -74,7 +74,7 @@ Tùy thuộc vào phạm vi thay đổi giao diện, Claude phải cung cấp ch
 
 *Claude phải in các URL cụ thể này ra màn hình chat, không dùng các câu nói chung chung như "hãy mở trang web lên xem".*
 
-<h2>4. What Operator Must Check</h2>
+## 4. What Operator Must Check
 
 Khi yêu cầu Operator kiểm duyệt, Claude cần liệt kê các danh mục kiểm tra cụ thể tùy theo scope chỉnh sửa:
 * **Khả năng hiển thị**: Các nút bấm, nhãn chữ, icon có xuất hiện đúng vị trí và không bị vỡ bố cục (responsive layout) không?
