@@ -10,6 +10,8 @@ import { mkdirSync } from 'node:fs';
 // NO download, NO publish, NO secrets logged.
 import { parseArgs } from 'node:util';
 import { douyinProfileDir, douyinUserAgent } from './lib/douyin-fetch.js';
+import { writeDouyinLoginStatus } from './lib/douyin-login-status.js';
+import { findWorkspaceRoot } from './lib/env.js';
 
 async function main(): Promise<void> {
   const { values } = parseArgs({
@@ -41,6 +43,17 @@ async function main(): Promise<void> {
     args: ['--disable-blink-features=AutomationControlled'],
   });
 
+  // Ghi status OPEN để route/UI biết cửa sổ đang mở (poll auto-resume).
+  const root = findWorkspaceRoot(process.cwd());
+  const openedAt = new Date().toISOString();
+  writeDouyinLoginStatus(root, {
+    state: 'OPEN',
+    openedAt,
+    closedAt: null,
+    pid: process.pid,
+    generatedAt: openedAt,
+  });
+
   const page = context.pages()[0] ?? (await context.newPage());
   await page.goto(startUrl, { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => {
     console.log('⚠ Trang load chậm — cứ thao tác bình thường rồi đóng khi xong.');
@@ -49,6 +62,16 @@ async function main(): Promise<void> {
   // Chờ operator đóng cửa sổ → persistent context tự lưu cookie rồi kết thúc.
   await new Promise<void>((resolve) => {
     context.on('close', () => resolve());
+  });
+
+  // Ghi status CLOSED (login xong) → UI poll thấy sẽ tự tải lại job lỗi.
+  const closedAt = new Date().toISOString();
+  writeDouyinLoginStatus(root, {
+    state: 'CLOSED',
+    openedAt,
+    closedAt,
+    pid: process.pid,
+    generatedAt: closedAt,
   });
 
   console.log('[00] ✅ Đã lưu profile Douyin. Giờ bấm "Tải link" lại trên Studio.');

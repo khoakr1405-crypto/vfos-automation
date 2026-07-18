@@ -64,13 +64,34 @@ export async function hasCaptchaWall(page: import('playwright').Page): Promise<b
   return /请完成验证|滑动验证|完成下方拼图|slide to verify/i.test(body);
 }
 
+/** Best-effort detection của LOGIN/SECURITY GATE Douyin — nghĩa là cookie phiên
+ * đã CHẾT / mất tin cậy (khác captcha slider, khác login modal có-thể-tắt vốn
+ * KHÔNG chặn xem). CHỈ dùng tín hiệu URL redirect (passport/login/security) —
+ * modal tắt-được không đổi URL nên không bị dương tính giả. Nếu không khớp →
+ * caller rơi về NO_STREAM như cũ (không regression). Heuristic; nên hiệu chuẩn
+ * lại với 1 phiên chết thật. Export để channel-lister/search dùng chung. */
+const LOGIN_WALL_RE =
+  /passport\.douyin|\/passport\/|security[-_]?check|\/user\/login|[?&]need_?login/i;
+export function isLoginWallUrl(url: string): boolean {
+  return LOGIN_WALL_RE.test(url);
+}
+
 export type FetchResult =
   | { ok: true; outPath: string; bytes: number; hasAudio: boolean }
   | {
       ok: false;
-      code: 'CAPTCHA' | 'NO_STREAM' | 'NAV_FAILED' | 'DOWNLOAD_FAILED' | 'MUX_FAILED';
+      code:
+        | 'CAPTCHA'
+        | 'SESSION_EXPIRED'
+        | 'NO_STREAM'
+        | 'NAV_FAILED'
+        | 'DOWNLOAD_FAILED'
+        | 'MUX_FAILED';
       message: string;
     };
+
+const SESSION_EXPIRED_MSG =
+  'Phiên Douyin hết hạn / cần đăng nhập lại (session expired). Đăng nhập lại Douyin rồi tải lại.';
 
 /**
  * Fetch a Douyin video to `outPath` (a real .mp4 with audio) by capturing its
@@ -134,6 +155,14 @@ export async function fetchDouyinSource(opts: {
       };
     }
 
+    // Login/security gate ngay khi mở: chỉ tin redirect TRANG TOP-LEVEL sang
+    // passport/login (page.url()) — tín hiệu chắc chắn, không dương tính giả.
+    // (KHÔNG dựa 401/403 subresource: Douyin fire nhiều API 401/403 cả khi phiên
+    // KHỎE → sẽ báo nhầm.) Session chết không redirect → rơi về NO_STREAM (fail-safe).
+    if (isLoginWallUrl(page.url())) {
+      return { ok: false, code: 'SESSION_EXPIRED', message: SESSION_EXPIRED_MSG };
+    }
+
     // Wait for the player to start buffering its DASH streams.
     const deadline = Date.now() + (opts.settleMs ?? 25_000);
     while ((!videoUrl || !audioUrl) && Date.now() < deadline) {
@@ -148,6 +177,11 @@ export async function fetchDouyinSource(opts: {
           message:
             'Douyin yêu cầu xác minh (captcha). Chạy "pnpm ent:douyin-login" để vượt 1 lần rồi tải lại.',
         };
+      }
+      // Player không buffer + trang đã redirect login-wall → phiên chết (KHÁC post
+      // ảnh/slideshow, vốn ở nguyên URL video → vẫn NO_STREAM, không vu oan).
+      if (isLoginWallUrl(page.url())) {
+        return { ok: false, code: 'SESSION_EXPIRED', message: SESSION_EXPIRED_MSG };
       }
       return {
         ok: false,

@@ -47,6 +47,13 @@ async function main(): Promise<void> {
         console.error(res.message);
         process.exit(7);
       }
+      if (res.code === 'SESSION_EXPIRED') {
+        // Mã riêng (exit 9): phiên Douyin chết ≠ video bị gỡ/mạng lỗi. UI dựa mã
+        // này hiện nút "Đăng nhập lại Douyin" thay vì báo DOWNLOAD_FAILED mù.
+        console.error('🛑 DOUYIN_SESSION_EXPIRED');
+        console.error(res.message);
+        process.exit(9);
+      }
       console.error('🛑 DOWNLOAD_FAILED');
       console.error(`Douyin fetch thất bại (${res.code}): ${res.message}`);
       process.exit(2);
