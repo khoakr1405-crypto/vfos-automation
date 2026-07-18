@@ -3340,6 +3340,85 @@ Pipeline anchors chạy đầy đủ (từ log): cắt 4 money-shot → vision h
 
 ---
 
+### ✅ Phần 78 — PRODUCT-FROM-VIDEO LOOP (kiến trúc chính thức lane Review TikTok-first) (2026-07-16, CHƯA COMMIT — chờ Operator duyệt UI + file list)
+
+> **Mandate Operator (lệnh trực tiếp, "định hướng và hướng đi sắp tới, không phải fix cho có")**: lane Review là VIDEO-FIRST thật sự — khiên phải nằm trong VÒNG LẶP SỬA (phát hiện → nhận dạng → tự gắn đúng → chạy), không phải ngõ cụt; job không được dính card tồn kho ("máy xay tỏi" gắn vào mọi video → 716_002 chết oan ở vision); lane đã pivot đăng TikTok, KHÔNG dùng khâu lấy link Shopee; KHÔNG dán link TikTok Shop ở khâu sản xuất — chỉ cần **đảm bảo sản phẩm trong video CÓ MẶT trên TikTok Shop**; **KHÔNG thêm nút UI** — khiên tự duyệt đúng chuẩn No-Go #8.
+
+1. **Bước 0 pipeline mới — `productFromVideoGate`** (chạy TRƯỚC jobSanityGate; job có card → no-op tuyệt đối, flow Shopee nguyên vẹn): spawn CLI MỚI `scripts/job-product-from-video.ts` — trích 6 frame từ clean source → **1 call gpt-4o-mini** trả về: tên sản phẩm VI kiểu listing + keywords + chineseSearchName + **verdict Market-Fit** (`isPhysicalProduct` + `likelyOnTikTokShopVN` + confidence ≥ 0.6, luật thuần ở `scripts/job-manager/core/market-fit.ts`, unit 8/8). PASS → dựng card **`AUTO_MARKET_FIT`** (platform tiktok-shop, KHÔNG link, dataConfidence low) + attach qua đúng `cmdAttachProduct` (single-writer, KHÔNG đụng slot card chung). FAIL → manifest FAILED `MARKET_FIT_FAILED` + exit 28, không tốn tiền sản xuất. Thiếu confirm → exit 29; lỗi khác → exit 30. Giới hạn nói thẳng: fit = phán đoán AI mức LOẠI sản phẩm, KHÔNG phải check listing sống (check sống = scraper TikTok, rủi ro CAPTCHA/IP — round riêng nếu cần).
+
+2. **Gate server mở nhánh video-first/tiktok (Shopee byte-nguyên)**: `production-gates.ts` — `GateProductCard.platform`, primitive `isTikTokCardValid` (name + OPERATOR_CONFIRMED/AUTO_MARKET_FIT), rule 3: job chưa card + có `sourceVideoUrl` → gate info `PRODUCT_AUTO_FROM_VIDEO` passed (không blocker); card tiktok-shop → validate platform, KHÔNG áp owner Shopee/so binding. `workflow-integrity.ts` mirror cùng 2 nhánh → route `run-production` cho phép job video-first khởi chạy (verify HTTP dry-run 200 DRY_RUN_OK).
+
+3. **UI đảo chiều chain (0 nút mới)**: `trend-scout-review-panel.tsx` — nút "⬇ Tạo job & Tải nguồn" giờ chỉ 2 bước (tạo job KHÔNG card + tải nguồn), bỏ khoá theo slot card, bỏ đọc `current-product-card`; label mới nói rõ sản phẩm tự nhận dạng ở bước 0. `page.tsx` — `isAutoProductJob` (card tiktok-shop HOẶC chưa-card + có sourceVideoUrl + không id Shopee nào) → `bindingStatus` PASS, Action 2 mở; **auto-resume đóng gói TẮT cho job auto** (packaging TikTok = round sau); DTO `productPlatform` mới (jobs.ts + types.ts).
+
+4. **Calibration vision gate từ live-fire (sửa Phần 77)**: `sourceVideoUsable=false` ĐƠN THUẦN đến từ signal MỀM ('Text overlap'/'Watermark'/'Low light' — đã có khiên chuyên trách: density gate + scrub + cleanliness) từng chặn oan video khớp card **0.95** → gate giờ CHỈ chặn theo `blockingIssues` (verdict cứng PRODUCT_NOT_VISIBLE), usable=false chỉ cảnh báo to. Job 716_002 (sai sản phẩm thật) vẫn bị chặn đúng.
+
+5. **Live-fire acceptance ĐẠT (video 7662726376466749897, job `job_20260716_003`)**: STEP 0 nhận dạng **"Giá treo đồ đa năng dán tường"** (đúng nội dung video — em verify frame bằng mắt) + Market-Fit PASS + card AUTO_MARKET_FIT tự gắn; run 1 dính 429 TPM transient ở vision (STEP 0 + STEP 1 sát nhau — nợ hardening: retry 429 cho job:vision) → run 2 chứng minh STEP 0 idempotent (no-op khi có card) + lộ false-positive usable=false → calibration mục 4 → run 3 vướng gate cũ VOICE_LONGER_THAN_VIDEO (video 15s ngắn, script dư 1.5s — regen 1 lần là vừa; nợ: script prompt buffer cho video ngắn) → **run cuối TRỌN VÒNG: vision PASS (soft-warn) → script → voice edge 14.26s → BGM → render → caption → QA STT PASS (similarity 0.868) → `READY_FOR_OPERATOR_REVIEW`**, video 3.07MB sạch chữ Trung, caption VI đẹp. HTTP dry-run route produce cho job video-first: 200 DRY_RUN_OK. Unit 31/31 (market-fit 8 + density 7 + subtitle 16); typecheck studio + ad-hoc scripts sạch; biome 0 lỗi mới. Nợ cosmetic: finalize không clear `lastError` cũ (state đúng READY, UI chỉ hiện lỗi khi FAILED — vô hại).
+
+6. **Phần 78b — ElevenLabs = GIỌNG CHÍNH THỨC lane Review** (lệnh trực tiếp Operator 16/07 "dùng giọng eleven lab cho anh"; billing đã thông từ 23/06 — payg, đã dùng 1,046/26,483 chars): `voice-gate.ts` truyền `--provider` default **elevenlabs** + escape hatch `VFOS_VOICE_PROVIDER=edge` (kẹt billing → set env, không sửa code); mismatch-check provider-aware (đổi provider → tự regen đúng 1 lần; picker nam/nữ chỉ áp dụng edge — elevenlabs là 1 brand voice `ELEVENLABS_VOICE_ID`). Live: `job_20260716_003` regen giọng eleven_v3 → duration PASS 12.24s, **QA PASS 0.902** (cao hơn bản edge 0.868). GOTCHA: nhịp ElevenLabs chậm hơn edge +18% → video ngắn 15s dễ `VOICE_LONGER_THAN_VIDEO` (regen script là vừa); **NỢ ghi nhận**: word budget script (`2.5 từ/s`, script.ts) chưa pace-aware theo provider + LLM hay vượt budget — round riêng. Lane Giải trí vẫn edge default (`ENT_TTS_PROVIDER` opt-in như cũ).
+
+**Bước tiếp theo duy nhất:** Operator duyệt UI + duyệt thành phẩm video giá treo (GIỌNG ELEVENLABS) `job_20260716_003`; sau đó round đóng gói/đăng TikTok cho lane Review (Action 3 video-first) + gắn link TikTok Shop thật ở khâu affiliate.
+
+---
+
+### ✅ Phần 79 — Action 3 TikTok-first LIVE-READY: cầu token account-store + caption draft tự động (2026-07-16, CHƯA COMMIT)
+
+> Mắt xích đứt cuối của North Star: video `job_20260716_003` xong + ĐÃ DUYỆT nhưng không có đường đăng. Khảo sát: swap Phần 66 đã dựng đủ máy (lib `review-tiktok/publish.ts` + route `publish-tiktok` + panel — guard 11 lớp, mặc định mock); `.env` đã live (`TIKTOK_MODE=display`, `TIKTOK_PUBLISH_LIVE=true`, client key có); **thiếu đúng 2 mắt**: token store `data/secure/tiktok_accounts.json` không tồn tại (nợ token-ops R3 multichannel) + caption trống bắt Operator tự nghĩ.
+
+1. **Cầu token (đóng nợ R3 phần cần)**: `scripts/tiktok-oauth-helper.ts` thêm `--account <id>` cho `exchange`/`refresh` → upsert vào account-store JSON (pure fn `upsertAccountStoreContent` + `expiresAtFrom`, unit 13/13); khi có `--account` thì **KHÔNG đụng .env** (token legacy `tt_fishing_main` của lane ENT giữ nguyên); refresh đọc refreshToken từ store entry.
+2. **Đóng gói caption 0-click**: `getReviewCaptionDraft(jobId)` đọc `captionDraft`+`hashtags` **GPT đã sinh sẵn trong script_artifact** (0 call AI mới, fallback hook) → GET route trả `captionDraft` → panel prefill đúng 1 lần/job (Operator sửa tay thoải mái; cổng đăng vẫn là TAY — No-Go #3; video thuần KHÔNG link affiliate đúng swap).
+3. **Live verify tới cổng** (job_20260716_003): GET 200 — `videoApproved:true` (Operator đã duyệt), `hasFinalVideo:true`, captionDraft đúng chuỗi GPT; POST → **409 `TIKTOK_NOT_CONFIGURED: token account tt_review_main`** — chuỗi guard chạy đúng tới đúng mắt còn thiếu, KHÔNG đăng thật. Typecheck studio + helper sạch; biome sạch.
+
+**Việc tay Operator để đăng video ĐẦU TIÊN** (1 lần, No-Go #4 — tự đăng nhập):
+1. `npx tsx scripts/tiktok-oauth-helper.ts url` → mở URL, đăng nhập account TikTok của lane Review, đồng ý quyền video.publish.
+2. Copy `?code=` từ redirect → `npx tsx scripts/tiktok-oauth-helper.ts exchange --code <code> --account tt_review_main`.
+3. Vào `/lanes/product-review` chọn `job_20260716_003` → panel "Đăng lên TikTok" (caption đã điền sẵn) → bấm **Đăng lên TikTok** (SELF_ONLY nếu app chưa audit — client tự chọn privacy hợp lệ).
+
+**Nợ ghi nhận**: alias `pnpm tiktok:oauth` chưa có trong package.json (dùng `npx tsx` — thêm alias cần duyệt riêng); `REVIEW_TIKTOK_USERNAME` chưa set (guard identity chống dán nhầm token — nên set sau khi biết username account).
+
+**Bước tiếp theo duy nhất:** Operator OAuth `tt_review_main` (3 lệnh trên) → bấm Đăng video đầu tiên của lane Review lên TikTok → round kế: gắn link TikTok Shop thật ở khâu affiliate + TikTok GMV ingestion.
+
+### ✅ Phần 80 — Hook Style Bank 6→9 giọng (mini-round từ điều tra bài FB external, 2026-07-18, CHƯA COMMIT)
+
+**Nguồn gốc**: Operator nhờ điều tra bài FB của Nguyễn Tất Kiểm ("giao Facebook cho Claude", 7 prompt trong comment). Kết luận thẩm định: ~85% generic (VFOS đã tự động hóa vượt mức prompt tay), nhưng đối chiếu 15 công thức hook/caption trong bài với `HOOK_STYLES` lộ ra 3 giọng bank chưa có → Operator GO mini-round.
+
+**Đã làm** (`scripts/ent-vlog/lib/hook-style-bank.ts`):
+- Thêm 3 giọng: `canh_bao` (Cảnh báo / sai lầm — không hù dọa vô căn cứ), `nguoc_chieu` (Ngược đám đông — không chê bai cá nhân/gây war), `bi_mat` (Tiết lộ ít ai biết — điều tiết lộ phải CÓ THẬT trong footage). Cả 3 giữ nguyên chuẩn claim-safe của bank (không bịa số/loài/thành tích).
+- Từ chối có chủ đích công thức "con số gây sốc" trong bài — vi phạm luật cấm bịa số đã khắc trong bank.
+- Sửa 1 ví dụ `hua_hen`: "khúc sau mới đã" → "đoạn cuối mới đã" (ví dụ cũ dính chính mô-típ cấm `/khúc sau (còn|mới|chắc)/` của gate chống lặp trong cùng file).
+- Test mới `tests/hook-style-bank.test.ts` (9 test): 9 id unique, ví dụ đúng khổ 8–13 từ, ví dụ không dính mô-típ cấm, xoay vòng né 3 job gần, deterministic per-job, chống lặp nguyên văn + 4 từ mở đầu. Docs storytelling layer cập nhật "6 nhóm" → "9 nhóm".
+- Lợi vận hành: pool né 3 job gần nhất giờ còn ≥6 lựa chọn (trước chỉ 3) → hook đa dạng hơn thật sự.
+
+**Evidence**: suite scripts-side **53/53 PASS** (44 cũ + 9 mới); biome 2 file sạch.
+
+**Nợ infra LỘ RA (có sẵn, KHÔNG thuộc round này)**: 5 test `tests/entertainment-*.test.ts` (đụng lib studio) hiện KHÔNG chạy nổi ở HEAD với tsx 4.21/Node 24 — static named import bị CJS nuốt (`computeReadiness` tồn tại nhưng phải dynamic-import + `.default`) + `ERR_PACKAGE_PATH_NOT_EXPORTED` cả khi có `TSX_TSCONFIG_PATH`. Lib KHÔNG vỡ, chỉ test-runner drift. Cần mini-round riêng nếu muốn hồi sinh.
+
+---
+
+### ✅ Phần 81 — Skill Registry Audit qua phương pháp `skill-creator` + trám nợ doc ui:verify (2026-07-18, CHƯA COMMIT)
+
+**Nguồn gốc**: Round `webapp-testing → pnpm ui:verify` (commit `4ceae8c`, 2026-07-17) là 1/3 thứ áp dụng được từ repo `anthropics/skills`; item còn sót = **`skill-creator`** (bộ phương pháp tạo/đánh giá skill, lõi là "trigger eval" — đo `description:` có tự bật đúng lúc không). Operator nhắc lại → round này áp `skill-creator` như **PHƯƠNG PHÁP**, KHÔNG vendor cả harness (bản gốc = 8 script Python + eval-viewer HTML + 3 agent .md, lệch stack Node/TS; registry đã FREEZE 6 skill từ 01/07 → YAGNI).
+
+**Trám nợ doc**: commit `4ceae8c` (ui:verify — `scripts/ui-verify.ts` 236 dòng + `pnpm ui:verify` + `vfos-ui-review-skill` §2b) trước đây KHÔNG có Phần entry → ghi nhận tại đây.
+
+**Trigger-eval 6 description** (mỗi skill ~8 query: 5 should-trigger lấy từ phrasing thật + 3 near-miss should-not): **6/6 PASS** — description đều cụ thể, liệt kê trigger rõ, "pushy" đúng mức, không cái nào undertrigger/overtrigger có hại. → **KHÔNG viết lại description nào** (xác nhận chất lượng từ các round skill trước). Chỉ lộ defect cleanliness.
+
+**Đã sửa (5 điểm trong `.claude/`, working tree `.claude/` trước đó SẠCH nên tách bạch tuyệt đối khỏi round UI 78-80)**:
+- `vfos-ui-review-skill/SKILL.md`: heading `<h2>4…</h2>` (HTML lạc giữa các heading `## N.`) → `## 4.` markdown.
+- `vfos-shopee-affiliate-skill/SKILL.md`: typo `sản phẩmverified` → `sản phẩm verified`; curly quotes `“…”` trong description → straight quotes.
+- `vfos-evidence-gated-research/SKILL.md`: **salvage** từ bản archive trùng — thêm Ma trận quyết định downstream + nhãn `exploratory, not decision-ready` (active bản đang thiếu hẳn) + 2 ví dụ output trung thực + ví dụ `verification_note`.
+- `git rm .claude/_archive/skills/pending-rebuild/vfos_evidence_gated_research.md` — bản trùng chết (đã rebuild thành active từ 01/07); đã salvage đủ 2 mảng thiếu → xoá.
+- `.claude/CLAUDE.md` §5: thay `shop-amazon` (đã xoá 30/06) bằng 6 skill `vfos-*` thật; §6: path memory `d--Ai-Automantion-workflow` → `c--Users-Admin-Desktop-vfos-automation`.
+
+**GIỮ NGUYÊN**: 2 skill parked còn lại (`vfos_proactive_support`, `vfos_revenue_experiment_strategist` — Operator park có chủ đích) + `_archive/skills/chay/` (ngủ đông). Registry vẫn **đúng 6 skill** load thật.
+
+**Bổ sung (Operator yêu cầu NGAY sau audit) — TĂNG ĐỘ NHẠY 2 skill**: `ui-review` + `evidence-gated-research` viết lại description pushier (phủ thêm bề mặt trigger từng bỏ sót — styling/icon/badge/modal/state cho ui-review; summarize/transcribe/trả-lời-từ-trí-nhớ/test-result cho evidence-gated). Đây là preference nâng cấp, KHÔNG phải sửa lỗi (audit đã kết luận 6/6 khỏe). Quy trình `skill-creator`: soạn → **stress-test đối kháng 2 agent độc lập** (workflow `skill-desc-sensitivity-stress-test`) TRƯỚC khi áp. Kết quả: `evidence-gated` = **SHIP** (bắt đủ 6 ca miss, **0 over-trigger**). `ui-review` = **ADJUST** — skeptic bắt **3 ca over-trigger THẬT** (nặng nhất: cụm "copy/wording 1 nhãn tiếng Việt" bắn nhầm việc sửa lời hook `hook-style-bank.ts` = caption VIDEO chứ không phải UI, đè lên workflow hook/script; + API `route.ts` backend; + pipeline gate) → gom mọi carve-out vào 1 câu loại trừ (API route.ts · pipeline gate · lời video/caption/TTS/log-report) rồi mới áp. Frontmatter vẫn **6/6 hợp lệ**, 0 curly quote. BÀI HỌC: tăng nhạy phải kèm ranh giới loại trừ, nếu không "copy/wording" + "routes" hút nhầm script-lib + API backend.
+
+**Còn hoãn (trung thực, ngoài scope)**: item #3 từ anthropics/skills = `xlsx` document-skills — chờ round TikTok Shop GMV ingestion; 2 skill pending-rebuild — chờ lệnh Operator.
+
+**Commit strategy**: stage đích danh `.claude/skills/*` đã sửa + `.claude/CLAUDE.md` + `git rm` file archive; msg `chore(skills): audit registry via skill-creator method`. File state doc này đang dirty diff round 78-80 khác → KHÔNG stage chung, đi cùng docs-commit sau khi các round kia chốt. KHÔNG push (branch ahead, giữ theo lệnh Operator).
+
+---
+
 ## 5. Những việc CHƯA làm / ngoài scope hiện tại
 
 | Việc | Trạng thái |
