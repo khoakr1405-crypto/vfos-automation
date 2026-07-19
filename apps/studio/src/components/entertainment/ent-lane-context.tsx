@@ -22,10 +22,13 @@ import {
 export interface EntJobLite {
   jobId: string;
   state: string;
+  niche?: string;
   source?: { url?: string; durationSec?: number };
   channelId?: string | null;
   channelName?: string | null;
   tiktokUsername?: string | null;
+  /** Lỗi intake đã sanitize — hiện lý do "Lỗi tải" + bật nút Tải lại. */
+  error?: { code: string; message: string } | null;
 }
 
 export interface EntChannelLite {

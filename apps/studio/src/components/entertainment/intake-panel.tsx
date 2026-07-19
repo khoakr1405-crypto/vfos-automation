@@ -3,15 +3,16 @@
 /* =============================================================================
  * VFOS Studio — Entertainment intake panel (E-UI-2 / gom nút E-UI-7 / source-bind)
  * -----------------------------------------------------------------------------
- * Kênh có KÊNH NGUỒN TQ gắn cứng → "Tải link" hiện danh sách video mới nhất của
- * kênh nguồn để Operator bấm chọn, kèm nút "Lấy mới nhất" (1-bấm clip mới chưa
+ * Kênh có KÊNH NGUỒN TQ gắn cứng → "Xem kênh nguồn" hiện danh sách video mới nhất
+ * của kênh nguồn để Operator bấm chọn, kèm nút "Lấy mới nhất" (1-bấm clip mới chưa
  * reup). Vẫn giữ ô dán URL tay làm dự phòng. Kênh chưa gắn nguồn → chỉ ô dán tay.
+ * Job INTAKE_FAILED hiện lý do + nút "Tải lại"; thumbnail nạp qua proxy same-origin.
  * Tạo job: POST /api/studio/entertainment/jobs (tạo job + tải source qua 01-fetch).
  * Không đụng Product Review. Không publish.
  * ========================================================================== */
 
 import { useEffect, useState } from 'react';
-import { useEntLane } from './ent-lane-context';
+import { type EntJobLite, useEntLane } from './ent-lane-context';
 import { ScoutPanel } from './scout-panel';
 
 const STATE_META: Record<string, { label: string; cls: string }> = {
@@ -26,6 +27,39 @@ function StatePill({ state }: { state: string }) {
     <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${meta.cls}`}>
       {meta.label}
     </span>
+  );
+}
+
+/** Rút gọn lý do lỗi cho list Job gần đây: gộp MỌI lỗi phiên Douyin (hết hạn/captcha)
+ * thành 1 nhãn NGẮN trỏ về nút "Đăng nhập lại Douyin" ở khối trên — bỏ câu
+ * "Chạy pnpm ent:douyin-login" (đã thay bằng nút, lặp dưới mỗi job = tường đỏ). Lỗi
+ * khác → cắt còn câu đầu. Full message vẫn giữ ở tooltip (title) khi hover. */
+function shortErrorLabel(msg: string | undefined): string {
+  if (!msg) return 'Tải source thất bại.';
+  if (/DOUYIN_SETUP_REQUIRED|captcha|xác minh|passport|đăng nhập|login|session|phiên/i.test(msg)) {
+    return 'Phiên Douyin hết hạn — bấm "Đăng nhập lại Douyin" ở trên.';
+  }
+  const first = (msg.split(/[.\n]/)[0] ?? msg).trim();
+  return first.length > 64 ? `${first.slice(0, 64)}…` : first;
+}
+
+/** Thumbnail kênh nguồn: nạp qua proxy same-origin (referer douyin); lỗi/hết hạn
+ * → placeholder 🎬 thay vì ô trống (Douyin CDN chặn hotlink + signed-URL expiry). */
+// Key theo thumbnail ở call-site (remount khi URL đổi) → `failed` tự reset khi
+// list nạp lại signed-URL mới; tránh kẹt placeholder do lần trước hết hạn.
+function CandidateThumb({ thumbnail }: { thumbnail: string | null }) {
+  const [failed, setFailed] = useState(false);
+  if (!thumbnail || failed) {
+    return <span className="flex h-full items-center justify-center text-2xl">🎬</span>;
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={`/api/studio/entertainment/thumb?u=${encodeURIComponent(thumbnail)}`}
+      alt=""
+      className="h-full w-full object-cover"
+      onError={() => setFailed(true)}
+    />
   );
 }
 
@@ -65,6 +99,10 @@ export function IntakePanel() {
   const [listing, setListing] = useState(false);
   const [listMsg, setListMsg] = useState<string | null>(null);
   const [showManual, setShowManual] = useState(false);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+  // Feedback riêng cho retry — render cạnh danh sách "Job gần đây" (luôn hiện khi có
+  // job), KHÔNG dùng `msg` vì `msg` chỉ render trong toolbar gate theo kênh/hasSource.
+  const [retryMsg, setRetryMsg] = useState<string | null>(null);
 
   const hasSource = selectedChannel?.hasSourceChannel === true;
 
@@ -103,11 +141,15 @@ export function IntakePanel() {
         message?: string;
       };
       if (j.ok && j.job) {
-        setMsg(
-          `✅ ${j.job.jobId} — đã tải (${j.job.source.durationSec ?? '?'}s, audio ${j.job.source.hasAudio ? 'có' : 'không'}). Đã chọn job này.`,
-        );
+        const newId = j.job.jobId;
         setUrl('');
-        selectJob(j.job.jobId);
+        // Chờ list mới CÓ newId trước khi chọn — chống reconcile-effect reset
+        // selectedId về job cũ khi kênh đã có job (cùng race như retryJob).
+        await refreshJobs();
+        selectJob(newId);
+        setMsg(
+          `✅ ${newId} — đã tải (${j.job.source.durationSec ?? '?'}s, audio ${j.job.source.hasAudio ? 'có' : 'không'}). Đã chọn job này.`,
+        );
         // Đánh dấu clip vừa reup trong danh sách (khỏi tải lại nhầm).
         setCandidates((prev) =>
           prev ? prev.map((c) => (c.url === target ? { ...c, alreadyReused: true } : c)) : prev,
@@ -192,6 +234,43 @@ export function IntakePanel() {
     await createJobFromUrl(target);
   }
 
+  /** Tải lại job INTAKE_FAILED: re-POST cùng source.url + kênh của job. Guard dedup
+   * BỎ QUA job INTAKE_FAILED nên không dính 409 (nếu retry đã thành công trước đó,
+   * 409 DUPLICATE_SOURCE sẽ hiện đúng — chặn tạo trùng). Tạo job MỚI, giữ job lỗi cũ. */
+  async function retryJob(job: EntJobLite): Promise<void> {
+    const target = job.source?.url;
+    if (!target || retryingId) return;
+    setRetryingId(job.jobId);
+    setRetryMsg(`Đang tải lại ${job.jobId}…`);
+    try {
+      const r = await fetch('/api/studio/entertainment/jobs', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ url: target, niche: job.niche, channelId: job.channelId }),
+      });
+      const j = (await r.json()) as { ok: boolean; job?: { jobId: string }; message?: string };
+      if (j.ok && j.job) {
+        const newId = j.job.jobId;
+        // Chờ list mới CÓ newId TRƯỚC khi chọn — nếu không, reconcile-effect
+        // (ent-lane-context) thấy newId chưa có trong jobs → reset selectedId về
+        // job cũ nhất, khiến "Đã chọn job mới" sai và Operator thao tác nhầm job cũ.
+        await refreshJobs();
+        selectJob(newId);
+        setRetryMsg(`✅ Tải lại thành công → ${newId}. Đã chọn job mới.`);
+      } else {
+        setRetryMsg(`🛑 ${j.message ?? 'Tải lại vẫn lỗi.'}`);
+        void refreshJobs();
+      }
+    } catch (e) {
+      setRetryMsg(`🛑 ${e instanceof Error ? e.message : 'Lỗi mạng.'}`);
+      void refreshJobs();
+    } finally {
+      setRetryingId(null);
+      // Job mới đổi số job của kênh → refresh chip card kênh (khớp createJobFromUrl).
+      void refreshChannels();
+    }
+  }
+
   return (
     <div className="space-y-3">
       {selectedChannel ? (
@@ -227,7 +306,7 @@ export function IntakePanel() {
               disabled={busy || listing}
               className="rounded-xl border border-accent-cyan/40 bg-accent-cyan/15 px-5 py-2.5 text-sm font-bold text-accent-cyan transition hover:bg-accent-cyan/25 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {listing ? 'Đang lấy danh sách…' : 'Tải link'}
+              {listing ? 'Đang lấy danh sách…' : 'Xem kênh nguồn'}
             </button>
             <button
               type="button"
@@ -257,20 +336,7 @@ export function IntakePanel() {
                   }`}
                 >
                   <div className="relative aspect-[9/16] overflow-hidden rounded bg-panel/60">
-                    {c.thumbnail ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={c.thumbnail}
-                        alt=""
-                        referrerPolicy="no-referrer"
-                        className="h-full w-full object-cover"
-                        onError={(e) => {
-                          (e.currentTarget as HTMLImageElement).style.visibility = 'hidden';
-                        }}
-                      />
-                    ) : (
-                      <span className="flex h-full items-center justify-center text-2xl">🎬</span>
-                    )}
+                    <CandidateThumb key={c.thumbnail ?? 'none'} thumbnail={c.thumbnail} />
                     {c.durationSec ? (
                       <span className="absolute bottom-1 right-1 rounded bg-black/70 px-1 text-[9px] text-neutral-100">
                         {fmtDur(c.durationSec)}
@@ -328,42 +394,75 @@ export function IntakePanel() {
       <ScoutPanel />
 
       {jobs.length > 0 && (
-        <div className="space-y-1.5 border-t border-hairline/40 pt-3">
+        <div className="space-y-1 border-t border-hairline/40 pt-3">
           <p className="text-[11px] font-semibold text-neutral-400">
             Job gần đây <span className="text-neutral-600">(bấm để chọn cho cả 3 phần)</span>
           </p>
+          {retryMsg && (
+            <p className="rounded-lg bg-panel/50 px-3 py-1.5 text-[11px] text-neutral-300">
+              {retryMsg}
+            </p>
+          )}
           {jobs.slice(0, 6).map((job) => {
             const active = job.jobId === selectedId;
+            const failed = job.state === 'INTAKE_FAILED';
             return (
-              <button
-                type="button"
-                key={job.jobId}
-                onClick={() => selectJob(job.jobId)}
-                className={`flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-1.5 text-left transition ${
-                  active
-                    ? 'border-accent-cyan/50 bg-accent-cyan/10'
-                    : 'border-hairline/50 bg-panel/30 hover:bg-panel/50'
-                }`}
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-[11px] font-medium text-neutral-300">
+              <div key={job.jobId} className="space-y-0.5">
+                <button
+                  type="button"
+                  onClick={() => selectJob(job.jobId)}
+                  className={`flex w-full items-center justify-between gap-2 rounded-lg border px-2.5 py-1 text-left transition ${
+                    active
+                      ? 'border-accent-cyan/50 bg-accent-cyan/10'
+                      : 'border-hairline/50 bg-panel/30 hover:bg-panel/50'
+                  }`}
+                >
+                  {/* jobId + url gộp 1 DÒNG (truncate) — trước đây 2 dòng tốn gấp đôi. */}
+                  <p className="min-w-0 flex-1 truncate text-[11px] font-medium text-neutral-300">
                     {active && <span className="text-accent-cyan">● </span>}
                     {job.jobId}
-                  </p>
-                  <p className="truncate text-[10px] text-neutral-600">{job.source?.url}</p>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  {job.tiktokUsername && (
-                    <span className="rounded-full border border-accent-cyan/30 bg-accent-cyan/10 px-1.5 py-0.5 text-[9px] font-semibold text-accent-cyan">
-                      @{job.tiktokUsername}
+                    <span className="ml-1.5 font-normal text-[10px] text-neutral-600">
+                      {job.source?.url}
                     </span>
-                  )}
-                  {job.source?.durationSec != null && (
-                    <span className="text-[10px] text-neutral-500">{job.source.durationSec}s</span>
-                  )}
-                  <StatePill state={job.state} />
-                </div>
-              </button>
+                  </p>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {job.tiktokUsername && (
+                      <span className="rounded-full border border-accent-cyan/30 bg-accent-cyan/10 px-1.5 py-0.5 text-[9px] font-semibold text-accent-cyan">
+                        @{job.tiktokUsername}
+                      </span>
+                    )}
+                    {job.source?.durationSec != null && (
+                      <span className="text-[10px] text-neutral-500">
+                        {job.source.durationSec}s
+                      </span>
+                    )}
+                    <StatePill state={job.state} />
+                  </div>
+                </button>
+                {/* Job lỗi tải: 1 DÒNG gọn — icon + lý do (truncate, full khi hover) +
+                    nút Tải lại inline. Trước đây stack 3-4 dòng, nhiều job lỗi = tường đỏ. */}
+                {failed && (
+                  <div className="flex items-center gap-2 rounded-lg border border-accent-rose/25 bg-accent-rose/5 px-2.5 py-1 text-[10px] text-accent-rose">
+                    <span className="shrink-0" aria-hidden>
+                      ⚠
+                    </span>
+                    <span
+                      className="min-w-0 flex-1 truncate"
+                      title={job.error?.message ?? 'Tải source thất bại (không rõ nguyên nhân).'}
+                    >
+                      {shortErrorLabel(job.error?.message)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => void retryJob(job)}
+                      disabled={retryingId !== null || !job.source?.url}
+                      className="shrink-0 rounded border border-accent-rose/40 bg-accent-rose/10 px-2 py-0.5 font-semibold text-accent-rose transition hover:bg-accent-rose/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {retryingId === job.jobId ? 'Đang tải lại…' : '↻ Tải lại'}
+                    </button>
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>

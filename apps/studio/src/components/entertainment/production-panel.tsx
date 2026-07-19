@@ -709,7 +709,7 @@ function ScriptReviewBlock({ review }: { review: ScriptReview }) {
           </summary>
           <div className="mt-1.5 max-h-44 space-y-0.5 overflow-auto rounded-lg border border-hairline/30 bg-panel/20 p-2 text-[10px] text-neutral-500">
             {review.sourceLines.map((l) => (
-              <p key={l.id}>
+              <p key={`${l.sceneIdx}-${l.id}-${l.mStart}`}>
                 [{mmss(l.mStart)}] (id{l.id}) {l.zh}
               </p>
             ))}

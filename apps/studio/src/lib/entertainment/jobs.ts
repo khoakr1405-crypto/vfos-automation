@@ -1420,10 +1420,14 @@ function jobChannelId(job: EntJob): string | null {
 export interface EntJobUi {
   jobId: string;
   state: string;
+  /** Niche của job (từ manifest) — để UI retry intake tự lấy đúng niche. */
+  niche: string;
   source?: { url?: string; durationSec?: number };
   channelId: string | null;
   channelName: string | null;
   tiktokUsername: string | null;
+  /** Lỗi intake đã sanitize (vd DOUYIN_SETUP_REQUIRED) để UI hiện lý do + nút Tải lại. */
+  error?: { code: string; message: string } | null;
 }
 
 /** Job list cho UI — kèm kênh đã resolve (badge + filter theo kênh). KHÔNG token. */
@@ -1433,10 +1437,12 @@ export function listJobsForUi(): EntJobUi[] {
     return {
       jobId: j.jobId,
       state: j.state,
+      niche: j.niche,
       source: j.source ? { url: j.source.url, durationSec: j.source.durationSec } : undefined,
       channelId: j.channelId ?? ch?.channelId ?? null,
       channelName: ch?.channelName ?? null,
       tiktokUsername: ch?.tiktokUsername ?? null,
+      error: j.error ?? null,
     };
   });
 }

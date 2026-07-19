@@ -89,6 +89,20 @@ function ChannelCard({
           </p>
         </div>
       </div>
+      {/* Đường ống reup 1:1 — kênh nguồn TQ gắn cứng (hoặc cảnh báo thiếu nguồn). */}
+      {c.hasSourceChannel ? (
+        <p className="truncate text-[10px] text-neutral-400">
+          <span className="text-neutral-600">Nguồn ⇄ </span>
+          <span className="font-semibold text-accent-amber">
+            {c.sourceLabel ?? c.sourcePlatform ?? 'đã gắn'}
+          </span>
+          {c.sourcePlatform && <span className="text-neutral-600"> · {c.sourcePlatform}</span>}
+        </p>
+      ) : (
+        <p className="truncate rounded bg-accent-amber/10 px-1.5 py-0.5 text-[10px] font-semibold text-accent-amber">
+          ⚠ chưa gắn kênh nguồn — chỉ dán URL tay
+        </p>
+      )}
       <div className="flex flex-wrap items-center gap-1.5 text-[10px]">
         <span className="inline-flex items-center gap-1 rounded bg-panel/60 px-1.5 py-0.5 text-neutral-400">
           <StatusDot active={c.status === 'active'} />

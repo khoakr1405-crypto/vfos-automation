@@ -63,7 +63,9 @@ function main(): void {
           '-t',
           String(s.dur),
           '-vf',
-          'scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1',
+          // BLUR-PAD 9:16 (đồng bộ 10-montage-v2): fit trọn bề ngang, nền mờ trên/dưới
+          // thay vì center-crop giữ 32% bề ngang (zoom 1.78x quá sâu).
+          'split[bg][fg];[bg]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,gblur=sigma=20[bg];[fg]scale=720:-2[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1',
           '-r',
           '30',
           '-c:v',

@@ -215,9 +215,10 @@ async function main(): Promise<void> {
           '-r',
           '30',
           '-vf',
-          // CENTER CROP 9:16 — KHÔNG scale cứng (nguồn quay ngang bị bẹp hình).
-          // Giữ tỷ lệ gốc, phóng phủ khung rồi cắt tâm (cùng công thức 10s-story-cut).
-          'scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,setsar=1',
+          // BLUR-PAD 9:16 — nguồn ngang (16:9) fit TRỌN bề ngang (không cắt mất bối
+          // cảnh, không bẹp hình), nền trên/dưới lấp bằng chính khung phóng to + làm mờ.
+          // Center-crop cũ chỉ giữ 32% bề ngang → zoom 1.78x quá sâu (đảo lại Phần 51).
+          'split[bg][fg];[bg]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,gblur=sigma=20[bg];[fg]scale=720:-2[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1',
           '-c:v',
           'libx264',
           '-preset',

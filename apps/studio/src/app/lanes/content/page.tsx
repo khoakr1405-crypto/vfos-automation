@@ -26,6 +26,7 @@ import {
   ChannelOverview,
   ChannelSwitcher,
 } from '@/components/entertainment/channel-switcher';
+import { DouyinSessionBanner } from '@/components/entertainment/douyin-session-banner';
 import { EntJobSelector, EntLaneProvider } from '@/components/entertainment/ent-lane-context';
 import { IntakePanel } from '@/components/entertainment/intake-panel';
 import { PackagePanel } from '@/components/entertainment/package-panel';
@@ -135,6 +136,7 @@ export default function ContentLanePage() {
               Dán URL Douyin/TikTok → tạo job giải trí, tải source no-watermark, lưu metadata. Không
               Product Card, không affiliate.
             </p>
+            <DouyinSessionBanner />
             <IntakePanel />
           </CardBody>
         </Card>
