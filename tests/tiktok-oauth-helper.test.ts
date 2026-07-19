@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { buildAuthUrl, redact, upsertEnvContent } from '../scripts/tiktok-oauth-helper.ts';
+import {
+  buildAuthUrl,
+  expiresAtFrom,
+  redact,
+  upsertAccountStoreContent,
+  upsertEnvContent,
+} from '../scripts/tiktok-oauth-helper.ts';
 
 describe('buildAuthUrl', () => {
   test('chứa đủ tham số OAuth + scope video.publish', () => {
@@ -60,5 +66,65 @@ describe('redact', () => {
     assert.equal(redact('secrettoken'), '<len=11>');
     assert.equal(redact(''), '<absent>');
     assert.equal(redact(undefined), '<absent>');
+  });
+});
+
+describe('upsertAccountStoreContent (Phần 79 — cầu token account-store)', () => {
+  const ENTRY = {
+    openId: 'open123',
+    accessToken: 'act_abc',
+    refreshToken: 'rft_xyz',
+    expiresAt: '2026-07-17T00:00:00.000Z',
+  };
+
+  test('store rỗng/hỏng → tạo mới với đúng 1 account', () => {
+    for (const content of ['', 'not-json{{{', '[]']) {
+      const out = JSON.parse(upsertAccountStoreContent(content, 'tt_review_main', ENTRY));
+      assert.deepEqual(Object.keys(out), ['tt_review_main']);
+      assert.equal(out.tt_review_main.accessToken, 'act_abc');
+      assert.equal(out.tt_review_main.openId, 'open123');
+    }
+  });
+
+  test('KHÔNG đè account khác (token ENT giữ nguyên)', () => {
+    const existing = JSON.stringify({
+      tt_fishing_main: { openId: 'ent1', accessToken: 'ent_token' },
+    });
+    const out = JSON.parse(upsertAccountStoreContent(existing, 'tt_review_main', ENTRY));
+    assert.equal(out.tt_fishing_main.accessToken, 'ent_token');
+    assert.equal(out.tt_review_main.accessToken, 'act_abc');
+  });
+
+  test('gọi lại cùng account → thay token, không nhân đôi key', () => {
+    let content = upsertAccountStoreContent('', 'tt_review_main', ENTRY);
+    content = upsertAccountStoreContent(content, 'tt_review_main', {
+      ...ENTRY,
+      accessToken: 'act_moi',
+    });
+    const out = JSON.parse(content);
+    assert.deepEqual(Object.keys(out), ['tt_review_main']);
+    assert.equal(out.tt_review_main.accessToken, 'act_moi');
+  });
+
+  test('field optional rỗng thì KHÔNG ghi (không rác undefined)', () => {
+    const out = JSON.parse(
+      upsertAccountStoreContent('', 'tt_x', { openId: 'o', accessToken: 'a' }),
+    );
+    assert.equal('refreshToken' in out.tt_x, false);
+    assert.equal('expiresAt' in out.tt_x, false);
+  });
+});
+
+describe('expiresAtFrom', () => {
+  test('expires_in hợp lệ → ISO đúng mốc now + n giây', () => {
+    const now = Date.parse('2026-07-16T00:00:00.000Z');
+    assert.equal(expiresAtFrom(now, 3600), '2026-07-16T01:00:00.000Z');
+  });
+  test('thiếu/0/âm/NaN → undefined (store coi như không hạn)', () => {
+    const now = Date.parse('2026-07-16T00:00:00.000Z');
+    assert.equal(expiresAtFrom(now, undefined), undefined);
+    assert.equal(expiresAtFrom(now, 0), undefined);
+    assert.equal(expiresAtFrom(now, -5), undefined);
+    assert.equal(expiresAtFrom(now, Number.NaN), undefined);
   });
 });

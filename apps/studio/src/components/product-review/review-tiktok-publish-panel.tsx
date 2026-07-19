@@ -9,7 +9,7 @@
  * machine Facebook của trang (publisher FB cũ giữ nguyên để rollback).
  * ========================================================================== */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 interface Readiness {
   videoApproved: boolean;
@@ -29,6 +29,8 @@ interface Resp {
   ok: boolean;
   readiness?: Readiness;
   tiktok?: TikTokStatus | null;
+  /** Phần 79 — caption gợi ý từ script_artifact (GPT sinh sẵn). */
+  captionDraft?: string | null;
 }
 
 function Light({ on, label }: { on: boolean; label: string }) {
@@ -47,6 +49,8 @@ export function ReviewTikTokPublishPanel({ jobId }: { jobId: string }) {
   const [caption, setCaption] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  // Phần 79 — prefill caption gợi ý đúng 1 lần/job (Operator sửa tay thoải mái).
+  const prefilledJobRef = useRef<string | null>(null);
 
   const load = useCallback(async (id: string) => {
     if (!id) {
@@ -57,19 +61,29 @@ export function ReviewTikTokPublishPanel({ jobId }: { jobId: string }) {
       const r = await fetch(`/api/studio/jobs/${id}/publish-tiktok`);
       const j = (await r.json()) as Resp;
       setData(j.ok ? j : null);
+      if (j.ok && typeof j.captionDraft === 'string' && j.captionDraft.trim()) {
+        setCaption((cur) => {
+          if (cur.trim() || prefilledJobRef.current === id) return cur;
+          prefilledJobRef.current = id;
+          return j.captionDraft as string;
+        });
+      }
     } catch {
       setData(null);
     }
   }, []);
 
   useEffect(() => {
+    setCaption('');
+    prefilledJobRef.current = null;
     void load(jobId);
   }, [jobId, load]);
 
   const rd = data?.readiness ?? null;
   const tk = data?.tiktok ?? null;
   const captionOk = caption.trim().length > 0;
-  const canPublish = !!rd && rd.videoApproved && rd.hasFinalVideo && rd.tiktokApiReady && captionOk && !busy;
+  const canPublish =
+    !!rd && rd.videoApproved && rd.hasFinalVideo && rd.tiktokApiReady && captionOk && !busy;
 
   async function onPublish() {
     if (!jobId || busy) return;
@@ -128,7 +142,7 @@ export function ReviewTikTokPublishPanel({ jobId }: { jobId: string }) {
       {/* Caption thủ công */}
       <div className="space-y-1">
         <span className="text-[11px] font-semibold text-neutral-400">
-          Caption (gõ tay — video thuần, KHÔNG gắn link affiliate)
+          Caption (tự điền gợi ý từ script — sửa tay thoải mái; video thuần, KHÔNG link affiliate)
         </span>
         <textarea
           value={caption}

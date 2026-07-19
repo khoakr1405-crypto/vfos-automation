@@ -17,8 +17,8 @@
  *   pnpm tiktok:oauth refresh
  * ========================================================================== */
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
 
@@ -67,6 +67,52 @@ export function redact(value: string | undefined): string {
   return value ? `<len=${value.length}>` : '<absent>';
 }
 
+/* ── Multi-account token store (Phần 79 — cầu token-ops cho account-store) ──
+ * Lane Review đăng TikTok đọc token theo accountId từ
+ * data/secure/tiktok_accounts.json (apps/studio/src/lib/tiktok/account-store).
+ * `exchange/refresh --account <id>` ghi vào store này thay vì .env — token
+ * account mới KHÔNG đè token legacy (.env = tt_fishing_main của lane ENT). */
+
+export interface StoreAccountEntry {
+  openId: string;
+  accessToken: string;
+  refreshToken?: string;
+  /** ISO — account-store dùng để chặn token hết hạn trước khi đăng. */
+  expiresAt?: string;
+  username?: string;
+}
+
+/** Upsert 1 account vào nội dung store JSON. PURE — content sai định dạng → coi như rỗng. */
+export function upsertAccountStoreContent(
+  content: string,
+  accountId: string,
+  entry: StoreAccountEntry,
+): string {
+  let store: Record<string, unknown> = {};
+  try {
+    const parsed = JSON.parse(content) as unknown;
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      store = parsed as Record<string, unknown>;
+    }
+  } catch {
+    /* store mới / hỏng → bắt đầu rỗng */
+  }
+  store[accountId] = {
+    openId: entry.openId,
+    accessToken: entry.accessToken,
+    ...(entry.refreshToken ? { refreshToken: entry.refreshToken } : {}),
+    ...(entry.expiresAt ? { expiresAt: entry.expiresAt } : {}),
+    ...(entry.username ? { username: entry.username } : {}),
+  };
+  return `${JSON.stringify(store, null, 2)}\n`;
+}
+
+/** expiresAt ISO từ expires_in giây (thiếu/âm → undefined, store coi như không hạn). */
+export function expiresAtFrom(nowMs: number, expiresInSec: number | undefined): string | undefined {
+  if (!expiresInSec || !Number.isFinite(expiresInSec) || expiresInSec <= 0) return undefined;
+  return new Date(nowMs + expiresInSec * 1000).toISOString();
+}
+
 /* ── IO / network (không test live) ──────────────────────────────────────── */
 
 interface TokenResponse {
@@ -95,6 +141,39 @@ function writeTokensToEnv(envPath: string, kv: Record<string, string>): void {
   writeFileSync(envPath, upsertEnvContent(cur, kv));
 }
 
+const ACCOUNT_STORE_REL = 'data/secure/tiktok_accounts.json';
+
+function writeTokensToStore(accountId: string, entry: StoreAccountEntry): string {
+  const storePath = resolve(process.cwd(), ACCOUNT_STORE_REL);
+  const cur = existsSync(storePath) ? readFileSync(storePath, 'utf8') : '';
+  mkdirSync(dirname(storePath), { recursive: true });
+  writeFileSync(storePath, upsertAccountStoreContent(cur, accountId, entry));
+  return ACCOUNT_STORE_REL;
+}
+
+/** Đọc entry account từ store (cho refresh --account). null nếu chưa có. */
+function readStoreEntry(accountId: string): StoreAccountEntry | null {
+  const storePath = resolve(process.cwd(), ACCOUNT_STORE_REL);
+  if (!existsSync(storePath)) return null;
+  try {
+    const store = JSON.parse(readFileSync(storePath, 'utf8')) as Record<
+      string,
+      Partial<StoreAccountEntry>
+    >;
+    const e = store[accountId];
+    if (!e || typeof e.accessToken !== 'string') return null;
+    return {
+      openId: String(e.openId ?? ''),
+      accessToken: e.accessToken,
+      ...(e.refreshToken ? { refreshToken: String(e.refreshToken) } : {}),
+      ...(e.expiresAt ? { expiresAt: String(e.expiresAt) } : {}),
+      ...(e.username ? { username: String(e.username) } : {}),
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function postForm(url: string, form: Record<string, string>): Promise<TokenResponse> {
   const res = await fetch(url, {
     method: 'POST',
@@ -121,9 +200,13 @@ async function main(): Promise<void> {
       code: { type: 'string' },
       scope: { type: 'string' },
       env: { type: 'string' },
+      // Phần 79: ghi token vào account-store theo accountId (vd tt_review_main)
+      // thay vì .env — token account mới KHÔNG đè token legacy lane ENT.
+      account: { type: 'string' },
     },
     strict: false,
   });
+  const accountId = typeof values.account === 'string' ? values.account.trim() : '';
   const envPath = resolve(process.cwd(), (values.env as string) || '.env');
   loadDotenv(envPath);
 
@@ -165,6 +248,25 @@ async function main(): Promise<void> {
       // vẫn ghi để debug nhưng KHÔNG bật live
     }
     const hasPublish = (tok.scope ?? '').includes('video.publish');
+    if (accountId) {
+      // Phần 79 — ghi vào account-store, KHÔNG đụng token legacy trong .env.
+      const rel = writeTokensToStore(accountId, {
+        openId: tok.open_id,
+        accessToken: tok.access_token,
+        ...(tok.refresh_token ? { refreshToken: tok.refresh_token } : {}),
+        ...(expiresAtFrom(Date.now(), tok.expires_in)
+          ? { expiresAt: expiresAtFrom(Date.now(), tok.expires_in) as string }
+          : {}),
+      });
+      console.log(`✅ Đã ghi token account "${accountId}" vào ${rel} (KHÔNG in giá trị):`);
+      console.log(`   accessToken  ${redact(tok.access_token)}`);
+      console.log(`   openId       ${redact(tok.open_id)}`);
+      console.log(`   refreshToken ${redact(tok.refresh_token)}`);
+      console.log(`   scope        ${tok.scope ?? '?'} | expires_in ${tok.expires_in ?? '?'}s`);
+      if (!hasPublish) console.log('   ⚠ Token THIẾU scope video.publish — sẽ không đăng được.');
+      console.log('   (.env legacy KHÔNG bị đụng — token lane ENT giữ nguyên.)');
+      return;
+    }
     writeTokensToEnv(envPath, {
       TIKTOK_MODE: 'display',
       TIKTOK_ACCESS_TOKEN: tok.access_token,
@@ -185,6 +287,42 @@ async function main(): Promise<void> {
   }
 
   if (sub === 'refresh') {
+    // Phần 79 — refresh theo account-store khi có --account (không đụng .env).
+    if (accountId) {
+      const entry = readStoreEntry(accountId);
+      if (!entry?.refreshToken) {
+        console.error(
+          `🛑 Account "${accountId}" chưa có refreshToken trong ${ACCOUNT_STORE_REL} — chạy exchange --account trước.`,
+        );
+        process.exit(2);
+      }
+      const tok = await postForm(TOKEN_URL, {
+        client_key: requireEnv('TIKTOK_CLIENT_KEY'),
+        client_secret: requireEnv('TIKTOK_CLIENT_SECRET'),
+        grant_type: 'refresh_token',
+        refresh_token: entry.refreshToken,
+      });
+      if (!tok.access_token) {
+        console.error(`🛑 Refresh thất bại: ${tok.error ?? '?'} — ${tok.error_description ?? ''}`);
+        process.exit(1);
+      }
+      const rel = writeTokensToStore(accountId, {
+        openId: tok.open_id || entry.openId,
+        accessToken: tok.access_token,
+        ...(tok.refresh_token || entry.refreshToken
+          ? { refreshToken: tok.refresh_token || entry.refreshToken }
+          : {}),
+        ...(expiresAtFrom(Date.now(), tok.expires_in)
+          ? { expiresAt: expiresAtFrom(Date.now(), tok.expires_in) as string }
+          : {}),
+        ...(entry.username ? { username: entry.username } : {}),
+      });
+      console.log(`✅ Đã refresh account "${accountId}" + ghi ${rel}:`);
+      console.log(
+        `   accessToken ${redact(tok.access_token)} | expires_in ${tok.expires_in ?? '?'}s`,
+      );
+      return;
+    }
     const tok = await postForm(TOKEN_URL, {
       client_key: requireEnv('TIKTOK_CLIENT_KEY'),
       client_secret: requireEnv('TIKTOK_CLIENT_SECRET'),
@@ -207,7 +345,7 @@ async function main(): Promise<void> {
   }
 
   console.error(
-    'Dùng: pnpm tiktok:oauth <url|exchange --code <code>|refresh> [--scope ...] [--env <path>]',
+    'Dùng: pnpm tiktok:oauth <url|exchange --code <code> [--account <id>]|refresh [--account <id>]> [--scope ...] [--env <path>]',
   );
   process.exit(2);
 }

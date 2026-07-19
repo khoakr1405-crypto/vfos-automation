@@ -9,10 +9,11 @@
  * ========================================================================== */
 
 import {
+  type ReviewPublishErrorCode,
+  getReviewCaptionDraft,
   getReviewTikTokReadiness,
   getReviewTikTokStatus,
   publishReviewToTikTok,
-  type ReviewPublishErrorCode,
 } from '@/lib/review-tiktok/publish';
 
 export const dynamic = 'force-dynamic';
@@ -54,7 +55,13 @@ export async function GET(req: Request, ctx: { params: Promise<{ jobId: string }
   if (!readiness) {
     return Response.json({ ok: false, code: 'NOT_FOUND' }, { status: 404 });
   }
-  return Response.json({ ok: true, readiness, tiktok: getReviewTikTokStatus(jobId) });
+  return Response.json({
+    ok: true,
+    readiness,
+    tiktok: getReviewTikTokStatus(jobId),
+    // Phần 79 — caption gợi ý từ script_artifact (GPT sinh sẵn; UI prefill khi rỗng).
+    captionDraft: getReviewCaptionDraft(jobId),
+  });
 }
 
 export async function POST(req: Request, ctx: { params: Promise<{ jobId: string }> }) {

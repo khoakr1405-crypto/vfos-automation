@@ -23,11 +23,11 @@ import { getJobPreviewAbsPath, loadJobById } from '@/lib/studio-data/jobs';
 import { resolveInsideRepo } from '@/lib/studio-data/paths';
 import { getAccountTokens, isAccountTokenExpired } from '@/lib/tiktok/account-store';
 import {
+  type TikTokPublishClient,
+  type TikTokPublishMode,
   createMockTikTokPublishClient,
   createTikTokPublishClient,
   queryCreatorUsername,
-  type TikTokPublishClient,
-  type TikTokPublishMode,
 } from '@/lib/tiktok/tiktok-publish-client';
 
 /** Account TikTok đích của lane Review (Operator cấu hình token ở OP-2). */
@@ -77,7 +77,11 @@ type ResolveClientResult =
   | { ok: true; client: TikTokPublishClient; mode: TikTokPublishMode }
   | {
       ok: false;
-      code: 'TIKTOK_DISABLED' | 'TIKTOK_NOT_CONFIGURED' | 'LIVE_NOT_ENABLED' | 'TIKTOK_AUTH_EXPIRED';
+      code:
+        | 'TIKTOK_DISABLED'
+        | 'TIKTOK_NOT_CONFIGURED'
+        | 'LIVE_NOT_ENABLED'
+        | 'TIKTOK_AUTH_EXPIRED';
       message: string;
     };
 
@@ -97,7 +101,11 @@ function parseMode(): 'disabled' | 'mock' | 'display' | 'business' {
 function resolveReviewClient(): ResolveClientResult {
   const mode = parseMode();
   if (mode === 'disabled') {
-    return { ok: false, code: 'TIKTOK_DISABLED', message: 'TikTok đang tắt (TIKTOK_MODE=disabled).' };
+    return {
+      ok: false,
+      code: 'TIKTOK_DISABLED',
+      message: 'TikTok đang tắt (TIKTOK_MODE=disabled).',
+    };
   }
   if (mode === 'mock') {
     return { ok: true, client: createMockTikTokPublishClient(), mode: 'mock' };
@@ -182,6 +190,35 @@ export function getReviewTikTokStatus(jobId: string): ReviewTikTokStatus | null 
 }
 
 /**
+ * Phần 79 — "Đóng gói" caption cho video thuần: đọc draft GPT đã sinh sẵn trong
+ * script_artifact.json (captionDraft + hashtags; fallback hook). Chỉ là GỢI Ý
+ * prefill — Operator sửa tay thoải mái, cổng đăng vẫn là tay (No-Go #3).
+ * KHÔNG chèn link/affiliate (video thuần đúng swap Phần 66).
+ */
+export function getReviewCaptionDraft(jobId: string): string | null {
+  const abs = resolveInsideRepo(`data/temp/jobs/${jobId}/script_artifact.json`);
+  if (!abs || !existsSync(abs)) return null;
+  try {
+    const art = JSON.parse(readFileSync(abs, 'utf8')) as {
+      captionDraft?: unknown;
+      hashtags?: unknown;
+      hook?: unknown;
+    };
+    const draft = typeof art.captionDraft === 'string' ? art.captionDraft.trim() : '';
+    const hook = typeof art.hook === 'string' ? art.hook.trim() : '';
+    const base = draft || hook;
+    if (!base) return null;
+    const tags = Array.isArray(art.hashtags)
+      ? art.hashtags.filter((t): t is string => typeof t === 'string' && t.startsWith('#'))
+      : [];
+    const missingTags = tags.filter((t) => !base.includes(t));
+    return [base, missingTags.join(' ')].filter(Boolean).join('\n').trim().slice(0, 2000);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Đăng video Review lên TikTok (video thuần). Chạy hết guard trước, chỉ gọi
  * client khi mọi guard pass. Ghi POSTING → POSTED/FAILED ra file riêng.
  */
@@ -207,7 +244,11 @@ export async function publishReviewToTikTok(
 
   const caption = (input.caption ?? '').trim();
   if (!caption) {
-    return { ok: false, code: 'NO_CAPTION', message: 'Caption rỗng — nhập caption trước khi đăng.' };
+    return {
+      ok: false,
+      code: 'NO_CAPTION',
+      message: 'Caption rỗng — nhập caption trước khi đăng.',
+    };
   }
 
   const prev = readStatus(jobId);
