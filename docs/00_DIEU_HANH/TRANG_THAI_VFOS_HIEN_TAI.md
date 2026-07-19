@@ -3340,7 +3340,7 @@ Pipeline anchors chạy đầy đủ (từ log): cắt 4 money-shot → vision h
 
 ---
 
-### ✅ Phần 78 — PRODUCT-FROM-VIDEO LOOP (kiến trúc chính thức lane Review TikTok-first) (2026-07-16, CHƯA COMMIT — chờ Operator duyệt UI + file list)
+### ✅ Phần 78 — PRODUCT-FROM-VIDEO LOOP (kiến trúc chính thức lane Review TikTok-first) (2026-07-16, COMMITTED `ea7d491` 2026-07-19 — Operator duyệt mắt :3002 PASS; CHƯA PUSH)
 
 > **Mandate Operator (lệnh trực tiếp, "định hướng và hướng đi sắp tới, không phải fix cho có")**: lane Review là VIDEO-FIRST thật sự — khiên phải nằm trong VÒNG LẶP SỬA (phát hiện → nhận dạng → tự gắn đúng → chạy), không phải ngõ cụt; job không được dính card tồn kho ("máy xay tỏi" gắn vào mọi video → 716_002 chết oan ở vision); lane đã pivot đăng TikTok, KHÔNG dùng khâu lấy link Shopee; KHÔNG dán link TikTok Shop ở khâu sản xuất — chỉ cần **đảm bảo sản phẩm trong video CÓ MẶT trên TikTok Shop**; **KHÔNG thêm nút UI** — khiên tự duyệt đúng chuẩn No-Go #8.
 
@@ -3360,7 +3360,7 @@ Pipeline anchors chạy đầy đủ (từ log): cắt 4 money-shot → vision h
 
 ---
 
-### ✅ Phần 79 — Action 3 TikTok-first LIVE-READY: cầu token account-store + caption draft tự động (2026-07-16, CHƯA COMMIT)
+### ✅ Phần 79 — Action 3 TikTok-first LIVE-READY: cầu token account-store + caption draft tự động (2026-07-16, COMMITTED `15c0deb` 2026-07-19; CHƯA PUSH)
 
 > Mắt xích đứt cuối của North Star: video `job_20260716_003` xong + ĐÃ DUYỆT nhưng không có đường đăng. Khảo sát: swap Phần 66 đã dựng đủ máy (lib `review-tiktok/publish.ts` + route `publish-tiktok` + panel — guard 11 lớp, mặc định mock); `.env` đã live (`TIKTOK_MODE=display`, `TIKTOK_PUBLISH_LIVE=true`, client key có); **thiếu đúng 2 mắt**: token store `data/secure/tiktok_accounts.json` không tồn tại (nợ token-ops R3 multichannel) + caption trống bắt Operator tự nghĩ.
 
@@ -3377,7 +3377,9 @@ Pipeline anchors chạy đầy đủ (từ log): cắt 4 money-shot → vision h
 
 **Bước tiếp theo duy nhất:** Operator OAuth `tt_review_main` (3 lệnh trên) → bấm Đăng video đầu tiên của lane Review lên TikTok → round kế: gắn link TikTok Shop thật ở khâu affiliate + TikTok GMV ingestion.
 
-### ✅ Phần 80 — Hook Style Bank 6→9 giọng (mini-round từ điều tra bài FB external, 2026-07-18, CHƯA COMMIT)
+### ✅ Phần 80 — Hook Style Bank 6→9 giọng (mini-round từ điều tra bài FB external, 2026-07-18, COMMITTED `438e0ae`; CHƯA PUSH)
+
+> **Ent-lane intake UI round** (card nguồn TQ + surface lỗi/retry + thumbnail proxy SSRF-whitelist + blur-pad 9:16 + Douyin banner Phase B) đi cùng cụm dọn 2026-07-19: COMMITTED `91f8958` (CHƯA PUSH), Operator duyệt mắt :3002 PASS.
 
 **Nguồn gốc**: Operator nhờ điều tra bài FB của Nguyễn Tất Kiểm ("giao Facebook cho Claude", 7 prompt trong comment). Kết luận thẩm định: ~85% generic (VFOS đã tự động hóa vượt mức prompt tay), nhưng đối chiếu 15 công thức hook/caption trong bài với `HOOK_STYLES` lộ ra 3 giọng bank chưa có → Operator GO mini-round.
 
@@ -3615,11 +3617,11 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `feat/ent-multichannel` |
-| HEAD local | `081c6a5` `docs: update project state after Trend Scout R1+R2 (CLI + UI panel)` (2026-07-11) |
+| HEAD local | `91f8958` `feat(ent-lane): intake UI + blur-pad 9:16 + Douyin session banner` (2026-07-19) |
 | Remote | `origin` (GitHub) |
-| origin/feat/ent-multichannel | **ĐÃ PUSH origin 2026-07-11**: 3 commit Trend Scout — `3384f40` (R1 CLI), `e0788dc` (R2 UI), `081c6a5` (docs state). Local == origin. |
-| Sync status | **in sync** — local == origin/feat/ent-multichannel sau push 2026-07-11. |
-| Working tree | **Còn Round 2 WIP** — `apps/studio/src/` (intake-panel.tsx + jobs.ts modified; scout/ route + scout-panel.tsx + scout.ts untracked); `pnpm-lock.yaml` M; `docs/RFC_VIDEO_RENDERER.md` + `packages/video-engine/` untracked (video-engine WIP). Các file này thuộc round chưa duyệt — KHÔNG stage/commit. |
+| origin/feat/ent-multichannel | `655afa7` (đẩy 2026-07-18: skill audit + state doc Phần 81). **Local AHEAD 3 commit CHƯA PUSH** (cụm dọn dirty 2026-07-19): `ea7d491` Phần 78 · `15c0deb` Phần 79 · `91f8958` Ent-lane. |
+| Sync status | **local ahead origin +3** (chưa push theo lệnh Operator giữ push). |
+| Working tree | Chỉ còn `production/_media/bgm_library.json` (runtime tự mutate counter — KHÔNG commit) + WIP Phần 82 R-A: `scripts/job-manager/core/auto-approve-core.ts` + `tests/auto-approve-core.test.ts` (pure core auto-approve gate, 23/23 test PASS, commit cùng R-A khi xong). |
 | Dev server | Port 3002 (bật khi review). Dừng bằng `pnpm studio:dev:clean --no-start`. |
 
 **Trạng thái artifacts production** (tính đến 2026-05-29 phiên sync):
