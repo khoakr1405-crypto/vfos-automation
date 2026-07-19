@@ -23,6 +23,11 @@ import {
   queryCreatorUsername,
 } from '@/lib/tiktok/tiktok-publish-client';
 import { publishReelToPage } from '@vfos/facebook';
+import {
+  type EntAutoApproveVerdict,
+  entAutoApproveEnabled,
+  shouldAutoApproveEntPreview,
+} from './auto-approve';
 import { type EntChannel, getChannel, listChannels, resolveChannelForJob } from './channels';
 import {
   type EntFacebookPublishSummary,
@@ -848,9 +853,33 @@ function readPackageSummary(id: string): EntPackageSummary | null {
  * ghi lại manifest (chỉ state/gate/script summary; KHÔNG ghi steps vào manifest
  * để engine giữ quyền sở hữu step files).
  */
+/** Đọc verdict cổng AI auto-approve ENT (Phần 82) từ report; null nếu chưa/không đọc được. */
+function readEntAutoApproveVerdict(id: string): EntAutoApproveVerdict | null {
+  const j = readJsonSafe<{ verdict?: string }>(entFile(id, 'auto_approve_report.json'));
+  const v = j?.verdict;
+  return v === 'PASS' || v === 'FAIL' || v === 'NEEDS_HUMAN' ? v : null;
+}
+
 export function getJobDetail(id: string): EntJob | null {
   const base = readManifest(id);
   if (!base) return null;
+
+  // Phần 82 — cổng AI auto-approve ENT: report PASS + đủ guard approvePreview → tự set
+  // previewApproved (thay click "Duyệt video"). Config off / non-PASS / thiếu guard → no-op.
+  if (
+    shouldAutoApproveEntPreview({
+      enabled: entAutoApproveEnabled(process.env),
+      verdict: readEntAutoApproveVerdict(id),
+      scriptApproved: base.reviewGates?.scriptApproved === true,
+      voiceRenderDone: voiceRenderDone(id),
+      previewFileExists: previewFileExists(id),
+      audioPolicyApplied: audioPolicyApplied(id),
+      alreadyPreviewApproved: base.reviewGates?.previewApproved === true,
+      anyStepRunning: anyStepRunning(id) !== null,
+    })
+  ) {
+    base.reviewGates = { scriptApproved: true, previewApproved: true };
+  }
 
   const steps: Partial<Record<EntStepName, EntStepStatus>> = {};
   for (const s of ALL_STEPS) {

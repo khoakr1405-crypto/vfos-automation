@@ -8,6 +8,7 @@ import { type PipelineContext, buildBaseArtifact } from './context.js';
 import { VIDEO_FIXTURE_PATH, VOICE_FIXTURE_PATH } from './context.js';
 import { printDivider, printHeader } from './run-step.js';
 import { captionedAudioGuard, previewAudioGuard } from './steps/audio-guard.js';
+import { autoApproveGate } from './steps/auto-approve-gate.js';
 import { bgmGate } from './steps/bgm-gate.js';
 import { bgmMixGuard } from './steps/bgm-mix-guard.js';
 import { bgmPreselect } from './steps/bgm-preselect.js';
@@ -124,5 +125,7 @@ export function runReviewPipeline(ctx: PipelineContext): void {
   // H19–H21 — verify fixture thật → Final QA/STT → finalize (exit 0)
   verifyRealFixture(ctx);
   finalQaGate(ctx);
+  // Phần 82 — cổng AI auto-approve (config off → no-op; PASS → finalize tự duyệt)
+  autoApproveGate(ctx);
   finalizeStep(ctx);
 }

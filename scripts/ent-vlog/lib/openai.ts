@@ -29,14 +29,19 @@ export interface AsrResult {
   segments: AsrSegment[];
 }
 
-/** Transcribe a (Chinese) audio file via whisper-1 with segment-level timing. */
-export async function transcribeZh(apiKey: string, audioPath: string): Promise<AsrResult> {
+/** Transcribe an audio file via whisper-1 with segment-level timing, in `lang`
+ *  (ISO code — 'zh' for Chinese source, 'vi' for the Vietnamese voiceover QA). */
+export async function transcribe(
+  apiKey: string,
+  audioPath: string,
+  lang: string,
+): Promise<AsrResult> {
   const buf = readFileSync(audioPath);
   const blob = new Blob([buf], { type: 'audio/mp3' });
   const form = new FormData();
   form.append('file', blob, 'audio.mp3');
   form.append('model', 'whisper-1');
-  form.append('language', 'zh');
+  form.append('language', lang);
   form.append('response_format', 'verbose_json');
   form.append('timestamp_granularities[]', 'segment');
 
@@ -61,11 +66,16 @@ export async function transcribeZh(apiKey: string, audioPath: string): Promise<A
     text: (s.text ?? '').trim(),
   }));
   return {
-    language: json.language ?? 'zh',
+    language: json.language ?? lang,
     durationSec: json.duration ?? 0,
     text: (json.text ?? '').trim(),
     segments,
   };
+}
+
+/** Transcribe a (Chinese) audio file via whisper-1 — thin wrapper over transcribe(…,'zh'). */
+export async function transcribeZh(apiKey: string, audioPath: string): Promise<AsrResult> {
+  return transcribe(apiKey, audioPath, 'zh');
 }
 
 /** gpt-4o JSON-mode completion. Returns parsed JSON of type T. */

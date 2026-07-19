@@ -4,14 +4,8 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
-import { isoNow, loadManifest, saveManifest } from '../core/manifest-io.js';
-import {
-  entryFromManifest,
-  loadRegistry,
-  productNameFromManifest,
-  saveRegistry,
-  upsertRegistryEntry,
-} from '../core/registry-io.js';
+import { applyApprovalMutation } from '../core/approval.js';
+import { loadManifest } from '../core/manifest-io.js';
 import { readFinalQaStatus } from '../core/validation.js';
 
 export function cmdApprove(args: string[]): number {
@@ -81,9 +75,9 @@ export function cmdApprove(args: string[]): number {
   }
 
   console.log(`Captioned preview: ${captionedRel}  ✅`);
-  console.log(`Final QA:          PASS ✅`);
+  console.log('Final QA:          PASS ✅');
   console.log(`Notes:             ${notes ?? '(none)'}`);
-  console.log(`New state:         APPROVED`);
+  console.log('New state:         APPROVED');
   console.log('------------------------------------------------------');
 
   if (dryRun) {
@@ -91,18 +85,7 @@ export function cmdApprove(args: string[]): number {
     return 0;
   }
 
-  manifest.state = 'APPROVED';
-  manifest.review = {
-    operatorDecision: 'APPROVED',
-    approvedAt: isoNow(),
-    rejectedAt: null,
-    notes,
-  };
-  saveManifest(manifest);
-
-  const reg = loadRegistry();
-  upsertRegistryEntry(reg, entryFromManifest(manifest, productNameFromManifest(manifest)));
-  saveRegistry(reg);
+  applyApprovalMutation(manifest, notes);
 
   console.log('✅ Job APPROVED. (No publish — operator must publish manually.)');
   return 0;

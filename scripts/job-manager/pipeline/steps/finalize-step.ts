@@ -2,6 +2,7 @@
 // 1888–1932). Job mode: trỏ artifacts + state READY_FOR_OPERATOR_REVIEW +
 // registry. Ghi status artifact cuối + banner. Exit 0.
 
+import { applyApprovalMutation } from '../../core/approval.js';
 import { saveManifest } from '../../core/manifest-io.js';
 import { JOBS_ROOT } from '../../core/paths.js';
 import { updateRegistryFromManifest } from '../../core/registry-io.js';
@@ -26,15 +27,50 @@ export function finalizeStep(ctx: PipelineContext): void {
     updateRegistryFromManifest(ctx.jobManifest);
   }
 
-  writeStatusArtifact({
+  // Common status-artifact fields (shared by every terminal branch below).
+  const statusBase = {
     ...ctx.baseArtifact,
     elevenLabsApiCalled: ctx.elevenLabsApiCalled,
     chayExecuted: ctx.chayExecuted,
     captionExecuted: ctx.captionExecuted,
     outputVideoPath: ctx.outputExists ? ctx.expectedOutput : null,
     previewArtifact: ctx.previewArtifact,
-    state: 'READY_FOR_OPERATOR_VIDEO_REVIEW',
-  });
+  };
+
+  // ---- Phần 82 — nhánh cổng AI auto-approve (verdict null = gate off → hành vi cũ) ----
+  const verdict = ctx.autoApproveVerdict;
+  if (jobId && ctx.jobManifest && verdict === 'PASS') {
+    // Cổng AI duyệt PASS → thực hiện đúng mutation của cmdApprove (thay click tay).
+    applyApprovalMutation(ctx.jobManifest, 'AUTO_APPROVE PASS v1 (Phần 82)');
+    writeStatusArtifact({ ...statusBase, state: 'AUTO_APPROVED' });
+    console.log('');
+    printHeader('🤖 VFOS AUTO-APPROVED (Phần 82)');
+    console.log(`Job ID:           ${jobId}`);
+    console.log(`Run ID:           ${runId}`);
+    console.log('Cổng AI duyệt PASS → state=APPROVED (không cần click tay).');
+    console.log('Hậu kiểm: Operator xem lại trên nền tảng sau khi đăng.');
+    printDivider();
+    process.exit(0);
+  }
+  if (jobId && ctx.jobManifest && (verdict === 'FAIL' || verdict === 'NEEDS_HUMAN')) {
+    const st = verdict === 'FAIL' ? 'AUTO_APPROVE_REJECTED' : 'AUTO_APPROVE_NEEDS_HUMAN';
+    // Giữ job ở READY_FOR_OPERATOR_REVIEW (đã set ở trên) — Operator duyệt tay như cũ.
+    ctx.jobManifest.lastError = st;
+    saveManifest(ctx.jobManifest);
+    updateRegistryFromManifest(ctx.jobManifest);
+    writeStatusArtifact({ ...statusBase, state: st });
+    console.log('');
+    printHeader('🤖 AUTO-APPROVE — GIỮ LẠI CHỜ NGƯỜI');
+    console.log(`Job ID:           ${jobId}`);
+    console.log(`Verdict:          ${verdict}`);
+    console.log('Job giữ READY_FOR_OPERATOR_REVIEW — Operator duyệt tay (nút Duyệt) như cũ.');
+    console.log(`Xem lý do:        data/temp/jobs/${jobId}/auto_approve/auto_approve_report.json`);
+    printDivider();
+    process.exit(verdict === 'FAIL' ? 24 : 25);
+  }
+
+  // ---- Nhánh mặc định (gate off / no-job) — hành vi READY như trước Phần 82 ----
+  writeStatusArtifact({ ...statusBase, state: 'READY_FOR_OPERATOR_VIDEO_REVIEW' });
 
   console.log('');
   printHeader('🎬 VFOS REVIEW VIDEO READY');

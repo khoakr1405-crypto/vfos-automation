@@ -42,6 +42,10 @@ export type OrchestratorState =
   | 'VOICE_REQUIRED_BUT_CONFIRM_ELEVENLABS_MISSING'
   | 'FINAL_QA_REQUIRED_BUT_CONFIRM_OPENAI_MISSING'
   | 'FINAL_QA_NOT_PASSING'
+  // Phần 82 — cổng AI auto-approve (thay click duyệt tay ở nhánh PASS)
+  | 'AUTO_APPROVED'
+  | 'AUTO_APPROVE_REJECTED'
+  | 'AUTO_APPROVE_NEEDS_HUMAN'
   // ---- Các state THẬT đã được ghi ở bản cũ nhưng thiếu trong union ----
   | 'MISSING_JOB_VOICEOVER'
   | 'SCRIPT_QUALITY_VALIDATION_FAILED'

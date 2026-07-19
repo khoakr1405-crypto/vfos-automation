@@ -68,6 +68,9 @@ function subsFor(step: StepName, model: string): SubSpec[] {
     { name: '12-voice-render', args: [] },
     { name: '15-audio-ambient-full', args: [] },
     { name: '17-hook-verify', args: [] },
+    // Phần 82 — cổng AI auto-approve (config off → no-op; luôn exit 0, không chặn chuỗi;
+    // report drive reconcile ở getJobDetail để tự set previewApproved khi PASS).
+    { name: '18-auto-approve', args: [] },
   ];
   if (step === 'analyze') return analyze;
   if (step === 'montage') return montage;

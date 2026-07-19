@@ -11,6 +11,7 @@
 
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import type { AutoApproveVerdict } from '../core/auto-approve-core.js';
 import { loadManifest } from '../core/manifest-io.js';
 import { JOBS_ROOT } from '../core/paths.js';
 import type { JobManifest } from '../core/types.js';
@@ -92,6 +93,10 @@ export interface PipelineContext extends PipelineFlags {
   bgmRenderAsset: BgmRenderAsset | null;
   previewArtifact: StatusArtifact['previewArtifact'];
   outputExists: boolean;
+
+  /** Phần 82 — verdict cổng AI auto-approve; null = gate off / chưa chạy (finalize
+   *  giữ hành vi READY_FOR_OPERATOR_REVIEW như cũ). */
+  autoApproveVerdict: AutoApproveVerdict | null;
 
   /** N4 — đồng bộ manifest từ đĩa lên memory (gọi sau MỌI subprocess). */
   reloadManifest(): void;
@@ -181,6 +186,7 @@ export function createPipelineContext(flags: PipelineFlags): PipelineContext {
     bgmRenderAsset: null,
     previewArtifact: null,
     outputExists: false,
+    autoApproveVerdict: null,
     reloadManifest(): void {
       if (this.jobId) this.jobManifest = loadManifest(this.jobId);
     },
