@@ -129,8 +129,11 @@ export interface FacebookPublishInput {
   confirmRepost?: boolean;
 }
 
-/** POSTING cũ hơn ngưỡng này coi là treo (cho retry, không khoá vĩnh viễn). */
-const POSTING_STALE_MS = 5 * 60 * 1000;
+// POSTING cũ hơn ngưỡng này coi là treo (cho retry, không khoá vĩnh viễn). PHẢI
+// LỚN HƠN thời gian đăng thật tối đa (route maxDuration=600s; upload 180s + poll
+// 240s + verify ≈ 450s) — nếu ngắn hơn, một publish còn-đang-chạy bị hiểu nhầm
+// "treo" và request thứ 2 double-post (adversarial review Phần 82 F2). 15min > 10min.
+const POSTING_STALE_MS = 15 * 60 * 1000;
 
 /**
  * Dựng description Reel: caption → (CTA + link nếu có) → hashtags. Contextual

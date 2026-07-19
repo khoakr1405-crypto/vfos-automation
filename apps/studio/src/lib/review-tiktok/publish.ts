@@ -40,12 +40,18 @@ export type ReviewPublishErrorCode =
   | 'NO_FINAL'
   | 'NO_CAPTION'
   | 'ALREADY_POSTED'
+  | 'PUBLISH_BUSY'
   | 'TIKTOK_DISABLED'
   | 'TIKTOK_NOT_CONFIGURED'
   | 'LIVE_NOT_ENABLED'
   | 'TIKTOK_AUTH_EXPIRED'
   | 'ACCOUNT_IDENTITY_MISMATCH'
   | 'TIKTOK_API_ERROR';
+
+// POSTING cũ hơn ngưỡng này coi là treo (cho retry). PHẢI lớn hơn thời gian đăng
+// TikTok tối đa (upload 120s + poll 20×3s ≈ 3min) để một publish đang chạy KHÔNG bị
+// hiểu nhầm "treo" → chống double-post khi tick + bấm tay trùng nhau (Phần 82 F1).
+const POSTING_STALE_MS = 15 * 60 * 1000;
 
 /** Tóm tắt đăng TikTok của job Review (file riêng, KHÔNG token). */
 export interface ReviewTikTokStatus {
@@ -258,6 +264,17 @@ export async function publishReviewToTikTok(
       code: 'ALREADY_POSTED',
       message: 'Job đã đăng TikTok. Cần xác nhận đăng lại (confirmRepost).',
     };
+  }
+
+  // Busy-lock: một publish khác đang chạy (POSTING chưa treo) → chặn, không đăng
+  // chồng. Đóng cửa sổ double-post giữa lúc upload/poll (tick + bấm tay, hoặc 2
+  // tick) — trước đây chỉ chặn POSTED nên lệnh thứ 2 lọt (Phần 82 F1).
+  if (prev?.status === 'POSTING') {
+    const ageMs = prev.startedAt ? Date.now() - new Date(prev.startedAt).getTime() : 0;
+    const stale = !prev.startedAt || ageMs > POSTING_STALE_MS;
+    if (!stale) {
+      return { ok: false, code: 'PUBLISH_BUSY', message: 'Đang đăng job này — chờ xong.' };
+    }
   }
 
   const resolved = resolveReviewClient();
