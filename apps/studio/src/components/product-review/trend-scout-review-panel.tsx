@@ -105,29 +105,12 @@ export function TrendScoutReviewPanel({ onJobMutated }: { onJobMutated?: () => v
   // Tải & clean nguồn ngay tại Action 1 (UX liền mạch — tái dùng route source-intake).
   const [intake, setIntake] = useState<'idle' | 'running' | 'done' | 'failed'>('idle');
   const [intakeMsg, setIntakeMsg] = useState<string | null>(null);
-  // Sản phẩm hiện tại (slot card) — hiển thị cho nút chuỗi "Tạo job & Tải nguồn"
-  // biết sẽ gắn gì; attach server-side vẫn re-validate, đây chỉ là nhãn.
-  const [currentCard, setCurrentCard] = useState<{ name: string; status: string } | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = useCallback(async () => {
     try {
-      // Card hiện tại (best-effort — lỗi thì nút chuỗi tự khóa, không phá panel).
-      try {
-        const cr = await fetch('/api/studio/commerce/current-product-card');
-        const cj = (await cr.json()) as {
-          ok: boolean;
-          hasCard?: boolean;
-          card?: { name?: string; validationStatus?: string } | null;
-        };
-        setCurrentCard(
-          cj.ok && cj.hasCard && typeof cj.card?.name === 'string'
-            ? { name: cj.card.name, status: cj.card.validationStatus ?? '?' }
-            : null,
-        );
-      } catch {
-        setCurrentCard(null);
-      }
+      // Phần 78 — Product-from-Video Loop: chain KHÔNG gắn card tồn kho nữa nên
+      // panel không cần đọc slot card hiện tại (sản phẩm do bước 0 pipeline tự lo).
       const r = await fetch(`/api/studio/entertainment/scout?niche=${NICHE}`);
       const j = (await r.json()) as ScoutResp;
       if (!j.ok) return;
@@ -354,15 +337,16 @@ export function TrendScoutReviewPanel({ onJobMutated }: { onJobMutated?: () => v
     }
   }
 
-  // Nút chuỗi trên TỪNG video đã quét: tạo job → gắn sản phẩm hiện tại → tải &
-  // clean nguồn — 1 click, tiến trình hiện từng bước. Bước nào gãy dừng bước đó
-  // (job vừa tạo vẫn hiện ở khối dưới để Operator xử lý tay tiếp).
+  // Nút chuỗi trên TỪNG video đã quét (Phần 78 — Product-from-Video Loop): tạo
+  // job KHÔNG gắn card tồn kho → tải & clean nguồn. Sản phẩm sẽ được bước 0
+  // pipeline TỰ nhận dạng từ video + chấm Market-Fit TikTok Shop khi Operator
+  // bấm "Chạy sản xuất video". Bước nào gãy dừng bước đó.
   async function onScanToSource(c: ScoutCandidate) {
     if (busy) return;
     setBusy(`chain:${c.awemeId}`);
     setIntake('idle');
     setIntakeMsg(null);
-    setMsg('⚙ (1/3) Tạo job từ video…');
+    setMsg('⚙ (1/2) Tạo job từ video…');
     try {
       const r = await fetch('/api/studio/jobs/create-from-video', {
         method: 'POST',
@@ -376,40 +360,25 @@ export function TrendScoutReviewPanel({ onJobMutated }: { onJobMutated?: () => v
         code?: string;
       };
       if (!j.ok || !j.jobId) {
-        setMsg(`🛑 (1/3) Tạo job lỗi: ${j.message ?? j.code ?? '?'}`);
+        setMsg(`🛑 (1/2) Tạo job lỗi: ${j.message ?? j.code ?? '?'}`);
         return;
       }
       const jobId = j.jobId;
       setCreatedJob({ jobId, videoUrl: c.url, desc: c.desc, attachedProduct: null });
 
-      setMsg(`⚙ (2/3) Gắn sản phẩm "${currentCard?.name ?? '?'}" vào ${jobId}…`);
-      const a = await fetch(`/api/studio/jobs/${jobId}/attach-product`, { method: 'POST' });
-      const aj = (await a.json()) as { ok: boolean; message?: string; code?: string };
-      if (!aj.ok) {
-        setMsg(
-          `🛑 (2/3) Gắn sản phẩm lỗi: ${aj.message ?? aj.code ?? '?'} — job ${jobId} đã tạo, chọn sản phẩm tay ở khối dưới.`,
-        );
-        onJobMutated?.();
-        return;
-      }
-      setCreatedJob({
-        jobId,
-        videoUrl: c.url,
-        desc: c.desc,
-        attachedProduct: currentCard?.name ?? '(đã gắn)',
-      });
-
-      setMsg(`⚙ (3/3) Tải & clean nguồn ${jobId} (có thể mất ~30s)…`);
+      setMsg(`⚙ (2/2) Tải & clean nguồn ${jobId} (có thể mất ~30s)…`);
       setIntake('running');
       const ij = await runSourceIntake(jobId);
       if (ij.ok) {
         setIntake('done');
         setIntakeMsg('✅ Nguồn đã tải & clean (SOURCE_READY).');
-        setMsg(`✅ ${jobId}: video quét đã TẢI XONG — sang Hành động 2 bấm "Chạy sản xuất video".`);
+        setMsg(
+          `✅ ${jobId}: video quét đã TẢI XONG — sang Hành động 2 bấm "Chạy sản xuất video" (sản phẩm sẽ tự nhận dạng + Market-Fit ở bước 0).`,
+        );
       } else {
         setIntake('failed');
         setIntakeMsg(`🛑 FAILED: ${ij.message ?? ij.code ?? 'Tải / clean nguồn thất bại.'}`);
-        setMsg(`🛑 (3/3) ${jobId} tải nguồn lỗi — bấm "Thử tải lại nguồn" ở khối dưới.`);
+        setMsg(`🛑 (2/2) ${jobId} tải nguồn lỗi — bấm "Thử tải lại nguồn" ở khối dưới.`);
       }
     } catch (e) {
       setMsg(`🛑 ${e instanceof Error ? e.message : 'Lỗi mạng.'}`);
@@ -478,21 +447,14 @@ export function TrendScoutReviewPanel({ onJobMutated }: { onJobMutated?: () => v
         </p>
       ) : (
         <div className="space-y-1.5">
-          {/* Nhãn cho nút chuỗi: sản phẩm nào sẽ được gắn tự động. */}
+          {/* Phần 78 — Product-from-Video Loop: KHÔNG gắn card tồn kho nữa. */}
           <p className="text-[10px] text-neutral-500">
-            {currentCard ? (
-              <>
-                Nút <span className="font-bold text-accent-violet">⬇ Tạo job & Tải nguồn</span> sẽ
-                tự gắn sản phẩm hiện tại:{' '}
-                <span className="font-semibold text-neutral-300">{currentCard.name}</span> (
-                {currentCard.status}) — muốn sản phẩm khác thì dùng "+ Tạo job POV" rồi chọn tay.
-              </>
-            ) : (
-              <span className="text-accent-amber">
-                Chưa có sản phẩm hiện tại — nút chuỗi bị khóa. Dùng "+ Tạo job POV" rồi chọn từ kho
-                link / dán link TikTok Shop.
-              </span>
-            )}
+            Nút <span className="font-bold text-accent-violet">⬇ Tạo job & Tải nguồn</span> chỉ tạo
+            job + tải nguồn. Sản phẩm sẽ được{' '}
+            <span className="font-semibold text-accent-cyan">
+              TỰ nhận dạng từ video + chấm Market-Fit TikTok Shop
+            </span>{' '}
+            (khiên bước 0) khi bấm "Chạy sản xuất video" ở Hành động 2 — không cần chọn/dán gì.
           </p>
           {fresh.map((c) => (
             <div
@@ -526,12 +488,11 @@ export function TrendScoutReviewPanel({ onJobMutated }: { onJobMutated?: () => v
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
-                {/* Nút chuỗi CHÍNH: tải video đã quét về trong 1 click (job+SP+nguồn). */}
+                {/* Nút chuỗi CHÍNH (Phần 78): tạo job + tải nguồn — sản phẩm để bước 0 tự lo. */}
                 <button
                   type="button"
                   onClick={() => void onScanToSource(c)}
-                  disabled={busy != null || !currentCard}
-                  title={currentCard ? undefined : 'Chưa có sản phẩm hiện tại — chọn trước.'}
+                  disabled={busy != null}
                   className="rounded-lg border border-accent-violet/40 bg-accent-violet/15 px-3 py-1.5 text-[11px] font-bold text-accent-violet transition hover:bg-accent-violet/25 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {busy === `chain:${c.awemeId}` ? 'Đang chạy chuỗi…' : '⬇ Tạo job & Tải nguồn'}

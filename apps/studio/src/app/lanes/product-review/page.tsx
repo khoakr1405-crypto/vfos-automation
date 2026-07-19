@@ -1351,16 +1351,30 @@ export default function ProductReviewLanePage() {
   // ĐÃ BIND vào job hiện tại (Action 2) không. Job mang binding riêng (snapshot lúc
   // tạo), nên global card có thể lệch nếu Operator chọn sản phẩm khác mà chưa tạo job.
   const jobBinding = latestJob?.productBinding ?? null;
-  const cardMatchesJob = bindingMatchesCard(jobBinding, card);
+  // Phần 78 — job VIDEO-FIRST tự quản binding: chưa card (bước 0 pipeline sẽ tự
+  // nhận dạng sản phẩm từ video + Market-Fit) HOẶC card platform tiktok-shop
+  // (identity không phải Shopee — vision gate verify khớp video server-side).
+  // Các job này KHÔNG so với slot card Shopee ở Action 1.
+  const isAutoProductJob =
+    !!latestJob &&
+    (latestJob.productPlatform === 'tiktok-shop' ||
+      (!latestJob.productPlatform &&
+        !!latestJob.sourceVideoUrl &&
+        !jobBinding?.shortLink &&
+        !jobBinding?.shopId &&
+        !jobBinding?.itemId));
+  const cardMatchesJob = isAutoProductJob || bindingMatchesCard(jobBinding, card);
   // Mismatch chỉ "thật" khi có cả card lẫn job nhưng identity khác nhau.
   const cardJobMismatch = !!card && !!latestJob && !cardMatchesJob;
 
   const bindingStatus: 'PASS' | 'MISMATCH' | 'MISSING' = (() => {
+    if (isAutoProductJob) return 'PASS';
     if (!card || !jobBinding) return 'MISSING';
     return cardMatchesJob ? 'PASS' : 'MISMATCH';
   })();
 
   const getAction2LockReason = () => {
+    if (isAutoProductJob) return undefined;
     if (!cardReady) return 'Hoàn tất Hành động 1 (Product Card hợp lệ) để mở bước sản xuất.';
     if (bindingStatus === 'MISSING')
       return 'Thiếu thông tin liên kết sản phẩm (productBinding) hoặc chưa chọn Job.';
@@ -1424,6 +1438,10 @@ export default function ProductReviewLanePage() {
     if (!jobId) return;
     const eligible =
       jobApproved &&
+      // Phần 78 — job auto (video-first/tiktok-shop) KHÔNG auto-resume đóng gói:
+      // preparePost hiện là packaging Facebook/Shopee; đóng gói lane TikTok là
+      // round sau. Duyệt thành phẩm vẫn hoạt động bình thường.
+      !isAutoProductJob &&
       // CHỈ auto-resume đúng trạng thái APPROVED (đã duyệt, CHƯA đóng gói). So sánh
       // bằng state đồng bộ từ DTO — không dựa preflight async: race lúc mount từng
       // làm preparePost chạy nhầm cho job PUBLISHED → box lỗi package giả.
@@ -1441,6 +1459,7 @@ export default function ProductReviewLanePage() {
   }, [
     latestJob,
     jobApproved,
+    isAutoProductJob,
     isFallbackSource,
     bindingStatus,
     sourceApproved,
@@ -2526,7 +2545,17 @@ export default function ProductReviewLanePage() {
 
               <span className="text-neutral-500">Sản phẩm của Job:</span>
               <span className="text-neutral-200 font-medium">
-                {latestJob ? latestJob.product : <em className="text-neutral-600">Chưa chọn</em>}
+                {latestJob ? (
+                  isAutoProductJob && latestJob.product === '(không rõ sản phẩm)' ? (
+                    <em className="not-italic text-accent-cyan">
+                      Tự nhận dạng từ video + Market-Fit TikTok Shop (bước 0 khi chạy sản xuất)
+                    </em>
+                  ) : (
+                    latestJob.product
+                  )
+                ) : (
+                  <em className="text-neutral-600">Chưa chọn</em>
+                )}
               </span>
 
               <span className="text-neutral-500 font-medium">Sản phẩm đang chọn:</span>

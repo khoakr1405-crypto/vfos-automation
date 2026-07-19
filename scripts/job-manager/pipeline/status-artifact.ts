@@ -30,6 +30,10 @@ export type OrchestratorState =
   | 'VISION_FAILED'
   // Phần 77 — vision verdict gate: nguồn không dùng được (PRODUCT_NOT_VISIBLE…)
   | 'VISION_SOURCE_UNUSABLE'
+  // Phần 78 — bước 0 Product-from-Video (lane video-first tự nhận dạng sản phẩm)
+  | 'PRODUCT_FROM_VIDEO_REQUIRES_OPENAI'
+  | 'MARKET_FIT_FAILED'
+  | 'PRODUCT_FROM_VIDEO_FAILED'
   | 'SCRIPT_REQUIRED_BUT_CONFIRM_OPENAI_MISSING'
   | 'SCRIPT_GENERATION_FAILED'
   | 'BGM_VOICE_DIRECTION_STALE'

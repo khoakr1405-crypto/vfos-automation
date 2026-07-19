@@ -81,6 +81,9 @@ export interface OperatorJobDTO {
     shopId: string | null;
     itemId: string | null;
   };
+  /** Phần 78 — platform card đã bind ('tiktok-shop' = binding tự quản bởi bước 0
+   * + vision gate, KHÔNG so với slot Shopee); null = chưa card (video-first). */
+  productPlatform: string | null;
   operatorDecision: 'PENDING' | 'APPROVED' | 'REJECTED';
   qaStatus: 'PASS' | 'FAIL' | 'PENDING' | null;
   canReview: boolean;

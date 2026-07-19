@@ -16,6 +16,7 @@ import {
   isFallbackSource,
   isOwnerValid,
   isSourceApproved,
+  isTikTokCardValid,
   resolveCleanSourceRel,
 } from './production-gates';
 
@@ -47,6 +48,8 @@ interface ProductCard {
   shopId?: string | null;
   itemId?: string | null;
   name?: string | null;
+  // Phần 76/78 — card TikTok Shop (paste tay hoặc auto từ video).
+  platform?: string | null;
 }
 
 interface JobManifest {
@@ -111,6 +114,25 @@ export function validateJobProductBinding(
   const cardRel = manifest.source?.productCardPath;
   const cardAbs = cardRel ? resolveInsideRepo(cardRel) : null;
   if (!cardRel || !cardAbs || !existsSync(cardAbs)) {
+    // Phần 78 — job video-first (sinh từ URL video quét): sản phẩm sẽ được
+    // bước 0 pipeline tự nhận dạng + Market-Fit + attach. KHÔNG blocker.
+    if (manifest.source?.sourceVideoUrl) {
+      return {
+        ok: true,
+        status: 'PASS',
+        jobId,
+        productTitle: null,
+        productCardPath: null,
+        issues: [
+          {
+            code: 'PRODUCT_AUTO_FROM_VIDEO',
+            severity: 'info',
+            message:
+              'Job video-first: sản phẩm tự nhận dạng từ video + Market-Fit TikTok Shop ở bước 0 pipeline.',
+          },
+        ],
+      };
+    }
     return {
       ok: false,
       status: 'MISSING',
@@ -146,6 +168,31 @@ export function validateJobProductBinding(
   }
 
   const productTitle = jobCard.name ?? null;
+
+  // Phần 78 — card platform tiktok-shop: validate theo luật platform (name +
+  // OPERATOR_CONFIRMED/AUTO_MARKET_FIT). KHÔNG áp owner Shopee, KHÔNG so
+  // binding shortLink/shopId/itemId (đó là identity Shopee — không tồn tại ở
+  // card TikTok không-link). Nhánh Shopee bên dưới giữ nguyên semantics.
+  if (jobCard.platform === 'tiktok-shop') {
+    if (!isTikTokCardValid(jobCard)) {
+      return {
+        ok: false,
+        status: 'BLOCKED',
+        jobId,
+        productTitle,
+        productCardPath: cardRel,
+        issues: [
+          {
+            code: 'TIKTOK_CARD_INVALID',
+            severity: 'blocker',
+            message:
+              'Card TikTok Shop của Job không hợp lệ (cần name + status OPERATOR_CONFIRMED/AUTO_MARKET_FIT).',
+          },
+        ],
+      };
+    }
+    return { ok: true, status: 'PASS', jobId, productTitle, productCardPath: cardRel, issues: [] };
+  }
 
   // Owner validation of the job's snapshot card
   const ownerValid = isOwnerValid(jobCard);
@@ -252,7 +299,8 @@ export function validateProductionReadiness(
     issues.push({
       code: 'SOURCE_IS_FALLBACK',
       severity: 'blocker',
-      message: 'Nguồn hiện tại là fallback mẫu, không được dùng để sản xuất video thật cho sản phẩm này.',
+      message:
+        'Nguồn hiện tại là fallback mẫu, không được dùng để sản xuất video thật cho sản phẩm này.',
       details: {
         sourceMode: manifest.source?.sourceMode ?? null,
         productionAllowed: manifest.source?.productionAllowed ?? null,

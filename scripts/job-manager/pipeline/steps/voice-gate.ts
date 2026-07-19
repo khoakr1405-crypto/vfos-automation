@@ -13,16 +13,40 @@ import { writeStatusArtifact } from '../status-artifact.js';
 // (freshness gate chỉ so hash script, không bắt được đổi giọng → check tại đây).
 const VOICE_NAME_MAP = { female: 'vi-VN-HoaiMyNeural', male: 'vi-VN-NamMinhNeural' } as const;
 
+// Phần 78b — lệnh trực tiếp Operator 2026-07-16: ElevenLabs (brand voice
+// ELEVENLABS_VOICE_ID, billing payg đã thông) là GIỌNG CHÍNH THỨC lane Review.
+// edge-tts chỉ còn là phương án chữa cháy: set VFOS_VOICE_PROVIDER=edge khi
+// ElevenLabs kẹt billing/quota — không cần sửa code.
+function resolveVoiceProvider(): 'edge' | 'elevenlabs' {
+  return process.env.VFOS_VOICE_PROVIDER === 'edge' ? 'edge' : 'elevenlabs';
+}
+
 export function voiceGate(ctx: PipelineContext): void {
   const { jobId, runId, requestedVoice } = ctx;
+  const voiceProvider = resolveVoiceProvider();
 
   let voiceMismatch = false;
-  if (requestedVoice && jobId && ctx.jobOutputDir) {
+  if (jobId && ctx.jobOutputDir) {
     const vaPath = join(ctx.jobOutputDir, 'voice_artifact.json');
     if (existsSync(vaPath)) {
       try {
-        const va = JSON.parse(readFileSync(vaPath, 'utf8')) as { voice?: string };
-        if (va.voice && va.voice !== VOICE_NAME_MAP[requestedVoice]) voiceMismatch = true;
+        const va = JSON.parse(readFileSync(vaPath, 'utf8')) as {
+          voice?: string;
+          provider?: string;
+        };
+        // Đổi provider (vd edge cũ → elevenlabs mới) → voice hiện tại sai giọng
+        // thương hiệu → regen. Artifact edge ghi 'edge-tts', elevenlabs ghi 'elevenlabs'.
+        const artifactProvider = va.provider === 'edge-tts' ? 'edge' : va.provider;
+        if (artifactProvider && artifactProvider !== voiceProvider) voiceMismatch = true;
+        // Picker nam/nữ chỉ có nghĩa với edge (elevenlabs = 1 brand voice duy nhất).
+        if (
+          voiceProvider === 'edge' &&
+          requestedVoice &&
+          va.voice &&
+          va.voice !== VOICE_NAME_MAP[requestedVoice]
+        ) {
+          voiceMismatch = true;
+        }
       } catch {
         /* không đọc được → để các gate khác xử như cũ */
       }
@@ -55,6 +79,7 @@ export function voiceGate(ctx: PipelineContext): void {
     const voiceArgs = jobId
       ? ['voice:elevenlabs', '--job', jobId, '--confirm-api-call']
       : ['voice:elevenlabs', '--run', runId, '--confirm-api-call', '--sync-fixture'];
+    voiceArgs.push('--provider', voiceProvider);
     if (requestedVoice) voiceArgs.push('--voice', requestedVoice);
 
     const voiceStatus = runCommand(

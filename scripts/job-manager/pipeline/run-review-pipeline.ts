@@ -19,6 +19,7 @@ import { finalQaGate } from './steps/final-qa-gate.js';
 import { finalizeStep } from './steps/finalize-step.js';
 import { fixtureGate } from './steps/fixture-gate.js';
 import { jobSanityGate } from './steps/job-sanity-gate.js';
+import { productFromVideoGate } from './steps/product-from-video-gate.js';
 import { renderStep } from './steps/render-step.js';
 import { scriptGate } from './steps/script-gate.js';
 import { scriptQualityGate } from './steps/script-quality-gate.js';
@@ -91,6 +92,9 @@ export function runReviewPipeline(ctx: PipelineContext): void {
   dryRunPlan(ctx);
 
   // H5–H8 — chuỗi gate job mode (mỗi step tự no-op khi !jobId, như if(jobId) cũ)
+  // Phần 78 — STEP 0 TRƯỚC sanity: job video-first chưa card → tự nhận dạng
+  // sản phẩm + Market-Fit + attach; job có card → no-op (sanity giữ backstop).
+  productFromVideoGate(ctx);
   jobSanityGate(ctx);
   visionGate(ctx);
   scriptGate(ctx);

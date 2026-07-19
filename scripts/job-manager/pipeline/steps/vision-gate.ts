@@ -89,15 +89,31 @@ export function visionGate(ctx: PipelineContext): void {
   const blockingIssues = Array.isArray(quality.blockingIssues)
     ? quality.blockingIssues.filter((v): v is string => typeof v === 'string')
     : [];
-  const usableFalse = quality.sourceVideoUsable === false;
-  if (blockingIssues.length === 0 && !usableFalse) return; // vision PASS
+  // Calibration live-fire job_20260716_003 (Phần 78): CHỈ chặn theo
+  // blockingIssues (verdict CỨNG — PRODUCT_NOT_VISIBLE khi confidence < 0.3).
+  // sourceVideoUsable=false đơn thuần đến từ các signal MỀM ('Text overlap',
+  // 'Watermark', 'Low light'…) vốn đã có khiên chuyên trách xử lý (density gate
+  // + scrub/delogo + cleanliness) — từng chặn oan video khớp card 0.95 → giờ
+  // chỉ CẢNH BÁO to rồi đi tiếp.
+  if (blockingIssues.length === 0) {
+    if (quality.sourceVideoUsable === false) {
+      console.log(
+        '⚠️ Vision: sourceVideoUsable=false do signal mềm — KHÔNG chặn (đã có scrub/cleanliness xử lý).',
+      );
+      const warns = Array.isArray(art.analysis?.mismatchWarnings)
+        ? art.analysis.mismatchWarnings
+        : [];
+      for (const w of warns) if (typeof w === 'string') console.log(`   ⚠ ${w}`);
+    }
+    return; // vision PASS
+  }
 
   const confidence =
     typeof art.analysis?.productConfidence === 'number' ? art.analysis.productConfidence : null;
   const mismatch = Array.isArray(art.analysis?.mismatchWarnings)
     ? art.analysis.mismatchWarnings.filter((v): v is string => typeof v === 'string')
     : [];
-  const reason = blockingIssues.length > 0 ? blockingIssues.join(', ') : 'sourceVideoUsable=false';
+  const reason = blockingIssues.join(', ');
 
   if (ctx.forceVisionUnusable) {
     console.log('⚠️ VISION_SOURCE_UNUSABLE nhưng --force-vision-unusable ĐANG BẬT — chạy tiếp.');

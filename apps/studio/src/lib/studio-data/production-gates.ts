@@ -40,10 +40,12 @@ export const PRODUCTION_GATE_KEYS = {
   REAL_SOURCE_REQUIRED: 'REAL_SOURCE_REQUIRED',
   SOURCE_IS_FALLBACK: 'SOURCE_IS_FALLBACK',
   JOB_NOT_FOUND: 'JOB_NOT_FOUND',
+  // Phần 78 — lane video-first: sản phẩm tự nhận dạng từ video ở bước 0 pipeline.
+  PRODUCT_AUTO_FROM_VIDEO: 'PRODUCT_AUTO_FROM_VIDEO',
+  TIKTOK_CARD_INVALID: 'TIKTOK_CARD_INVALID',
 } as const;
 
-export type ProductionGateKey =
-  (typeof PRODUCTION_GATE_KEYS)[keyof typeof PRODUCTION_GATE_KEYS];
+export type ProductionGateKey = (typeof PRODUCTION_GATE_KEYS)[keyof typeof PRODUCTION_GATE_KEYS];
 
 export type GateStage = 'production' | 'publish' | 'launch' | 'approve';
 export type GateSeverity = 'blocker' | 'error' | 'warn' | 'info';
@@ -68,6 +70,8 @@ export interface GateProductCard {
   shopId?: string | null;
   itemId?: string | null;
   name?: string | null;
+  // Phần 76/78 — card TikTok Shop (paste tay hoặc auto từ video).
+  platform?: string | null;
 }
 
 /** Subset của manifest.source cần cho gate. */
@@ -78,6 +82,8 @@ export interface GateSource {
   cleanlinessStatus?: string | null;
   sourceMode?: string | null;
   productionAllowed?: boolean | null;
+  // Phần 78 — bằng chứng job video-first (tạo từ URL video quét Trend Scout).
+  sourceVideoUrl?: string | null;
 }
 
 export interface ProductionGate {
@@ -104,6 +110,22 @@ export interface ProductionGateResult {
 /** Rule 3 (owner side): card phải đúng affiliate owner và đã VERIFIED. */
 export function isOwnerValid(card: GateProductCard | null | undefined): boolean {
   return card?.affiliateOwnerId === EXPECTED_OWNER && card?.validationStatus === 'VERIFIED';
+}
+
+/**
+ * Phần 78 — card platform tiktok-shop hợp lệ: có name + status thuộc bộ chấp
+ * nhận (OPERATOR_CONFIRMED = dán tay Phần 76; AUTO_MARKET_FIT = bước 0 tự nhận
+ * dạng từ video). Owner/binding Shopee KHÔNG áp cho platform này — link TikTok
+ * Shop thật thuộc khâu affiliate sau, không chặn sản xuất.
+ */
+export function isTikTokCardValid(card: GateProductCard | null | undefined): boolean {
+  return (
+    card?.platform === 'tiktok-shop' &&
+    typeof card?.name === 'string' &&
+    card.name.trim().length > 0 &&
+    (card?.validationStatus === 'OPERATOR_CONFIRMED' ||
+      card?.validationStatus === 'AUTO_MARKET_FIT')
+  );
 }
 
 /**
@@ -254,21 +276,54 @@ export function evaluateProductionGates(
       rule: 5,
       passed: false,
       severity: 'blocker',
-      message: 'Nguồn hiện tại là fallback/demo — chỉ dùng review/dev, không được production/publish/launch.',
-      details: { sourceMode: src?.sourceMode ?? null, productionAllowed: src?.productionAllowed ?? null },
+      message:
+        'Nguồn hiện tại là fallback/demo — chỉ dùng review/dev, không được production/publish/launch.',
+      details: {
+        sourceMode: src?.sourceMode ?? null,
+        productionAllowed: src?.productionAllowed ?? null,
+      },
     });
   }
 
   // Rule 3 — product binding + owner.
   if (rules.has(3)) {
     if (!card) {
-      fail({
-        key: PRODUCTION_GATE_KEYS.PRODUCT_BINDING_MISSING,
-        rule: 3,
-        passed: false,
-        severity: 'blocker',
-        message: 'Job chưa có Product Card được liên kết (bind).',
-      });
+      // Phần 78 — job video-first (sinh từ URL video quét) chưa card: bước 0
+      // pipeline TỰ nhận dạng sản phẩm + Market-Fit rồi attach. Gate ghi info
+      // (không blocker) để production được phép khởi chạy. Job thiếu cả
+      // sourceVideoUrl (legacy tạo tay) → giữ blocker cũ nguyên vẹn.
+      if (manifest.source?.sourceVideoUrl) {
+        gates.push({
+          key: PRODUCTION_GATE_KEYS.PRODUCT_AUTO_FROM_VIDEO,
+          rule: 3,
+          passed: true,
+          severity: 'info',
+          message:
+            'Job video-first: sản phẩm sẽ được tự nhận dạng từ video + chấm Market-Fit TikTok Shop ở bước 0 pipeline.',
+        });
+      } else {
+        fail({
+          key: PRODUCTION_GATE_KEYS.PRODUCT_BINDING_MISSING,
+          rule: 3,
+          passed: false,
+          severity: 'blocker',
+          message: 'Job chưa có Product Card được liên kết (bind).',
+        });
+      }
+    } else if (card.platform === 'tiktok-shop') {
+      // Phần 78 — card TikTok Shop (dán tay/auto): validate theo luật platform,
+      // KHÔNG áp owner Shopee + KHÔNG so binding shortLink/shopId/itemId.
+      if (!isTikTokCardValid(card)) {
+        fail({
+          key: PRODUCTION_GATE_KEYS.TIKTOK_CARD_INVALID,
+          rule: 3,
+          passed: false,
+          severity: 'blocker',
+          message:
+            'Card TikTok Shop của Job không hợp lệ (cần name + status OPERATOR_CONFIRMED/AUTO_MARKET_FIT).',
+          details: { validationStatus: card.validationStatus ?? null },
+        });
+      }
     } else {
       if (!isOwnerValid(card)) {
         fail({

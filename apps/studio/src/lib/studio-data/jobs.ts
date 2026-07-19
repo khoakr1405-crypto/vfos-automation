@@ -150,6 +150,8 @@ interface ProductCard {
   shopId?: string | null;
   itemId?: string | null;
   name?: string | null;
+  // Phần 76/78 — card TikTok Shop (paste tay hoặc auto từ video).
+  platform?: string | null;
 }
 
 /* ---- channel binding (Niche → Channel → Job) -------------------------------
@@ -406,6 +408,9 @@ function buildJobDTO(entry: RegistryEntry): OperatorJobDTO {
       null,
     sourceVideoUrl: manifest?.source?.sourceVideoUrl ?? entry.sourceVideoUrl ?? null,
     productBinding,
+    // Phần 78 — platform của card đã bind (tiktok-shop = binding tự quản, không
+    // so với slot Shopee ở Action 1); null = chưa card (video-first chờ bước 0).
+    productPlatform: card?.platform ?? null,
     operatorDecision: manifest?.review?.operatorDecision ?? entry.operatorDecision ?? 'PENDING',
     qaStatus,
     canReview,
