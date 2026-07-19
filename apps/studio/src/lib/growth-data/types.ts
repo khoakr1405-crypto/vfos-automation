@@ -114,6 +114,17 @@ export interface PublishedPost {
   /** Affiliate short link công khai (public attribution). KHÔNG phải secret. */
   affiliateShortLink: string | null;
   publishedAt: string;
+  /**
+   * Bằng chứng đăng của máy tick tự động (Phần 82, R-B). Tất cả OPTIONAL để không
+   * phá writer/reader cũ (analytics suy 'platform' từ Channel, chưa đọc field này).
+   */
+  platform?: Platform;
+  /** URL công khai của bài (share_url TikTok / permalink FB). KHÔNG phải secret. */
+  postUrl?: string;
+  /** Ai kích hoạt đăng: 'auto_tick' (máy tick) | 'operator' (bấm tay). */
+  firedBy?: 'auto_tick' | 'operator';
+  /** slotId giờ vàng đã bắn (truy vết lịch → bài). */
+  slotId?: string;
 }
 
 /** Chỉ số hiệu suất 1 lần chụp cho 1 bài đã đăng. source rõ mock vs real. */

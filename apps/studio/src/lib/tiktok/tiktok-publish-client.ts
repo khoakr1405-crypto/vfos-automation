@@ -32,6 +32,14 @@ export interface TikTokPublishInput {
   hashtags?: string[];
   /** Privacy của bài đăng — app chưa audit thường buộc SELF_ONLY. */
   privacyLevel?: 'SELF_ONLY' | 'PUBLIC_TO_EVERYONE' | 'MUTUAL_FOLLOW_FRIENDS';
+  /**
+   * Khai báo nội dung do AI tạo (post_info.is_aigc). VFOS reup/biên tập bằng AI nên
+   * máy tick tự đăng LUÔN bật cờ này — đúng policy AIGC của TikTok, giảm rủi ro gỡ bài.
+   * Bỏ trống → giữ nguyên body cũ (backward-compatible cho luồng đăng tay hiện tại).
+   */
+  isAigc?: boolean;
+  /** post_info.brand_organic_toggle — nội dung quảng bá "thương hiệu của bạn". */
+  brandOrganicToggle?: boolean;
 }
 
 /** Lỗi đã sanitize — KHÔNG bao giờ chứa access token. */
@@ -142,6 +150,11 @@ export function createTikTokPublishClient(config: {
             disable_comment: false,
             disable_duet: false,
             disable_stitch: false,
+            // AIGC + brand toggle: chỉ thêm khi caller khai báo (giữ body cũ nguyên vẹn).
+            ...(input.isAigc !== undefined ? { is_aigc: input.isAigc } : {}),
+            ...(input.brandOrganicToggle !== undefined
+              ? { brand_organic_toggle: input.brandOrganicToggle }
+              : {}),
           },
           source_info: {
             source: 'FILE_UPLOAD',
@@ -307,7 +320,10 @@ export async function queryCreatorUsername(
     );
     if (r.status >= 400) return { ok: false };
     const data = (r.json.data ?? {}) as { creator_username?: string };
-    return { ok: true, username: data.creator_username ? String(data.creator_username) : undefined };
+    return {
+      ok: true,
+      username: data.creator_username ? String(data.creator_username) : undefined,
+    };
   } catch {
     return { ok: false };
   }

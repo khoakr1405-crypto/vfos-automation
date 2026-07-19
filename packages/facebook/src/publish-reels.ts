@@ -4,8 +4,9 @@
  * 3-phase flow + MANDATORY Graph readback verify:
  *   1. start  — POST /{page_id}/video_reels (upload_phase=start) → video_id + upload_url
  *   2. upload — POST rupload.facebook.com/video-upload/{ver}/{video_id} (binary, OAuth header)
- *   3. finish — POST /{page_id}/video_reels (upload_phase=finish, video_state=PUBLISHED)
- *   4. poll   — GET /{video_id}?fields=status until ready/complete (capped)
+ *   3. finish — POST /{page_id}/video_reels (upload_phase=finish, video_state=PUBLISHED
+ *               hoặc SCHEDULED + scheduled_publish_time cho hẹn giờ native)
+ *   4. poll   — GET /{video_id}?fields=status until ready/complete (capped; bỏ qua khi SCHEDULED)
  *   5. verify — GET /{video_id}?fields=id,permalink_url — REQUIRED before success
  *
  * Truth rules (hậu quả sự cố fake publish 2026-06-11):
@@ -48,6 +49,17 @@ export interface ReelPublishOptions {
   pollIntervalMs?: number;
   /** Max total time to wait for processing before giving up. Default 240s. */
   maxPollMs?: number;
+  /**
+   * PUBLISHED (mặc định — đăng ngay sau processing) hoặc SCHEDULED (hẹn giờ
+   * native của Facebook). SCHEDULED cho phép máy tick "đẩy sớm": FB TỰ đăng đúng
+   * giờ dù laptop tắt. Byte-identical với hành vi cũ khi bỏ trống.
+   */
+  videoState?: 'PUBLISHED' | 'SCHEDULED';
+  /**
+   * BẮT BUỘC khi videoState='SCHEDULED'. Unix epoch SECONDS. Facebook yêu cầu
+   * trong khoảng (now + 10 phút) .. (now + 29 ngày). Ngoài khoảng → fail precheck.
+   */
+  scheduledPublishTime?: number;
 }
 
 /** Trạng thái hiển thị công khai — chỉ Operator/nick ngoài mới confirm được. */
@@ -77,6 +89,10 @@ export interface ReelPublishResult {
   readbackPublished?: boolean;
   readbackPrivacy?: string;
   readbackPublishStatus?: string;
+  /** True khi reel được nhận ở trạng thái hẹn giờ (videoState='SCHEDULED'). */
+  scheduled?: boolean;
+  /** Unix epoch SECONDS Facebook xác nhận sẽ đăng (readback của scheduled reel). */
+  readbackScheduledPublishTime?: number;
   error?: string;
   diagnosis?: string;
 }
@@ -171,9 +187,13 @@ export async function verifyReelPublished(
 ): Promise<ReelPublishResult> {
   const metaMode = (process.env.META_MODE ?? '').trim().toLowerCase();
   if (metaMode !== 'live') {
-    return fail('mode_gate', `META_MODE_NOT_LIVE: META_MODE='${metaMode || 'unset'}' — verify bị chặn.`, {
-      diagnosis: 'Set META_MODE=live để re-verify. KHÔNG có API call nào đã được thực hiện.',
-    });
+    return fail(
+      'mode_gate',
+      `META_MODE_NOT_LIVE: META_MODE='${metaMode || 'unset'}' — verify bị chặn.`,
+      {
+        diagnosis: 'Set META_MODE=live để re-verify. KHÔNG có API call nào đã được thực hiện.',
+      },
+    );
   }
   if (!videoId.trim()) {
     return fail('verify', 'VERIFY_NO_VIDEO_ID: thiếu videoId để re-verify.');
@@ -268,6 +288,27 @@ export async function publishReelToPage(
     return fail('precheck', `VIDEO_FILE_EMPTY: ${options.videoFilePath}`);
   }
 
+  // Scheduled precheck: epoch phải nằm trong (now+10min .. now+29 ngày) đúng chuẩn FB.
+  const videoState = options.videoState ?? 'PUBLISHED';
+  if (videoState === 'SCHEDULED') {
+    const t = options.scheduledPublishTime;
+    const nowSec = Math.floor(Date.now() / 1000);
+    const minSec = nowSec + 10 * 60;
+    const maxSec = nowSec + 29 * 24 * 60 * 60;
+    if (typeof t !== 'number' || !Number.isFinite(t)) {
+      return fail(
+        'precheck',
+        'SCHEDULE_TIME_MISSING: videoState=SCHEDULED cần scheduledPublishTime (epoch giây).',
+      );
+    }
+    if (t < minSec || t > maxSec) {
+      return fail(
+        'precheck',
+        `SCHEDULE_TIME_OUT_OF_RANGE: scheduledPublishTime phải trong (now+10min .. now+29 ngày). Nhận ${t}, hợp lệ [${minSec}, ${maxSec}].`,
+      );
+    }
+  }
+
   // Phase tracking cho catch-all: lỗi runtime SAU finish vẫn phải báo đúng phase
   // và giữ uploadAccepted=true để caller khóa double-publish.
   let currentPhase: ReelPublishPhase = 'start';
@@ -319,7 +360,8 @@ export async function publishReelToPage(
       );
     }
 
-    // Phase 3 — finish (video_state=PUBLISHED ⇒ lên Page sau khi processing xong)
+    // Phase 3 — finish. video_state=PUBLISHED ⇒ đăng sau processing;
+    // SCHEDULED ⇒ FB tự đăng đúng scheduled_publish_time (đẩy sớm, laptop tắt vẫn OK).
     currentPhase = 'finish';
     const finish = await postGraph(
       `/${pageId}/video_reels`,
@@ -327,8 +369,11 @@ export async function publishReelToPage(
       {
         upload_phase: 'finish',
         video_id: videoId,
-        video_state: 'PUBLISHED',
+        video_state: videoState,
         description: options.description,
+        ...(videoState === 'SCHEDULED'
+          ? { scheduled_publish_time: String(options.scheduledPublishTime) }
+          : {}),
       },
       30_000,
     );
@@ -344,6 +389,52 @@ export async function publishReelToPage(
     // để caller khóa double-publish.
     uploadAcceptedFlag = true;
     const accepted: Partial<ReelPublishResult> = { uploadAccepted: true, videoId };
+
+    // SCHEDULED: reel KHÔNG "ready" tới giờ hẹn — bỏ qua poll publish, chỉ readback
+    // xác nhận object tồn tại + có scheduled_publish_time. permalink chưa có là bình
+    // thường (post chưa lên) nên KHÔNG bắt buộc. Truth rule giữ nguyên: chỉ claim
+    // "đã HẸN" ở mức API, public visibility là việc Operator hậu kiểm sau khi lên.
+    if (videoState === 'SCHEDULED') {
+      currentPhase = 'verify';
+      const schedFields = encodeURIComponent('id,scheduled_publish_time,permalink_url');
+      const sv = await getGraph(`/${videoId}?fields=${schedFields}`, pageAccessToken, 30_000);
+      if (!sv.ok) {
+        return {
+          ...fail(
+            'verify',
+            `SCHEDULE_VERIFY_FAILED: [${sv.error?.type}] ${sv.error?.message} (code: ${sv.error?.code})`,
+          ),
+          ...accepted,
+          diagnosis:
+            'Finish SCHEDULED đã OK nhưng readback fail. Kiểm tra Composer/Scheduled Posts thủ công.',
+        } as ReelPublishResult;
+      }
+      const schedId = String(sv.body.id ?? '');
+      const schedTime = Number(sv.body.scheduled_publish_time ?? 0);
+      if (!schedId || !Number.isFinite(schedTime) || schedTime <= 0) {
+        return {
+          ...fail(
+            'verify',
+            'SCHEDULE_VERIFY_INCOMPLETE: readback thiếu id hoặc scheduled_publish_time.',
+          ),
+          ...accepted,
+        } as ReelPublishResult;
+      }
+      const schedPermalink = String(sv.body.permalink_url ?? '');
+      return {
+        success: true,
+        phase: 'done',
+        uploadAccepted: true,
+        verified: true,
+        apiPublishConfirmed: true,
+        publicVisibilityConfirmed: false,
+        publishVisibility: 'UNCONFIRMED',
+        scheduled: true,
+        readbackScheduledPublishTime: schedTime,
+        videoId: schedId,
+        ...(schedPermalink ? { permalinkUrl: normalizePermalink(schedPermalink) } : {}),
+      };
+    }
 
     // Phase 4 — poll processing/publishing status (capped)
     currentPhase = 'processing';
