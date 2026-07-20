@@ -8,6 +8,7 @@ import { OperatorJobQueue } from '@/components/overview/operator-job-queue';
 import { OperatorTodo } from '@/components/overview/operator-todo';
 import { OverviewKpiRow } from '@/components/overview/overview-kpi-row';
 import { ProcessStrip } from '@/components/overview/process-strip';
+import { PublishRhythmBoard } from '@/components/overview/publish-rhythm-board';
 import { ProductQueue } from '@/components/overview/product-queue';
 import { PageHeader } from '@/components/page-header';
 import { ProductReviewStatusPanel } from '@/components/product-review/status-panel';
@@ -179,6 +180,9 @@ export default function OverviewPage() {
           {/* Trạng thái lane chi tiết (bảng neon read-only). */}
           <ProductReviewStatusPanel />
           <EntertainmentStatusPanel />
+
+          {/* Nhịp tự đăng — board máy tick (Phần 82, read-only). */}
+          <PublishRhythmBoard />
 
           {/* Nguồn sản phẩm thật (Shopee registry). */}
           <ProductQueue />
