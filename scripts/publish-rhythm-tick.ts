@@ -14,18 +14,21 @@
  *  3. Mặc định (không set gì / không server) = DRY-RUN: KHÔNG network, KHÔNG đăng.
  *  4. Phanh tổng publish-halt.json → dừng ngay đầu run.
  *
- * ⚠ Giới hạn R-B đã biết (chờ Operator/round sau):
- *  - Route ent facebook-publish hiện ĐĂNG NGAY (chưa truyền scheduled_publish_time),
- *    nên FB cũng bắn theo cửa-giờ (laptop phải bật). Khả năng hẹn-giờ native đã có
- *    trong packages/facebook publish-reels (videoState=SCHEDULED) nhưng CHƯA nối qua
- *    route → "đẩy sớm laptop-tắt-vẫn-đăng" là bước wiring sau.
- *  - Auto-refresh token TikTok CHƯA làm ở tick (route trả auth_expired → board nhắc
- *    Operator refresh tay). Đây là fail-safe, không phải bỏ sót âm thầm.
+ * ⚠ Ghi chú thiết kế (Phần 82):
+ *  - FB đăng ĐÚNG GIỜ VÀNG khi laptop bật (mô hình "VFOS tự bấm đăng") — KHÔNG dùng
+ *    hẹn-giờ native FB; laptop đằng nào cũng phải bật cho TikTok cùng nhịp (hủy #1).
+ *  - Auto-refresh token TikTok: BẬT bằng VFOS_TOKEN_AUTOREFRESH=on (mặc định off →
+ *    giữ việc tay `pnpm tiktok:oauth refresh`). CHỈ chạy khi target đi LIVE (fireIsLive:
+ *    master + cờ nền tảng + không --dry-run) nên dry-run KHÔNG chạm mạng. refresh_token
+ *    chết → SUSPENDED + board todo (No-Go #4: login/CAPTCHA vẫn việc tay).
+ *  - .env ĐỌC RIÊNG (parseEnv), KHÔNG nạp vào process.env → cờ nền tảng trong .env KHÔNG
+ *    tự arm fire-config. Muốn LIVE: đặt VFOS_PUBLISH_TICK + TIKTOK_PUBLISH_LIVE/META_MODE
+ *    TƯỜNG MINH trong runtime env của tick (giữ tầng phanh độc lập). .env chỉ cấp secret.
  * ========================================================================== */
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { parseArgs } from 'node:util';
+import { parseArgs, parseEnv } from 'node:util';
 import {
   type ReviewManifestLike,
   entPreviewReadyToPublish,
@@ -41,6 +44,7 @@ import {
   DEFAULT_SLOT_TIMES_LOCAL,
   type PublishSlot,
   type PublishTarget,
+  type PublishTickConfig,
   bindJobToSlot,
   dueForTikTok,
   ensureSlots,
@@ -48,6 +52,7 @@ import {
   markFired,
   markSkipped,
   missedTikTokWindow,
+  needsTokenRefresh,
   nextEmptySlotForTarget,
   parsePublishTickConfig,
   rateOk,
@@ -67,6 +72,7 @@ import {
   writeBoard,
   writeSchedule,
 } from './job-manager/core/publish-store.js';
+import { refreshAccountToken } from './tiktok-oauth-helper.js';
 
 // Stale-takeover backstop. PHẢI > tổng thời gian fire tối đa 1 tick: 2 target ×
 // FIRE_TIMEOUT_MS (2 fire tuần tự) ≈ 19.7min → đặt 30min để tick live-lâu KHÔNG
@@ -79,6 +85,7 @@ const STUDIO_BASE = (process.env.VFOS_STUDIO_BASE_URL || 'http://localhost:3002'
   /\/+$/,
   '',
 );
+const ACCOUNT_STORE_REL = join('data', 'secure', 'tiktok_accounts.json');
 
 const TARGETS: PublishTarget[] = [
   {
@@ -144,6 +151,85 @@ function entAutoEnabled(): boolean {
     return undefined;
   };
   return norm(process.env.VFOS_AUTO_APPROVE_ENT) ?? norm(process.env.VFOS_AUTO_APPROVE) ?? false;
+}
+
+/**
+ * Đọc .env thành object RIÊNG (parseEnv) — KHÔNG nạp vào process.env. Quan trọng: nếu
+ * nạp .env vào process.env thì cờ nền tảng LIVE trong .env (TIKTOK_PUBLISH_LIVE/META_MODE)
+ * sẽ âm thầm arm fire-config, gộp tầng phanh 'cờ nền tảng' vào chung master → vỡ mô hình
+ * 4-tầng phanh (No-Go #3). Ở đây CHỈ để lấy secret refresh + cờ VFOS_TOKEN_AUTOREFRESH;
+ * fire-config đọc từ AMBIENT env tường minh. Thiếu/lỗi → {} (refresh tự skip).
+ */
+function readEnvFile(root: string): Record<string, string | undefined> {
+  try {
+    return parseEnv(readFileSync(join(root, '.env'), 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+/** VFOS_TOKEN_AUTOREFRESH — mặc định OFF (giữ việc tay `pnpm tiktok:oauth refresh`). */
+function tokenAutoRefreshEnabled(env: Record<string, string | undefined>): boolean {
+  const v = (env.VFOS_TOKEN_AUTOREFRESH ?? '').trim().toLowerCase();
+  return v === 'on' || v === '1' || v === 'true' || v === 'yes';
+}
+
+/**
+ * Refresh proactive token TikTok gần hết hạn — chạy TRONG lock. Gác 2 tầng: (1) target
+ * thực sự đi LIVE (fireIsLive → master ON + cờ TikTok + KHÔNG --dry-run) nên dry-run/
+ * observe KHÔNG chạm mạng — giữ hợp đồng "dry-run = không network"; (2) VFOS_TOKEN_AUTOREFRESH
+ * =on + có secret. Fail-closed: refresh FAIL (refresh_token chết/revoke) → KHÔNG retry-loop,
+ * trả todo SUSPENDED cho Operator login tay (No-Go #4). KHÔNG throw. Lưu ý: lock chỉ
+ * serialize tick-vs-tick; nếu Operator chạy `pnpm tiktok:oauth refresh` tay ĐÚNG lúc thì
+ * hiếm, worst-case fire kế auth_expired → board nhắc login (fail-closed, không mất-âm-thầm).
+ */
+async function maybeRefreshTokens(
+  root: string,
+  config: PublishTickConfig,
+  env: Record<string, string | undefined>,
+  rec: (e: Omit<AuditEntry, 'at'>) => void,
+): Promise<string[]> {
+  if (!tokenAutoRefreshEnabled(env)) return [];
+  const clientKey = (env.TIKTOK_CLIENT_KEY ?? '').trim();
+  const clientSecret = (env.TIKTOK_CLIENT_SECRET ?? '').trim();
+  if (!clientKey || !clientSecret) {
+    rec({ event: 'refresh', detail: 'bỏ qua: thiếu TIKTOK_CLIENT_KEY/SECRET trong .env' });
+    return [];
+  }
+  const store =
+    readJson<Record<string, { expiresAt?: string }>>(join(root, ACCOUNT_STORE_REL)) ?? {};
+  const nowMs = Date.now();
+  const todos: string[] = [];
+  for (const t of TARGETS.filter((x) => x.platform === 'tiktok')) {
+    if (!fireIsLive(config, t.platform)) continue; // dry-run/master-off/cờ-off → KHÔNG chạm mạng
+    if (!needsTokenRefresh(store[t.targetId]?.expiresAt, nowMs)) continue;
+    try {
+      const res = await refreshAccountToken(t.targetId, { clientKey, clientSecret }, root);
+      if (res.ok) {
+        rec({
+          event: 'refresh',
+          targetId: t.targetId,
+          detail: `token refreshed, expiresAt ${res.expiresAt ?? '?'}`,
+        });
+        console.log(`[tick] 🔑 refreshed ${t.targetId} (expiresAt ${res.expiresAt ?? '?'})`);
+      } else {
+        rec({
+          event: 'refresh',
+          targetId: t.targetId,
+          detail: `refresh FAIL: ${res.error ?? '?'}`,
+        });
+        todos.push(
+          `SUSPENDED: refresh token ${t.targetId} thất bại (${res.error ?? '?'}) — chạy \`pnpm tiktok:oauth url\` để đăng nhập lại (No-Go #4, việc tay).`,
+        );
+        console.log(`[tick] 🔒 refresh FAIL ${t.targetId}: ${res.error ?? '?'}`);
+      }
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      rec({ event: 'refresh', targetId: t.targetId, detail: `refresh error (transient): ${msg}` });
+      todos.push(`Refresh token ${t.targetId} lỗi tạm thời — tick sẽ tự thử lại lần sau.`);
+    }
+  }
+  return todos;
 }
 
 /* ── DISCOVERY ───────────────────────────────────────────────────────────── */
@@ -357,13 +443,17 @@ async function fireViaRoute(
 /* ── MAIN ────────────────────────────────────────────────────────────────── */
 
 async function main(): Promise<void> {
+  const root = repoRoot();
   const { values } = parseArgs({
     options: { 'dry-run': { type: 'boolean' } },
     strict: false,
   });
   const forceDryRun = values['dry-run'] === true;
+  // Fire-config CHỈ từ AMBIENT env: cờ nền tảng (TIKTOK_PUBLISH_LIVE/META_MODE) phải set
+  // TƯỜNG MINH trong runtime env — KHÔNG để .env âm thầm arm (giữ tầng phanh độc lập với
+  // master, No-Go #3). .env đọc RIÊNG bên dưới, chỉ cấp secret + cờ refresh.
   const config = parsePublishTickConfig(process.env, forceDryRun);
-  const root = repoRoot();
+  const env: Record<string, string | undefined> = { ...readEnvFile(root), ...process.env };
   const nowMs = Date.now();
   const nowIso = new Date().toISOString();
   const audit: AuditEntry[] = [];
@@ -388,6 +478,10 @@ async function main(): Promise<void> {
   }
 
   try {
+    // TOKEN MAINTENANCE (Phần 82 #2) — refresh proactive TRONG lock; tự gác fireIsLive
+    // per-target (dry-run/master-off/cờ-off → KHÔNG chạm mạng).
+    const tokenTodos = await maybeRefreshTokens(root, config, env, rec);
+
     const schedule = readSchedule(root);
     let slots = ensureSlots(schedule.slots, TARGETS, nowMs, 1);
 
@@ -591,7 +685,8 @@ async function main(): Promise<void> {
         // Todo hậu kiểm của Operator (mô hình hậu kiểm — xem trên nền tảng).
         operatorTodos: [
           'TikTok đăng SELF_ONLY tới khi app audit — xem rồi bật public trên app.',
-          'FB hiện đăng-ngay (chưa hẹn-giờ native qua route) — round sau nối scheduled.',
+          'FB đăng đúng giờ vàng khi laptop bật (VFOS tự bấm) — hậu kiểm trên trang.',
+          ...tokenTodos,
         ],
       },
       root,

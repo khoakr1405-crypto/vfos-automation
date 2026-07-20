@@ -4,6 +4,7 @@ import { describe, test } from 'node:test';
 import {
   type PublishSlot,
   type PublishTarget,
+  TOKEN_REFRESH_THRESHOLD_MS,
   bindJobToSlot,
   buildDaySlots,
   capOk,
@@ -15,6 +16,7 @@ import {
   markFired,
   markSkipped,
   missedTikTokWindow,
+  needsTokenRefresh,
   nextEmptySlotForTarget,
   parsePublishTickConfig,
   rateOk,
@@ -57,6 +59,33 @@ describe('VN time helpers — deterministic bất kể TZ máy chạy', () => {
       makeSlotId('tt_review_main', '2026-07-19', '11:30'),
       'tt_review_main__2026-07-19__1130',
     );
+  });
+});
+
+describe('needsTokenRefresh — quyết định refresh proactive (Phần 82 #2)', () => {
+  test('expiresAt thiếu → false (không đoán mù)', () => {
+    assert.equal(needsTokenRefresh(undefined, NOW), false);
+  });
+  test('expiresAt không parse được → false', () => {
+    assert.equal(needsTokenRefresh('không-phải-iso', NOW), false);
+  });
+  test('còn 5h tới hạn (> ngưỡng 2h) → false', () => {
+    assert.equal(needsTokenRefresh(new Date(NOW + 5 * H).toISOString(), NOW), false);
+  });
+  test('còn 1h tới hạn (< ngưỡng 2h) → true', () => {
+    assert.equal(needsTokenRefresh(new Date(NOW + 1 * H).toISOString(), NOW), true);
+  });
+  test('đã quá hạn (âm) → true', () => {
+    assert.equal(needsTokenRefresh(new Date(NOW - 1 * H).toISOString(), NOW), true);
+  });
+  test('đúng biên ngưỡng: còn = threshold → false (strict <)', () => {
+    assert.equal(
+      needsTokenRefresh(new Date(NOW + TOKEN_REFRESH_THRESHOLD_MS).toISOString(), NOW),
+      false,
+    );
+  });
+  test('threshold tuỳ biến', () => {
+    assert.equal(needsTokenRefresh(new Date(NOW + 3 * H).toISOString(), NOW, 4 * H), true);
   });
 });
 

@@ -17,7 +17,7 @@
  *   pnpm tiktok:oauth refresh
  * ========================================================================== */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -143,17 +143,28 @@ function writeTokensToEnv(envPath: string, kv: Record<string, string>): void {
 
 const ACCOUNT_STORE_REL = 'data/secure/tiktok_accounts.json';
 
-function writeTokensToStore(accountId: string, entry: StoreAccountEntry): string {
-  const storePath = resolve(process.cwd(), ACCOUNT_STORE_REL);
+function writeTokensToStore(
+  accountId: string,
+  entry: StoreAccountEntry,
+  baseDir: string = process.cwd(),
+): string {
+  const storePath = resolve(baseDir, ACCOUNT_STORE_REL);
   const cur = existsSync(storePath) ? readFileSync(storePath, 'utf8') : '';
   mkdirSync(dirname(storePath), { recursive: true });
-  writeFileSync(storePath, upsertAccountStoreContent(cur, accountId, entry));
+  // Ghi ATOMIC (tmp→rename): tick auto-refresh ghi file token đa-account không người
+  // canh; crash giữa lúc ghi thẳng sẽ cụt JSON → mất token MỌI account. rename nguyên tử.
+  const tmp = `${storePath}.tmp`;
+  writeFileSync(tmp, upsertAccountStoreContent(cur, accountId, entry));
+  renameSync(tmp, storePath);
   return ACCOUNT_STORE_REL;
 }
 
 /** Đọc entry account từ store (cho refresh --account). null nếu chưa có. */
-function readStoreEntry(accountId: string): StoreAccountEntry | null {
-  const storePath = resolve(process.cwd(), ACCOUNT_STORE_REL);
+function readStoreEntry(
+  accountId: string,
+  baseDir: string = process.cwd(),
+): StoreAccountEntry | null {
+  const storePath = resolve(baseDir, ACCOUNT_STORE_REL);
   if (!existsSync(storePath)) return null;
   try {
     const store = JSON.parse(readFileSync(storePath, 'utf8')) as Record<
@@ -181,6 +192,59 @@ async function postForm(url: string, form: Record<string, string>): Promise<Toke
     body: new URLSearchParams(form).toString(),
   });
   return (await res.json().catch(() => ({}))) as TokenResponse;
+}
+
+export interface RefreshResult {
+  ok: boolean;
+  accountId: string;
+  /** ISO hạn mới (khi API trả expires_in). */
+  expiresAt?: string;
+  openId?: string;
+  /** Mã lỗi ngắn: NO_REFRESH_TOKEN | REFRESH_REJECTED | <error TikTok>. */
+  error?: string;
+}
+
+/**
+ * Refresh access token 1 account từ refresh_token trong store — ROTATION-SAFE: ghi đè
+ * refresh_token MỚI TikTok trả (giữ cũ nếu không trả) để chuỗi tự động không chết. Dùng
+ * lại bởi CLI `refresh --account` LẪN máy tick (auto-refresh trong lock). KHÔNG log token.
+ * baseDir = repo root (default cwd) để tick gọi được từ cwd bất kỳ. Fail-closed: thiếu/
+ * chết refresh_token → ok:false (KHÔNG throw); lỗi MẠNG thì để caller bắt.
+ */
+export async function refreshAccountToken(
+  accountId: string,
+  creds: { clientKey: string; clientSecret: string },
+  baseDir: string = process.cwd(),
+): Promise<RefreshResult> {
+  const entry = readStoreEntry(accountId, baseDir);
+  if (!entry?.refreshToken) return { ok: false, accountId, error: 'NO_REFRESH_TOKEN' };
+  const tok = await postForm(TOKEN_URL, {
+    client_key: creds.clientKey,
+    client_secret: creds.clientSecret,
+    grant_type: 'refresh_token',
+    refresh_token: entry.refreshToken,
+  });
+  if (!tok.access_token) return { ok: false, accountId, error: tok.error || 'REFRESH_REJECTED' };
+  const expiresAt = expiresAtFrom(Date.now(), tok.expires_in);
+  writeTokensToStore(
+    accountId,
+    {
+      openId: tok.open_id || entry.openId,
+      accessToken: tok.access_token,
+      ...(tok.refresh_token || entry.refreshToken
+        ? { refreshToken: tok.refresh_token || entry.refreshToken }
+        : {}),
+      ...(expiresAt ? { expiresAt } : {}),
+      ...(entry.username ? { username: entry.username } : {}),
+    },
+    baseDir,
+  );
+  return {
+    ok: true,
+    accountId,
+    openId: tok.open_id || entry.openId,
+    ...(expiresAt ? { expiresAt } : {}),
+  };
 }
 
 function requireEnv(name: string): string {
@@ -288,39 +352,24 @@ async function main(): Promise<void> {
 
   if (sub === 'refresh') {
     // Phần 79 — refresh theo account-store khi có --account (không đụng .env).
+    // Phần 82 — dùng lại hàm thuần refreshAccountToken (chung đường với máy tick).
     if (accountId) {
-      const entry = readStoreEntry(accountId);
-      if (!entry?.refreshToken) {
-        console.error(
-          `🛑 Account "${accountId}" chưa có refreshToken trong ${ACCOUNT_STORE_REL} — chạy exchange --account trước.`,
-        );
-        process.exit(2);
-      }
-      const tok = await postForm(TOKEN_URL, {
-        client_key: requireEnv('TIKTOK_CLIENT_KEY'),
-        client_secret: requireEnv('TIKTOK_CLIENT_SECRET'),
-        grant_type: 'refresh_token',
-        refresh_token: entry.refreshToken,
+      const res = await refreshAccountToken(accountId, {
+        clientKey: requireEnv('TIKTOK_CLIENT_KEY'),
+        clientSecret: requireEnv('TIKTOK_CLIENT_SECRET'),
       });
-      if (!tok.access_token) {
-        console.error(`🛑 Refresh thất bại: ${tok.error ?? '?'} — ${tok.error_description ?? ''}`);
+      if (!res.ok) {
+        if (res.error === 'NO_REFRESH_TOKEN') {
+          console.error(
+            `🛑 Account "${accountId}" chưa có refreshToken trong ${ACCOUNT_STORE_REL} — chạy exchange --account trước.`,
+          );
+          process.exit(2);
+        }
+        console.error(`🛑 Refresh thất bại: ${res.error ?? '?'}`);
         process.exit(1);
       }
-      const rel = writeTokensToStore(accountId, {
-        openId: tok.open_id || entry.openId,
-        accessToken: tok.access_token,
-        ...(tok.refresh_token || entry.refreshToken
-          ? { refreshToken: tok.refresh_token || entry.refreshToken }
-          : {}),
-        ...(expiresAtFrom(Date.now(), tok.expires_in)
-          ? { expiresAt: expiresAtFrom(Date.now(), tok.expires_in) as string }
-          : {}),
-        ...(entry.username ? { username: entry.username } : {}),
-      });
-      console.log(`✅ Đã refresh account "${accountId}" + ghi ${rel}:`);
-      console.log(
-        `   accessToken ${redact(tok.access_token)} | expires_in ${tok.expires_in ?? '?'}s`,
-      );
+      console.log(`✅ Đã refresh account "${accountId}" + ghi ${ACCOUNT_STORE_REL}:`);
+      console.log(`   expiresAt ${res.expiresAt ?? '?'}`);
       return;
     }
     const tok = await postForm(TOKEN_URL, {

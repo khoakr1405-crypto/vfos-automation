@@ -3649,11 +3649,18 @@ docs/
 - **Docs**: CLAUDE.md No-Go #3 amendment + mục này.
 - **Rà soát hoàn chỉnh (20/07)**: chuỗi khép kín, 4 lệch-plan có chủ đích KHÔNG vá trước diễn tập — (1) FB hẹn-giờ native chưa nối route (vá khi go-live FB/VPS); (2) route KHÔNG tự refresh token (thay bằng lệnh tay mỗi sáng, xem checklist); (3) fire lỗi → SKIPPED + discovery tự bind lại slot kế (không retry 15′); (4) phanh tầng 1 = tạo file `publish-halt.json` tay, board không có nút.
 
+### R-D #2 (chờ commit) — Auto-refresh token TikTok + HỦY #1
+- `refreshAccountToken` export ROTATION-SAFE trong `tiktok-oauth-helper.ts` (CLI + tick dùng chung; ghi store **ATOMIC** tmp→rename) + `needsTokenRefresh` thuần + `maybeRefreshTokens` trong tick (trong lock).
+- **Cờ `VFOS_TOKEN_AUTOREFRESH=on`** (mặc định OFF). Tick tự refresh token gần hết hạn (<2h) **CHỈ khi target đi LIVE** (fireIsLive) → dry-run/observe KHÔNG chạm mạng. refresh_token chết → **SUSPENDED** + board todo (login tay, No-Go #4). ⇒ thay được việc refresh tay mỗi sáng.
+- **#1 (FB hẹn-giờ native) HỦY** — VFOS đăng FB đúng giờ vàng khi laptop bật (mô hình "tự bấm"); laptop đằng nào cũng bật cho TikTok cùng nhịp.
+- **⚠ CƠ CHẾ CỜ (đổi so với R-B, do review đối kháng bắt regression):** tick đọc `.env` RIÊNG (parseEnv) CHỈ để lấy secret + `VFOS_TOKEN_AUTOREFRESH`; **cờ fire (`VFOS_PUBLISH_TICK`/`TIKTOK_PUBLISH_LIVE`/`META_MODE`) PHẢI set TƯỜNG MINH trong RUNTIME ENV của tick (schtasks), KHÔNG để .env tự arm** → giữ tầng phanh "cờ nền tảng" độc lập với master. `.env` sẵn có `TIKTOK_PUBLISH_LIVE`/`META_MODE` (cho publish tay) nay KHÔNG còn tự bật tick.
+- Verify: 65/65 test + tsc/biome 0 + dry-run `liveTT=false`. Review đối kháng 9 finding → sửa 4 (A cờ-nền-tảng, B `--dry-run` gate refresh, C ghi atomic, D comment), còn lại refute/nit.
+
 ### Kịch bản DIỄN TẬP 3 NGÀY (điều kiện bật LIVE chính thức)
-1. **Ngày 0 — setup (việc tay Operator)**: mở Next server 3002 · xác nhận token TikTok `tt_review_main` còn hạn · đặt `schtasks` chạy `pnpm tick:publish` mỗi 5 phút · bật `VFOS_AUTO_APPROVE_REVIEW=on` + `VFOS_PUBLISH_TICK=on` nhưng **giữ cờ nền tảng OFF** (dry-run) 1 ngày để quan sát board.
-2. **Ngày 1-2 — SELF_ONLY thật**: bật `TIKTOK_PUBLISH_LIVE=true` (TikTok SELF_ONLY) — tick đăng 2-3 video/ngày/target, Operator **spot-check 100%** video trước khi bật public trên app (hậu-kiểm). **MỖI SÁNG bắt buộc**: `pnpm tiktok:oauth refresh --account tt_review_main` — token TikTok hết hạn 24h, route KHÔNG tự refresh (fail-closed `TIKTOK_AUTH_EXPIRED`); quên là mất slot cả ngày.
+1. **Ngày 0 — setup (việc tay Operator)**: mở Next server 3002 · xác nhận token TikTok `tt_review_main` còn hạn · đặt `schtasks` chạy `pnpm tick:publish` mỗi 5 phút, **đặt cờ fire TRONG runtime env của schtasks** (`VFOS_PUBLISH_TICK=on` + `VFOS_AUTO_APPROVE_REVIEW=on`, **KHÔNG** set `TIKTOK_PUBLISH_LIVE` ⇒ dry-run) — KHÔNG dựa vào .env cho cờ fire. Quan sát board 1 ngày.
+2. **Ngày 1-2 — SELF_ONLY thật**: thêm `TIKTOK_PUBLISH_LIVE=true` vào runtime env schtasks (TikTok SELF_ONLY) — tick đăng 2-3 video/ngày/target, Operator **spot-check 100%** video trước khi bật public trên app (hậu-kiểm). **Token**: đặt `VFOS_TOKEN_AUTOREFRESH=on` (trong .env) để tick tự refresh khi TikTok live — KHÔNG cần refresh tay mỗi sáng nữa; nếu KHÔNG bật thì chạy tay `pnpm tiktok:oauth refresh --account tt_review_main` mỗi sáng (token 24h).
 3. **PASS go-live** = ≥2 ngày đủ nhịp 2-3 post/ngày/target **zero click trước đăng** + Operator spot-check 100% tuần 1 **không false-PASS** → mới flip cấu hình LIVE chính thức + nộp TikTok app audit (mở public API, retire flip-public todo) + tạo FB System User token.
 4. **4 tầng phanh** luôn sẵn: `publish-halt.json` · config off · cờ nền tảng · xoá Task Scheduler.
 
 ### Bước tiếp theo duy nhất
-Khởi động **diễn tập 3 ngày** (việc tay Operator theo checklist trên — gồm R-B live SELF_ONLY đầu tiên). Vá #1 (FB SCHEDULED) + #2 (token auto-refresh) là round SAU diễn tập, nhắm theo dữ liệu thật.
+Commit R-D #2 (4 file scripts/tests + doc này) → khởi động **diễn tập 3 ngày** (việc tay Operator theo checklist trên — gồm R-B live SELF_ONLY đầu tiên). #1 FB đã HỦY (không cần).

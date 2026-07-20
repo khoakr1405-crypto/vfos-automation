@@ -342,3 +342,28 @@ export function fireIsLive(config: PublishTickConfig, platform: PublishPlatform)
   if (!config.enabled || config.forceDryRun) return false;
   return platform === 'tiktok' ? config.liveTiktok : config.liveFacebook;
 }
+
+/* --------------------------------------------------------------------------
+ * TOKEN MAINTENANCE (Phần 82 #2) — quyết định THUẦN khi nào refresh proactive.
+ * ------------------------------------------------------------------------ */
+
+/** Refresh khi token còn dưới ngưỡng này là tới hạn (mặc định 2h). */
+export const TOKEN_REFRESH_THRESHOLD_MS = 2 * 60 * 60 * 1000;
+
+/**
+ * Có nên refresh token bây giờ? true khi expiresAt PARSE được VÀ thời gian còn lại
+ * (expiresMs - now) < threshold — gồm cả đã quá hạn (âm). expiresAt thiếu/không parse
+ * → false: KHÔNG đoán mù (account-store coi thiếu-hạn là còn hạn; nếu token thật đã
+ * chết thì route publish tự fail-closed + board nhắc). Cửa 2h + tick 5'/lần cho ~24
+ * lần thử lại nếu 1 lần lỗi transient.
+ */
+export function needsTokenRefresh(
+  expiresAtIso: string | undefined,
+  nowMs: number,
+  thresholdMs: number = TOKEN_REFRESH_THRESHOLD_MS,
+): boolean {
+  if (!expiresAtIso) return false;
+  const exp = Date.parse(expiresAtIso);
+  if (!Number.isFinite(exp)) return false;
+  return exp - nowMs < thresholdMs;
+}
