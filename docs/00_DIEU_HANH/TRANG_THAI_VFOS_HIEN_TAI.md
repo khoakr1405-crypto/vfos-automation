@@ -3617,11 +3617,11 @@ docs/
 | Thông tin | Giá trị |
 |---|---|
 | Branch | `feat/ent-multichannel` |
-| HEAD local | `96720ff` `fix(publish): POSTING busy-lock chống double-post 2 lane (Phần 82 F1/F2)` (2026-07-19) |
+| HEAD local | `7cbf01c` `feat(overview): publish rhythm board + Phần 82 docs (R-C)` (2026-07-20) + 1 commit docs checklist diễn tập đang tạo |
 | Remote | `origin` (GitHub) |
-| origin/feat/ent-multichannel | `96720ff` (đẩy 2026-07-19). Cụm Phần 82 + dọn dirty: `2196053` R-A cổng duyệt AI · `4cd84e1` R-B máy tick · `96720ff` F1/F2 double-post lock · trước đó `ea7d491`/`15c0deb`/`91f8958`/`d9d6964`. |
-| Sync status | **sync 0/0** (đã push, local == origin). |
-| Working tree | Chỉ còn `production/_media/bgm_library.json` (runtime tự mutate counter — KHÔNG commit). R-C (board UI + docs Phần 82) đang chờ Operator duyệt mắt + lệnh commit. |
+| origin/feat/ent-multichannel | `7cbf01c` (đẩy 2026-07-20). Cụm Phần 82: `2196053` R-A cổng duyệt AI · `4cd84e1` R-B máy tick · `96720ff` F1/F2 double-post lock · `7cbf01c` R-C board UI + docs. |
+| Sync status | **sync 0/0** tại `7cbf01c`; commit docs checklist diễn tập tiếp theo push sau khi Operator duyệt. |
+| Working tree | Chỉ còn `production/_media/bgm_library.json` (runtime tự mutate counter — KHÔNG commit). Phần 82 code XONG toàn bộ; còn lại diễn tập 3 ngày (việc tay Operator). |
 | Dev server | Port 3002 (bật khi review). Dừng bằng `pnpm studio:dev:clean --no-start`. |
 
 **Trạng thái artifacts production** (tính đến 2026-05-29 phiên sync):
@@ -3644,15 +3644,16 @@ docs/
 - **R-B `4cd84e1`** — máy tick `pnpm tick:publish`: DISCOVER job đã duyệt → BIND slot → POST route Studio (tick KHÔNG cầm token; guard mis-post G4/G7 server-side). Mặc định dry-run KHÔNG network; fire cần 3 tầng: `VFOS_PUBLISH_TICK=on` + cờ nền tảng + không `--dry-run`. 82 test + review đối kháng 9 finding (đã sửa).
 - **F1/F2 `96720ff`** — POSTING busy-lock chống double-post cả 2 lane (prerequisite go-live).
 
-### R-C (đang chờ Operator duyệt mắt + lệnh commit)
-- **Board UI** read-only @Tổng quan: route `GET /api/studio/publish-board` + panel `PublishRhythmBoard` (trạng thái config/phanh/độ trễ tick/slot/hậu-kiểm). Không nút action.
+### R-C `7cbf01c` (PUSHED — Operator đã duyệt mắt board)
+- **Board UI** read-only @Tổng quan: route `GET /api/studio/publish-board` + panel `PublishRhythmBoard` (trạng thái config/phanh/độ trễ tick/slot/hậu-kiểm, giờ VN). Không nút action.
 - **Docs**: CLAUDE.md No-Go #3 amendment + mục này.
+- **Rà soát hoàn chỉnh (20/07)**: chuỗi khép kín, 4 lệch-plan có chủ đích KHÔNG vá trước diễn tập — (1) FB hẹn-giờ native chưa nối route (vá khi go-live FB/VPS); (2) route KHÔNG tự refresh token (thay bằng lệnh tay mỗi sáng, xem checklist); (3) fire lỗi → SKIPPED + discovery tự bind lại slot kế (không retry 15′); (4) phanh tầng 1 = tạo file `publish-halt.json` tay, board không có nút.
 
 ### Kịch bản DIỄN TẬP 3 NGÀY (điều kiện bật LIVE chính thức)
 1. **Ngày 0 — setup (việc tay Operator)**: mở Next server 3002 · xác nhận token TikTok `tt_review_main` còn hạn · đặt `schtasks` chạy `pnpm tick:publish` mỗi 5 phút · bật `VFOS_AUTO_APPROVE_REVIEW=on` + `VFOS_PUBLISH_TICK=on` nhưng **giữ cờ nền tảng OFF** (dry-run) 1 ngày để quan sát board.
-2. **Ngày 1-2 — SELF_ONLY thật**: bật `TIKTOK_PUBLISH_LIVE=true` (TikTok SELF_ONLY) — tick đăng 2-3 video/ngày/target, Operator **spot-check 100%** video trước khi bật public trên app (hậu-kiểm).
+2. **Ngày 1-2 — SELF_ONLY thật**: bật `TIKTOK_PUBLISH_LIVE=true` (TikTok SELF_ONLY) — tick đăng 2-3 video/ngày/target, Operator **spot-check 100%** video trước khi bật public trên app (hậu-kiểm). **MỖI SÁNG bắt buộc**: `pnpm tiktok:oauth refresh --account tt_review_main` — token TikTok hết hạn 24h, route KHÔNG tự refresh (fail-closed `TIKTOK_AUTH_EXPIRED`); quên là mất slot cả ngày.
 3. **PASS go-live** = ≥2 ngày đủ nhịp 2-3 post/ngày/target **zero click trước đăng** + Operator spot-check 100% tuần 1 **không false-PASS** → mới flip cấu hình LIVE chính thức + nộp TikTok app audit (mở public API, retire flip-public todo) + tạo FB System User token.
 4. **4 tầng phanh** luôn sẵn: `publish-halt.json` · config off · cờ nền tảng · xoá Task Scheduler.
 
 ### Bước tiếp theo duy nhất
-Operator **duyệt mắt board UI** (localhost:3002 Tổng quan → "Xem toàn bộ chi tiết") → lệnh **commit R-C** → khởi động **diễn tập 3 ngày** (gồm R-B live SELF_ONLY đầu tiên).
+Khởi động **diễn tập 3 ngày** (việc tay Operator theo checklist trên — gồm R-B live SELF_ONLY đầu tiên). Vá #1 (FB SCHEDULED) + #2 (token auto-refresh) là round SAU diễn tập, nhắm theo dữ liệu thật.
