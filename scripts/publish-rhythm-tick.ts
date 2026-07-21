@@ -197,12 +197,23 @@ async function maybeRefreshTokens(
     return [];
   }
   const store =
-    readJson<Record<string, { expiresAt?: string }>>(join(root, ACCOUNT_STORE_REL)) ?? {};
+    readJson<Record<string, { expiresAt?: string; refreshRejectedAt?: string }>>(
+      join(root, ACCOUNT_STORE_REL),
+    ) ?? {};
   const nowMs = Date.now();
   const todos: string[] = [];
   for (const t of TARGETS.filter((x) => x.platform === 'tiktok')) {
+    const entry = store[t.targetId];
+    // refresh_token đã chết (đánh dấu lần trước) → KHÔNG re-poll TikTok mỗi tick; giữ nhắc
+    // Operator login lại (tự clear khi exchange ghi entry mới). Chặn ~576 failed-call/48h.
+    if (entry?.refreshRejectedAt) {
+      todos.push(
+        `SUSPENDED: token ${t.targetId} cần login lại (refresh_token chết lúc ${entry.refreshRejectedAt}) — chạy \`pnpm tiktok:oauth url\`.`,
+      );
+      continue;
+    }
     if (!fireIsLive(config, t.platform)) continue; // dry-run/master-off/cờ-off → KHÔNG chạm mạng
-    if (!needsTokenRefresh(store[t.targetId]?.expiresAt, nowMs)) continue;
+    if (!needsTokenRefresh(entry?.expiresAt, nowMs)) continue;
     try {
       const res = await refreshAccountToken(t.targetId, { clientKey, clientSecret }, root);
       if (res.ok) {
@@ -397,6 +408,7 @@ function countPostedToday(
 
 async function fireViaRoute(
   c: Candidate,
+  tickKey: string,
 ): Promise<{ ok: boolean; detail: string; result?: PublishSlot['result'] }> {
   const url =
     c.lane === 'review'
@@ -405,7 +417,12 @@ async function fireViaRoute(
   try {
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      // Shared-secret opt-in (R-F): gửi key khi Operator bật VFOS_TICK_KEY; route đòi
+      // key với caller lập trình (tick là caller lập trình, KHÔNG same-origin browser).
+      headers: {
+        'content-type': 'application/json',
+        ...(tickKey ? { 'x-vfos-tick-key': tickKey } : {}),
+      },
       body: JSON.stringify({ caption: c.caption }),
       signal: AbortSignal.timeout(FIRE_TIMEOUT_MS),
     });
@@ -454,6 +471,7 @@ async function main(): Promise<void> {
   // master, No-Go #3). .env đọc RIÊNG bên dưới, chỉ cấp secret + cờ refresh.
   const config = parsePublishTickConfig(process.env, forceDryRun);
   const env: Record<string, string | undefined> = { ...readEnvFile(root), ...process.env };
+  const tickKey = (env.VFOS_TICK_KEY ?? '').trim(); // shared-secret cho route publish (R-F, opt-in)
   const nowMs = Date.now();
   const nowIso = new Date().toISOString();
   const audit: AuditEntry[] = [];
@@ -626,7 +644,7 @@ async function main(): Promise<void> {
       }
       // LIVE
       console.log(`[tick] 🚀 FIRE ${cand.jobId} → ${slot.platform} (${slot.slotId})`);
-      const res = await fireViaRoute(cand);
+      const res = await fireViaRoute(cand, tickKey);
       if (res.ok) {
         slots = replaceSlot(slots, markFired(slot, res.result ?? {}, new Date().toISOString()));
         recentFireMs.push(Date.now());

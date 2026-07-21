@@ -80,6 +80,9 @@ export interface StoreAccountEntry {
   /** ISO — account-store dùng để chặn token hết hạn trước khi đăng. */
   expiresAt?: string;
   username?: string;
+  /** ISO — refresh_token bị TikTok từ chối (chết/revoke). Tick auto-refresh dừng thử
+   *  account này (chống re-poll mỗi 5'); tự CLEAR khi login lại (entry ghi đè mới). */
+  refreshRejectedAt?: string;
 }
 
 /** Upsert 1 account vào nội dung store JSON. PURE — content sai định dạng → coi như rỗng. */
@@ -103,6 +106,7 @@ export function upsertAccountStoreContent(
     ...(entry.refreshToken ? { refreshToken: entry.refreshToken } : {}),
     ...(entry.expiresAt ? { expiresAt: entry.expiresAt } : {}),
     ...(entry.username ? { username: entry.username } : {}),
+    ...(entry.refreshRejectedAt ? { refreshRejectedAt: entry.refreshRejectedAt } : {}),
   };
   return `${JSON.stringify(store, null, 2)}\n`;
 }
@@ -179,6 +183,7 @@ function readStoreEntry(
       ...(e.refreshToken ? { refreshToken: String(e.refreshToken) } : {}),
       ...(e.expiresAt ? { expiresAt: String(e.expiresAt) } : {}),
       ...(e.username ? { username: String(e.username) } : {}),
+      ...(e.refreshRejectedAt ? { refreshRejectedAt: String(e.refreshRejectedAt) } : {}),
     };
   } catch {
     return null;
@@ -211,20 +216,36 @@ export interface RefreshResult {
  * baseDir = repo root (default cwd) để tick gọi được từ cwd bất kỳ. Fail-closed: thiếu/
  * chết refresh_token → ok:false (KHÔNG throw); lỗi MẠNG thì để caller bắt.
  */
+/** Đánh dấu refresh_token account đã chết (tick auto-refresh dừng re-poll mỗi 5'). No-op
+ *  nếu entry chưa có. Tự CLEAR khi login/exchange lại (ghi đè entry mới không có mốc này). */
+export function markRefreshRejected(accountId: string, baseDir: string = process.cwd()): void {
+  const entry = readStoreEntry(accountId, baseDir);
+  if (!entry) return;
+  writeTokensToStore(accountId, { ...entry, refreshRejectedAt: new Date().toISOString() }, baseDir);
+}
+
 export async function refreshAccountToken(
   accountId: string,
   creds: { clientKey: string; clientSecret: string },
   baseDir: string = process.cwd(),
 ): Promise<RefreshResult> {
   const entry = readStoreEntry(accountId, baseDir);
-  if (!entry?.refreshToken) return { ok: false, accountId, error: 'NO_REFRESH_TOKEN' };
+  if (!entry?.refreshToken) {
+    if (entry) markRefreshRejected(accountId, baseDir); // có entry nhưng không refresh_token
+    return { ok: false, accountId, error: 'NO_REFRESH_TOKEN' };
+  }
   const tok = await postForm(TOKEN_URL, {
     client_key: creds.clientKey,
     client_secret: creds.clientSecret,
     grant_type: 'refresh_token',
     refresh_token: entry.refreshToken,
   });
-  if (!tok.access_token) return { ok: false, accountId, error: tok.error || 'REFRESH_REJECTED' };
+  if (!tok.access_token) {
+    // CHỈ mark khi refresh_token thật sự CHẾT (invalid_grant) → dừng re-poll. Lỗi khác
+    // (5xx/rate-limit/mạng TikTok) là TẠM THỜI → KHÔNG mark, để tick tự thử lại lần sau.
+    if (tok.error === 'invalid_grant') markRefreshRejected(accountId, baseDir);
+    return { ok: false, accountId, error: tok.error || 'REFRESH_REJECTED' };
+  }
   const expiresAt = expiresAtFrom(Date.now(), tok.expires_in);
   writeTokensToStore(
     accountId,

@@ -113,6 +113,22 @@ describe('upsertAccountStoreContent (Phần 79 — cầu token account-store)', 
     assert.equal('refreshToken' in out.tt_x, false);
     assert.equal('expiresAt' in out.tt_x, false);
   });
+
+  test('refreshRejectedAt persist khi set + TỰ CLEAR khi ghi entry mới (H2)', () => {
+    // Đánh dấu refresh_token chết → mốc persist (tick sẽ skip re-poll).
+    const marked = JSON.parse(
+      upsertAccountStoreContent('', 'tt_review_main', {
+        ...ENTRY,
+        refreshRejectedAt: '2026-07-21T00:00:00.000Z',
+      }),
+    );
+    assert.equal(marked.tt_review_main.refreshRejectedAt, '2026-07-21T00:00:00.000Z');
+    // Đường success/exchange ghi entry MỚI không có mốc → tự CLEAR (không kẹt SUSPENDED).
+    const cleared = JSON.parse(
+      upsertAccountStoreContent(JSON.stringify(marked), 'tt_review_main', ENTRY),
+    );
+    assert.equal('refreshRejectedAt' in cleared.tt_review_main, false);
+  });
 });
 
 describe('expiresAtFrom', () => {

@@ -8,8 +8,9 @@
  * Contextual affiliate link/CTA nhận từ body (tuỳ chọn), owner CHỈ cảnh báo mềm.
  * ========================================================================== */
 
-import { buildFacebookPublishDeps, isValidJobId } from '@/lib/entertainment/jobs';
 import { type FacebookPublishErrorCode, publishToFacebook } from '@/lib/entertainment/facebook-publish';
+import { buildFacebookPublishDeps, isValidJobId } from '@/lib/entertainment/jobs';
+import { isPublishHalted, tickKeyOk } from '@/lib/growth-data/publish-guard';
 
 export const dynamic = 'force-dynamic';
 // Reel upload + processing poll có thể vượt 240s ở live.
@@ -43,6 +44,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ jobId: string 
   const { jobId } = await ctx.params;
   if (!isValidJobId(jobId)) {
     return Response.json({ ok: false, code: 'BAD_JOB_ID' }, { status: 400 });
+  }
+  // Phanh tổng chặn CẢ route (không chỉ tick) + cổng shared-secret opt-in (R-F).
+  if (isPublishHalted()) {
+    return Response.json({ ok: false, code: 'PUBLISH_HALTED' }, { status: 423 });
+  }
+  if (!tickKeyOk(req)) {
+    return Response.json({ ok: false, code: 'TICK_KEY_REQUIRED' }, { status: 403 });
   }
 
   const body = (await req.json().catch(() => ({}))) as {

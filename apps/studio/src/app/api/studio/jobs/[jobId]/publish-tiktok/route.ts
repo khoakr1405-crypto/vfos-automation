@@ -8,6 +8,7 @@
  * KHÔNG đụng publisher Facebook cũ (publish-facebook route giữ nguyên rollback).
  * ========================================================================== */
 
+import { isPublishHalted, tickKeyOk } from '@/lib/growth-data/publish-guard';
 import {
   type ReviewPublishErrorCode,
   getReviewCaptionDraft,
@@ -73,6 +74,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ jobId: string 
   const { jobId } = await ctx.params;
   if (!isValidJobId(jobId)) {
     return Response.json({ ok: false, code: 'BAD_JOB_ID' }, { status: 400 });
+  }
+  // Phanh tổng chặn CẢ route (không chỉ tick) + cổng shared-secret opt-in (R-F).
+  if (isPublishHalted()) {
+    return Response.json({ ok: false, code: 'PUBLISH_HALTED' }, { status: 423 });
+  }
+  if (!tickKeyOk(req)) {
+    return Response.json({ ok: false, code: 'TICK_KEY_REQUIRED' }, { status: 403 });
   }
 
   const body = (await req.json().catch(() => ({}))) as {

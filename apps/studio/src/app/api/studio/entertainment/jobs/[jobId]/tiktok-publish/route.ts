@@ -9,6 +9,7 @@
 
 import { buildPublishDeps, isValidJobId } from '@/lib/entertainment/jobs';
 import { type PublishErrorCode, publishToTikTok } from '@/lib/entertainment/publish';
+import { isPublishHalted, tickKeyOk } from '@/lib/growth-data/publish-guard';
 
 export const dynamic = 'force-dynamic';
 
@@ -48,6 +49,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ jobId: string 
   const { jobId } = await ctx.params;
   if (!isValidJobId(jobId)) {
     return Response.json({ ok: false, code: 'BAD_JOB_ID' }, { status: 400 });
+  }
+  // Phanh tổng chặn CẢ route (R-F) — emergency-freeze phải đóng MỌI cửa đăng.
+  if (isPublishHalted()) {
+    return Response.json({ ok: false, code: 'PUBLISH_HALTED' }, { status: 423 });
+  }
+  if (!tickKeyOk(req)) {
+    return Response.json({ ok: false, code: 'TICK_KEY_REQUIRED' }, { status: 403 });
   }
 
   const body = (await req.json().catch(() => ({}))) as {

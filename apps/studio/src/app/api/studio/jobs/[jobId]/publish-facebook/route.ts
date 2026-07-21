@@ -14,6 +14,7 @@
 
 import { existsSync, readFileSync } from 'node:fs';
 import { derivePublishedPostFromArtifacts } from '@/lib/growth-data/attribution';
+import { isPublishHalted, tickKeyOk } from '@/lib/growth-data/publish-guard';
 import { appendPublishedPosts } from '@/lib/growth-data/runtime-store';
 import {
   appendPublishAuditLog,
@@ -189,6 +190,20 @@ export async function POST(req: Request, ctx: { params: Promise<{ jobId: string 
         code: 'LIVE_PUBLISH_REQUIRES_LOCALHOST',
         message: 'Live publish is only allowed from localhost.',
       },
+      { status: 403 },
+    );
+  }
+
+  // 2b. Phanh tổng chặn CẢ route (R-F) — emergency-freeze phải đóng MỌI cửa đăng.
+  if (isPublishHalted()) {
+    return Response.json(
+      { ok: false, code: 'PUBLISH_HALTED', message: 'Phanh tổng đang bật — mọi đăng bị đóng băng.' },
+      { status: 423 },
+    );
+  }
+  if (!tickKeyOk(req)) {
+    return Response.json(
+      { ok: false, code: 'TICK_KEY_REQUIRED', message: 'Thiếu/sai X-VFOS-TICK-KEY.' },
       { status: 403 },
     );
   }
