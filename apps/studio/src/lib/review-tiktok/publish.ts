@@ -46,6 +46,7 @@ export type ReviewPublishErrorCode =
   | 'LIVE_NOT_ENABLED'
   | 'TIKTOK_AUTH_EXPIRED'
   | 'ACCOUNT_IDENTITY_MISMATCH'
+  | 'IDENTITY_UNVERIFIABLE'
   | 'TIKTOK_API_ERROR';
 
 // POSTING cũ hơn ngưỡng này coi là treo (cho retry). PHẢI lớn hơn thời gian đăng
@@ -182,10 +183,16 @@ export function getReviewTikTokReadiness(jobId: string): ReviewTikTokReadiness |
   const job = loadJobById(jobId);
   if (!job) return null;
   const status = readStatus(jobId);
+  // tiktokApiReady phản ánh CẢ điều kiện C2: live mà thiếu REVIEW_TIKTOK_USERNAME thì
+  // POST sẽ fail-closed IDENTITY_UNVERIFIABLE → đèn phải đỏ, không xanh gây hiểu nhầm.
+  const resolved = resolveReviewClient();
+  const apiReady =
+    resolved.ok &&
+    (resolved.mode === 'mock' || (process.env.REVIEW_TIKTOK_USERNAME || '').trim() !== '');
   return {
     videoApproved: job.operatorDecision === 'APPROVED',
     hasFinalVideo: getJobPreviewAbsPath(jobId) !== null,
-    tiktokApiReady: resolveReviewClient().ok,
+    tiktokApiReady: apiReady,
     notPosted: status?.status !== 'POSTED',
   };
 }
@@ -283,9 +290,19 @@ export async function publishReviewToTikTok(
   }
   const { client, mode } = resolved;
 
-  // Identity verify (chỉ live + khi có username kỳ vọng) — chống dán nhầm token.
+  // Identity verify (G7 chống dán nhầm token) — chỉ áp cho live.
   const expectedUsername = (process.env.REVIEW_TIKTOK_USERNAME || '').trim();
-  if (mode !== 'mock' && expectedUsername) {
+  if (mode !== 'mock') {
+    // FAIL-CLOSED: live mà KHÔNG có REVIEW_TIKTOK_USERNAME → KHÔNG xác minh được token
+    // đúng account. Trước đây skip im lặng (token dán nhầm lọt) — nay chặn + báo rõ.
+    if (!expectedUsername) {
+      return {
+        ok: false,
+        code: 'IDENTITY_UNVERIFIABLE',
+        message:
+          'REVIEW_TIKTOK_USERNAME chưa set — không xác minh được token đúng tài khoản (G7). Set env này để bật kiểm định danh trước khi đăng live.',
+      };
+    }
     const tokens = getAccountTokens(REVIEW_TIKTOK_ACCOUNT_ID);
     const live: { ok: boolean; username?: string } = tokens?.accessToken
       ? await queryCreatorUsername(tokens.accessToken)

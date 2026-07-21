@@ -136,11 +136,24 @@ export function createTikTokPublishClient(config: {
           return { ok: false, mode, error: parseTikTokError(ci.json, ci.status) };
         }
         const wantedPrivacy = input.privacyLevel ?? 'SELF_ONLY';
+        // FAIL-CLOSED: KHÔNG rơi về privacyOptions[0] (có thể PUBLIC_TO_EVERYONE) khi cả
+        // privacy muốn lẫn SELF_ONLY đều vắng — Amendment Phần 82 ràng SELF_ONLY tới khi
+        // TikTok audit app. Thiếu privacy an toàn → từ chối đăng, KHÔNG đoán.
         const privacyLevel = privacyOptions.includes(wantedPrivacy)
           ? wantedPrivacy
           : privacyOptions.includes('SELF_ONLY')
             ? 'SELF_ONLY'
-            : privacyOptions[0];
+            : null;
+        if (!privacyLevel) {
+          return {
+            ok: false,
+            mode,
+            error: {
+              code: 'privacy_unavailable',
+              message: `TikTok không có privacy an toàn (muốn ${wantedPrivacy}; options: ${privacyOptions.join(', ')}) — từ chối đăng để tránh public ngoài ý muốn.`,
+            },
+          };
+        }
 
         // 1) INIT
         const initBody = {

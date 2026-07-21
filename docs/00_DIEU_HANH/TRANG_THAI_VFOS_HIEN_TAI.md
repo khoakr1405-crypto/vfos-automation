@@ -3635,7 +3635,7 @@ docs/
 
 ---
 
-## 11. Phần 82 — Auto-Publish OS (2026-07-19/20)
+## 11. Phần 82 — Auto-Publish OS (2026-07-19/21)
 
 **Mục tiêu**: 100% tự đăng thay click người bằng **cổng duyệt AI tự động** (R-A) + **máy tick tự đăng theo lịch giờ vàng** (R-B). No-Go #3 **nới CÓ ĐIỀU KIỆN** (Operator directive 18-19/07 — xem amendment trong `CLAUDE.md`); **mặc định TẮT**, chỉ bật LIVE sau diễn tập 3 ngày đạt.
 
@@ -3647,20 +3647,33 @@ docs/
 ### R-C `7cbf01c` (PUSHED — Operator đã duyệt mắt board)
 - **Board UI** read-only @Tổng quan: route `GET /api/studio/publish-board` + panel `PublishRhythmBoard` (trạng thái config/phanh/độ trễ tick/slot/hậu-kiểm, giờ VN). Không nút action.
 - **Docs**: CLAUDE.md No-Go #3 amendment + mục này.
-- **Rà soát hoàn chỉnh (20/07)**: chuỗi khép kín, 4 lệch-plan có chủ đích KHÔNG vá trước diễn tập — (1) FB hẹn-giờ native chưa nối route (vá khi go-live FB/VPS); (2) route KHÔNG tự refresh token (thay bằng lệnh tay mỗi sáng, xem checklist); (3) fire lỗi → SKIPPED + discovery tự bind lại slot kế (không retry 15′); (4) phanh tầng 1 = tạo file `publish-halt.json` tay, board không có nút.
+- **Rà soát hoàn chỉnh (20/07)**: chuỗi khép kín, lệch-plan có chủ đích — (1) FB hẹn-giờ native → **đã CHỐT HỦY** ở R-D (xem điều kiện mở lại), KHÔNG phải "vá sau"; (2) route KHÔNG tự refresh token → **đã làm ở R-D#2** (auto-refresh); (3) fire lỗi → SKIPPED + discovery tự bind lại slot kế (không retry 15′); (4) phanh tầng 1 = tạo file `publish-halt.json` tay (chỉ dừng tick, không chặn route — xem R-E).
 
-### R-D #2 (chờ commit) — Auto-refresh token TikTok + HỦY #1
+### R-D #2 `6b5c3a9` PUSHED — Auto-refresh token TikTok + HỦY #1
 - `refreshAccountToken` export ROTATION-SAFE trong `tiktok-oauth-helper.ts` (CLI + tick dùng chung; ghi store **ATOMIC** tmp→rename) + `needsTokenRefresh` thuần + `maybeRefreshTokens` trong tick (trong lock).
 - **Cờ `VFOS_TOKEN_AUTOREFRESH=on`** (mặc định OFF). Tick tự refresh token gần hết hạn (<2h) **CHỈ khi target đi LIVE** (fireIsLive) → dry-run/observe KHÔNG chạm mạng. refresh_token chết → **SUSPENDED** + board todo (login tay, No-Go #4). ⇒ thay được việc refresh tay mỗi sáng.
-- **#1 (FB hẹn-giờ native) HỦY** — VFOS đăng FB đúng giờ vàng khi laptop bật (mô hình "tự bấm"); laptop đằng nào cũng bật cho TikTok cùng nhịp.
+- **#1 (FB hẹn-giờ native) — QUYẾT ĐỊNH CHỐT: HỦY** (mô hình "VFOS tự bấm đăng FB đúng giờ vàng"; laptop đằng nào cũng bật cho TikTok). Primitives SCHEDULED đã build sẵn (`publish-reels.ts` videoState=SCHEDULED + readback; `withinFbScheduleWindow` có test) → mở lại ~1 round nhỏ **CHỈ KHI đủ 3**: [FB có doanh thu attribution >0] AND [board ghi ≥3 slot FB SKIPPED/MISSED trong 14 ngày] AND [VPS chưa lên]. VPS Phase 2 lên trước → retire #1 vĩnh viễn. (Dứt mâu thuẫn với dòng "Rà soát (1)" cũ.)
 - **⚠ CƠ CHẾ CỜ (đổi so với R-B, do review đối kháng bắt regression):** tick đọc `.env` RIÊNG (parseEnv) CHỈ để lấy secret + `VFOS_TOKEN_AUTOREFRESH`; **cờ fire (`VFOS_PUBLISH_TICK`/`TIKTOK_PUBLISH_LIVE`/`META_MODE`) PHẢI set TƯỜNG MINH trong RUNTIME ENV của tick (schtasks), KHÔNG để .env tự arm** → giữ tầng phanh "cờ nền tảng" độc lập với master. `.env` sẵn có `TIKTOK_PUBLISH_LIVE`/`META_MODE` (cho publish tay) nay KHÔNG còn tự bật tick.
 - Verify: 65/65 test + tsc/biome 0 + dry-run `liveTT=false`. Review đối kháng 9 finding → sửa 4 (A cờ-nền-tảng, B `--dry-run` gate refresh, C ghi atomic, D comment), còn lại refute/nit.
 
+### R-E (chờ commit) — Hardening theo thẩm định Fable 5 (hội đồng 3 giám khảo, 0 fatal flaw)
+Fable 5 chấm Phần 82: an toàn 8.5/10 · sẵn sàng vận hành 7/10 · đòn bẩy North Star 6/10; kết luận "xứng đáng nới No-Go #3, vá 3 mép trước ngày-1 live". **Đã vá (code):**
+- **C1 fail-closed privacy** (`tiktok-publish-client.ts`): bỏ fallback `privacyOptions[0]` (có thể PUBLIC) → thiếu privacy an toàn thì **từ chối đăng** (`privacy_unavailable`), giữ SELF_ONLY tuyệt đối.
+- **C2 fail-closed identity G7** (`review-tiktok/publish.ts` + route): live mà thiếu `REVIEW_TIKTOK_USERNAME` → **chặn** (`IDENTITY_UNVERIFIABLE`) thay vì skip im lặng (chống token dán nhầm account). Kèm: đèn `tiktokApiReady` phản ánh thiếu username (đỏ khi live-chưa-set, khỏi "xanh mà POST fail").
+- Verify: studio tsc 0 + biome sạch + skeptic đối kháng 4 câu SAFE (không fail-open/over-block; ENT cũng được fail-closed lây). **Nợ**: 2 nhánh fail-closed (`privacy_unavailable`/`IDENTITY_UNVERIFIABLE`) CHƯA có test (test studio live-publish cần mock fetch — round riêng).
+
+**Hoãn có chủ đích (flag để không quên):**
+- **Route publish localhost KHÔNG auth** trong khi `.env` server đã `TIKTOK_PUBLISH_LIVE=true`+`META_MODE=live` → route là "nút đăng thật" cho bất kỳ POST local nào; **halt-file chỉ dừng TICK, KHÔNG chặn route**. Đóng băng tuyệt đối = hạ cờ `.env` hoặc tắt Next. Vá đề xuất: shared-secret header `X-VFOS-TICK-KEY` (round riêng, vì đụng cả UI publish tay).
+- **Revoked-token re-poll**: refresh_token chết → tick re-POST TikTok mỗi 5' (~576 call/48h) tới khi login lại. Fix rẻ (persist `refreshRejectedAt` skip tới khi store đổi) — round riêng.
+
 ### Kịch bản DIỄN TẬP 3 NGÀY (điều kiện bật LIVE chính thức)
-1. **Ngày 0 — setup (việc tay Operator)**: mở Next server 3002 · xác nhận token TikTok `tt_review_main` còn hạn · đặt `schtasks` chạy `pnpm tick:publish` mỗi 5 phút, **đặt cờ fire TRONG runtime env của schtasks** (`VFOS_PUBLISH_TICK=on` + `VFOS_AUTO_APPROVE_REVIEW=on`, **KHÔNG** set `TIKTOK_PUBLISH_LIVE` ⇒ dry-run) — KHÔNG dựa vào .env cho cờ fire. Quan sát board 1 ngày.
-2. **Ngày 1-2 — SELF_ONLY thật**: thêm `TIKTOK_PUBLISH_LIVE=true` vào runtime env schtasks (TikTok SELF_ONLY) — tick đăng 2-3 video/ngày/target, Operator **spot-check 100%** video trước khi bật public trên app (hậu-kiểm). **Token**: đặt `VFOS_TOKEN_AUTOREFRESH=on` (trong .env) để tick tự refresh khi TikTok live — KHÔNG cần refresh tay mỗi sáng nữa; nếu KHÔNG bật thì chạy tay `pnpm tiktok:oauth refresh --account tt_review_main` mỗi sáng (token 24h).
-3. **PASS go-live** = ≥2 ngày đủ nhịp 2-3 post/ngày/target **zero click trước đăng** + Operator spot-check 100% tuần 1 **không false-PASS** → mới flip cấu hình LIVE chính thức + nộp TikTok app audit (mở public API, retire flip-public todo) + tạo FB System User token.
-4. **4 tầng phanh** luôn sẵn: `publish-halt.json` · config off · cờ nền tảng · xoá Task Scheduler.
+> **Bản chất tiêu chí (Fable 5)**: 4-6 post trong 2-3 ngày KHÔNG đủ mẫu thống kê để bound false-PASS rate. Cái thực sự gánh an toàn là **SELF_ONLY (private-first) + hậu-kiểm 100%**, KHÔNG phải "thống kê 3 ngày". Set `REVIEW_TIKTOK_USERNAME` trước ngày-1 (nếu không C2 chặn: `IDENTITY_UNVERIFIABLE`).
+
+0. **Trước diễn tập — NỘP TikTok app audit NGAY, song song** (KHÔNG chờ PASS): privacy policy URL + ToS + demo video + justification `video.publish`. Chi phí engineering = 0, lead time thuộc TikTok, và là điều kiện DUY NHẤT biến lane Review tự-đăng SELF_ONLY (0 view public) thành view thật.
+1. **Ngày 0 — setup + BRAKE FIRE-DRILL**: mở Next 3002 · set `REVIEW_TIKTOK_USERNAME` + xác nhận token `tt_review_main` còn hạn · `schtasks` mỗi 5 phút, **cờ fire trong runtime env schtasks** (`VFOS_PUBLISH_TICK=on`+`VFOS_AUTO_APPROVE_REVIEW=on`, **KHÔNG** `TIKTOK_PUBLISH_LIVE` ⇒ dry-run) · tắt Windows sleep + Active Hours phủ 11:30/17:30/20:30 + hoãn Windows Update 3 ngày. **Kéo thử 4 tầng phanh THẬT ≥1 lần**: tạo `publish-halt.json` → xác nhận tick log "HALT" rồi xoá; gỡ `VFOS_PUBLISH_TICK` giữa 2 tick → xác nhận run kế dry-run. Xác minh board `config.master/liveTiktok` khớp ý định trước giờ vàng đầu.
+2. **Ngày 1-2 — SELF_ONLY thật**: thêm `TIKTOK_PUBLISH_LIVE=true` runtime env (SELF_ONLY) — tick đăng 2-3 video/ngày/target, **spot-check 100%** trước khi bật public. Token: `VFOS_TOKEN_AUTOREFRESH=on` (.env) để tự refresh, hoặc tay `pnpm tiktok:oauth refresh --account tt_review_main` mỗi sáng. **Mỗi tối đối chiếu 3 SỐ**: số bài trên app TikTok == số FIRED trên board == số status POSTED (bắt double-post crash-recovery + lệch cap). Quy tắc: **board `lastTickAt` cũ >30 phút = điều tra ngay** (không có watchdog tự alert).
+3. **PASS go-live** = ≥2 ngày đủ nhịp 2-3 post/ngày/target zero-click + **spot-check 100% HẾT tuần 1 không false-PASS** → mới flip LIVE chính thức. **FB go-live cần mini-drill RIÊNG** (FB không có SELF_ONLY: 1-2 post đầu Operator canh trực tiếp, đăng public ngay). Tạo FB System User token trước.
+4. **4 tầng phanh** luôn sẵn: `publish-halt.json` (chỉ dừng TICK) · config off · cờ nền tảng · xoá Task Scheduler. ⚠ Đóng băng CẢ route publish tay = hạ cờ `.env` hoặc tắt Next.
 
 ### Bước tiếp theo duy nhất
-Commit R-D #2 (4 file scripts/tests + doc này) → khởi động **diễn tập 3 ngày** (việc tay Operator theo checklist trên — gồm R-B live SELF_ONLY đầu tiên). #1 FB đã HỦY (không cần).
+Commit R-E (C1/C2 hardening + doc này) → khởi động **diễn tập 3 ngày** theo checklist trên. **Round KẾ sau diễn tập = G1 revenue ingestion** (vòng "đăng→đo→học" đang đứt ở khâu ĐO, không phải khâu đăng — Fable 5), ưu tiên trước mọi automation đăng bổ sung. Cảnh báo cần thêm: OpenAI quota chết → cổng AI dồn hết về NEEDS_HUMAN (an toàn nhưng tê liệt automation) → cần alert sớm trên board.
