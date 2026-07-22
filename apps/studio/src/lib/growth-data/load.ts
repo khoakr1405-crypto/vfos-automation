@@ -190,6 +190,9 @@ export interface PublishedVideoRow {
   videoId: string | null;
   permalinkUrl: string | null;
   affiliateShortLink: string | null;
+  /** itemId sản phẩm (card.itemId) — khoá attribution thứ 2 của connector, cần
+   * cho dò collision khớp money-parser. Public, không secret. */
+  productId: string | null;
   productName: string | null;
   publishedAt: string | null;
 }
@@ -234,10 +237,11 @@ export function loadRealPublishedVideos(): { rows: PublishedVideoRow[]; source: 
         } | null;
       }>(jobId, 'facebook_publish_status.json');
       if (!status || status.state !== 'PUBLISHED' || !status.facebook?.published) continue;
-      const card = readJobJson<{ shortLink?: string | null; name?: string | null }>(
-        jobId,
-        'product_card.json',
-      );
+      const card = readJobJson<{
+        shortLink?: string | null;
+        itemId?: string | null;
+        name?: string | null;
+      }>(jobId, 'product_card.json');
       const manifest = readJobJson<{ createdAt?: string; updatedAt?: string }>(
         jobId,
         'job_manifest.json',
@@ -249,6 +253,7 @@ export function loadRealPublishedVideos(): { rows: PublishedVideoRow[]; source: 
         videoId: status.facebook?.videoId ?? null,
         permalinkUrl: status.facebook?.permalinkUrl ?? null,
         affiliateShortLink: card?.shortLink ?? null,
+        productId: card?.itemId ?? null,
         productName: card?.name ?? null,
         publishedAt: status.generatedAt ?? manifest?.updatedAt ?? manifest?.createdAt ?? null,
       });
@@ -265,6 +270,7 @@ export function loadRealPublishedVideos(): { rows: PublishedVideoRow[]; source: 
     videoId: p.videoId,
     permalinkUrl: null,
     affiliateShortLink: p.affiliateShortLink,
+    productId: p.productId,
     productName: null,
     publishedAt: p.publishedAt,
   }));

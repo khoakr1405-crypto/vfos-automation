@@ -30,6 +30,7 @@ import {
   loadRealPublishedVideos,
 } from '@/lib/growth-data/load';
 import { readRuntimeStore, readShopeeRevenueStore } from '@/lib/growth-data/runtime-store';
+import { deriveVideoSubId, detectAttributionCollisions } from '@/lib/growth-data/sub-id';
 import type { CtaReadiness, LinkRole } from '@/lib/growth-data/types';
 import { LANES, LANE_LABEL, type PlatformId } from '@/lib/mock-data';
 import { ACCENT_TEXT, type AccentKey } from '@/lib/nav';
@@ -293,6 +294,16 @@ export default function AnalyticsPage() {
   // 7. Per-video evidence — video đã đăng THẬT (real-first). Số M3–M6 join theo job
   // qua loadJobById (đã merge evidence từ runtime store). null = chưa đo.
   const { rows: publishedVideos, source: videoSource } = loadRealPublishedVideos();
+  // Dò collision trên ĐÚNG field connector attribute (card.shortLink + card.itemId),
+  // KHÔNG dùng link hiển thị có fallback productBinding — cảnh báo phải khớp money-parser
+  // (chung shortLink HOẶC itemId → 1 dòng CSV khớp nhiều job = partial).
+  const attributionCollisions = detectAttributionCollisions(
+    publishedVideos.map((v) => ({
+      jobId: v.jobId,
+      affiliateShortLink: v.affiliateShortLink,
+      productId: v.productId,
+    })),
+  );
   const perVideoRows: PerVideoRow[] = publishedVideos.map((v) => {
     const job = loadJobById(v.jobId);
     return {
@@ -302,6 +313,10 @@ export default function AnalyticsPage() {
       channelName: job?.suggestedChannel || '—',
       permalinkUrl: v.permalinkUrl,
       affiliateShortLink: v.affiliateShortLink || job?.productBinding.shortLink || null,
+      // sub_id per-video TẤT ĐỊNH (G1-A) — Operator đặt khi tạo link Shopee để
+      // tách doanh thu về đúng video kể cả khi nhiều video chung sản phẩm.
+      subId: deriveVideoSubId(v.jobId),
+      collidesWith: attributionCollisions.get(v.jobId) ?? [],
       thumbUrl: `/api/studio/jobs/${v.jobId}/thumbnail`,
       evidence: job?.evidence ?? null,
     };

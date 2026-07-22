@@ -23,12 +23,45 @@ export interface PerVideoRow {
   channelName: string;
   permalinkUrl: string | null;
   affiliateShortLink: string | null;
+  /** Sub_id per-video tất định (vfos_<jobId>) — đặt khi tạo link Shopee để tách
+   * doanh thu về đúng video. null khi không suy được từ jobId. */
+  subId: string | null;
+  /** jobId các video KHÁC đang dùng CHUNG shortLink với dòng này (collision →
+   * tiền rơi 'khớp nhiều job'). Rỗng = không đụng ai. */
+  collidesWith: string[];
   thumbUrl: string;
   evidence: JobEvidenceSummary | null;
 }
 
 function fmt(n: number): string {
   return new Intl.NumberFormat('vi-VN').format(n);
+}
+
+/** Chip sub_id per-video + nút copy (để dán vào ô Sub_ID khi tạo link Shopee). */
+function SubIdChip({ subId }: { subId: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        void navigator.clipboard?.writeText(subId).then(
+          () => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1200);
+          },
+          () => {},
+        );
+      }}
+      title="Copy sub_id — dán vào ô Sub_ID khi tạo link affiliate Shopee cho video này"
+      className="inline-flex items-center gap-1 rounded border border-hairline bg-raised/40 px-1.5 py-0.5 font-mono text-[9px] text-neutral-400 hover:border-accent-green/40 hover:text-neutral-200"
+    >
+      <span className="text-neutral-600">sub_id</span>
+      {subId}
+      <span className={copied ? 'text-accent-green' : 'text-neutral-600'}>
+        {copied ? '✓' : '⧉'}
+      </span>
+    </button>
+  );
 }
 
 const METRIC_COLS: { key: 'views' | 'clicks' | 'conversions' | 'revenue'; label: string }[] = [
@@ -103,7 +136,10 @@ export function PerVideoEvidenceSection({
                     {/* Tiêu đề + link */}
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-xs font-semibold text-neutral-100">{r.title}</p>
-                      <p className="mt-0.5 font-mono text-[10px] text-neutral-500">{r.jobId}</p>
+                      <div className="mt-0.5 flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-[10px] text-neutral-500">{r.jobId}</span>
+                        {r.subId && <SubIdChip subId={r.subId} />}
+                      </div>
                       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px]">
                         {r.permalinkUrl && (
                           <a
@@ -127,6 +163,17 @@ export function PerVideoEvidenceSection({
                         )}
                         <span className="text-neutral-500">Kênh: {r.channelName}</span>
                       </div>
+                      {/* Cảnh báo collision — video chung shortLink HOẶC sản phẩm (itemId)
+                          với video khác: tiền rơi 'khớp nhiều job', không tự quy đúng video. */}
+                      {r.collidesWith.length > 0 && (
+                        <p className="mt-1.5 rounded border border-amber-500/25 bg-amber-500/10 px-2 py-1 text-[10px] leading-relaxed text-amber-300">
+                          ⚠ Chung link/sản phẩm affiliate với {r.collidesWith.length} video khác (
+                          <span className="font-mono">{r.collidesWith.join(', ')}</span>) → doanh thu
+                          sẽ rơi vào “khớp nhiều job”, KHÔNG tự quy về đúng video. Đặt{' '}
+                          <span className="font-mono text-amber-200">sub_id</span> riêng cho từng
+                          video khi tạo link Shopee để tách.
+                        </p>
+                      )}
                     </div>
 
                     {/* Số M3–M6 — per-metric "—" khi chưa đo (G1 Slice 5): job chỉ có
