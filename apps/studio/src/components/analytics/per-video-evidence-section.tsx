@@ -52,7 +52,7 @@ function SubIdChip({ subId }: { subId: string }) {
           () => {},
         );
       }}
-      title="Copy sub_id — dán vào ô Sub_ID khi tạo link affiliate Shopee cho video này"
+      title="Copy sub_id — dán vào ô Sub_id1 trong Custom Link Shopee khi tạo link cho video này (Shopee chỉ nhận chữ và số)"
       className="inline-flex items-center gap-1 rounded border border-hairline bg-raised/40 px-1.5 py-0.5 font-mono text-[9px] text-neutral-400 hover:border-accent-green/40 hover:text-neutral-200"
     >
       <span className="text-neutral-600">sub_id</span>

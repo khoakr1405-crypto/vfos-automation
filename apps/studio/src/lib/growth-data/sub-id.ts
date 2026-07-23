@@ -14,20 +14,22 @@
  * KHÔNG đụng money-parser (connector) và KHÔNG đụng đường publish — đó là G1-B.
  * ========================================================================== */
 
-/** Sub_id cắt tối đa (field Shopee rộng; cắt để không tràn với jobId dị thường). */
+/** Sub_id cắt tối đa (giới hạn thật của Shopee chưa công bố; cắt phòng jobId dị thường). */
 const SUBID_MAX = 50;
 
 /**
- * Sub_id per-video TẤT ĐỊNH cho tracking Shopee: `vfos_<jobId>`, charset chỉ
- * [A-Za-z0-9_-]. Cùng jobId ⇒ cùng sub_id (không random) → đặt 1 lần lúc tạo
- * link, đối chiếu lại từ report luôn khớp, và có thể suy ngược ra jobId. jobId
- * hợp lệ (JOB_ID_RE) vốn đã đúng charset nên sanitize chỉ là lưới an toàn cho
- * input lạ. Trả null khi rỗng/không còn ký tự hợp lệ.
+ * Sub_id per-video TẤT ĐỊNH cho tracking Shopee: `vfos` + jobId đã BỎ mọi ký tự
+ * ngoài [a-zA-Z0-9]. Charset THUẦN CHỮ-SỐ là ràng buộc CỨNG của form Custom Link
+ * Shopee VN ("Chỉ được phép nhập giá trị chữ và số (a-z,A-Z, 0-9)" — Operator
+ * screenshot 2026-07-23); bản đầu `vfos_<jobId>` có `_` bị Shopee từ chối.
+ * Cùng jobId ⇒ cùng sub_id (không random) → đặt 1 lần lúc tạo link, đối chiếu
+ * từ report bằng cách DERIVE-rồi-SO với từng job đã đăng (không parse ngược —
+ * bỏ separator là mất thông tin chiều ngược). Trả null khi rỗng/không còn ký tự.
  */
 export function deriveVideoSubId(jobId: string | null | undefined): string | null {
-  const safe = (jobId ?? '').replace(/[^A-Za-z0-9_-]/g, '_').replace(/^_+|_+$/g, '');
+  const safe = (jobId ?? '').replace(/[^a-zA-Z0-9]/g, '');
   if (!safe) return null;
-  return `vfos_${safe}`.slice(0, SUBID_MAX);
+  return `vfos${safe}`.slice(0, SUBID_MAX);
 }
 
 /**

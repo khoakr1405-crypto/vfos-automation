@@ -9,19 +9,25 @@ import { describe, test } from 'node:test';
 import { deriveVideoSubId, detectAttributionCollisions } from '../src/lib/growth-data/sub-id.ts';
 
 describe('deriveVideoSubId', () => {
-  test('jobId thường → vfos_<jobId> (tất định)', () => {
-    assert.equal(deriveVideoSubId('job_20260625_002'), 'vfos_job_20260625_002');
+  test('jobId thường → vfos<jobId bỏ separator> (tất định)', () => {
+    assert.equal(deriveVideoSubId('job_20260625_002'), 'vfosjob20260625002');
     assert.equal(deriveVideoSubId('job_20260625_002'), deriveVideoSubId('job_20260625_002'));
+  });
+
+  test('THUẦN chữ-số — ràng buộc CỨNG form Custom Link Shopee VN (không _, không -)', () => {
+    const s = deriveVideoSubId('job_20260530_001_unified_test');
+    assert.ok(s);
+    assert.match(s, /^[a-zA-Z0-9]+$/); // Shopee: "Chỉ được phép nhập giá trị chữ và số"
+    assert.equal(s, 'vfosjob20260530001unifiedtest');
   });
 
   test('2 job KHÁC nhau → sub_id KHÁC nhau (tách được per-video)', () => {
     assert.notEqual(deriveVideoSubId('job_20260625_002'), deriveVideoSubId('job_20260625_003'));
   });
 
-  test('charset an toàn: ký tự lạ → "_", không còn ký tự ngoài [A-Za-z0-9_-]', () => {
+  test('ký tự lạ bị BỎ (không thay bằng _ — sẽ vi phạm charset Shopee)', () => {
     const s = deriveVideoSubId('job/20260625 002!!');
-    assert.ok(s);
-    assert.match(s, /^vfos_[A-Za-z0-9_-]+$/);
+    assert.equal(s, 'vfosjob20260625002');
   });
 
   test('rỗng / null / chỉ ký tự lạ → null (không sinh sub_id rác)', () => {
@@ -35,6 +41,10 @@ describe('deriveVideoSubId', () => {
     const s = deriveVideoSubId('x'.repeat(200));
     assert.ok(s);
     assert.ok(s.length <= 50);
+  });
+
+  test('GHI NHẬN: 2 jobId chỉ khác separator → CÙNG sub_id (mất thông tin chiều ngược — chấp nhận, jobId thật theo pattern cố định)', () => {
+    assert.equal(deriveVideoSubId('job_a_b'), deriveVideoSubId('jobab'));
   });
 });
 
