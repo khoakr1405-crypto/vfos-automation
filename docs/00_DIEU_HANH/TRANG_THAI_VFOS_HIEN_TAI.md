@@ -3656,13 +3656,13 @@ docs/
 - **⚠ CƠ CHẾ CỜ (đổi so với R-B, do review đối kháng bắt regression):** tick đọc `.env` RIÊNG (parseEnv) CHỈ để lấy secret + `VFOS_TOKEN_AUTOREFRESH`; **cờ fire (`VFOS_PUBLISH_TICK`/`TIKTOK_PUBLISH_LIVE`/`META_MODE`) PHẢI set TƯỜNG MINH trong RUNTIME ENV của tick (schtasks), KHÔNG để .env tự arm** → giữ tầng phanh "cờ nền tảng" độc lập với master. `.env` sẵn có `TIKTOK_PUBLISH_LIVE`/`META_MODE` (cho publish tay) nay KHÔNG còn tự bật tick.
 - Verify: 65/65 test + tsc/biome 0 + dry-run `liveTT=false`. Review đối kháng 9 finding → sửa 4 (A cờ-nền-tảng, B `--dry-run` gate refresh, C ghi atomic, D comment), còn lại refute/nit.
 
-### R-E (chờ commit) — Hardening theo thẩm định Fable 5 (hội đồng 3 giám khảo, 0 fatal flaw)
+### R-E `c32536e` PUSHED — Hardening theo thẩm định Fable 5 (hội đồng 3 giám khảo, 0 fatal flaw)
 Fable 5 chấm Phần 82: an toàn 8.5/10 · sẵn sàng vận hành 7/10 · đòn bẩy North Star 6/10; kết luận "xứng đáng nới No-Go #3, vá 3 mép trước ngày-1 live". **Đã vá (code):**
 - **C1 fail-closed privacy** (`tiktok-publish-client.ts`): bỏ fallback `privacyOptions[0]` (có thể PUBLIC) → thiếu privacy an toàn thì **từ chối đăng** (`privacy_unavailable`), giữ SELF_ONLY tuyệt đối.
 - **C2 fail-closed identity G7** (`review-tiktok/publish.ts` + route): live mà thiếu `REVIEW_TIKTOK_USERNAME` → **chặn** (`IDENTITY_UNVERIFIABLE`) thay vì skip im lặng (chống token dán nhầm account). Kèm: đèn `tiktokApiReady` phản ánh thiếu username (đỏ khi live-chưa-set, khỏi "xanh mà POST fail").
 - Verify: studio tsc 0 + biome sạch + skeptic đối kháng 4 câu SAFE (không fail-open/over-block; ENT cũng được fail-closed lây). **Nợ**: 2 nhánh fail-closed (`privacy_unavailable`/`IDENTITY_UNVERIFIABLE`) CHƯA có test (test studio live-publish cần mock fetch — round riêng).
 
-### R-F (chờ commit) — Dọn 3 hardening đã hoãn của R-E
+### R-F `31129b6` PUSHED — Dọn 3 hardening đã hoãn của R-E
 - **H1 — Phanh route + shared-secret** (`growth-data/publish-guard.ts` MỚI): `isPublishHalted()` cho **CẢ 4 route publish live** (review→tiktok, ent→facebook, ent→tiktok, review→facebook) đọc cùng `publish-halt.json` → halt = đóng băng MỌI cửa đăng (tự động + tay), không chỉ tick. `tickKeyOk()` = shared-secret OPT-IN (`VFOS_TICK_KEY`): miễn UI browser same-origin, đòi header `X-VFOS-TICK-KEY` cho caller lập trình (tick/curl); mặc định chưa set = không đổi hành vi. Tick `fireViaRoute` gửi header khi có key. **Review đối kháng bắt: ban đầu chỉ bọc 2/4 route → đã vá đủ 4/4** (grep xác nhận).
 - **H2 — Chống re-poll token chết** (`tiktok-oauth-helper.ts` + tick): `refreshRejectedAt` persist khi refresh_token chết (CHỈ mark `invalid_grant`/`NO_REFRESH_TOKEN` — lỗi 5xx/transient KHÔNG mark, để tick tự thử lại); tick skip account đã mark (hết ~576 call/48h). TỰ CLEAR khi login/exchange lại (ghi entry mới). Marker KHÔNG chặn publish (chỉ chặn refresh).
 - **H3 — Test**: round-trip `refreshRejectedAt` (persist + self-clear) ở `tiktok-oauth-helper.test.ts` (66/66). Test 2 nhánh fail-closed studio (`privacy_unavailable`/`IDENTITY_UNVERIFIABLE`) **VẪN chặn** — apps/studio KHÔNG `type:module` nên tsx `--test` không import được named export (nợ runner có sẵn, 5 test entertainment cũng đỏ vì cùng lý do); unblock = round test-infra (thêm vitest / sửa CJS interop).
@@ -3677,5 +3677,18 @@ Fable 5 chấm Phần 82: an toàn 8.5/10 · sẵn sàng vận hành 7/10 · đ�
 3. **PASS go-live** = ≥2 ngày đủ nhịp 2-3 post/ngày/target zero-click + **spot-check 100% HẾT tuần 1 không false-PASS** → mới flip LIVE chính thức. **FB go-live cần mini-drill RIÊNG** (FB không có SELF_ONLY: 1-2 post đầu Operator canh trực tiếp, đăng public ngay). Tạo FB System User token trước.
 4. **4 tầng phanh** luôn sẵn: `publish-halt.json` (chỉ dừng TICK) · config off · cờ nền tảng · xoá Task Scheduler. ⚠ Đóng băng CẢ route publish tay = hạ cờ `.env` hoặc tắt Next.
 
-### Bước tiếp theo duy nhất
-Commit R-E (C1/C2 hardening + doc này) → khởi động **diễn tập 3 ngày** theo checklist trên. **Round KẾ sau diễn tập = G1 revenue ingestion** (vòng "đăng→đo→học" đang đứt ở khâu ĐO, không phải khâu đăng — Fable 5), ưu tiên trước mọi automation đăng bổ sung. Cảnh báo cần thêm: OpenAI quota chết → cổng AI dồn hết về NEEDS_HUMAN (an toàn nhưng tê liệt automation) → cần alert sớm trên board.
+### Bước tiếp theo duy nhất (Phần 82)
+Khởi động **diễn tập 3 ngày** theo checklist trên (việc tay Operator; R-A→R-F đã pushed hết). Cảnh báo cần thêm: OpenAI quota chết → cổng AI dồn hết về NEEDS_HUMAN (an toàn nhưng tê liệt automation) → cần alert sớm trên board.
+
+## 12. Phần 83 — G1-A: sub_id per-video + collision warning (2026-07-22)
+
+**Bối cảnh (grounded trên data thật):** G1 revenue attribution core đã build ~95% từ Phần 67-69 (connector CSV + foldEvidence + per-video section + import UI). Khe hở THẬT duy nhất: **2 cặp video đã đăng dùng chung shortLink/itemId** (`job_20260625_002/003`, `job_20260530_001/_unified_test`) → 1 dòng CSV khớp NHIỀU job = `partial` → tiền KHÔNG tự quy về đúng video. Nguyên lý: **per-video tracking phải đặt TRƯỚC khi hoa hồng chảy về** (không quy hồi tố được). Operator chốt scope "Link riêng mỗi video" (Design A).
+
+### G1-A `daf0d65` PUSHED (read-side, an toàn tuyệt đối — reviewer độc lập SHIP 0 blocker)
+- **`growth-data/sub-id.ts` (MỚI, pure):** `deriveVideoSubId(jobId)` = `vfos_<jobId>` tất định (charset `[A-Za-z0-9_-]`, ≤50) + `detectAttributionCollisions` khớp **ĐÚNG luật money-parser** (chung shortLink HOẶC itemId; so RAW field parity với `===` của connector; KHÔNG dùng link hiển thị có fallback productBinding).
+- **/analytics per-video:** chip **sub_id copy-1-chạm** cạnh jobId (dán vào ô Sub_ID khi tạo link Shopee) + **băng vàng cảnh báo collision** nêu jobId đụng nhau + hệ quả + cách tách. `PublishedVideoRow` +`productId` (card.itemId — khoá attribution thứ 2, đủ real path + fixture).
+- **KHÔNG đụng** connector (money-parser) / publish path. Verify: studio tsc 0 · 38/38 test (12 sub-id + 26 regression) · ui:verify PASS · Operator duyệt mắt UI (17 chip + 5 cảnh báo render thật).
+- **Facts từ map publish path (Explore, 2026-07-21):** shortLink `s.shopee.vn/X` = 0 param (owner đi theo redirect server-side); canonicalUrl giữ `utm_source`/`mmp_pid` (owner `an_17376660568`) — param sub_id KHÔNG collide owner; Review→FB caption dùng shortLink (fallback canonical); ENT-vlog `16-package.ts` gate regex **CHẶN link có param**; Shopee export báo sub_id ở **CỘT RIÊNG** → append sub_id vào chuỗi link KHÔNG làm CSV khớp `===` (đó là lý do G1-B phải sửa connector, không chỉ append link).
+
+### Bước tiếp theo duy nhất (Phần 83)
+**Việc Operator ngay:** từ giờ tạo link Shopee cho video mới → copy chip sub_id trên /analytics dán vào ô Sub_ID. **G1-B (round kế, chờ Operator 2 input):** (a) 1 file **export CSV thật** từ Shopee Affiliate dashboard (0 đồng cũng được — cần thấy tên cột Sub_ID) để build parser header-mode cho connector (không đoán format, không mở lỗ lá-chắn-9-10-cột chống dấu phẩy nghìn); (b) chốt hướng đưa sub_id vào tracking: **Operator-set lúc tạo link** (khuyên — chắc chắn track, không đụng publish path) vs **auto-append lúc publish** (phụ thuộc Shopee forward sub_id qua short-link redirect — chưa verify + phải nới gate an toàn ENT-vlog).
