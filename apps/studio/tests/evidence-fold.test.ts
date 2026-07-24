@@ -1,10 +1,10 @@
 /* =============================================================================
  * Unit test — foldEvidence (G1 Slice 5, precedence-không-sum + null-không-bịa-0)
- * Chạy: npx tsx --test apps/studio/tests/evidence-fold.test.ts
+ * Chạy: pnpm --filter @vfos/studio test  (vitest — xem vitest.config.ts)
  * foldEvidence PURE (không fs) → test không đụng runtime store thật.
  * ========================================================================== */
 import assert from 'node:assert/strict';
-import { describe, test } from 'node:test';
+import { describe, test } from 'vitest';
 
 import { foldEvidence } from '../src/lib/studio-data/evidence-fold.ts';
 import type {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { describe, test } from 'vitest';
 
 import {
   type EntTikTokPublishSummary,
@@ -11,8 +11,8 @@ import {
   type ResolveClientResult,
   computeReadiness,
   publishToTikTok,
-} from '../apps/studio/src/lib/entertainment/publish.ts';
-import { createMockTikTokPublishClient } from '../apps/studio/src/lib/tiktok/tiktok-publish-client.ts';
+} from '../src/lib/entertainment/publish.ts';
+import { createMockTikTokPublishClient } from '../src/lib/tiktok/tiktok-publish-client.ts';
 
 const NOW = '2026-06-23T00:00:00.000Z';
 
@@ -53,7 +53,10 @@ interface DepsOpts {
   channel?: Partial<PublishChannelView>;
   loadChannelNull?: boolean;
   resolveClientForAccount?: (accountId: string) => ResolveClientResult;
-  verifyIdentity?: (accountId: string, expectedUsername: string) => Promise<{ ok: boolean; reason?: string }>;
+  verifyIdentity?: (
+    accountId: string,
+    expectedUsername: string,
+  ) => Promise<{ ok: boolean; reason?: string }>;
   mockFail?: { code: string; message: string };
 }
 
@@ -80,7 +83,9 @@ function makeDeps(opts: DepsOpts = {}) {
         calls.resolvedAccounts.push(accountId);
         return {
           ok: true,
-          client: createMockTikTokPublishClient(opts.mockFail ? { fail: opts.mockFail } : undefined),
+          client: createMockTikTokPublishClient(
+            opts.mockFail ? { fail: opts.mockFail } : undefined,
+          ),
           mode: 'mock',
         };
       }),
@@ -238,17 +243,22 @@ describe('isolation — không import scope cấm', () => {
   const FORBIDDEN =
     /(product-review|shopee|facebook|commerce|growth|vfos-job-manager|review-video-orchestrator|review-orchestrator)/i;
   const files = [
-    '../apps/studio/src/lib/entertainment/publish.ts',
-    '../apps/studio/src/lib/tiktok/tiktok-publish-client.ts',
-    '../apps/studio/src/app/api/studio/entertainment/jobs/[jobId]/tiktok-publish/route.ts',
-    '../apps/studio/src/app/api/studio/entertainment/jobs/[jobId]/tiktok-readiness/route.ts',
-    '../apps/studio/src/components/entertainment/package-panel.tsx',
+    '../src/lib/entertainment/publish.ts',
+    '../src/lib/tiktok/tiktok-publish-client.ts',
+    '../src/app/api/studio/entertainment/jobs/[jobId]/tiktok-publish/route.ts',
+    '../src/app/api/studio/entertainment/jobs/[jobId]/tiktok-readiness/route.ts',
+    '../src/components/entertainment/package-panel.tsx',
   ];
+  // Exemption CÓ CHỦ ĐÍCH duy nhất: growth-data/publish-guard (Phần 82 R-F) là guard
+  // CHUNG cho cả 4 route publish live (halt-file + tick-key; pure, không secret,
+  // không kéo logic lane khác) — không tính là rò scope growth vào lane ent.
+  const ALLOWED = /growth-data\/publish-guard/;
   for (const rel of files) {
     test(`không import cấm: ${rel.split('/').pop()}`, () => {
       const src = readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
       const importLines = src.split('\n').filter((l) => /^\s*(import|export).*from\s+['"]/.test(l));
       for (const line of importLines) {
+        if (ALLOWED.test(line)) continue;
         assert.equal(FORBIDDEN.test(line), false, `import cấm trong ${rel}: ${line.trim()}`);
       }
     });

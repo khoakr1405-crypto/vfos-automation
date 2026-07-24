@@ -8,8 +8,8 @@
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { describe, test } from 'vitest';
 
 import {
   type EntTikTokPublishSummary,
@@ -19,8 +19,8 @@ import {
   type PublishJobView,
   type ResolveClientResult,
   publishToTikTok,
-} from '../apps/studio/src/lib/entertainment/publish.ts';
-import { createMockTikTokPublishClient } from '../apps/studio/src/lib/tiktok/tiktok-publish-client.ts';
+} from '../src/lib/entertainment/publish.ts';
+import { createMockTikTokPublishClient } from '../src/lib/tiktok/tiktok-publish-client.ts';
 
 const NOW = '2026-06-25T00:00:00.000Z';
 
@@ -59,7 +59,10 @@ interface Opts {
   view?: Partial<PublishJobView>;
   channel?: Partial<PublishChannelView> | null;
   resolveClientForAccount?: (accountId: string) => ResolveClientResult;
-  verifyIdentity?: (accountId: string, expected: string) => Promise<{ ok: boolean; reason?: string }>;
+  verifyIdentity?: (
+    accountId: string,
+    expected: string,
+  ) => Promise<{ ok: boolean; reason?: string }>;
 }
 
 function deps(opts: Opts = {}) {
@@ -87,7 +90,8 @@ function deps(opts: Opts = {}) {
   return { d, calls };
 }
 
-const run = (o: Opts, input: PublishInput = {}) => publishToTikTok(deps(o).d, 'ent_fishing_mc', input);
+const run = (o: Opts, input: PublishInput = {}) =>
+  publishToTikTok(deps(o).d, 'ent_fishing_mc', input);
 
 describe('multi-channel guards — chống đăng nhầm kênh', () => {
   test('T1 — job chưa bind kênh (channelId null) → NO_CHANNEL_BINDING', async () => {
@@ -106,7 +110,10 @@ describe('multi-channel guards — chống đăng nhầm kênh', () => {
   });
 
   test('cross-post — job.accountId ≠ account của kênh → CROSS_POST_DENIED', async () => {
-    const r = await run({ view: { accountId: 'tt_xe' }, channel: { accountId: 'tt_fishing_main' } });
+    const r = await run({
+      view: { accountId: 'tt_xe' },
+      channel: { accountId: 'tt_fishing_main' },
+    });
     assert.equal(r.ok === false && r.code, 'CROSS_POST_DENIED');
   });
 
@@ -176,9 +183,9 @@ describe('isolation + secret — file multi-channel không import scope cấm', 
   const FORBIDDEN =
     /(product-review|shopee|facebook|commerce|growth|vfos-job-manager|review-video-orchestrator|review-orchestrator)/i;
   const files = [
-    '../apps/studio/src/lib/entertainment/channels.ts',
-    '../apps/studio/src/lib/tiktok/account-store.ts',
-    '../apps/studio/src/lib/entertainment/publish.ts',
+    '../src/lib/entertainment/channels.ts',
+    '../src/lib/tiktok/account-store.ts',
+    '../src/lib/entertainment/publish.ts',
   ];
   for (const rel of files) {
     test(`không import cấm: ${rel.split('/').pop()}`, () => {
@@ -192,7 +199,7 @@ describe('isolation + secret — file multi-channel không import scope cấm', 
 
   test('account-store KHÔNG console.log (không rò token)', () => {
     const src = readFileSync(
-      fileURLToPath(new URL('../apps/studio/src/lib/tiktok/account-store.ts', import.meta.url)),
+      fileURLToPath(new URL('../src/lib/tiktok/account-store.ts', import.meta.url)),
       'utf8',
     );
     assert.equal(/console\.(log|info|debug|warn|error)/.test(src), false);

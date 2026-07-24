@@ -1,10 +1,10 @@
 /* =============================================================================
  * Unit test — per-video sub_id + shared-link collision (G1-A read-side)
- * Chạy: npx tsx --test apps/studio/tests/sub-id.test.ts
+ * Chạy: pnpm --filter @vfos/studio test  (vitest — xem vitest.config.ts)
  * Pure (không fs/network) → không đụng runtime store thật.
  * ========================================================================== */
 import assert from 'node:assert/strict';
-import { describe, test } from 'node:test';
+import { describe, test } from 'vitest';
 
 import { deriveVideoSubId, detectAttributionCollisions } from '../src/lib/growth-data/sub-id.ts';
 

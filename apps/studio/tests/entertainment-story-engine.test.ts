@@ -1,50 +1,26 @@
 /* =============================================================================
- * VFOS — Entertainment story-engine flag + metadata surface — node:test.
+ * VFOS — Entertainment story-engine flag + metadata surface — vitest.
  * - resolveMontageEngine: DEFENSIVE default 'story' (chỉ 'anchors' tường minh → anchors).
  * - readStorySummary: đọc story_arc.json ra { confidence, sourceType }, null khi không có.
  * KHÔNG render, KHÔNG publish, KHÔNG đụng pipeline / step 10/12/13/15 / anchors engine.
  *
- * Runner (studio dùng alias '@/' + biên CJS dưới tsx nên named-ESM-import không link
- * được → dùng DYNAMIC import + default namespace; cần TSX_TSCONFIG_PATH cho alias '@/'):
- *   TSX_TSCONFIG_PATH=apps/studio/tsconfig.json \
- *     npx tsx --test tests/entertainment-story-engine.test.ts
+ * Runner: pnpm --filter @vfos/studio test (vitest resolve alias + interop CJS/ESM
+ * native → bỏ được giàn giáo dynamic-import + TSX_TSCONFIG_PATH của bản node:test cũ;
+ * bản cũ chạy dưới tsx đăng ký 0 test — zombie im lặng).
  * ========================================================================== */
 
 import assert from 'node:assert/strict';
 import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
-import { after, before, describe, test } from 'node:test';
+import { afterAll, describe, test } from 'vitest';
 
-type JobsMod = typeof import('../apps/studio/src/lib/entertainment/jobs.ts');
-type PathsMod = typeof import('../apps/studio/src/lib/studio-data/paths.ts');
-type ChannelsMod = typeof import('../apps/studio/src/lib/entertainment/channels.ts');
-
-let resolveMontageEngine: JobsMod['resolveMontageEngine'];
-let readStorySummary: JobsMod['readStorySummary'];
-let jobStoryEngineFor: JobsMod['jobStoryEngineFor'];
-let listChannelsForUi: JobsMod['listChannelsForUi'];
-let resolveInsideRepo: PathsMod['resolveInsideRepo'];
-let getChannel: ChannelsMod['getChannel'];
-
-before(async () => {
-  const j = (await import('../apps/studio/src/lib/entertainment/jobs.ts')) as JobsMod & {
-    default?: JobsMod;
-  };
-  const p = (await import('../apps/studio/src/lib/studio-data/paths.ts')) as PathsMod & {
-    default?: PathsMod;
-  };
-  const c = (await import('../apps/studio/src/lib/entertainment/channels.ts')) as ChannelsMod & {
-    default?: ChannelsMod;
-  };
-  const jd = j.default ?? j;
-  const pd = p.default ?? p;
-  const cd = c.default ?? c;
-  resolveMontageEngine = jd.resolveMontageEngine;
-  readStorySummary = jd.readStorySummary;
-  jobStoryEngineFor = jd.jobStoryEngineFor;
-  listChannelsForUi = jd.listChannelsForUi;
-  resolveInsideRepo = pd.resolveInsideRepo;
-  getChannel = cd.getChannel;
-});
+import { getChannel } from '../src/lib/entertainment/channels.ts';
+import {
+  jobStoryEngineFor,
+  listChannelsForUi,
+  readStorySummary,
+  resolveMontageEngine,
+} from '../src/lib/entertainment/jobs.ts';
+import { resolveInsideRepo } from '../src/lib/studio-data/paths.ts';
 
 describe('resolveMontageEngine — defensive default story', () => {
   test("storyEngine='anchors' → 'anchors' (chỉ trường hợp tường minh)", () => {
@@ -75,7 +51,7 @@ describe('readStorySummary — surface story_arc.json', () => {
     return d;
   }
 
-  after(() => {
+  afterAll(() => {
     rmSync(fixDir(), { recursive: true, force: true });
   });
 

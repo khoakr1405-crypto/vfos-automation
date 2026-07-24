@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { describe, test } from 'node:test';
+import { describe, test } from 'vitest';
 
 import { buildChineseSearchName, isWeakChineseKeyword } from '../src/lib/cn-search-keywords.ts';
 import { isValidChineseKeyword, parseLlmKeywordJson } from '../src/lib/cn-search-llm.ts';
