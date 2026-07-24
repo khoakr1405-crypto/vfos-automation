@@ -3696,5 +3696,12 @@ Khởi động **diễn tập 3 ngày** theo checklist trên (việc tay Operato
 - **Tab "Đăng tải file Excel để Chuyển đổi Liên kết"** = chuyển đổi HÀNG LOẠT → mở đường **G1-C**: VFOS sinh Excel (link + sub_id per video) → Operator upload 1 file, 0 browser automation.
 - Thiết lập thanh toán: Operator chủ động hoãn, tự làm sau (đã ghi nhận — không phải blocker kỹ thuật).
 
+### Round test-infra `17340b3` PUSHED — vitest + hồi sinh 7 test chết + phủ 2 nhánh fail-closed (0 production)
+Trả nợ runner §11 R-F H3 TRƯỚC go-live, tuân đóng-băng publish path (src/ + scripts/ nguyên vẹn):
+- **Vitest cho studio** (`pnpm --filter @vfos/studio test`): vitest.config.ts alias `@/` + interop native. 4 test cũ convert (đổi 1 dòng import); 3 test move về `apps/studio/tests/` + hồi sinh: multichannel + tiktok-publish (chết interop) + story-engine (**zombie đăng ký 0 test** — gỡ giàn giáo dynamic-import).
+- **`publish-fail-closed.test.ts` MỚI (6 test)** gác 2 phanh cổng đăng thật: C1 `privacy_unavailable` (từ chối khi thiếu privacy an toàn, KHÔNG init; hạ SELF_ONLY không nhặt options[0]; options rỗng) + C2 `IDENTITY_UNVERIFIABLE` (zero network + zero ghi status) + `ACCOUNT_IDENTITY_MISMATCH` + mock-compat. Stub fetch/vi.mock — không token store thật.
+- **Test hồi sinh bắt 1 finding thật:** R-F import `growth-data/publish-guard` vào route ent khi isolation test đang chết → exemption đích danh + comment (guard chung 4 route là chủ đích).
+- Verify: vitest 115/115 ×2 · tsx root 63/63 + scripts 44/44 · tsc 0 · biome 0. Nợ §11 R-F H3 **ĐÃ TRẢ**.
+
 ### Bước tiếp theo duy nhất (Phần 83)
-**Quy trình Operator từ giờ cho MỖI video mới:** `/analytics` → copy chip sub_id → Custom Link Shopee → dán link sản phẩm + **Sub_id1** = chip → "Lấy link" → dùng link đó cho video. **G1-B (round kế):** parser header-mode đọc THẲNG export Shopee thô (map cột Sub_id → jobId qua derive-rồi-so) — **chờ file CSV thật** (nút xuất mở khóa sau đơn đầu tiên; header CSV có thể khác header bảng nên KHÔNG code trước theo đoán). **G1-C (sau G1-B):** generator Excel hàng loạt cho tab chuyển đổi Shopee.
+**Quy trình Operator từ giờ cho MỖI video mới:** `/analytics` → copy chip sub_id → Custom Link Shopee → dán link sản phẩm + **Sub_id1** = chip → "Lấy link" → dùng link đó cho video. **Găng nhất: việc tay Operator** — nộp TikTok app audit + diễn tập 3 ngày (§11). **G1-B (round kế):** parser header-mode đọc THẲNG export Shopee thô (map cột Sub_id → jobId qua derive-rồi-so) — **chờ file CSV thật** (nút xuất mở khóa sau đơn đầu tiên; header CSV có thể khác header bảng nên KHÔNG code trước theo đoán). **G1-C (sau G1-B):** generator Excel hàng loạt cho tab chuyển đổi Shopee.
